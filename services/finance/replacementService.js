@@ -56,8 +56,22 @@ async function applyReplacementFromMessage(messageRefId, shaped, parsed, newCode
     chatId: shaped.chatId, before: at, withinHours: CONTEXT_WINDOW_HOURS,
   });
 
+  // Named digits are looked up over all of history, for the same reason the
+  // void path does it: the window bounds guessing from context, not reading a
+  // number somebody wrote down. A code being replaced is usually OLDER than the
+  // window, which is what made this the commoner failure of the two.
+  const candidates = [...recentCodes];
+  const seen = new Set(candidates.map((c) => c.id));
+  for (const digits of replacement.codes || []) {
+    if (String(digits) === String(parsed.codeNormalized)) continue;
+    // eslint-disable-next-line no-await-in-loop
+    for (const row of await deps.lifecycle.findCodesByDigits(digits)) {
+      if (!seen.has(row.id)) { seen.add(row.id); candidates.push(row); }
+    }
+  }
+
   const target = decideReplacementTarget({
-    replacement, newCode: parsed.codeNormalized, replyToCode, recentCodes,
+    replacement, newCode: parsed.codeNormalized, replyToCode, recentCodes: candidates,
   });
 
   if (target.decision === REPLACEMENT_DECISION.LINK) {

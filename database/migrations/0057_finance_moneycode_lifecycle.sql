@@ -99,6 +99,23 @@ BEGIN
   );
 END $$;
 
+-- ── what the new column means for rows that already exist ──────────────────
+-- EVERY EXISTING ROW DEFAULTS TO `active`, INCLUDING THE REPEATS. A repeat was
+-- already being recorded before this migration — `duplicate_reason` says
+-- 'same_code' on those rows — and from now on a repeat is stored as
+-- `duplicate_posting` so it stays out of the active total. Without this
+-- backfill the two vocabularies would disagree on the very first deploy: new
+-- repeats excluded, old ones counted, and the active total claiming the
+-- company is out money for a code it was only ever told about twice.
+--
+-- Idempotent by the WHERE: after one run those rows are no longer 'active'.
+-- It touches only rows the duplicate decision had ALREADY flagged; it never
+-- decides that something is a repeat.
+UPDATE finance_moneycodes
+   SET status = 'duplicate_posting'
+ WHERE duplicate_reason = 'same_code'
+   AND status = 'active';
+
 -- Active totals are read constantly and voided rows must never join them.
 CREATE INDEX IF NOT EXISTS idx_finance_moneycodes_status
   ON finance_moneycodes (status, issued_at DESC);

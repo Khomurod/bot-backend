@@ -90,16 +90,27 @@ async function findCodeByMessage(chatId, messageId) {
  * construction — there is no LIKE here — because a near-miss on a money code is
  * a different payment.
  *
- * NEWEST FIRST. The same digits can appear twice — that is a duplicate posting
- * — so this returns the most recent and nothing more. Every caller of it must
- * therefore stop at a non-destructive action: today the only one is the model
- * fallback, which marks a code as wanting a person and never voids it. A
- * destructive action against one of several rows would be a guess wearing an
- * answer's clothes, and this function is not the place that could make it safe.
+ * ALL OF THEM, NEWEST FIRST — because the same digits CAN appear twice, and a
+ * caller that acts against money has to see that rather than be handed one row
+ * as though it were the only one. Deciding between them is `void/target.js`'s
+ * job, and it refuses when more than one is live.
+ *
+ * NOT TIME-BOUNDED, deliberately, and that is the difference between this and
+ * `recentCodesInScope`. A message that spells out ten digits is naming a
+ * specific payment, and "we only look back a day" turned `voided 1491583146`
+ * into "a code with no matching record" whenever the code was issued the week
+ * before — leaving spent money in the active total. The window belongs to
+ * GUESSING from context, never to reading a number somebody wrote down.
+ *
+ * NOT CHAT-SCOPED EITHER, and that is safe for one reason worth writing down:
+ * `finance_settings` holds ONE chat id, so every row in this table came from
+ * that chat. If the monitor ever watched two groups this would need the same
+ * join `recentCodesInScope` uses — a code issued in one group must never be
+ * voided by a message in another.
  */
-async function findCodeByDigits(codeNormalized, { limit = 1 } = {}) {
+async function findCodesByDigits(codeNormalized, { limit = 5 } = {}) {
   const digits = String(codeNormalized ?? '').replace(/\D/g, '');
-  if (!digits) return null;
+  if (!digits) return [];
   try {
     const { rows } = await query(
       `SELECT c.id, c.code_normalized AS "codeNormalized", c.status, c.amount,
@@ -108,13 +119,19 @@ async function findCodeByDigits(codeNormalized, { limit = 1 } = {}) {
         WHERE c.code_normalized = $1
         ORDER BY c.issued_at DESC NULLS LAST, c.id DESC
         LIMIT $2`,
-      [digits, Math.max(1, Number(limit) || 1)],
+      [digits, Math.max(1, Number(limit) || 5)],
     );
-    return rows[0] || null;
+    return rows;
   } catch (err) {
-    if (err.code === UNDEFINED_TABLE) return null;
+    if (err.code === UNDEFINED_TABLE) return [];
     throw err;
   }
+}
+
+/** The single newest row for those digits, or null. */
+async function findCodeByDigits(codeNormalized) {
+  const rows = await findCodesByDigits(codeNormalized, { limit: 1 });
+  return rows[0] || null;
 }
 
 /**
@@ -261,6 +278,6 @@ async function listEvents(moneycodeId, { limit = 50 } = {}) {
 
 module.exports = {
   CODE_STATUS, LIVE_STATUSES,
-  recordEvent, findCodeByMessage, findCodeByDigits, recentCodesInScope,
+  recordEvent, findCodeByMessage, findCodeByDigits, findCodesByDigits, recentCodesInScope,
   voidCode, markReplaced, markNeedsReview, listEvents,
 };

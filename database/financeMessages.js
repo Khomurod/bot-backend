@@ -119,16 +119,25 @@ async function recordMoneycode(messageRefId, fields) {
  * window. Loading a whole history and filtering in JavaScript would read more
  * of a payments table than the question needs, every time a message arrives.
  */
-async function findDuplicateCandidates({ codeNormalized, amount, since }) {
+async function findDuplicateCandidates({ codeNormalized, amount, since, excludeMessageRefId = null }) {
   const { rows } = await query(
+    // A MESSAGE IS NEVER ITS OWN DUPLICATE. On a live capture the row does not
+    // exist yet, so this never came up; on a RE-READ it does, and the message's
+    // own code came back as a repeat of itself. The insert then no-opped on the
+    // unique key and the refresh tried to set duplicate_of_id to the row's own
+    // id, which finance_moneycodes_not_self refuses — so the re-read threw,
+    // was swallowed as "could not record", and left the amount unrefreshed
+    // while the parser version had already moved on. That row would never have
+    // been looked at again.
     `SELECT id, code_normalized AS "codeNormalized", amount,
             issued_to_normalized AS "issuedToNormalized", issued_at AS "issuedAt"
        FROM finance_moneycodes
-      WHERE ($1::text IS NOT NULL AND code_normalized = $1)
-         OR ($2::numeric IS NOT NULL AND amount = $2 AND issued_at >= $3)
+      WHERE ($4::bigint IS NULL OR message_ref_id <> $4)
+        AND (($1::text IS NOT NULL AND code_normalized = $1)
+             OR ($2::numeric IS NOT NULL AND amount = $2 AND issued_at >= $3))
       ORDER BY issued_at DESC NULLS LAST
       LIMIT 200`,
-    [codeNormalized ?? null, amount ?? null, since ?? new Date(0)],
+    [codeNormalized ?? null, amount ?? null, since ?? new Date(0), excludeMessageRefId ?? null],
   );
   return rows.map((r) => ({ ...r, amount: r.amount === null ? null : Number(r.amount) }));
 }
@@ -153,12 +162,14 @@ async function summariseCapture() {
     const codes = await query(
       `SELECT COUNT(*)::int AS total,
               COUNT(duplicate_of_id)::int AS duplicates,
-              COUNT(*) FILTER (WHERE status = 'active')::int AS active,
+              -- LIVE, not literally active: a code waiting on a person has not
+              -- been voided and its money is still out. See finance/reports.js.
+              COUNT(*) FILTER (WHERE status IN ('active', 'needs_review'))::int AS active,
               COUNT(*) FILTER (WHERE status = 'voided')::int AS voided,
               COUNT(*) FILTER (WHERE replaced_by_id IS NOT NULL)::int AS replaced,
               COUNT(*) FILTER (WHERE status = 'needs_review')::int AS "needsReview",
               COUNT(*) FILTER (WHERE status = 'duplicate_posting')::int AS "duplicatePostings",
-              COALESCE(SUM(amount) FILTER (WHERE status = 'active'), 0) AS "activeAmount",
+              COALESCE(SUM(amount) FILTER (WHERE status IN ('active', 'needs_review')), 0) AS "activeAmount",
               COALESCE(SUM(amount) FILTER (WHERE status = 'voided'), 0) AS "voidedAmount"
          FROM finance_moneycodes`,
     );

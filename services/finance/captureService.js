@@ -80,6 +80,8 @@ async function recordCodeIfParsed(messageRefId, shaped, parsed, settings) {
     codeNormalized: parsed.codeNormalized,
     amount: parsed.amount,
     since,
+    // A re-read must not find the row this very message already produced.
+    excludeMessageRefId: messageRefId,
   });
 
   const duplicate = decideDuplicate(

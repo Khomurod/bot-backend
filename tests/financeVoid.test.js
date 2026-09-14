@@ -115,3 +115,66 @@ test('no code in scope at all is a person\'s problem, not a silent no-op', () =>
   assert.equal(out.decision, DECISION.NEEDS_REVIEW);
   assert.match(out.reason, /no code in scope/);
 });
+
+// ── what the 24-hour window is for, and what it is NOT for ─────────────────
+
+/**
+ * THE WINDOW BOUNDS GUESSING, NOT READING.
+ *
+ * A message that spells out ten digits is naming one specific payment. Looking
+ * for it only inside the context window turned "voided 1491583146" into "a code
+ * with no matching record" whenever the code was issued more than a day
+ * earlier — so spent money stayed in the active total for exactly the codes
+ * somebody had been clearest about.
+ */
+test('a NAMED code is resolved however old it is', () => {
+  const older = { id: 3, codeNormalized: '1491583146', status: 'active' };
+  const out = decideVoidTarget({
+    voiding: classifyVoidLanguage('voided 1491583146'),
+    // Nothing recent at all; the row came from a lookup by digits.
+    recentCodes: [older],
+  });
+  assert.equal(out.decision, DECISION.LINK);
+  assert.equal(out.codeId, 3);
+  assert.equal(out.evidence.kind, 'named');
+});
+
+test('a labelled reference beside the code is not a second candidate', () => {
+  // The exact failure the label parser exists for, one layer up: a void that
+  // quotes the production format carries a Report Reference, and scanning the
+  // whole message offered it as a rival code.
+  const voiding = classifyVoidLanguage(
+    'voided\nMoney Transfer code: 1491583146\nReport Reference: 165373918',
+  );
+  assert.deepEqual(voiding.codes, ['1491583146'], 'the reference is not a named code');
+
+  const out = decideVoidTarget({
+    voiding,
+    recentCodes: [{ id: 4, codeNormalized: '1491583146', status: 'active' }],
+  });
+  assert.equal(out.decision, DECISION.LINK, 'so the void resolves instead of refusing');
+});
+
+test('one code recorded twice and BOTH still live is never resolved', () => {
+  const out = decideVoidTarget({
+    voiding: classifyVoidLanguage('voided 1491583146'),
+    recentCodes: [
+      { id: 5, codeNormalized: '1491583146', status: 'active' },
+      { id: 6, codeNormalized: '1491583146', status: 'active' },
+    ],
+  });
+  assert.equal(out.decision, DECISION.NEEDS_REVIEW);
+  assert.equal(out.evidence.kind, 'code_recorded_more_than_once');
+});
+
+test('a repeat POSTING beside the live row is not ambiguous — only one is money', () => {
+  const out = decideVoidTarget({
+    voiding: classifyVoidLanguage('voided 1491583146'),
+    recentCodes: [
+      { id: 7, codeNormalized: '1491583146', status: 'duplicate_posting' },
+      { id: 8, codeNormalized: '1491583146', status: 'active' },
+    ],
+  });
+  assert.equal(out.decision, DECISION.LINK);
+  assert.equal(out.codeId, 8, 'the live row is the one that gets voided');
+});

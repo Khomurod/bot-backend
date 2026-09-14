@@ -43,6 +43,8 @@ function load({ onWatch = true, settings = {}, messages = {}, lifecycle = {}, se
         lifecycle.findCodeByMessage ? lifecycle.findCodeByMessage(chatId, messageId) : null
       ),
       findCodeByDigits: async (d) => (lifecycle.findCodeByDigits ? lifecycle.findCodeByDigits(d) : null),
+      // Named digits are looked up over ALL of history, not only the window.
+      findCodesByDigits: async (d) => (lifecycle.findCodesByDigits ? lifecycle.findCodesByDigits(d) : []),
       recentCodesInScope: async (q) => {
         calls.scope.push(q);
         return lifecycle.recentCodesInScope ? lifecycle.recentCodesInScope(q) : [];

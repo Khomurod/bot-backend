@@ -22,11 +22,13 @@ const { offerToModel, MIN_AI_CONFIDENCE } = require('../services/finance/reparse
 const { AI_KIND } = require('../lib/finance/aiReading');
 
 function harness({ waiting = [], interpret } = {}) {
-  const calls = { markAiRead: [], voidCode: [], needsReview: [], lookedUp: [] };
+  const calls = { markAiRead: [], voidCode: [], needsReview: [], lookedUp: [], statuses: [], codes: [] };
   const deps = {
     messages: {
       listMessagesAwaitingAiReading: async () => waiting,
       markAiRead: async (id) => { calls.markAiRead.push(id); },
+      setMessageStatus: async (id, status, detail) => { calls.statuses.push({ id, status, detail }); },
+      recordMoneycode: async (...a) => { calls.codes.push(a); return 1; },
     },
     lifecycle: {
       findCodeByDigits: async (digits) => {
@@ -170,4 +172,63 @@ test('a model that throws costs one message, not the pass', async () => {
   assert.equal(summary.errors.length, 1);
   assert.match(summary.errors[0], /ai 5: boom/);
   assert.equal(summary.aiRead, 1, 'the second message was still offered');
+});
+
+/**
+ * A READING THAT WAS PAID FOR IS WRITTEN DOWN.
+ *
+ * A message gets exactly one model attempt. Spending it and then discarding
+ * everything but `void_completed` and `replacement` left the message on the
+ * same unclear pile, ineligible for another try, with nothing to show for the
+ * call — true for four of the six kinds a model may return.
+ */
+test('every verified reading is stored, whatever kind it is', async () => {
+  const { deps, summary, calls } = harness({
+    waiting: [{ id: 9, text: 'EFS 1491583146 480.00', parseStatus: 'ambiguous' }],
+    interpret: async () => ({
+      used: true,
+      reading: {
+        kind: AI_KIND.ISSUE, code: '1491583146', amount: 480,
+        referencesCode: null, issuedTo: null, confidence: 88, dropped: [],
+      },
+    }),
+  });
+
+  await offerToModel(summary, deps);
+
+  assert.equal(calls.statuses.length, 1, 'the reading reached the message');
+  assert.equal(calls.statuses[0].status, 'needs_review',
+    'a model saying "this issues a code" is work for a person, not a money row');
+  assert.equal(calls.statuses[0].detail.read, AI_KIND.ISSUE);
+  assert.equal(calls.statuses[0].detail.code, '1491583146');
+  assert.deepEqual(calls.codes, [], 'and no money row is written from a reading');
+});
+
+test('an UNRELATED reading is stored without moving the message', async () => {
+  const { deps, summary, calls } = harness({
+    waiting: [{ id: 10, text: 'lunch?', parseStatus: 'unparsed' }],
+    interpret: async () => ({
+      used: true,
+      reading: { kind: AI_KIND.UNRELATED, confidence: 95, dropped: [] },
+    }),
+  });
+
+  await offerToModel(summary, deps);
+
+  assert.equal(calls.statuses.length, 1);
+  assert.equal(calls.statuses[0].status, 'unparsed',
+    'the rules keep the status; only the reading is added beside it');
+  assert.equal(calls.statuses[0].detail.read, AI_KIND.UNRELATED);
+});
+
+test('a reading below the floor is not stored either', async () => {
+  const { deps, summary, calls } = harness({
+    waiting: [{ id: 11, text: 'EFS something', parseStatus: 'ambiguous' }],
+    interpret: async () => ({
+      used: true,
+      reading: { kind: AI_KIND.ISSUE, code: null, confidence: 10, dropped: [] },
+    }),
+  });
+  await offerToModel(summary, deps);
+  assert.deepEqual(calls.statuses, []);
 });

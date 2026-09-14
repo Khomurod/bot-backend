@@ -43,8 +43,15 @@ async function summariseFinancePeriod({ periodStart, periodEnd }) {
     // adding it twice would claim the company paid twice.
     `SELECT COUNT(*)::int                                          AS "codeCount",
             COALESCE(SUM(amount), 0)                               AS "amountTotal",
-            COUNT(*) FILTER (WHERE status = 'active')::int          AS "activeCount",
-            COALESCE(SUM(amount) FILTER (WHERE status = 'active'), 0)
+            -- LIVE, not literally active. A code waiting for a person to
+            -- confirm an ambiguous void has NOT been voided — the money went
+            -- out and is still out — so leaving it out of this total made real
+            -- outstanding money vanish from the report precisely when somebody
+            -- needed to look at it. LIVE_STATUSES in the lifecycle module
+            -- already said both states are live; this now agrees with it.
+            COUNT(*) FILTER (WHERE status IN ('active', 'needs_review'))::int
+                                                                   AS "activeCount",
+            COALESCE(SUM(amount) FILTER (WHERE status IN ('active', 'needs_review')), 0)
                                                                    AS "activeAmount",
             COUNT(*) FILTER (WHERE status = 'voided')::int          AS "voidedCount",
             COALESCE(SUM(amount) FILTER (WHERE status = 'voided'), 0)

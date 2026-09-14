@@ -59,7 +59,12 @@ export default function MessagesTab() {
   return (
     <div>
       <div className="ios-glass ai-tab-bar" style={{ marginBottom: 14 }}>
-        {["ambiguous", "unparsed", "parsed", "not_moneycode", "all"].map((k) => (
+        {/* NEEDS A PERSON LEADS, because it is the only pile where money is
+            deliberately unrecorded until somebody acts. The default tab is
+            still `ambiguous`, which is what a parser refusing to pick looks
+            like — the two are different work. */}
+        {["needs_review", "ambiguous", "unparsed", "parsed",
+          "void_action", "void_request", "not_moneycode", "all"].map((k) => (
           <button
             key={k}
             className={`btn ${status === k ? "btn-primary" : "btn-ghost"} touch-target`}

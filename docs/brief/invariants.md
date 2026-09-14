@@ -411,12 +411,21 @@ See [`finance-monitor.md`](../architecture/finance-monitor.md) §4c–4d.
 - **Voided money leaves the ACTIVE total and stays in the report.** Overstating
   what is outstanding is how a report stops being trusted; erasing the row is
   how history stops being auditable.
+- **A code waiting on a person is still money that went out.** `needs_review`
+  is an unsettled void, not a void — it stays in the active total and is counted
+  separately as needing attention. Leaving it out hides real outstanding money
+  at the moment somebody needs to see it.
 - **A duplicate POSTING is not a duplicate PAYMENT.** The system may say a code
   was posted twice. It may not say anybody was paid twice.
 - **A message doing two things is never read as one.** "Voided — replacement
   below:" with a labelled code goes to a person: reading it as only a void
   settled the status and dropped the new code in silence, so the money in it
   would never have appeared anywhere.
+- **A time window bounds GUESSING, never reading.** Digits somebody wrote out
+  name one specific payment and are looked up over all of history; the window
+  only limits what a bare "voided" may be guessed to mean. And a labelled
+  reference is never a candidate code in a void or a replacement either — the
+  same rule as the parser's, in one shared place.
 - **A replacement needs MORE evidence than a void, never less.** A code issued
   after a void is not automatically its replacement — that is a busy afternoon,
   not a relationship. The message must say so AND name or reply to the code it

@@ -58,6 +58,37 @@ function defaultDeps() {
   };
 }
 
+/** Which kinds are worth a person's time once a model has read them. */
+const NEEDS_A_PERSON = Object.freeze([
+  AI_KIND.ISSUE, AI_KIND.VOID_COMPLETED, AI_KIND.REPLACEMENT,
+]);
+
+/**
+ * Store the verified reading beside the message, and move it where somebody
+ * will see it.
+ *
+ * An ISSUE reading is the sharpest case: the model says this message issued a
+ * code, and the code is verified to be in the text — but a money row written
+ * from a model's reading is exactly the thing `docs/brief/invariants.md`
+ * forbids, so the MESSAGE is flagged and a person records it. `unrelated` and
+ * `unclear` keep whatever status the rules gave them; the reading is stored
+ * either way, so the call is never invisible.
+ */
+async function recordReading(row, reading, deps) {
+  const detail = {
+    kind: 'ai_reading',
+    read: reading.kind,
+    confidence: reading.confidence,
+    code: reading.code,
+    amount: reading.amount,
+    referencesCode: reading.referencesCode,
+    issuedTo: reading.issuedTo,
+    dropped: reading.dropped,
+  };
+  const status = NEEDS_A_PERSON.includes(reading.kind) ? STATUS.NEEDS_REVIEW : row.parseStatus;
+  await deps.messages.setMessageStatus(row.id, status, detail);
+}
+
 /**
  * Offer the messages the rules could not settle to a model.
  *
@@ -103,6 +134,17 @@ async function offerToModel(summary, deps) {
 
     const reading = out.reading;
     if (reading.confidence < MIN_AI_CONFIDENCE) continue;
+
+    // THE READING IS WRITTEN DOWN BEFORE ANYTHING ELSE HAPPENS TO IT. The
+    // attempt has just been spent and a message gets exactly one, so a reading
+    // that was paid for and then discarded is a message left on the unclear
+    // pile with nothing to show for the call — which was true for four of the
+    // six kinds a model may return. This stores what was read and moves the
+    // message to the pile a person works through; it records no money, no
+    // state on any code, and nothing the verifier did not confirm is in the
+    // text.
+    // eslint-disable-next-line no-await-in-loop
+    await recordReading(row, reading, deps);
 
     if (reading.kind === AI_KIND.VOID_COMPLETED && reading.referencesCode) {
       // eslint-disable-next-line no-await-in-loop

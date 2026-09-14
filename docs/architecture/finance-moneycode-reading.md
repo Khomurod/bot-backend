@@ -93,6 +93,25 @@ none; it is worse, because it looks like an answer.
 The asymmetry is deliberate: an unvoided void leaves a total slightly high and a
 person able to see why; a wrong void makes real money vanish.
 
+**The 24-hour window bounds GUESSING, not reading.** Rung 3 — "the only code in
+scope" — is the guess, and it is what the window exists to keep small. Rungs 1
+and 2 are not guesses: a message that spells out ten digits is naming one
+specific payment, so named digits are looked up over all of history. Bounding
+them too meant `voided 1491583146` read as "a code with no matching record"
+whenever the code was issued more than a day earlier, and spent money stayed in
+the active total for exactly the codes somebody had been clearest about.
+
+**A labelled reference is not a candidate code here either.** `namedCodesIn`
+(in `moneycode/fields.js`) is what both the void and the replacement paths use:
+a void or replacement quoting the production format carries `Report Reference`
+beside the code, and a bare scan offered that reference as a rival. It is the
+same defect as the one the label parser exists for, one layer up — so it has the
+same answer, in one shared place.
+
+**One code recorded twice, both still live, is never resolved.** A repeat
+posting beside a live row is not ambiguous — only one of them is money in play —
+but two live rows under one code is the case a machine must hand over.
+
 ### A message doing two things is not read as one
 
 "Voided — replacement below:" followed by a labelled code is a real shape, and
@@ -161,6 +180,15 @@ message. Each message is offered **once**: `ai_read_at` is stamped only when
 something actually answered, so a provider on cooldown does not spend a
 message's single chance.
 
+**And every verified reading is written down**, whatever kind it is, in the
+message's own `parse_json` beside the parser's reading. A message gets one
+attempt, so a reading that was paid for and then discarded leaves the message on
+the same unclear pile with nothing to show for the call. A reading that says the
+message ISSUES a code moves it to `needs_review` — a person records the money,
+because a money row written from a model's reading is the one thing this feature
+must never produce. `unrelated` and `unclear` keep the status the rules gave
+them and gain the reading beside it.
+
 ## 4h. Re-reading what an older parser misunderstood
 
 A version bump creates a backlog: rows captured while version 1 ran, holding
@@ -181,6 +209,19 @@ the same silence, one step further along. So a re-read that reaches
 and one that reaches `parsed` goes through replacement detection as well. The
 stored `chat_id`, `reply_to_message_id` and text come back from the re-read for
 exactly that reason.
+
+### A code waiting on a person is still money that went out
+
+`needs_review` on a code means an ambiguous void or replacement nobody has
+settled. It does **not** mean the code was voided, so it stays in the active
+total and is counted separately as needing a person. Leaving it out made real
+outstanding money vanish from the report at exactly the moment somebody needed
+to look at it — and contradicted `LIVE_STATUSES`, which has always named
+`active` and `needs_review` as the live pair.
+
+The messages that need a person have their own filter on the Money codes
+screen's Messages tab, first in the row, because a pile nobody can select is a
+pile nobody works through.
 
 ## 4i. Reading the history back
 

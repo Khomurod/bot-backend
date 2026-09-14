@@ -115,6 +115,16 @@ The Messages tab opens on **Unclear**, not on everything: the provisional
 parser is tightened from exactly that pile, and a list that opens on four
 thousand ordinary messages hides the twenty that matter.
 
+## The piles a person works through
+
+The Messages tab filters by what the parser made of a message, and **Needs a
+person leads the row**: that is the only pile where money is deliberately left
+unrecorded until somebody acts — a void whose target could not be matched, a
+message that both voids and issues a code, a reading a model contributed. A pile
+with no filter is findable only by reading the whole captured history, which is
+how an amount goes missing indefinitely. `Reported a void` and `Asked for a
+void` are separate buttons for the same reason they are separate statuses.
+
 ## The history behind one code
 
 The Money codes tab lists a voided code **struck through and still there**, with

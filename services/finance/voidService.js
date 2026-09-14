@@ -35,6 +35,28 @@ function defaultDeps() {
   return { lifecycle, messages: financeMessages };
 }
 
+/** Every stored row for each set of digits the message named. */
+async function namedCodes(codes, deps) {
+  const out = [];
+  for (const digits of codes || []) {
+    // eslint-disable-next-line no-await-in-loop
+    const rows = await deps.lifecycle.findCodesByDigits(digits);
+    for (const row of rows) out.push(row);
+  }
+  return out;
+}
+
+/** One row per id, the first occurrence winning. */
+function mergeById(...lists) {
+  const seen = new Map();
+  for (const list of lists) {
+    for (const row of list || []) {
+      if (row && !seen.has(row.id)) seen.set(row.id, row);
+    }
+  }
+  return [...seen.values()];
+}
+
 /**
  * Resolve and apply one void message.
  *
@@ -64,7 +86,17 @@ async function applyVoidFromMessage(messageRefId, shaped, parsed, deps = default
     chatId: shaped.chatId, before: at, withinHours: CONTEXT_WINDOW_HOURS,
   });
 
-  const target = decideVoidTarget({ voiding, replyToCode, recentCodes });
+  // THE WINDOW BELONGS TO GUESSING, NOT TO READING. A message that spells out
+  // ten digits is naming one specific payment, and looking only inside the
+  // context window turned "voided 1491583146" into "a code with no matching
+  // record" whenever the code was issued more than a day earlier — so spent
+  // money stayed in the active total for exactly the codes somebody had been
+  // clearest about. Named digits are looked up directly, over all of history;
+  // the window still bounds what a BARE "voided" may be guessed to mean.
+  const byName = await namedCodes(voiding.codes, deps);
+  const candidates = mergeById(recentCodes, byName);
+
+  const target = decideVoidTarget({ voiding, replyToCode, recentCodes: candidates });
 
   if (target.decision === DECISION.LINK) {
     const out = await deps.lifecycle.voidCode(target.codeId, {

@@ -211,3 +211,74 @@ test('a re-read that newly recognises a void ACTS on it',
     assert.equal(rows[0].status, 'voided');
     assert.ok(rows[0].voided_at, 'and it says when, so the period reports can exclude it');
   });
+
+/**
+ * A MESSAGE IS NEVER ITS OWN DUPLICATE.
+ *
+ * On a live capture the money-code row does not exist yet, so this never came
+ * up. On a RE-READ it does: the message's own code came back as a repeat of
+ * itself, the idempotent insert no-opped, and the refresh tried to point
+ * `duplicate_of_id` at the row's own id — which `finance_moneycodes_not_self`
+ * refuses. The re-read then threw, was swallowed as "could not record", and
+ * left the amount stale while the parser version had already moved on. That row
+ * would never have been looked at again.
+ */
+test('re-reading a message that already owns a code REFRESHES it rather than throwing',
+  { skip: skipWithoutPg() }, async (t) => {
+    const { h, financeMessages } = await setup(t);
+    const id = await captureAsVersion1(h, 6020, EFS);
+
+    // First pass: the row is created, as the live capture would have done.
+    const first = await financeMessages.reparseMessage(id);
+    const codeId = await financeMessages.recordMoneycode(id, {
+      code: first.parsed.code,
+      codeNormalized: first.parsed.codeNormalized,
+      amount: 1,
+      currency: 'USD',
+      issuedAt: new Date('2026-09-10T12:00:00Z'),
+      parserVersion: first.parsed.parserVersion,
+    });
+
+    // Second pass, exactly as reparseCapturedMessage runs it: the candidate
+    // search must not return this message's own row.
+    const again = await financeMessages.reparseMessage(id);
+    const candidates = await financeMessages.findDuplicateCandidates({
+      codeNormalized: again.parsed.codeNormalized,
+      amount: again.parsed.amount,
+      since: new Date('2026-09-01T00:00:00Z'),
+      excludeMessageRefId: id,
+    });
+    assert.deepEqual(candidates, [], 'its own row is not a candidate duplicate');
+
+    const refreshed = await financeMessages.updateMoneycodeInterpretation(
+      id, again.parsed.codeNormalized,
+      {
+        code: again.parsed.code, amount: again.parsed.amount, currency: 'USD',
+        parserVersion: again.parsed.parserVersion, duplicateOfId: null, duplicateReason: null,
+      },
+    );
+    assert.equal(Number(refreshed), Number(codeId));
+
+    const { rows } = await h.query(
+      'SELECT amount, duplicate_of_id FROM finance_moneycodes WHERE id = $1', [codeId],
+    );
+    assert.equal(Number(rows[0].amount), 480, 'the corrected amount landed');
+    assert.equal(rows[0].duplicate_of_id, null, 'and it is nobody’s duplicate');
+  });
+
+test('a genuine repeat in ANOTHER message is still found', { skip: skipWithoutPg() }, async (t) => {
+  const { h, financeMessages } = await setup(t);
+  const first = await captureAsVersion1(h, 6021, EFS);
+  const out = await financeMessages.reparseMessage(first);
+  await financeMessages.recordMoneycode(first, {
+    code: out.parsed.code, codeNormalized: out.parsed.codeNormalized, amount: out.parsed.amount,
+    currency: 'USD', issuedAt: new Date('2026-09-10T12:00:00Z'), parserVersion: out.parsed.parserVersion,
+  });
+
+  const second = await captureAsVersion1(h, 6022, EFS);
+  const candidates = await financeMessages.findDuplicateCandidates({
+    codeNormalized: '1491583146', amount: 480,
+    since: new Date('2026-09-01T00:00:00Z'), excludeMessageRefId: second,
+  });
+  assert.equal(candidates.length, 1, 'excluding SELF must not excuse a real repeat');
+});

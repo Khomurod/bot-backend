@@ -151,3 +151,29 @@ test('language that is not a replacement decides nothing at all', () => {
   });
   assert.equal(out.decision, REPLACEMENT_DECISION.NONE);
 });
+
+/**
+ * THE SAME DEFECT THE LABEL PARSER EXISTS FOR, one layer up.
+ *
+ * A replacement reply in the real EFS shape carries `Report Reference` beside
+ * the new code. Scanning the whole message offered that reference as a code
+ * being replaced, found no record of it, and returned `needs_review` — refusing
+ * a reply relationship that was perfectly conclusive, and leaving the old code
+ * in the live total beside its own replacement.
+ */
+test('a labelled reference in the message is not a code being replaced', () => {
+  const said2 = classifyReplacementLanguage(
+    'Replacement issued\nMoney Transfer code: 2288341907\nReport Reference: 165373918\nAmount: 480.00',
+  );
+  assert.deepEqual(said2.codes, ['2288341907'], 'only the money-code label is a code');
+
+  const out = decideReplacementTarget({
+    replacement: said2,
+    newCode: '2288341907',
+    replyToCode: OLD,
+    recentCodes: [OLD],
+  });
+  assert.equal(out.decision, REPLACEMENT_DECISION.LINK);
+  assert.equal(out.codeId, 11);
+  assert.equal(out.evidence.kind, 'replied_to');
+});

@@ -348,3 +348,93 @@ test('a replacement does NOT overwrite a void, and the report still sees both',
     const events = await life.listEvents(a.codeId);
     assert.equal(events.filter((e) => e.event === 'replaced').length, 1);
   });
+
+/**
+ * A CODE WAITING ON A PERSON IS STILL MONEY THE COMPANY IS OUT.
+ *
+ * `needs_review` means an ambiguous void or replacement nobody has settled — it
+ * does NOT mean the code was voided. Excluding it from the active total made
+ * real outstanding money vanish from the report at precisely the moment
+ * somebody needed to look at it, and contradicted LIVE_STATUSES in this
+ * module's own header.
+ */
+test('a code needing a person stays in the ACTIVE total until somebody settles it',
+  { skip: skipWithoutPg() }, async (t) => {
+    const { financeMessages, life, reports } = await setup(t);
+    const a = await issue(financeMessages, 5018, '1491583146');
+    await issue(financeMessages, 5019, '2288341907', { amount: '300.00' });
+
+    await life.markNeedsReview(a.codeId, 'a void nobody could match to a code');
+
+    const totals = await reports.summariseFinancePeriod({
+      periodStart: new Date('2026-09-08T00:00:00Z'),
+      periodEnd: new Date('2026-09-15T00:00:00Z'),
+    });
+
+    assert.equal(Number(totals.activeAmount), 780,
+      'the unsettled 480 is still money that went out');
+    assert.equal(totals.activeCount, 2);
+    assert.equal(totals.codesNeedingReview, 1, 'and it is counted as needing a person too');
+    assert.equal(totals.voidedCount, 0, 'nobody has voided anything');
+
+    const capture = await financeMessages.summariseCapture();
+    assert.equal(capture.active, 2, 'the settings screen agrees');
+    assert.equal(capture.needsReview, 1);
+  });
+
+/**
+ * THE FIRST DEPLOY IS WHERE THIS SHOWS.
+ *
+ * Every pre-existing row defaults to `active` when the column is added,
+ * including repeats the duplicate decision had already flagged. New repeats are
+ * stored as `duplicate_posting` and stay out of the active total, so without a
+ * backfill the two vocabularies disagree immediately: the total claims the
+ * company is out money for a code it was only ever told about twice.
+ */
+test('the migration moves ALREADY-FLAGGED repeats out of the active total',
+  { skip: skipWithoutPg() }, async (t) => {
+    const { h, financeMessages, reports } = await setup(t);
+    const first = await issue(financeMessages, 5020, '1491583146');
+    const second = await issue(financeMessages, 5021, '1491583146');
+
+    // Put the second row back the way a pre-migration installation held it:
+    // flagged as a repeat, but with the status the column defaults to.
+    await h.query(
+      `UPDATE finance_moneycodes
+          SET status = 'active', duplicate_of_id = $2, duplicate_reason = 'same_code'
+        WHERE id = $1`,
+      [second.codeId, first.codeId],
+    );
+
+    let totals = await reports.summariseFinancePeriod({
+      periodStart: new Date('2026-09-08T00:00:00Z'),
+      periodEnd: new Date('2026-09-15T00:00:00Z'),
+    });
+    assert.equal(Number(totals.activeAmount), 960, 'this is the double count');
+
+    // AND THE MIGRATION ACTUALLY CARRIES IT. A correct statement that lives
+    // only in a test fixes nothing on the deploy this was written for.
+    const migration = require('node:fs').readFileSync(
+      require('node:path').resolve(__dirname, '../database/migrations/0057_finance_moneycode_lifecycle.sql'),
+      'utf8',
+    );
+    assert.match(migration, /UPDATE finance_moneycodes\s+SET status = 'duplicate_posting'/);
+    assert.match(migration, /WHERE duplicate_reason = 'same_code'/);
+
+    // The migration's backfill, verbatim, and run twice to prove it settles.
+    for (let i = 0; i < 2; i += 1) {
+      // eslint-disable-next-line no-await-in-loop
+      await h.query(
+        `UPDATE finance_moneycodes SET status = 'duplicate_posting'
+          WHERE duplicate_reason = 'same_code' AND status = 'active'`,
+      );
+    }
+
+    totals = await reports.summariseFinancePeriod({
+      periodStart: new Date('2026-09-08T00:00:00Z'),
+      periodEnd: new Date('2026-09-15T00:00:00Z'),
+    });
+    assert.equal(Number(totals.activeAmount), 480, 'one code, one debt');
+    assert.equal(totals.duplicatePostings, 1);
+    assert.equal(totals.activeCount, 1);
+  });
