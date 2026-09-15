@@ -16,6 +16,18 @@ answered by two pure modules:
 | Question | Module | Refuses when |
 |---|---|---|
 | Which PERSON is this Board row about? | [`lib/identity/boardResolution.js`](../../lib/identity/boardResolution.js), through [`services/dispatchBoard/rowPeople.js`](../../services/dispatchBoard/rowPeople.js) | the truck and the name do not agree, the truck matched on digits alone, or two rows name one person |
+
+**A team row is two drivers, and both of them count.** One board line reading
+"A / B" on truck 310 is two people with two dispatch teams and two home-time
+cycles. `decideTeamBoardLink` asks about each member separately; handing the
+combined name to the single-driver resolver asks an unanswerable question — two
+holders on one truck read as ambiguous — and would drop both off every roster.
+Because the caller knows *which* member it is asking about, that ambiguity is
+re-examined against the seats and settled only when the truck matched on its
+real spelling and the member's name agrees strictly with exactly one of the
+people in it: the same evidence standard as any other auto link, applied twice.
+Two names that resolve to one stored person link **neither** — that is a
+composite row somebody splits by hand.
 | Which TEAM is that dispatcher on? | [`lib/raise/dispatcherTeam.js`](../../lib/raise/dispatcherTeam.js) | the name maps to no team, or to more than one |
 
 Neither may guess. A driver the pair cannot settle is left **off** a roster and
@@ -73,6 +85,15 @@ from the admin's Send now, and the two can land together:
 * findings are upserted by `(check_key, subject)` and cleared findings resolve,
   so the unplaced list does not fossilise
 * the round itself is still guarded by `claimServiceRun('raise', 'weekly:<end>')`
+
+**A roster write that fails aborts the rebuild.** A constraint violation or a
+dropped connection halfway through leaves some teams current and others as they
+were last week — indistinguishable from a correct rebuild to everybody who reads
+the review form. `reconcileRosterFromBoard` throws `ROSTER_WRITE_FAILED`, so the
+round is not minted, the scheduler releases its claim and the next tick retries.
+A *finding* that could not be filed is reported but does not abort: the driver is
+genuinely off every roster either way, and refusing the whole review over a
+warning row trades a real problem for a bigger one.
 
 ## Human overrides
 

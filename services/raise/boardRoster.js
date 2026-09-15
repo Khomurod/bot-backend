@@ -249,6 +249,14 @@ async function reconcileRosterFromBoard({ deps = defaultDeps(), now = Date.now()
   const keptFindingIds = [];
   let placed = 0;
   let removed = 0;
+  // TWO KINDS OF FAILURE, AND ONLY ONE OF THEM MAY BE SURVIVED. A roster WRITE
+  // that failed means the roster is now part old and part new, which is the one
+  // state this whole design exists to prevent — so it aborts below. A FINDING
+  // that could not be filed costs visibility, not correctness: the driver is
+  // genuinely off every roster either way, and refusing the whole review round
+  // because a warning row would not insert trades a real problem for a bigger
+  // one.
+  const writeErrors = [];
   const errors = [];
 
   for (const action of actions) {
@@ -294,8 +302,26 @@ async function reconcileRosterFromBoard({ deps = defaultDeps(), now = Date.now()
         reviews.push({ driver: who, reason: action.reason, dispatcher: action.board?.dispatcher || null });
       }
     } catch (err) {
-      errors.push(`${action.outcome}: ${err.message}`);
+      const note = `${action.outcome}: ${err.message}`;
+      errors.push(note);
+      if (action.outcome !== OUTCOME.REVIEW) writeErrors.push(note);
     }
+  }
+
+  // A PARTIALLY REBUILT ROSTER IS THE THING THIS REFUSES TO SHIP. A constraint
+  // violation or a dropped connection halfway through leaves some teams current
+  // and others as they were last week, which is indistinguishable from a
+  // correct rebuild to everybody who reads the review form. Throwing here is
+  // what makes the caller's `openRoundAndPost` fail-closed real rather than
+  // intended: the round is not minted, the scheduler releases its claim, and
+  // the next tick tries again.
+  if (writeErrors.length) {
+    await blocked(deps, `${writeErrors.length} roster change(s) could not be written: ${writeErrors[0]}`);
+    throw serviceError(
+      'ROSTER_WRITE_FAILED',
+      `The driver roster could not be rebuilt: ${writeErrors.length} change(s) could not be written.`,
+      500
+    );
   }
 
   // A DRIVER WHO IS NOW PLACED STOPS BEING A QUESTION. Without this the first

@@ -265,3 +265,48 @@ test('a rebuild that works clears the blocked finding', async () => {
   await run(w);
   assert.ok(w.calls.resolved.some((r) => r.keys[0] === CHECK_ROSTER_BLOCKED));
 });
+
+// ─── a partly-written roster never reaches a dispatcher (review finding) ───
+
+test('a roster write that fails aborts the rebuild instead of reporting and continuing', async () => {
+  const w = world();
+  w.deps.ra.applyBoardAssignment = async () => { throw new Error('deadlock detected'); };
+  await assert.rejects(run(w), (err) => {
+    assert.equal(err.code, 'ROSTER_WRITE_FAILED');
+    assert.match(err.message, /could not be written/);
+    return true;
+  });
+  // Half old and half new is indistinguishable from correct on the review form,
+  // which is exactly why the round must not be minted on it.
+  const filed = w.calls.findings.find((f) => f.checkKey === CHECK_ROSTER_BLOCKED);
+  assert.ok(filed, 'the operator is told why no review went out');
+  assert.match(filed.evidence.reason, /deadlock detected/);
+});
+
+test('a retirement that fails aborts it too', async () => {
+  const w = world({
+    groups: [],
+    boardRows: [],
+    current: [{ id: 88, teamId: 1, personId: 5, assignmentSource: 'board' }],
+  });
+  w.deps.ra.retireBoardAssignment = async () => { throw new Error('connection terminated'); };
+  await assert.rejects(run(w), (err) => err.code === 'ROSTER_WRITE_FAILED');
+});
+
+test('a finding that will not file is reported but does NOT abort — the roster is still right', async () => {
+  const w = world({ boardRows: [boardRow({ dispatcher: 'Nobody Here' })] });
+  w.deps.findings.upsertFinding = async () => { throw new Error('findings table is missing'); };
+  const out = await run(w);
+  assert.equal(out.ok, true, 'refusing the whole review over a warning row trades a real problem for a bigger one');
+  assert.ok(out.errors.some((e) => /findings table/.test(e)));
+});
+
+test('a rebuild with nothing to write is not treated as a failed one', async () => {
+  const w = world({
+    current: [{ id: 77, teamId: 1, personId: 5, assignmentSource: 'board' }],
+  });
+  const out = await run(w);
+  assert.equal(out.ok, true);
+  assert.deepEqual(out.errors, []);
+  assert.equal(out.summary.keep, 1);
+});

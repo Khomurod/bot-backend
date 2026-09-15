@@ -294,3 +294,98 @@ test('a board claiming the whole fleet moved is capped rather than obeyed', asyn
   assert.equal(out.opened, MAX_TRANSITIONS_PER_PASS);
   assert.ok(out.errors.some((e) => /cap/.test(e)));
 });
+
+// ─── the event may never predate the state it replaces (review finding) ───
+
+test('a board status older than Wenze’s current state is not new evidence', () => {
+  // The driver wrote "Status: Road" at noon; the board has said HOME since
+  // eight that morning and has not moved since. Two hours later the hold
+  // expires — and acting then would open a home cycle timed BEFORE the road leg
+  // it closes.
+  const out = decideBoardPresence({
+    nowIso: NOW, lastSeenAt: ago(5),
+    boardStatus: 'HOME', statusChangedAt: ago(480),
+    wenzeState: 'road', wenzeStateSince: ago(240),
+    driverSaidState: 'road', driverSaidAt: ago(240),
+  });
+  assert.notEqual(out.action, ACTION.OPEN_HOME);
+  assert.equal(out.evidence.boardPredatesState, true);
+});
+
+test('the refusal never clamps the event to the state start — that is a fabricated zero-length leg', () => {
+  const out = decideBoardPresence({
+    nowIso: NOW, lastSeenAt: ago(5),
+    boardStatus: 'HOME', statusChangedAt: ago(480),
+    wenzeState: 'road', wenzeStateSince: ago(240),
+  });
+  assert.equal(out.eventAt ?? null, null);
+});
+
+test('a backdated board that stays backdated still reaches a person', () => {
+  const out = decideBoardPresence({
+    nowIso: NOW, lastSeenAt: ago(5),
+    boardStatus: 'HOME', statusChangedAt: ago(60 * 40),
+    wenzeState: 'road', wenzeStateSince: ago(60 * 20),
+  });
+  assert.equal(out.action, ACTION.REVIEW);
+});
+
+test('an event Wenze does act on is never earlier than the state it replaces', () => {
+  const out = decide({ boardStatus: 'HOME', statusChangedAt: ago(90), ...ON_ROAD });
+  assert.equal(out.action, ACTION.OPEN_HOME);
+  assert.ok(Date.parse(out.eventAt) >= Date.parse(ON_ROAD.wenzeStateSince));
+});
+
+// ─── a team board row is two people (review finding) ───
+
+test('both members of a team row are placed, not neither', async () => {
+  const w = world({
+    boardRows: [{
+      rowKey: '310|ANA LOPEZ', present: true, cleanName: 'ANA LOPEZ / BEN OKAFOR',
+      fleetType: 'company', truckNorm: '310', truckDigits: '310',
+      isTeam: true, teamMembers: ['ANA LOPEZ', 'BEN OKAFOR'], personId: null,
+      status: 'HOME', statusChangedAt: ago(90), lastSeenAt: ago(5),
+    }],
+    people: [
+      { id: 11, display_name: 'ANA LOPEZ', merged_into_person_id: null },
+      { id: 12, display_name: 'BEN OKAFOR', merged_into_person_id: null },
+    ],
+    units: [
+      { person_id: 11, unit_number: '310', fleet_type: 'company', seat: 1 },
+      { person_id: 12, unit_number: '310', fleet_type: 'company', seat: 2 },
+    ],
+    states: [
+      {
+        group_id: 81, telegram_group_id: -81, group_name: 'UNIT 310 A', group_type: 'driver',
+        person_id: 11, state: 'road', state_since: ago(60 * 24 * 30), last_status_at: ago(60 * 24 * 30),
+      },
+      {
+        group_id: 82, telegram_group_id: -82, group_name: 'UNIT 310 B', group_type: 'driver',
+        person_id: 12, state: 'road', state_since: ago(60 * 24 * 30), last_status_at: ago(60 * 24 * 30),
+      },
+    ],
+  });
+  const out = await run(w);
+  assert.equal(out.opened, 2, 'a team truck is two drivers going home, not one and not none');
+  assert.deepEqual(w.calls.transitions.map((t) => t.groupId).sort(), [81, 82]);
+});
+
+test('a team row whose two names are one stored person places neither', async () => {
+  const w = world({
+    boardRows: [{
+      rowKey: '310|ANA LOPEZ', present: true, cleanName: 'ANA LOPEZ / BEN OKAFOR',
+      fleetType: 'company', truckNorm: '310', truckDigits: '310',
+      isTeam: true, teamMembers: ['ANA LOPEZ', 'ANA LOPEZ'], personId: null,
+      status: 'HOME', statusChangedAt: ago(90), lastSeenAt: ago(5),
+    }],
+    people: [{ id: 11, display_name: 'ANA LOPEZ', merged_into_person_id: null }],
+    units: [{ person_id: 11, unit_number: '310', fleet_type: 'company', seat: 1 }],
+    states: [{
+      group_id: 81, telegram_group_id: -81, group_name: 'UNIT 310', group_type: 'driver',
+      person_id: 11, state: 'road', state_since: ago(60 * 24 * 30), last_status_at: ago(60 * 24 * 30),
+    }],
+  });
+  const out = await run(w);
+  assert.equal(out.opened, 0, 'a composite row is split by hand, never by a rule');
+  assert.equal(w.calls.transitions.length, 0);
+});

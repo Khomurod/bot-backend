@@ -89,6 +89,17 @@ survive, so the pure rule refuses far more often than it acts:
 A stale snapshot (older than `freshMinutes`) decides nothing and raises nothing —
 the poller's own health already reports a Board nobody can read.
 
+**A board status older than the state it would replace is not new evidence.**
+The driver writes "Status: Road" at noon, the board has said HOME since eight
+that morning, and two hours later the hold expires. That cell has not moved
+since *before* the driver spoke, so it cannot describe something that happened
+after — and acting on it would open a home cycle timed earlier than the road leg
+it closes, which `applyStateTransition` then measures as zero days out with a
+bonus computed over negative time. It is refused, never clamped to the state's
+start: a zero-length road leg is a fabricated fact rather than a missing one.
+The disagreement still reaches a person by the twelve-hour rule, because
+`disagreedHours` counts from whichever of the two timestamps is later.
+
 A hold that never resolves does become a question. Once the two have disagreed
 for `reviewAfterHours` (12) the decision returns `review` and the watch files
 `home_time.board_disagrees_with_state` (warning, **no proposed change** — which

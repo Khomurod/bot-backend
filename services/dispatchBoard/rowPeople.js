@@ -16,16 +16,25 @@
  * person no longer holds the truck — all of them come back unresolved, and the
  * caller leaves the driver out rather than acting on a plausible guess.
  *
- * TWO ROWS ABOUT ONE PERSON DISQUALIFY BOTH. A team truck, or a row left behind
- * by a move, means the board is saying two things about one human; picking one
- * would be a coin toss against operational state.
+ * TWO ROWS ABOUT ONE PERSON DISQUALIFY BOTH. A row left behind by a move means
+ * the board is saying two things about one human; picking one would be a coin
+ * toss against operational state.
+ *
+ * A TEAM ROW IS TWO PEOPLE, AND BOTH OF THEM COUNT. One board line reading
+ * "A / B" on truck 310 is two drivers, each with their own dispatch team and
+ * their own home-time cycle. Handing the combined name to the single-person
+ * resolver asks an unanswerable question — two holders on one truck read as
+ * ambiguous — and the answer "nobody" would quietly drop both of them off
+ * every roster. `decideTeamBoardLink` asks about each member separately, and
+ * still refuses BOTH when the two names resolve to one stored person, because
+ * that is a composite row somebody has to split by hand.
  *
  * Plain SELECTs rather than the data-layer helpers, for the same reason
  * `services/operations/snapshot/loaders.js` uses them: several of those helpers
  * seed rows on read, and asking who somebody is must never create them.
  */
 
-const { decideBoardLink } = require('../../lib/identity/boardResolution');
+const { decideBoardLink, decideTeamBoardLink } = require('../../lib/identity/boardResolution');
 const { indexLayer, holdersFor } = require('../operations/checks/boardLink');
 
 /** The person layer, in the shape `decideBoardLink` reads. */
@@ -50,22 +59,25 @@ function resolveBoardRowsToPeople(rows, layer) {
   const byPerson = new Map();
   const unresolved = [];
 
-  for (const row of Array.isArray(rows) ? rows : []) {
-    if (!row || !row.present) continue;
-    const decision = decideBoardLink({ row, unitHolders: holdersFor(row, index), nameCandidates });
+  /** A settled decision joins the map; a second one about the same person voids both. */
+  const place = (row, decision, name = null) => {
     const settled = decision.action === 'link'
       || (decision.action === 'none' && decision.personId != null);
     if (!settled || decision.personId == null) {
-      unresolved.push({ row, reason: decision.reason || 'the board row could not be matched to a person' });
-      continue;
+      unresolved.push({
+        row, name,
+        reason: decision.reason || 'the board row could not be matched to a person',
+      });
+      return;
     }
     const key = `person:${decision.personId}`;
     if (byPerson.has(key)) {
       byPerson.set(key, { duplicate: true, personId: decision.personId, rowKey: row.rowKey, row: null });
-      continue;
+      return;
     }
     byPerson.set(key, {
       personId: decision.personId,
+      name: name || row.cleanName || null,
       rowKey: row.rowKey,
       dispatcher: row.dispatcher,
       status: row.status,
@@ -73,6 +85,21 @@ function resolveBoardRowsToPeople(rows, layer) {
       lastSeenAt: row.lastSeenAt,
       row,
     });
+  };
+
+  for (const row of Array.isArray(rows) ? rows : []) {
+    if (!row || !row.present) continue;
+    const unitHolders = holdersFor(row, index);
+
+    if (row.isTeam && Array.isArray(row.teamMembers) && row.teamMembers.length > 1) {
+      const { members } = decideTeamBoardLink({
+        row, members: row.teamMembers, lookupFor: () => ({ unitHolders, nameCandidates }),
+      });
+      for (const member of members) place(row, member, member.name);
+      continue;
+    }
+
+    place(row, decideBoardLink({ row, unitHolders, nameCandidates }));
   }
   return { byPerson, unresolved };
 }
