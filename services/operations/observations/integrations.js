@@ -189,8 +189,8 @@ async function integrationObservations(deps, nowMs) {
       state: chat.available ? RUN_STATES.HEALTHY : RUN_STATES.NEEDS_ATTENTION,
       reason: chat.available
         ? chat.reason
-        : `${chat.reason}. The other retention signals — weeks on the road, unanswered `
-          + 'home requests, unpaid bonuses — are unaffected.',
+        : `${chat.reason}. The other retention signals — weeks on the road, a home `
+          + 'window agreed and not honoured, unpaid bonuses — are unaffected.',
     }));
   } catch (_) {
     out.push(integration('retention_chat_signals', { ok: true, state: RUN_STATES.UNKNOWN, reason: 'could not read' }));

@@ -37,7 +37,6 @@ word like *performance*, *attitude*, *unreliable* or *discipline*.
 |---|---|---|
 | `quit_signal` | 6 | `chat_message_annotations.intent = 'quit_signal'` |
 | `home_commitment_broken` | 4 | an approved home window not honoured |
-| `home_request_unanswered` | 4 | `home_time_requests` ending `expired` / `clarification_unanswered` |
 | `road_clock_over` | 3 | `driver_home_status.state_since` vs `road_allowance_weeks` |
 | `bonus_unpaid` | 3 | `driver_road_history.bonus_posted_at IS NULL`; rejected/failed mileage bonuses |
 | `home_request_denied` | 2 | `home_time_requests.status = 'denied'` |
@@ -46,6 +45,23 @@ word like *performance*, *attitude*, *unreliable* or *discipline*.
 | `gone_quiet` | 2 | volume against **this driver's own** earlier baseline |
 | `sitting_empty` | 2 | `load_lifecycle.phase = 'empty'` for 3+ days |
 | `negative_sentiment` | 1 | mean `sentiment` ≤ −0.5 on the annotator's −2..+2 scale |
+
+**Two of these are structurally dead today, and the table would mislead without
+saying so.** `home_commitment_broken` and `raise_not_qualified` are never
+supplied: `database/retention.js` hard-codes both to `0`, and
+`classifyCommitment` counts a broken promise only where a request reached
+`approved` — a status nothing has written since home time stopped being
+approved. The weights stay because they are right the moment somebody supplies
+the counts; they are not evidence that anything is being scored.
+
+**`home_request_unanswered` was removed, and must not come back.** It scored a
+request whose dates had simply passed as the company failing the driver. Nobody
+was ever meant to answer a home-time request — it is recorded and three managers
+are told — so the signal measured the calendar, and on a fleet of about a
+hundred it was most of what produced "34 drivers worth a call". A missed
+*request* date is not a broken promise; defining what the company now promises
+is a business decision, not a code change. See
+`docs/architecture/home-time-evidence.md`.
 
 **Saying they are leaving is the heaviest single signal** because it is the only
 one that is not an inference. Everything else is circumstance.
