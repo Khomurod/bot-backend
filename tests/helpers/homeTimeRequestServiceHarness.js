@@ -109,7 +109,7 @@ function loadService({
   require.cache[htExpiryPath] = {
     exports: {
       async listOpenHomeTimeRequests() { return []; },
-      async expireOutdatedHomeTimeRequest(id) {
+      async closeOutdatedHomeTimeRequest(id) {
         expiries.push(id);
         const row = [open, clarification].find((r) => r && r.id === id);
         return row ? { ...row, status: 'expired', next_reminder_at: null } : { id, status: 'expired' };

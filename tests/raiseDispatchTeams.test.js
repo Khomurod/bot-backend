@@ -44,6 +44,8 @@ const fakeRa = {
   _links: [],
   _reviewFlags: [],
   _unlinked: [],
+  _overrides: [],
+  _released: [],
   listActiveDriverAssignments: async () => fakeRa._activeAssignments,
   assignDriverToTeam: async (args) => {
     fakeRa._assignCalls.push(args);
@@ -64,6 +66,8 @@ const fakeRa = {
   listUnlinkedTeamDrivers: async () => fakeRa._unlinked,
   linkTeamDriverToProfile: async (id, patch) => { fakeRa._links.push({ id, patch }); return { id }; },
   markTeamDriverNeedsReview: async (id, val) => { fakeRa._reviewFlags.push({ id, val }); return { id }; },
+  markManualOverride: async (id, by) => { fakeRa._overrides.push({ id, by }); return { id }; },
+  clearManualOverride: async (id) => { fakeRa._released.push(id); return { id, assignment_source: 'board' }; },
 };
 require.cache[require.resolve('../database/raiseApproval')] = { exports: fakeRa };
 
@@ -106,6 +110,31 @@ test('assignDriverToTeamFromGroups resolves the driver from Driver Groups and li
   assert.equal(call.groupId, 10);
   assert.equal(call.unitNumber, '2614');
   assert.equal(call.driverNormalizedName, 'JOHN DOE');
+});
+
+test('assigning by hand is recorded as a human override, with who did it', async () => {
+  fakeRa._activeAssignments = [];
+  fakeRa._assignCalls = [];
+  fakeRa._overrides = [];
+  const res = await raise.assignDriverToTeamFromGroups({ teamId: 5, groupId: 10, overriddenBy: 'admin:jane' });
+  // Without the mark, the next Sunday rebuild would quietly move the driver
+  // back to whoever the board names and nobody would know the change was undone.
+  assert.deepEqual(fakeRa._overrides, [{ id: 1, by: 'admin:jane' }]);
+  assert.equal(res.manualOverride, true);
+});
+
+test('handing a driver back to the board clears the override', async () => {
+  fakeRa._released = [];
+  const row = await raise.releaseDriverToBoard(1);
+  assert.deepEqual(fakeRa._released, [1]);
+  assert.equal(row.assignment_source, 'board');
+});
+
+test('handing back an assignment that is not there is a clear 404, not a silent no-op', async () => {
+  const original = fakeRa.clearManualOverride;
+  fakeRa.clearManualOverride = async () => null;
+  await assert.rejects(() => raise.releaseDriverToBoard(999), (err) => err.code === 'ASSIGNMENT_NOT_FOUND');
+  fakeRa.clearManualOverride = original;
 });
 
 test('assignDriverToTeamFromGroups surfaces a conflict when the driver is on another team', async () => {

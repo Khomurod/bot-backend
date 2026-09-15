@@ -1,8 +1,16 @@
 /**
- * Home-Time request EXPIRY data access — a small, focused module so the large
+ * Home-Time request CLOSING data access — a small, focused module so the large
  * database/homeTime.js stays within the maintainability line limit. It reuses the
  * status constants exported by database/homeTime so "open" means exactly one thing
- * across the reminder sweep, the duplicate guard, and the expiry sweep.
+ * across the reminder sweep, the duplicate guard, and the cleanup sweep.
+ *
+ * THIS IS HOUSEKEEPING, NOT A VERDICT. A request used to be stamped 'expired'
+ * when its dates passed, and that word then travelled: a sweep announced how
+ * many had "expired without an answer" and the retention watch counted it as
+ * the company failing the driver. Nothing about a finished date range says
+ * either. The row is now 'closed' — it is no longer open, and that is the whole
+ * claim. Nothing here is evidence that a driver did or did not go home; that
+ * question is answered by the Board and the driver's own messages.
  */
 const { query } = require('./db');
 const { OPEN_REQUEST_STATUSES } = require('./homeTime/requests');
@@ -24,16 +32,16 @@ async function listOpenHomeTimeRequests() {
 }
 
 /**
- * Atomically close an outdated request as 'expired' — but ONLY if it is still
- * open, so a decision or a late reply that landed first always wins. Preserves
- * every other column (original dates, notes, source, AI reasoning, requester,
- * reminder history); only the status and the (now-moot) reminder schedule change.
+ * Atomically close a request whose window has passed — but ONLY if it is still
+ * open, so a late reply that landed first always wins. Preserves every other
+ * column (original dates, notes, source, AI reasoning, requester, reminder
+ * history); only the status and the (now-moot) reminder schedule change.
  * Returns the updated row when THIS caller won the race, otherwise null.
  */
-async function expireOutdatedHomeTimeRequest(id) {
+async function closeOutdatedHomeTimeRequest(id) {
   const res = await query(
     `UPDATE home_time_requests
-        SET status = 'expired', next_reminder_at = NULL
+        SET status = 'closed', next_reminder_at = NULL
       WHERE id = $1 AND status = ANY($2)
       RETURNING *`,
     [id, OPEN_REQUEST_STATUSES]
@@ -41,4 +49,4 @@ async function expireOutdatedHomeTimeRequest(id) {
   return res.rows[0] || null;
 }
 
-module.exports = { listOpenHomeTimeRequests, expireOutdatedHomeTimeRequest };
+module.exports = { listOpenHomeTimeRequests, closeOutdatedHomeTimeRequest };

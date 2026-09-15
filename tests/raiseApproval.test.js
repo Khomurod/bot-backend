@@ -15,7 +15,7 @@ require.cache[require.resolve('../config/config')] = {
 
 const sentMessages = [];
 require.cache[require.resolve('../bot/bot')] = {
-  exports: { bot: { telegram: { sendMessage: async (chatId, text) => { sentMessages.push({ chatId, text }); return { message_id: 1 }; } } } },
+  exports: { bot: { telegram: { sendMessage: async (chatId, text) => { sentMessages.push({ chatId, text }); order.push('send'); return { message_id: 1 }; } } } },
 };
 require.cache[require.resolve('../database/db')] = {
   exports: { claimServiceRun: async () => true, unclaimServiceRun: async () => true },
@@ -64,7 +64,7 @@ const fakeRa = {
   _rounds: [],
   getOpenRound: async () => null,
   closeRound: async () => null,
-  createRound: async (args) => ({ id: 99, ...args }),
+  createRound: async (args) => { order.push('createRound'); return { id: 99, ...args }; },
   setRoundEmployeeMessage: async () => {},
   _settings: { otp_channel: 'gmail', rate_low: 0.72, rate_high: 0.75, link_ttl_hours: 48 },
   _team: { id: 7, name: 'Team A', active: true },
@@ -100,6 +100,23 @@ const fakeRa = {
   },
 };
 require.cache[require.resolve('../database/raiseApproval')] = { exports: fakeRa };
+
+// The Sunday roster rebuild. Stubbed here so these tests stay about WHERE the
+// round's messages go; `tests/raiseBoardRoster.test.js` owns the rebuild itself.
+// `_calls` records the order against the other side effects, which is the one
+// thing about reconciliation this file does assert.
+const order = [];
+const fakeBoardRoster = {
+  _fail: null,
+  _calls: 0,
+  reconcileRosterFromBoard: async () => {
+    fakeBoardRoster._calls += 1;
+    order.push('reconcile');
+    if (fakeBoardRoster._fail) throw fakeBoardRoster._fail;
+    return { ok: true, summary: { keep: 1, place: 0, remove: 0, review: 0, overrideHeld: 0, placed: 0, removed: 0 }, reviews: [] };
+  },
+};
+require.cache[require.resolve('../services/raise/boardRoster')] = { exports: fakeBoardRoster };
 
 const otp = require('../services/otpService');
 const raise = require('../services/raiseApprovalService');
@@ -433,4 +450,44 @@ test('both settings pointing at the same group send the result exactly once', as
   assert.equal(sentMessages.length, 1, 'one submission ⇒ one result message');
   assert.equal(sentMessages[0].chatId, DISPATCH_GROUP);
   resetGroups();
+});
+
+
+// ─── Sunday: the roster is rebuilt BEFORE the round exists ───
+
+test('the roster is reconciled before the round is minted and the link is sent', async () => {
+  resetGroups();
+  order.length = 0;
+  sentMessages.length = 0;
+  fakeBoardRoster._fail = null;
+  const out = await raise.openRoundAndPost({ periodStart: '2026-09-07', periodEnd: '2026-09-13' });
+  assert.deepEqual(order, ['reconcile', 'createRound', 'send'],
+    'a review form built from last week\u2019s roster looks exactly like a correct one');
+  assert.equal(out.reconciliation.ok, true);
+});
+
+test('a board that cannot be trusted stops the round instead of producing a wrong one', async () => {
+  resetGroups();
+  order.length = 0;
+  sentMessages.length = 0;
+  const err = new Error('The driver roster could not be rebuilt: the Dispatcher Board is switched off in Settings.');
+  err.code = 'BOARD_NOT_USABLE';
+  fakeBoardRoster._fail = err;
+  await assert.rejects(
+    () => raise.openRoundAndPost({ periodStart: '2026-09-07', periodEnd: '2026-09-13' }),
+    /roster could not be rebuilt/
+  );
+  assert.deepEqual(order, ['reconcile'], 'no round, no link, no message');
+  assert.equal(sentMessages.length, 0);
+  fakeBoardRoster._fail = null;
+});
+
+test('Send now reconciles too — an admin gets the round the scheduler would have made', async () => {
+  resetGroups();
+  order.length = 0;
+  fakeBoardRoster._fail = null;
+  const before = fakeBoardRoster._calls;
+  await raise.sendNow({ periodStart: '2026-09-07', periodEnd: '2026-09-13' });
+  assert.equal(fakeBoardRoster._calls, before + 1);
+  assert.equal(order[0], 'reconcile');
 });

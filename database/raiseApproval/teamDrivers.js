@@ -171,6 +171,170 @@ async function markTeamDriverNeedsReview(id, needsReview = true) {
   return res.rows[0] || null;
 }
 
+// ─── Reconciliation from the Dispatcher Board ───
+
+/**
+ * Today's roster, in the shape the plan reads.
+ *
+ * `assignment_source` is what lets reconciliation tell its own earlier work
+ * from a decision a person made — see migration 0058.
+ */
+async function listRosterForReconciliation() {
+  const res = await query(
+    `SELECT id, team_id, driver_profile_id, group_id, person_id,
+            driver_name, driver_normalized_name, assignment_source,
+            manual_override_at, manual_override_by
+       FROM dispatch_team_drivers
+      WHERE active = TRUE`
+  );
+  return res.rows.map((r) => ({
+    id: r.id,
+    teamId: r.team_id,
+    driverProfileId: r.driver_profile_id,
+    groupId: r.group_id,
+    personId: r.person_id,
+    driverName: r.driver_name,
+    driverNormalizedName: r.driver_normalized_name,
+    assignmentSource: r.assignment_source || 'manual',
+    manualOverrideAt: r.manual_override_at,
+    manualOverrideBy: r.manual_override_by,
+  }));
+}
+
+/**
+ * Place a driver on the team the Board names, in one transaction.
+ *
+ * DELIBERATELY NOT `assignDriverToTeam`. That function is the admin path and
+ * refuses a move unless the caller passes `force`, because a person doing it by
+ * hand should be told they are taking a driver off somebody else's team.
+ * Reconciliation IS the authority for a board-sourced row, so it moves the
+ * driver and records what the Board said — but it still refuses to touch a row
+ * a person marked manual, which is checked here as well as in the plan so the
+ * guarantee does not depend on its caller.
+ *
+ * @returns `{ moved, fromTeamId }` — `moved: false` means nothing needed doing.
+ */
+async function applyBoardAssignment({
+  teamId, personId = null, driverProfileId = null, groupId = null, unitNumber = null,
+  driverName, driverNormalizedName, boardDispatcher = null, boardRowKey = null,
+}) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const existingRes = await client.query(
+      `SELECT * FROM dispatch_team_drivers
+        WHERE active = TRUE
+          AND ( ($1::int IS NOT NULL AND person_id = $1)
+             OR ($2::int IS NOT NULL AND driver_profile_id = $2)
+             OR ($3::int IS NOT NULL AND group_id = $3) )
+        FOR UPDATE`,
+      [personId, driverProfileId, groupId]
+    );
+    const existing = existingRes.rows[0] || null;
+
+    if (existing && existing.assignment_source === 'manual') {
+      await client.query('ROLLBACK');
+      return { moved: false, heldByOverride: true, fromTeamId: existing.team_id };
+    }
+    if (existing && Number(existing.team_id) === Number(teamId)) {
+      await client.query(
+        `UPDATE dispatch_team_drivers
+            SET board_dispatcher = $2, board_row_key = $3, reconciled_at = NOW(),
+                review_reason = NULL, needs_review = FALSE, updated_at = NOW(),
+                driver_name = COALESCE($4, driver_name),
+                unit_number = COALESCE($5, unit_number),
+                person_id = COALESCE($6, person_id)
+          WHERE id = $1`,
+        [existing.id, boardDispatcher, boardRowKey, driverName, unitNumber, personId]
+      );
+      await client.query('COMMIT');
+      return { moved: false, fromTeamId: existing.team_id };
+    }
+    if (existing) {
+      // A MOVE CLOSES THE OLD ROW RATHER THAN EDITING IT. The unique index
+      // allows one active team per driver, and the closed row is the record
+      // that they used to be somewhere else.
+      await client.query(
+        'UPDATE dispatch_team_drivers SET active = FALSE, updated_at = NOW() WHERE id = $1',
+        [existing.id]
+      );
+    }
+
+    const ins = await client.query(
+      `INSERT INTO dispatch_team_drivers
+         (team_id, driver_normalized_name, driver_name, driver_profile_id, group_id,
+          unit_number, person_id, active, needs_review, assignment_source,
+          board_dispatcher, board_row_key, reconciled_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,TRUE,FALSE,'board',$8,$9,NOW())
+       ON CONFLICT (team_id, driver_normalized_name) DO UPDATE
+         SET active = TRUE, needs_review = FALSE, review_reason = NULL,
+             assignment_source = 'board',
+             driver_name = EXCLUDED.driver_name,
+             driver_profile_id = COALESCE(EXCLUDED.driver_profile_id, dispatch_team_drivers.driver_profile_id),
+             group_id = COALESCE(EXCLUDED.group_id, dispatch_team_drivers.group_id),
+             person_id = COALESCE(EXCLUDED.person_id, dispatch_team_drivers.person_id),
+             unit_number = COALESCE(EXCLUDED.unit_number, dispatch_team_drivers.unit_number),
+             board_dispatcher = EXCLUDED.board_dispatcher,
+             board_row_key = EXCLUDED.board_row_key,
+             reconciled_at = NOW(), updated_at = NOW()
+       RETURNING id`,
+      [teamId, driverNormalizedName, driverName, driverProfileId, groupId,
+        unitNumber, personId, boardDispatcher, boardRowKey]
+    );
+    await client.query('COMMIT');
+    return {
+      moved: Boolean(existing), fromTeamId: existing ? existing.team_id : null, id: ins.rows[0]?.id,
+    };
+  } catch (err) {
+    try { await client.query('ROLLBACK'); } catch (_) { /* already rolled back */ }
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Take a board-placed driver off the roster.
+ *
+ * Soft, and only ever for a row reconciliation itself placed: a manual row is
+ * somebody's decision and is not withdrawn because the Board stopped mentioning
+ * them. Nothing is deleted, so a later question about the period is answerable.
+ */
+async function retireBoardAssignment(id) {
+  const res = await query(
+    `UPDATE dispatch_team_drivers
+        SET active = FALSE, reconciled_at = NOW(), updated_at = NOW()
+      WHERE id = $1 AND active = TRUE AND assignment_source = 'board'
+      RETURNING id`,
+    [id]
+  );
+  return res.rows.length > 0;
+}
+
+/** Mark an assignment as a person's deliberate decision, with who and when. */
+async function markManualOverride(id, by = null) {
+  const res = await query(
+    `UPDATE dispatch_team_drivers
+        SET assignment_source = 'manual', manual_override_at = NOW(),
+            manual_override_by = $2, updated_at = NOW()
+      WHERE id = $1 RETURNING *`,
+    [id, by || null]
+  );
+  return res.rows[0] || null;
+}
+
+/** Hand a board-placed row back to the Board (retire a standing override). */
+async function clearManualOverride(id) {
+  const res = await query(
+    `UPDATE dispatch_team_drivers
+        SET assignment_source = 'board', manual_override_at = NULL,
+            manual_override_by = NULL, updated_at = NOW()
+      WHERE id = $1 RETURNING *`,
+    [id]
+  );
+  return res.rows[0] || null;
+}
+
 /** Replace the full driver assignment for a team (transactional). */
 async function setTeamDrivers(teamId, drivers) {
   const client = await pool.connect();
@@ -206,4 +370,9 @@ module.exports = {
   linkTeamDriverToProfile,
   markTeamDriverNeedsReview,
   setTeamDrivers,
+  listRosterForReconciliation,
+  applyBoardAssignment,
+  retireBoardAssignment,
+  markManualOverride,
+  clearManualOverride,
 };

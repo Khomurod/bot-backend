@@ -330,7 +330,7 @@ function reopenWindowForPolicy(window, disputedFields) {
 // A partial clarification with NO resolvable end date is treated as stale (and
 // safe to auto-close) only after the reminder cycle is exhausted AND it has been
 // open at least this many days — long enough that a legitimately active
-// clarification (driver still expected to answer) is never expired early.
+// clarification (driver still expected to answer) is never closed early.
 const STALE_CLARIFICATION_DAYS = 21;
 
 // Statuses that can still be "open" and therefore candidates for auto-expiry.
@@ -355,13 +355,13 @@ function isHomeTimeWindowInPast(request, todayIso = null) {
 
 /**
  * True when an open home-time request is no longer actionable and should be
- * auto-closed as "Expired — No Action":
+ * closed (housekeeping only — nobody is told, and nothing is inferred):
  *   1. any request whose resolvable end date is already in the past; OR
  *   2. a partial clarification with no end date, but ONLY once its reminders are
  *      exhausted (next_reminder_at cleared) AND it has been open beyond
  *      `staleClarificationDays` (anchored on home_from when known, else
- *      requested_at) — so an active clarification is never expired prematurely.
- * Terminal requests (approved/denied/cancelled/expired) are never "outdated".
+ *      requested_at) — so an active clarification is never closed prematurely.
+ * Terminal requests (approved/denied/cancelled/closed/expired) are never "outdated".
  */
 function isHomeTimeRequestOutdated(request, { todayIso = null, staleClarificationDays = STALE_CLARIFICATION_DAYS } = {}) {
   if (!request) return false;

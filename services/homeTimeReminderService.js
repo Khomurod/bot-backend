@@ -205,17 +205,21 @@ function escapeHtml(text) {
 }
 
 /**
- * Auto-close outdated home-time requests (dates passed / stale clarification) as
- * "Expired — No Action", updating any Telegram card. Runs on the same restart-safe
- * cadence as the reminder sweep and is gated on the feature being enabled. The
- * decision/expiry logic is required lazily so this module can be unit-tested (and
- * the reminder tests loaded) without pulling in config/bot at require time.
+ * Close outdated home-time requests (dates passed / stale clarification),
+ * updating any Telegram card. Runs on the same restart-safe cadence as the
+ * reminder sweep and is gated on the feature being enabled. The closing logic is
+ * required lazily so this module can be unit-tested (and the reminder tests
+ * loaded) without pulling in config/bot at require time.
  *
- * @returns {{ enabled:boolean, scanned:number, expired:number }}
+ * NOBODY IS TOLD. The count goes to the run ledger so the worker's health is
+ * legible; it is not a notice, because "the dates a driver asked for have gone
+ * by" is a calendar fact, not an operational problem.
+ *
+ * @returns {{ enabled:boolean, scanned:number, closed:number }}
  */
-async function runHomeTimeExpirySweep(telegram, { nowIso } = {}) {
+async function runHomeTimeCleanupSweep(telegram, { nowIso } = {}) {
   const settings = await ht.getHomeTimeSettings();
-  if (!settings || !settings.enabled) return { enabled: false, scanned: 0, expired: 0 };
+  if (!settings || !settings.enabled) return { enabled: false, scanned: 0, closed: 0 };
   const { sweepOutdatedHomeTimeRequests } = require('./homeTimeApproval');
   const todayIso = (nowIso ? DateTime.fromISO(nowIso) : DateTime.now())
     .setZone('America/Chicago').toISODate();
@@ -236,7 +240,7 @@ async function runHomeTimeExpirySweep(telegram, { nowIso } = {}) {
  * without driving the timer, which is the only reason `tick` itself is not
  * exported.
  */
-function reminderRunSummary(reminders, expiry) {
+function reminderRunSummary(reminders, cleanup) {
   if (reminders?.enabled === false) {
     return { blocked: 'Home Time is switched off in Settings' };
   }
@@ -244,7 +248,7 @@ function reminderRunSummary(reminders, expiry) {
   return {
     due,
     sent: reminders?.sent ?? 0,
-    expired: expiry?.expired ?? 0,
+    closed: cleanup?.closed ?? 0,
     // Every due reminder failing to send is the pass not having run; one among
     // several is a driver group to look at.
     ...(due && reminders?.errors === due
@@ -264,7 +268,7 @@ async function tick() {
     // not look identical to one chasing reminders every five minutes.
     await withRunRecord('home_time_reminders', async () => reminderRunSummary(
       await runHomeTimeReminderCheck(telegramClient),
-      await runHomeTimeExpirySweep(telegramClient),
+      await runHomeTimeCleanupSweep(telegramClient),
     ));
     // Rides this service's cadence but is a SEPARATE responsibility: the two
     // sweeps above chase DRIVERS, this one chases STAFF. Required lazily so the
@@ -316,7 +320,7 @@ module.exports = {
   missingFieldFor,
   buildReminderText,
   runHomeTimeReminderCheck,
-  runHomeTimeExpirySweep,
+  runHomeTimeCleanupSweep,
   reminderRunSummary,
   startHomeTimeReminderService,
   stopHomeTimeReminderService,

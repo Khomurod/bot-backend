@@ -58,6 +58,7 @@ function mapRow(row) {
     firstSeenAt: row.first_seen_at,
     lastSeenAt: row.last_seen_at,
     lastChangedAt: row.last_changed_at,
+    statusChangedAt: row.status_changed_at,
     personId: row.person_id,
     linkSource: row.link_source,
     linkConfidence: row.link_confidence,
@@ -124,6 +125,13 @@ async function upsertBoardRows(rows, client = null) {
          last_seen_at = NOW(),
          last_changed_at = CASE WHEN ${changed}
            THEN NOW() ELSE dispatch_board_rows.last_changed_at END,
+         -- NARROWER THAN last_changed_at ON PURPOSE: only the status word.
+         -- Home-time detection waits for the board to say the same thing for a
+         -- few minutes before acting, and an edited ETA must not restart that
+         -- wait for a driver whose status has not moved at all.
+         status_changed_at = CASE
+           WHEN dispatch_board_rows.status IS DISTINCT FROM EXCLUDED.status
+           THEN NOW() ELSE COALESCE(dispatch_board_rows.status_changed_at, NOW()) END,
          updated_at = NOW()
        RETURNING (xmax = 0) AS inserted,
                  (last_changed_at = updated_at) AS touched`,

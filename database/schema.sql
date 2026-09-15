@@ -1522,7 +1522,7 @@ ALTER TABLE home_time_requests
   ADD CONSTRAINT home_time_requests_status_check
   CHECK (status IN ('pending', 'recorded', 'approved', 'denied', 'cancelled',
     'awaiting_dates', 'awaiting_home_start', 'awaiting_return_to_road',
-    'clarification_unanswered', 'expired'));
+    'clarification_unanswered', 'expired', 'closed'));
 
 CREATE INDEX IF NOT EXISTS idx_home_time_requests_group
   ON home_time_requests(group_id, requested_at DESC);

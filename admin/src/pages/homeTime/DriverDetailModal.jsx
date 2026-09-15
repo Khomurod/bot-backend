@@ -4,7 +4,7 @@ import RetiredApprovalNote from "./RetiredApprovalNote";
 import { driverTypeLabel, isCompanyDriver } from "../homeTimeViewModel";
 import {
   fmtDate, toDateInput, money, requestStatusMeta, policyLabel,
-  nextHomeLabel, currentCycleLabel, bonusProgressLabel, activityTitle,
+  nextHomeLabel, currentCycleLabel, bonusProgressLabel, activityTitle, sourceLabel,
 } from "./labels";
 
 /**
@@ -309,6 +309,7 @@ export function DriverDetailModal(p) {
                     <th>Left</th>
                     <th>Home</th>
                     <th>Back on road</th>
+                    <th>Evidence</th>
                     <th>Days out</th>
                     <th>Extra weeks</th>
                     <th>Bonus</th>
@@ -353,6 +354,25 @@ export function DriverDetailModal(p) {
                           </span>
                         )}
                       </td>
+                      {/*
+                        WHERE EACH SIDE OF THE CYCLE CAME FROM. A home stay can
+                        now be opened and closed by the dispatcher board, not
+                        only by a driver typing in their own chat, so "home 14 -
+                        18 Sep" needs to be traceable to whoever said so. Blank
+                        means the row predates Wenze recording it.
+                      */}
+                      <td className="home-time-evidence-cell">
+                        {trip.opened_by ? (
+                          <span className="badge badge-muted" title={trip.opened_evidence || "How the home stay was opened"}>
+                            in: {sourceLabel(trip.opened_by)}
+                          </span>
+                        ) : null}
+                        {trip.closed_by ? (
+                          <span className="badge badge-muted" title={trip.closed_evidence || "How the home stay was closed"}>
+                            out: {sourceLabel(trip.closed_by)}
+                          </span>
+                        ) : null}
+                      </td>
                       <td>{trip.days_on_road}</td>
                       <td>{trip.exceeded_weeks}</td>
                       <td>
@@ -388,7 +408,7 @@ export function DriverDetailModal(p) {
                   ))}
                   {selectedHistory.length === 0 && (
                     <tr>
-                      <td colSpan={7} className="home-time-empty-cell">
+                      <td colSpan={8} className="home-time-empty-cell">
                         No trips recorded yet.
                       </td>
                     </tr>

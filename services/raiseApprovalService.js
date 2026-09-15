@@ -39,6 +39,7 @@ const config = require('../config/config');
 const { serviceError } = require('./raise/errors');
 const notifications = require('./raise/notifications');
 const teamRoster = require('./raise/teamRoster');
+const boardRoster = require('./raise/boardRoster');
 const dispatcherFlow = require('./raise/dispatcherFlow');
 const { computeNextWeeklyOccurrence, describeWeeklySchedule } = require('./scheduledMessageUtils');
 const { createDueTimeWakeTimer } = require('./dueTimeWakeTimer');
@@ -82,9 +83,35 @@ function defaultPreviousWeek(timezone, reference) {
 
 // ─── Open a round + post the review request to the dispatch group ───
 
-async function openRoundAndPost({ periodStart, periodEnd, requestedBy = null } = {}) {
+/**
+ * Rebuild the roster from the Dispatcher Board, and say so.
+ *
+ * SEPARATE FROM `openRoundAndPost` ONLY SO THE ORDER IS VISIBLE. It is called
+ * from exactly one place — the line before the round is minted — because the
+ * whole point is that the review form carries today's dispatcher assignments
+ * rather than whatever the roster happened to say last week.
+ *
+ * A FAILURE HERE STOPS THE ROUND. `reconcileRosterFromBoard` throws when the
+ * Board is off, unread or stale, and that exception is deliberately not caught:
+ * a round opened on an un-rebuilt roster looks exactly like a correct one, and
+ * the dispatcher reviewing it has no way to tell.
+ */
+async function reconcileRosterBeforeRound() {
+  const out = await boardRoster.reconcileRosterFromBoard();
+  const s = out.summary;
+  console.log(
+    `[RAISE] Roster reconciled from the board: ${s.placed} placed, ${s.removed} removed, `
+    + `${s.keep} unchanged, ${s.review} for a person, ${s.overrideHeld} held by an override.`
+  );
+  return out;
+}
+
+async function openRoundAndPost({ periodStart, periodEnd, requestedBy = null, reconcile = true } = {}) {
   const settings = await ra.getRaiseSettings();
   if (!settings) throw serviceError('NO_SETTINGS', 'Raise settings are not initialized.', 500);
+  // BEFORE THE ROUND EXISTS, not after it is sent. The link a dispatcher opens
+  // has to show the drivers the Board says are theirs right now.
+  const reconciliation = reconcile ? await reconcileRosterBeforeRound() : null;
   // The 72–75 CPM review REQUEST goes to the admin-configured Dispatch Rate
   // Review group — never a hardcoded employee group ID, and never the accounting
   // results group. Resolved BEFORE the round is minted: no configured group ⇒
@@ -124,12 +151,14 @@ async function openRoundAndPost({ periodStart, periodEnd, requestedBy = null } =
   });
   await ra.setRoundEmployeeMessage(round.id, reviewGroupId, sent?.message_id || null);
 
-  return { round, link };
+  return { round, link, reconciliation };
 }
 
 // ─── Admin: send now / schedule helpers ───
 
 async function sendNow({ periodStart, periodEnd, requestedBy } = {}) {
+  // Send now reconciles too. An admin pressing it mid-week wants the round the
+  // scheduler would have produced, not a faster one built on an older roster.
   return openRoundAndPost({ periodStart, periodEnd, requestedBy });
 }
 
@@ -244,6 +273,7 @@ module.exports = {
   fetchCompanyDriverCandidates: teamRoster.fetchCompanyDriverCandidates,
   listAssignableDrivers: teamRoster.listAssignableDrivers,
   assignDriverToTeamFromGroups: teamRoster.assignDriverToTeamFromGroups,
+  releaseDriverToBoard: teamRoster.releaseDriverToBoard,
   createTeamMember: teamRoster.createTeamMember,
   updateTeamMember: teamRoster.updateTeamMember,
   backfillLegacyTeamDriverLinks: teamRoster.backfillLegacyTeamDriverLinks,
@@ -251,6 +281,8 @@ module.exports = {
   // Round lifecycle
   openRoundAndPost,
   sendNow,
+  reconcileRosterBeforeRound,
+  reconcileRosterFromBoard: boardRoster.reconcileRosterFromBoard,
   // Public dispatcher link flow (services/raise/dispatcherFlow.js)
   getPublicRoundInfo: dispatcherFlow.getPublicRoundInfo,
   getTeamDriversForRound: dispatcherFlow.getTeamDriversForRound,

@@ -235,6 +235,33 @@ repository-wide working rules. The highest-consequence items:
   evidence against Home Time.
   Its token travels in a query string, so every message about it leaves through
   `lib/security/redactUrls.stripUrls` and `last_error` may never hold a URL.
+- **A dispatch team's drivers are derived from the Board, and never guessed.**
+  The roster is rebuilt from the Dispatcher Board's dispatcher column before the
+  Sunday review round exists, keyed on the permanent person (never a truck
+  number, because trucks change). Two pure rules decide it and both refuse
+  rather than approximate: `lib/identity/boardResolution.js` for which person a
+  row names, `lib/raise/dispatcherTeam.js` for which team a dispatcher is on —
+  spelling, case, accents and `TEAM`/`DISPATCH` prefixes are tolerated, near
+  matches are not (`steve` never becomes `Steven`). An unresolved driver is left
+  off a roster and filed as `raise.driver_unplaced`. A Board that is off,
+  unread, failed or over six hours stale STOPS the round and files
+  `raise.roster_not_rebuilt`, because a review built on a stale roster looks
+  exactly like a correct one. A human override (`assignment_source = 'manual'`)
+  is reported and never overwritten. `raise_round_picks` are never rewritten.
+  See `docs/architecture/driver-raise-roster.md`.
+- **A home-time request is never evidence that a driver went home**, and its
+  absence of an answer is never evidence of anything at all. Nobody approves a
+  request; a request whose dates pass is `closed` as housekeeping, nothing is
+  announced, and the retention watch has no count of it — that chain is what
+  turned a quiet week into "34 drivers worth a call". Where a driver actually is
+  comes from the Dispatcher Board (`HOME`/`VACATION` held for twenty minutes
+  opens a cycle; a truck back in the dispatch pool closes it) and from the
+  driver's own messages, written only through `applyStateTransition`. `READY`
+  ends a home stay but is never `working`, so a resting driver is never accused
+  of contradicting their own record. Settle, dwell and hold keep two
+  integrations updating at different speeds from flapping a driver HOME → ROAD →
+  HOME; only a disagreement standing twelve hours reaches a person. Each side of
+  a cycle records who said it. See `docs/architecture/home-time-evidence.md`.
 - **A truck is `(fleet_type, unit_number, seat)`, never a number.** Wenze runs
   three fleets that number independently, so Company 001, Owner-Operator 001 and
   Lease 001 are three trucks; ten numbers sit on more than one active group

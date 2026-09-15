@@ -43,7 +43,7 @@ function load({ open = [], expireReturns = undefined } = {}) {
   const htmlPath = require.resolve('../services/telegramHtml');
   for (const p of [approvalPath, htPath, expiryPath, htmlPath]) delete require.cache[p];
 
-  const calls = { expired: [] };
+  const calls = { closed: [] };
   require.cache[htPath] = {
     exports: {
       async listOpenHomeTimeRequests() { return open; },
@@ -55,11 +55,11 @@ function load({ open = [], expireReturns = undefined } = {}) {
       // The sweep reads the open board from the EXPIRY module, not from
       // database/homeTime — the mock follows the real require graph.
       async listOpenHomeTimeRequests() { return open; },
-      async expireOutdatedHomeTimeRequest(id) {
-        calls.expired.push(id);
+      async closeOutdatedHomeTimeRequest(id) {
+        calls.closed.push(id);
         if (expireReturns !== undefined) return expireReturns;
         const row = open.find((r) => r.id === id) || requestAt(PAST_FROM, PAST_TO);
-        return { ...row, status: 'expired' };
+        return { ...row, status: 'closed' };
       },
     },
   };
@@ -99,17 +99,17 @@ test('the request service does not re-export them either', () => {
 
 // ── the housekeeping that stays ──────────────────────────────────────────────
 
-test('a request whose window has passed is expired and its card settled', async () => {
+test('a request whose window has passed is closed and its card settled', async () => {
   const row = requestAt(PAST_FROM, PAST_TO);
   const { mod, calls, telegram, edits } = load({ open: [row] });
 
-  const out = await mod.expireOutdatedRequest(telegram, row);
+  const out = await mod.closeOutdatedRequest(telegram, row);
 
-  assert.equal(out.status, 'expired');
-  assert.deepEqual(calls.expired, [5]);
+  assert.equal(out.status, 'closed');
+  assert.deepEqual(calls.closed, [5]);
   assert.equal(edits.length, 1, 'the card in the group is updated in place');
   const text = edits[0][3];
-  assert.match(text, /Expired/i);
+  assert.match(text, /Closed/i);
   assert.equal(/Approve|Do Not Approve/i.test(text), false,
     'the settled card must not reintroduce the words it was built to remove');
 });
@@ -117,14 +117,14 @@ test('a request whose window has passed is expired and its card settled', async 
 test('a request someone else already settled is left alone', async () => {
   const row = requestAt(PAST_FROM, PAST_TO);
   const { mod, telegram, edits } = load({ open: [row], expireReturns: null });
-  const out = await mod.expireOutdatedRequest(telegram, row);
+  const out = await mod.closeOutdatedRequest(telegram, row);
   assert.equal(out, null);
   assert.equal(edits.length, 0, 'no card is touched for a row that did not change');
 });
 
 test('expiring never throws, and a missing request is simply null', async () => {
   const { mod, telegram } = load();
-  assert.equal(await mod.expireOutdatedRequest(telegram, null), null);
+  assert.equal(await mod.closeOutdatedRequest(telegram, null), null);
 });
 
 test('a card edit that fails does not fail the expiry — the database is authoritative',
@@ -135,13 +135,13 @@ test('a card edit that fails does not fail the expiry — the database is author
       async editMessageText() { throw new Error('message to edit not found'); },
       async sendMessage() {},
     };
-    const out = await mod.expireOutdatedRequest(angry, row);
-    assert.equal(out.status, 'expired', 'the row is expired even though Telegram refused');
+    const out = await mod.closeOutdatedRequest(angry, row);
+    assert.equal(out.status, 'closed', 'the row is expired even though Telegram refused');
   });
 
 // ── the sweep ────────────────────────────────────────────────────────────────
 
-test('the sweep expires only the requests whose window has actually passed', async () => {
+test('the sweep closes only the requests whose window has actually passed', async () => {
   const past = requestAt(PAST_FROM, PAST_TO, { id: 5 });
   const future = requestAt(FUTURE_FROM, FUTURE_TO, { id: 6 });
   const { mod, calls, telegram } = load({ open: [past, future] });
@@ -149,13 +149,13 @@ test('the sweep expires only the requests whose window has actually passed', asy
   const out = await mod.sweepOutdatedHomeTimeRequests(telegram);
 
   assert.equal(out.scanned, 2);
-  assert.equal(out.expired, 1);
-  assert.deepEqual(calls.expired, [5], 'the future request is left open');
+  assert.equal(out.closed, 1);
+  assert.deepEqual(calls.closed, [5], 'the future request is left open');
 });
 
 test('an empty board is a clean, silent pass', async () => {
   const { mod, calls, telegram } = load({ open: [] });
   const out = await mod.sweepOutdatedHomeTimeRequests(telegram);
-  assert.deepEqual(out, { scanned: 0, expired: 0 });
-  assert.equal(calls.expired.length, 0);
+  assert.deepEqual(out, { scanned: 0, closed: 0 });
+  assert.equal(calls.closed.length, 0);
 });

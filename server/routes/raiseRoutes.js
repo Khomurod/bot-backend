@@ -260,6 +260,7 @@ adminRouter.post('/teams/:id/assign-driver', async (req, res) => {
       groupId: req.body?.groupId != null ? Number.parseInt(req.body.groupId, 10) : null,
       driverProfileId: req.body?.driverProfileId != null ? Number.parseInt(req.body.driverProfileId, 10) : null,
       force: Boolean(req.body?.force),
+      overriddenBy: req.admin?.username || (req.admin?.id != null ? `admin:${req.admin.id}` : null),
     });
     res.json(result);
   } catch (err) {
@@ -267,6 +268,17 @@ adminRouter.post('/teams/:id/assign-driver', async (req, res) => {
       return res.status(409).json({ error: err.message, code: err.code, conflictTeam: err.conflictTeam });
     }
     return sendServiceError(res, err, 'Failed to assign driver.');
+  }
+});
+
+// Hand a manually-placed driver back to the Dispatcher Board, so the weekly
+// reconciliation owns them again. The other half of a manual override.
+adminRouter.post('/team-drivers/:driverId/release-to-board', async (req, res) => {
+  try {
+    const row = await raise.releaseDriverToBoard(Number.parseInt(req.params.driverId, 10));
+    res.json({ success: true, assignment: row });
+  } catch (err) {
+    sendServiceError(res, err, 'Failed to hand this driver back to the board.');
   }
 });
 

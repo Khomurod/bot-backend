@@ -10,7 +10,7 @@
  *   homeTimeMessageComposer    the AI prose the bot sends
  *   homeTimeDriverChannel      may we message the driver group at all?
  *   homeTimeInternalAlert      tell staff instead, when we may not
- *   homeTimeApproval           the admin-panel exception decision + expiry
+ *   homeTimeApproval           closing a request whose window has passed
  *
  * This file keeps its full public surface: everything it used to export is still
  * exported here (re-exported where it moved), so no importer changes.
@@ -55,7 +55,7 @@ const {
 const { classifyHomeTimeRequest, handleApproverMention } = require('./homeTimeApproverTag');
 // The decision workflow (approve/decline + card settle + approval announcement)
 // lives in a focused module; re-exported below so existing importers are unchanged.
-const { expireOutdatedRequest } = require('./homeTimeApproval');
+const { closeOutdatedRequest } = require('./homeTimeApproval');
 
 // Company time. Home time is scheduled, reported and reasoned about in Central
 // throughout this subsystem (see homeTimeDateResolver.js, which declares the same).
@@ -181,7 +181,7 @@ async function handleActualHomeArrival(telegram, group, message, { homeStartIso 
     const open = await ht.getOpenHomeTimeRequestForGroup(group.id);
     if (open && isHomeTimeRequestOutdated(open, { todayIso: todayIsoChicago() })) {
       // A stale/outdated open request must not block a fresh home arrival.
-      await expireOutdatedRequest(telegram, open);
+      await closeOutdatedRequest(telegram, open);
     } else if (open) {
       if ((open.status === 'awaiting_home_start') && (homeStartIso)) {
         // We were waiting only on the arrival date and now the driver is home:
@@ -247,7 +247,7 @@ async function handleHomeTimeClarificationReply(telegram, group, message) {
     if (!open) return; // nothing waiting
     // A late reply must never reopen/complete an outdated clarification — close it.
     if (isHomeTimeRequestOutdated(open, { todayIso: todayIsoChicago() })) {
-      await expireOutdatedRequest(telegram, open);
+      await closeOutdatedRequest(telegram, open);
       return;
     }
     if (!isHomeTimeCandidate(text, { hasOpenClarification: true })) return; // cheap gate
@@ -349,7 +349,7 @@ async function processHomeTimeMessage(telegram, group, message, { statusResult =
     if (open && isHomeTimeRequestOutdated(open, { todayIso: todayIsoChicago() })) {
       // Outdated clarification: close it and let this message be judged fresh
       // (it might be a brand-new request), never fed into the stale one.
-      await expireOutdatedRequest(telegram, open);
+      await closeOutdatedRequest(telegram, open);
       open = null;
     }
     if (open) {

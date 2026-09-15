@@ -66,6 +66,8 @@ const CHECK_LABELS = {
   'fuel.watch_on_inactive_group': 'Fuel watch running for an inactive group',
   'dispatch.team_driver_on_inactive_group': "Team seat points at a chat the driver left",
   'raise.progress_without_person': 'Mileage drivers not matched to an identity',
+  'raise.driver_unplaced': 'Driver could not be placed on a dispatch team',
+  'raise.roster_not_rebuilt': 'The weekly driver-raise review could not be sent',
   'route_control.assignment_on_inactive_group': 'Active route on an inactive group',
   'home_time.clock_reset_on_group_change': 'Road clock restarted on a new chat',
   'home_time.returned_to_road': 'Driver looks back on the road',

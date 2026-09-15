@@ -37,7 +37,7 @@
       "status": "active",
       "service": "bot (poller, consistency sweep, admin feed card)",
       "sourceOfTruth": "The external Dispatcher Board, as of `last_seen_at`. Wenze remains the source of truth for who a person permanently is.",
-      "danger": "Contains driver names and phone numbers. A row is NEVER deleted and never marked absent on a failed read — `present=false` plus first/last_seen_at is the only history of an assignment the board itself does not keep."
+      "danger": "Contains driver names and phone numbers. A row is NEVER deleted and never marked absent on a failed read — `present=false` plus first/last_seen_at is the only history of an assignment the board itself does not keep. `status_changed_at` is NARROWER than `last_changed_at` on purpose: it moves only when the status word itself changes, because Home Time waits for a status to hold before acting on it and an edited ETA must not restart that wait."
     },
     "eld_settings": {
       "purpose": "Single-row (id=1) ELD/telematics provider credentials (Samsara, Drive HoS, Factor, Leader). Secrets stored AES-256-GCM encrypted.",

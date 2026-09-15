@@ -154,12 +154,12 @@ function registerHomeTimeRequestRoutes(router, {
         patch.homeTo = v;
       }
       if (b.status !== undefined) {
-        const allowed = ['pending', 'approved', 'denied', 'cancelled', 'expired', 'clarification_unanswered',
+        const allowed = ['pending', 'approved', 'denied', 'cancelled', 'closed', 'expired', 'clarification_unanswered',
           'awaiting_dates', 'awaiting_home_start', 'awaiting_return_to_road'];
         if (!allowed.includes(b.status)) return res.status(400).json({ error: 'invalid status' });
         patch.status = b.status;
         // Resolving a flow stops any pending reminders.
-        if (['cancelled', 'expired', 'approved', 'denied'].includes(b.status)) patch.nextReminderAt = null;
+        if (['cancelled', 'closed', 'expired', 'approved', 'denied'].includes(b.status)) patch.nextReminderAt = null;
       }
       if (b.note !== undefined) patch.aiReasoning = b.note ? String(b.note).slice(0, 1000) : null;
       if (Object.keys(patch).length === 0) {

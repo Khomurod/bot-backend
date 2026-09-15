@@ -85,7 +85,7 @@ test('outdated: an old dateless clarification once reminders are done', () => {
 });
 
 test('terminal statuses are never "outdated" (already resolved history)', () => {
-  for (const status of ['approved', 'denied', 'cancelled', 'expired']) {
+  for (const status of ['approved', 'denied', 'cancelled', 'closed']) {
     assert.equal(
       isHomeTimeRequestOutdated({ status, home_from: '2026-07-01', return_to_road_date: '2026-07-05' }, { todayIso: TODAY }),
       false,
@@ -115,10 +115,10 @@ function loadApproval({ open = [] } = {}) {
   require.cache[htExpiryPath] = {
     exports: {
       async listOpenHomeTimeRequests() { return open; },
-      async expireOutdatedHomeTimeRequest(id) {
+      async closeOutdatedHomeTimeRequest(id) {
         expired.push(id);
         const row = open.find((r) => r.id === id);
-        return row ? { ...row, status: 'expired', next_reminder_at: null } : null;
+        return row ? { ...row, status: 'closed', next_reminder_at: null } : null;
       },
     },
   };
@@ -132,7 +132,7 @@ function loadApproval({ open = [] } = {}) {
 
 const CARD = { telegram_chat_id: '-100999', telegram_message_id: 7 };
 
-test('sweep expires only the outdated requests and settles their cards', async () => {
+test('sweep closes only the outdated requests and settles their cards', async () => {
   const open = [
     { id: 1, status: 'pending', driver_name: 'A', home_from: '2026-07-01', home_to: '2026-07-04', return_to_road_date: '2026-07-05', ...CARD }, // past → expire
     { id: 2, status: 'pending', home_from: '2026-07-12', return_to_road_date: '2026-07-20' }, // future → keep
@@ -142,35 +142,35 @@ test('sweep expires only the outdated requests and settles their cards', async (
   const { mod, telegram, expired, edits } = loadApproval({ open });
   const summary = await mod.sweepOutdatedHomeTimeRequests(telegram, { todayIso: TODAY });
   assert.deepEqual(expired.sort(), [1, 3]);
-  assert.deepEqual(summary, { scanned: 4, expired: 2 });
+  assert.deepEqual(summary, { scanned: 4, closed: 2 });
   // Only #1 had a stored card → exactly one card edit, showing the expiry.
   assert.equal(edits.length, 1);
   assert.equal(edits[0][0], '-100999');
-  assert.match(edits[0][3], /Expired — No Action/);
+  assert.match(edits[0][3], /Closed/);
   assert.equal(edits[0][4].reply_markup, undefined);
 });
 
-test('expireOutdatedRequest edits the card when present and returns the expired row', async () => {
+test('closeOutdatedRequest edits the card when present and returns the closed row', async () => {
   const request = { id: 1, status: 'pending', driver_name: 'A', home_from: '2026-07-01', home_to: '2026-07-04', ...CARD };
   const { mod, telegram, expired, edits } = loadApproval({ open: [request] });
-  const row = await mod.expireOutdatedRequest(telegram, request);
-  assert.equal(row.status, 'expired');
+  const row = await mod.closeOutdatedRequest(telegram, request);
+  assert.equal(row.status, 'closed');
   assert.deepEqual(expired, [1]);
   assert.equal(edits.length, 1);
-  assert.match(edits[0][3], /Expired — No Action/);
+  assert.match(edits[0][3], /Closed/);
 });
 
-test('expireOutdatedRequest without a card does not edit anything', async () => {
+test('closeOutdatedRequest without a card does not edit anything', async () => {
   const request = { id: 9, status: 'awaiting_dates' };
   const { mod, telegram, edits } = loadApproval({ open: [request] });
-  const row = await mod.expireOutdatedRequest(telegram, request);
-  assert.equal(row.status, 'expired');
+  const row = await mod.closeOutdatedRequest(telegram, request);
+  assert.equal(row.status, 'closed');
   assert.equal(edits.length, 0);
 });
 
-test('expireOutdatedRequest returns null when the row was already changed', async () => {
+test('closeOutdatedRequest returns null when the row was already changed', async () => {
   const { mod, telegram, edits } = loadApproval({ open: [] }); // expire returns null (id not found)
-  const row = await mod.expireOutdatedRequest(telegram, { id: 123, ...CARD });
+  const row = await mod.closeOutdatedRequest(telegram, { id: 123, ...CARD });
   assert.equal(row, null);
   assert.equal(edits.length, 0, 'no card edit when nothing was expired');
 });
