@@ -189,8 +189,18 @@ async function integrationObservations(deps, nowMs) {
       state: chat.available ? RUN_STATES.HEALTHY : RUN_STATES.NEEDS_ATTENTION,
       reason: chat.available
         ? chat.reason
-        : `${chat.reason}. The other retention signals — weeks on the road, a home `
-          + 'window agreed and not honoured, unpaid bonuses — are unaffected.',
+        // NAME ONLY SIGNALS THAT ARE ACTUALLY SUPPLIED. This sentence exists to
+        // reassure an operator that the watch is not blind, so every example in
+        // it has to be something `gatherRetentionInputs` really returns. It has
+        // now named a dead signal twice: first `unanswered home requests`,
+        // removed because a request nobody was meant to answer is not a
+        // grievance, then `a home window agreed and not honoured`, which
+        // `database/retention.js` hard-codes to zero a few lines below the row
+        // it would come from. These three are read from real columns:
+        // `state_since` against the road allowance, `bonus_posted_at IS NULL`,
+        // and the load lifecycle's empty phase.
+        : `${chat.reason}. The other retention signals — weeks on the road, `
+          + 'unpaid bonuses, sitting empty — are unaffected.',
     }));
   } catch (_) {
     out.push(integration('retention_chat_signals', { ok: true, state: RUN_STATES.UNKNOWN, reason: 'could not read' }));
