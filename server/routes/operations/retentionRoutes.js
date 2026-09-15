@@ -4,8 +4,8 @@
  * READ AND ACKNOWLEDGE, and nothing else. There is deliberately no endpoint
  * that records a decision about a driver, no field for a note about their
  * performance, and no way to mark somebody a lost cause. The screen exists so
- * that a dispatcher rings a driver who has been out five weeks with an
- * unanswered home request — and a screen that also let them file an opinion
+ * that a dispatcher rings a driver who has been out five weeks with a bonus
+ * still unpaid — and a screen that also let them file an opinion
  * would, within a month, be a performance record nobody agreed to.
  *
  * Acknowledging means "we know, we are on it". It buys silence until the
