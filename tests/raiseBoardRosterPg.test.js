@@ -184,6 +184,19 @@ test('migration 0062 hands legacy rows back to the board and leaves real overrid
   if (skipWithoutPg(t)) return;
   const { h, ra, teamA, person } = await setup(t);
 
+  // 0062 reads the ledger to learn WHEN 0058 landed, so the window has to be
+  // real: the harness applies migration SQL directly and never writes the
+  // ledger, so seed the one row 0062 asks about.
+  await h.query(`CREATE TABLE IF NOT EXISTS schema_migrations (
+    version TEXT PRIMARY KEY, checksum TEXT NOT NULL,
+    kind TEXT NOT NULL DEFAULT 'versioned',
+    applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), execution_ms INTEGER)`);
+  await h.query(
+    `INSERT INTO schema_migrations (version, checksum, kind, applied_at)
+     VALUES ('0058_raise_roster_from_board', 'test', 'versioned', NOW() - INTERVAL '10 days')
+     ON CONFLICT (version) DO UPDATE SET applied_at = EXCLUDED.applied_at`
+  );
+
   const legacy = await ra.applyBoardAssignment(DRIVER(teamA, person));
   const decided = (await h.query(
     `INSERT INTO dispatch_team_drivers
@@ -191,9 +204,23 @@ test('migration 0062 hands legacy rows back to the board and leaves real overrid
      VALUES ($1,'MARIA GARCIA','MARIA GARCIA', TRUE, 'manual', NOW(), 'admin:jane') RETURNING id`,
     [teamA]
   )).rows[0].id;
-  // Make the first row look like one migration 0058 stamped: manual, no mark.
+  // A row typed through PUT /teams/:id/drivers AFTER the Board work landed but
+  // before `setTeamDrivers` learned to stamp: manual, no mark, and yet a real
+  // decision. The timestamp alone cannot tell it from a legacy row — only its
+  // age can, which is why 0062 also asks when 0058 was applied.
+  const unstamped = (await h.query(
+    `INSERT INTO dispatch_team_drivers
+       (team_id, driver_normalized_name, driver_name, active, assignment_source, updated_at)
+     VALUES ($1,'LEE BRANNIGAN','LEE BRANNIGAN', TRUE, 'manual', NOW()) RETURNING id`,
+    [teamA]
+  )).rows[0].id;
+  // Make the first row look like one migration 0058 stamped: manual, no mark,
+  // and untouched since before 0058 ran.
   await h.query(
-    "UPDATE dispatch_team_drivers SET assignment_source = 'manual', manual_override_at = NULL WHERE id = $1",
+    `UPDATE dispatch_team_drivers
+        SET assignment_source = 'manual', manual_override_at = NULL,
+            updated_at = NOW() - INTERVAL '30 days'
+      WHERE id = $1`,
     [legacy.id]
   );
 
@@ -204,9 +231,35 @@ test('migration 0062 hands legacy rows back to the board and leaves real overrid
   )).rows;
   const back = rows.find((r) => r.id === legacy.id);
   const kept = rows.find((r) => r.id === decided);
+  const recent = rows.find((r) => r.id === unstamped);
   assert.equal(back.assignment_source, 'board', 'a row with no mark follows the board again');
   assert.equal(kept.assignment_source, 'manual', "a person's decision is untouched");
   assert.equal(kept.manual_override_by, 'admin:jane');
+  assert.equal(recent.assignment_source, 'manual',
+    'a roster typed since the Board work landed is a decision, not an inheritance');
+});
+
+test('migration 0062 does NOTHING when it cannot date the Board work', async (t) => {
+  if (skipWithoutPg(t)) return;
+  const { h, ra, teamA, person } = await setup(t);
+  // No 0058 row in the ledger. Without it there is no way to tell a legacy row
+  // from an unstamped decision, and the safe way to be wrong is to change
+  // nothing rather than to hand somebody's roster to the Board.
+  const legacy = await ra.applyBoardAssignment(DRIVER(teamA, person));
+  await h.query(
+    `UPDATE dispatch_team_drivers
+        SET assignment_source = 'manual', manual_override_at = NULL,
+            updated_at = NOW() - INTERVAL '30 days'
+      WHERE id = $1`,
+    [legacy.id]
+  );
+
+  await h.applySchemaSql(ALL_MIGRATIONS);
+
+  const row = (await h.query(
+    'SELECT assignment_source FROM dispatch_team_drivers WHERE id = $1', [legacy.id]
+  )).rows[0];
+  assert.equal(row.assignment_source, 'manual', 'nothing is moved on a guess');
 });
 
 test('a legacy row does not hold the board off under lock', async (t) => {
@@ -242,4 +295,57 @@ test('a legacy row can be retired, a deliberate override cannot', async (t) => {
   });
   await ra.markManualOverride(other.id, 'admin:jane');
   assert.equal(await ra.retireBoardAssignment(other.id), false);
+});
+
+/*
+ * EVERY MANUAL WRITE PATH STAMPS, or the timestamp is not a discriminator.
+ *
+ * Reconciliation tells a person's decision from an inherited row by
+ * `manual_override_at`. That only holds if every path a person writes through
+ * sets it. `setTeamDrivers` — the admin typing a whole team's roster through
+ * PUT /api/raise/admin/teams/:id/drivers — relied on the column DEFAULT, which
+ * gives `assignment_source = 'manual'` and no timestamp, so the next rebuild
+ * would have read the administrator's own roster as legacy and reassigned it
+ * from the Board with nothing to show the edit had been undone.
+ */
+test('a roster typed by an admin is stamped as their decision, in the INSERT', async (t) => {
+  if (skipWithoutPg(t)) return;
+  const { h, ra, teamA } = await setup(t);
+
+  await ra.setTeamDrivers(teamA, [
+    { driver_normalized_name: 'ANA LOPEZ', driver_name: 'Ana Lopez', driver_external_id: null },
+  ], { overriddenBy: 'admin:jane' });
+
+  const row = (await h.query(
+    'SELECT assignment_source, manual_override_at, manual_override_by FROM dispatch_team_drivers WHERE team_id = $1',
+    [teamA]
+  )).rows[0];
+  assert.equal(row.assignment_source, 'manual');
+  assert.ok(row.manual_override_at, 'the stamp is what reconciliation reads; without it this row is legacy');
+  assert.equal(row.manual_override_by, 'admin:jane', 'and it names who decided');
+});
+
+test('a roster typed by an admin is not retired when the Board stops naming them', async (t) => {
+  if (skipWithoutPg(t)) return;
+  const { h, ra, teamA } = await setup(t);
+
+  await ra.setTeamDrivers(teamA, [
+    { driver_normalized_name: 'JOHN SMITH', driver_name: 'JOHN SMITH', driver_external_id: null },
+  ], { overriddenBy: 'admin:jane' });
+  const typed = (await h.query(
+    'SELECT id FROM dispatch_team_drivers WHERE team_id = $1', [teamA]
+  )).rows[0].id;
+
+  // Retiring is how a driver the Board no longer mentions leaves the roster. A
+  // stamped row is somebody's decision and is refused — which is exactly what
+  // the missing stamp would have cost: the administrator's roster would have
+  // been swept away the first time the Board went quiet about that driver.
+  assert.equal(await ra.retireBoardAssignment(typed), false,
+    "the Board's silence does not undo a person's decision");
+
+  const still = (await h.query(
+    'SELECT team_id, active FROM dispatch_team_drivers WHERE id = $1', [typed]
+  )).rows[0];
+  assert.equal(still.team_id, teamA);
+  assert.equal(still.active, true);
 });

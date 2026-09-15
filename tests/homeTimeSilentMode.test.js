@@ -30,7 +30,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const {
-  NOTIFY_GROUP_ID, GROUP, loadService,
+  TODAY, NOTIFY_GROUP_ID, GROUP, loadService,
 } = require('./helpers/homeTimeRequestServiceHarness');
 
 // A driver-initiated request with no dates — once the trigger for the whole
@@ -184,4 +184,71 @@ test('TOGGLING off then on replays nothing, because nothing was ever scheduled',
   await on.service.processHomeTimeMessage(on.telegram, GROUP, DRIVER_MSG, {});
   assert.equal(on.driverSends().length, 1, 'only the new request is acknowledged');
   assert.equal(on.inserts[0].nextReminderAt, null, 'and it too schedules nothing');
+});
+
+// ── asking twice is still one ask ──
+
+test('a SECOND message from the same driver does not record a second request', async () => {
+  const h = loud();
+  await h.service.processHomeTimeMessage(h.telegram, GROUP, DRIVER_MSG, {});
+  await h.service.processHomeTimeMessage(
+    h.telegram, GROUP,
+    { ...DRIVER_MSG, message_id: 9002, text: 'I really need some home time, been out 6 weeks' }, {}
+  );
+  assert.equal(h.inserts.length, 1, 'one ask, one row');
+  assert.equal(h.notifySends().length, 1,
+    'and the three managers are tagged once — the notice key is derived from the request id, '
+    + 'so a second row would have tagged them again');
+});
+
+test('the repeat is MERGED, not dropped: a date supplied later is kept', async () => {
+  const h = loud();
+  await h.service.processHomeTimeMessage(h.telegram, GROUP, DRIVER_MSG, {});
+  assert.equal(h.inserts[0].homeFrom, null, 'the first message carried no dates');
+
+  const later = TODAY.plus({ days: 4 }).toISODate();
+  const h2 = loadService({
+    gemini: {
+      json: {
+        intent: 'home_time_request', confidence: 90, isActualStatusChange: false,
+        requestedHomeTime: true, language: 'en', homeStartDate: later,
+        reason: 'Driver named a date.',
+      },
+      text: new Error('force fallback'),
+    },
+    driverMessaging: true,
+    // The request the earlier message recorded, as the database would return it.
+    recentRecorded: { id: 99, home_from: null, home_to: null, return_to_road_date: null },
+  });
+  await h2.service.processHomeTimeMessage(
+    h2.telegram, GROUP, { ...DRIVER_MSG, message_id: 9003, text: `I want to go home ${later}` }, {}
+  );
+  assert.equal(h2.inserts.length, 0, 'no second row');
+  const patched = h2.updates.find((u) => u.id === 99);
+  assert.ok(patched, 'the recorded request is updated instead');
+  assert.equal(patched.patch.homeFrom, later, 'the date the driver has now given is kept');
+});
+
+test('a date already recorded is never overwritten by a repeat', async () => {
+  const first = TODAY.plus({ days: 3 }).toISODate();
+  const different = TODAY.plus({ days: 9 }).toISODate();
+  const h = loadService({
+    gemini: {
+      json: {
+        intent: 'home_time_request', confidence: 90, isActualStatusChange: false,
+        requestedHomeTime: true, language: 'en', homeStartDate: different,
+        reason: 'Driver said something else.',
+      },
+      text: new Error('force fallback'),
+    },
+    driverMessaging: true,
+    recentRecorded: { id: 99, home_from: first, home_to: null, return_to_road_date: null },
+  });
+  await h.service.processHomeTimeMessage(
+    h.telegram, GROUP, { ...DRIVER_MSG, message_id: 9004, text: `actually I want to go home ${different} instead` }, {}
+  );
+  const patched = h.updates.find((u) => u.id === 99);
+  assert.ok(patched);
+  assert.equal(patched.patch.homeFrom, undefined,
+    'the first thing the driver said is what they asked for; repeating themselves is not a correction');
 });

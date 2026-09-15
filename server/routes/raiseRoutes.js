@@ -230,7 +230,13 @@ adminRouter.put('/teams/:id/drivers', async (req, res) => {
         driver_name: driverName,
       });
     }
-    res.json({ drivers: await ra.setTeamDrivers(id, [...byNorm.values()]) });
+    // A PERSON TYPED THIS ROSTER, so every row it writes is stamped as their
+    // decision and the Sunday reconciliation leaves it alone. Without the
+    // stamp the next rebuild would read these rows as legacy and reassign them
+    // from the Board, undoing the edit with nothing to show it happened.
+    const overriddenBy = req.admin?.username
+      || (req.admin?.id != null ? `admin:${req.admin.id}` : null);
+    res.json({ drivers: await ra.setTeamDrivers(id, [...byNorm.values()], { overriddenBy }) });
   } catch (err) {
     sendServiceError(res, err, 'Failed to save team drivers.');
   }

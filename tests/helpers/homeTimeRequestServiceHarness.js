@@ -50,6 +50,9 @@ function loadService({
   approvedRequest = null, // getApprovedHomeTimeRequestForGroup (an already-registered window)
   driverMessaging = true, // home_time_settings.driver_clarification_enabled
   internalGroupId = INTERNAL_GROUP_ID, // internal_clarification_group_id (null = unconfigured)
+  // findRecentRecordedRequestForGroup: leave undefined to let the harness answer
+  // from the rows it has inserted; set it (null included) to pin the answer.
+  recentRecorded = undefined,
 } = {}) {
   const servicePath = path.resolve(__dirname, '../../services/homeTimeRequestService.js');
   const dbPath = path.resolve(__dirname, '../../database/db.js');
@@ -124,6 +127,16 @@ function loadService({
     exports: {
       async getOpenHomeTimeRequestForGroup() { return open; },
       async getOpenClarificationForGroup() { return clarification; },
+      // The duplicate guard. Modelled on the real query: it sees the rows this
+      // harness has actually inserted, so a second detection in the same test
+      // finds the first one exactly as production would.
+      async findRecentRecordedRequestForGroup(gid) {
+        if (recentRecorded !== undefined) return recentRecorded;
+        const mine = inserts
+          .map((p, i) => ({ payload: p, row: requestRows.get(99 + i) }))
+          .filter((r) => r.payload.groupId === gid && r.payload.status === 'recorded');
+        return mine.length ? mine[mine.length - 1].row : null;
+      },
       async getAwaitingDatesHomeTimeRequestForGroup() { return clarification; },
       async getHomeTimeSettings() {
         return {
@@ -138,12 +151,18 @@ function loadService({
       async findDecidedRequestNearDate() { return null; },
       async getApprovedHomeTimeRequestForGroup() { return approvedRequest; },
       async insertHomeTimeRequest(payload) {
+        // A NEW ID EVERY TIME, as the database gives. Returning a fixed 99
+        // masked a duplicate insert completely: two rows shared one id, so the
+        // manager-notice key `request:99` collided and the second notice was
+        // suppressed by the outbox rather than by the code under test.
+        const id = 99 + inserts.length;
         inserts.push(payload);
-        requestRows.set(99, { id: 99, ...payload, ...toRowShape(payload) });
         // Production runs `INSERT ... RETURNING *`, so the returned row is the
         // DATABASE shape (snake_case), not the camelCase payload. Mirror that —
         // callers such as the internal alert read request.driver_name.
-        return { id: 99, ...payload, ...toRowShape(payload) };
+        const row = { id, ...payload, ...toRowShape(payload) };
+        requestRows.set(id, row);
+        return row;
       },
       async updateHomeTimeRequestFields(id, patch) { updates.push({ id, patch }); return { id, ...patch }; },
       async fulfillAwaitingHomeTimeRequest(id, payload) {

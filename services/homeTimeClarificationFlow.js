@@ -191,6 +191,51 @@ async function sendPolicyResponse(telegram, group, request, {
  * their window passes, and nothing opens another.
  */
 
+/** A second ask inside this many hours is the same ask. */
+const DUPLICATE_WINDOW_HOURS = 24;
+
+/**
+ * Did this driver already make this request, and has it only been said again?
+ *
+ * ONE ASK, ONE NOTICE. Both paths that record a request — the driver writing in
+ * their own group, and a manager tagging the approver — call this first. A
+ * `recorded` request is deliberately not an OPEN one (it waits for nobody, so it
+ * must never block the driver's next request), which also means the status can
+ * no longer be the duplicate guard the old `awaiting_*` row was. Without
+ * something in its place, "I need home time" followed a minute later by "been
+ * out six weeks" produced two rows and tagged the three managers twice, because
+ * the notice key is derived from the request id.
+ *
+ * So the WINDOW is the guard, not the status: a second ask inside
+ * `DUPLICATE_WINDOW_HOURS` is the same ask, and one days later is a real new
+ * request. Anything the driver has now supplied and the request did not have is
+ * filled in; nothing already recorded is overwritten, because the first thing
+ * they said is what they asked for and repeating themselves is not a
+ * correction.
+ *
+ * @returns {object|null} the existing request when this is a repeat, else null
+ */
+async function mergeIntoRecentRequest(group, message, known = {}) {
+  const recent = await ht.findRecentRecordedRequestForGroup(group.id, DUPLICATE_WINDOW_HOURS)
+    .catch(() => null);
+  if (!recent) return null;
+
+  const patch = { lastDriverMessageId: message?.message_id || null };
+  if (!recent.home_from && known.homeStartDate) patch.homeFrom = known.homeStartDate;
+  if (!recent.home_to && known.homeTo) patch.homeTo = known.homeTo;
+  if (!recent.return_to_road_date && known.returnToRoadDate) {
+    patch.returnToRoadDate = known.returnToRoadDate;
+  }
+  await ht.updateHomeTimeRequestFields(recent.id, patch).catch((err) => {
+    console.warn(`[HOME-TIME-REQ] Could not update request #${recent.id}:`, err.message);
+  });
+  console.log(
+    `[HOME-TIME-REQ] Request #${recent.id} was already recorded for this driver within `
+    + `${DUPLICATE_WINDOW_HOURS}h — updated, and the managers are not told twice.`
+  );
+  return recent;
+}
+
 /**
  * Record a home-time request, tell the staff group, and stop.
  *
@@ -213,6 +258,9 @@ async function sendPolicyResponse(telegram, group, request, {
  * NOTHING HISTORICAL IS DISTURBED. Rows already sitting in `awaiting_*` keep
  * their status and their dates; they simply stop being chased, and the cleanup
  * sweep closes them once their window passes.
+ *
+ * ASKING TWICE IS STILL ONE ASK — `mergeIntoRecentRequest` above is the guard,
+ * and the reason it has to exist at all is on its own header.
  */
 async function recordAndPostRequest(telegram, group, message, {
   window, settings, language, verdict, isUnplanned = false,
@@ -222,6 +270,9 @@ async function recordAndPostRequest(telegram, group, message, {
   const { roadStartedAt, daysOnRoad, policyMet } = await resolveRoadMetrics(group, allowanceWeeks, driverType);
   const fromUser = message?.from || {};
   const known = window || {};
+
+  const recent = await mergeIntoRecentRequest(group, message, known);
+  if (recent) return recent;
 
   const request = await ht.insertHomeTimeRequest({
     groupId: group.id,
@@ -275,6 +326,8 @@ async function recordAndPostRequest(telegram, group, message, {
 
 module.exports = {
   recordAndPostRequest,
+  mergeIntoRecentRequest,
+  DUPLICATE_WINDOW_HOURS,
   todayIsoChicago,
   resolveDriverLabel,
   resolveRoadMetrics,

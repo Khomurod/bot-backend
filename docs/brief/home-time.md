@@ -157,13 +157,24 @@ marks the stay closed.
 - Guarded by `tests/homeTimeCycleInvariant.test.js`, which asserts the
   **negative**: after a `home → road` change by any route, no open cycle may
   remain. Nothing asserted that before, which is why it broke.
-- **The reminder loop is gone, and with it the immortal request.** A request for
-  an inactive group used to keep `next_reminder_at` set — and
-  `isHomeTimeRequestOutdated` reads a set schedule as "reminders still pending →
-  still active", so the row was neither reminded nor expirable, forever. Nothing
-  schedules a reminder now (`next_reminder_at` is always written null), so the
-  condition cannot arise. The column stays in the schema carrying what was
-  scheduled for rows that predate this: history, not a queue.
+- **The reminder loop is gone, and `isHomeTimeRequestOutdated` no longer reads
+  `next_reminder_at`.** A request for an inactive group used to keep the column
+  set, and the predicate read a set schedule as "reminders still pending → still
+  active", so the row was neither reminded nor expirable, forever. Removing the
+  worker without also removing that read would have turned the same trap on
+  **every** pre-deploy `awaiting_*` row at once: nothing writes the column now,
+  so the timestamp is frozen and the row could never close — and an open request
+  blocks its driver's next one. The column stays in the schema carrying what was
+  last scheduled for rows that predate this: history, not a queue, and not
+  evidence. Guarded by `tests/homeTimeExpiry.test.js`.
+- **Asking twice is one ask.** `recorded` is deliberately outside
+  `OPEN_REQUEST_STATUSES` — a recorded request waits for nobody and must not
+  block the next one — so it cannot be the duplicate guard the `awaiting_*` row
+  used to be, and the manager notice is keyed `request:<id>`, so a second row
+  tags all three managers again. Both recording paths call
+  `mergeIntoRecentRequest` first: a second ask within 24 hours updates the
+  request already recorded, fills in any date now supplied, never overwrites one
+  already there, and tells nobody.
 - **A home start past the horizon is asked about, not stored.** `2027-01-02` on
   request 139 is a mis-parsed year that `isReasonableWindow` waved through,
   because a full year is inside its horizon. `classifyWindowAgainstPolicy`

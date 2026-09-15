@@ -357,11 +357,20 @@ function isHomeTimeWindowInPast(request, todayIso = null) {
  * True when an open home-time request is no longer actionable and should be
  * closed (housekeeping only — nobody is told, and nothing is inferred):
  *   1. any request whose resolvable end date is already in the past; OR
- *   2. a partial clarification with no end date, but ONLY once its reminders are
- *      exhausted (next_reminder_at cleared) AND it has been open beyond
+ *   2. a legacy `awaiting_*` row with no end date, once it has been open beyond
  *      `staleClarificationDays` (anchored on home_from when known, else
- *      requested_at) — so an active clarification is never closed prematurely.
+ *      requested_at).
  * Terminal requests (approved/denied/cancelled/closed/expired) are never "outdated".
+ *
+ * `next_reminder_at` IS NOT READ, AND THAT IS THE FIX. This used to return false
+ * whenever the column was set — "reminders still pending, so the flow is still
+ * active" — which was true while a reminder worker existed to clear it. That
+ * worker is gone: nothing sends a reminder and nothing writes the column, so for
+ * the rows that predate the removal the timestamp is frozen at whatever was last
+ * scheduled. Reading it would have made those rows uncloseable FOREVER, and an
+ * uncloseable open request keeps blocking its driver's next one — the exact
+ * immortality this subsystem has already been bitten by once. The column stays
+ * as history; it is not a queue and it is not evidence.
  */
 function isHomeTimeRequestOutdated(request, { todayIso = null, staleClarificationDays = STALE_CLARIFICATION_DAYS } = {}) {
   if (!request) return false;
@@ -372,7 +381,6 @@ function isHomeTimeRequestOutdated(request, { todayIso = null, staleClarificatio
   const isOpenClarification = status === 'awaiting_dates' || status === 'awaiting_home_start'
     || status === 'awaiting_return_to_road' || status === 'clarification_unanswered';
   if (!isOpenClarification) return false; // a 'pending' card is judged only on its dates
-  if (request.next_reminder_at) return false; // reminders still pending → still active
 
   const today = isoDateOnly(todayIso) || DateTime.now().setZone(TZ).toISODate();
   const anchor = isoDateOnly(request.home_from) || isoDateOnly(request.requested_at);

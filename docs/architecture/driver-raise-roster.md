@@ -135,6 +135,22 @@ to `assignment_source = 'board'`. It is additive, idempotent and narrow —
 genuine override, which always has the timestamp, is untouched. Historical
 rounds and submissions are snapshots and are not read by it at all.
 
+It carries one more guard, because a third path did not stamp. `setTeamDrivers`
+(`PUT /api/raise/admin/teams/:id/drivers`, an administrator typing a whole
+team's roster) relied on the column DEFAULT and so wrote `manual` with no
+timestamp. Rows it wrote between 0058 and now are real decisions that the
+timestamp alone cannot distinguish from legacy ones, so 0062 also refuses to
+touch anything modified at or after the moment 0058 was applied, read from the
+`schema_migrations` ledger. Missing ledger or missing 0058 row → it changes
+nothing, in a `DO` block that cannot fail boot. `setTeamDrivers` now stamps in
+its own INSERT, so the ambiguity ends rather than recurring.
+
+**Every path a person writes through must stamp, or the timestamp is not a
+discriminator.** There are three: `assignDriverToTeamFromGroups` (stamps via
+`markManualOverride`), `setTeamDrivers` (stamps in the INSERT), and
+`markManualOverride` itself. A fourth added later must stamp too —
+`tests/raiseBoardRosterPg.test.js` covers the first two by name.
+
 ## Identity
 
 The roster is keyed on the permanent person where one is known, then the driver

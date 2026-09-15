@@ -83,6 +83,7 @@ module.exports = {
   getPendingHomeTimeRequestForGroup: requests.getPendingHomeTimeRequestForGroup,
   getOpenHomeTimeRequestForGroup: requests.getOpenHomeTimeRequestForGroup,
   getOpenClarificationForGroup: requests.getOpenClarificationForGroup,
+  findRecentRecordedRequestForGroup: requests.findRecentRecordedRequestForGroup,
   getAwaitingDatesHomeTimeRequestForGroup: requests.getAwaitingDatesHomeTimeRequestForGroup,
   getApprovedHomeTimeRequestForGroup: requests.getApprovedHomeTimeRequestForGroup,
   findDecidedRequestNearDate: requests.findDecidedRequestNearDate,

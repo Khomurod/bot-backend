@@ -28,7 +28,7 @@ const {
 } = require('./homeTimeDateResolver');
 const {
   todayIsoChicago, resolveDriverLabel, resolveRoadMetrics, postRequestCard,
-  recordAndPostRequest,
+  recordAndPostRequest, mergeIntoRecentRequest,
 } = require('./homeTimeClarificationFlow');
 const { closeOutdatedRequest } = require('./homeTimeApproval');
 
@@ -164,6 +164,14 @@ async function handleApproverMention(telegram, group, message) {
     const reask = windowFieldsToReask(parsedWindow, settings);
     const window = reask.length
       ? reopenWindowForPolicy(parsedWindow, reask) : parsedWindow;
+
+    // THE SAME ASK AGAIN TELLS THE MANAGERS ONCE. A `recorded` request is not an
+    // OPEN one, so the guard above cannot see it — and a manager tagging the
+    // approver right after the driver asked (or twice in a row) would otherwise
+    // record a second row and tag all three managers again, because the notice
+    // key is derived from the request id. Any date this message carries that the
+    // recorded request does not is merged in.
+    if (await mergeIntoRecentRequest(group, message, window)) return;
 
     if (window.complete) {
       const allowanceWeeks = settings?.road_allowance_weeks || 4;

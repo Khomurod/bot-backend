@@ -55,6 +55,27 @@ dates. Nothing chases them; the housekeeping sweep closes one whose window has
 passed, and a driver who writes again is heard as making a fresh request rather
 than answering a question Wenze has stopped asking.
 
+**`next_reminder_at` is history, and `isHomeTimeRequestOutdated` does not read
+it.** The predicate used to return false whenever the column was set —
+"reminders still pending, so the flow is still active" — which was true while a
+worker existed to send them and clear it. Nothing writes the column now, so on
+every row that predates the removal it is frozen at whatever was last
+scheduled. Reading it would have made those rows uncloseable **forever**, and an
+open request blocks its driver's next one: that driver could never ask for home
+time again. This subsystem has already been bitten once by exactly that
+immortality (see `docs/brief/home-time.md`), which is why the column is now
+inert rather than merely unwritten.
+
+**Asking twice is one ask.** `recorded` is deliberately outside
+`OPEN_REQUEST_STATUSES`, so it cannot serve as the duplicate guard the
+`awaiting_*` row used to be — and the manager notice is keyed `request:<id>`, so
+a second row tags all three managers again. Both recording paths (the driver's
+own message and an approver mention) therefore call `mergeIntoRecentRequest`
+first: a second ask within `DUPLICATE_WINDOW_HOURS` (24) updates the request
+already recorded, filling in any date now supplied, never overwriting one
+already there, and telling nobody. Removing a reminder loop only to replace it
+with duplicate notices would be no improvement.
+
 ## Home In and Home Out come from operational evidence
 
 Two engines, reading two different kinds of evidence, ending at the same state
