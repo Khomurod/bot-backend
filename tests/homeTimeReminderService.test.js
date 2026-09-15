@@ -1,263 +1,72 @@
+'use strict';
+
+/**
+ * What is left of the Home Time reminder service, and what must stay gone.
+ *
+ * THE REMINDER LOOP WAS REMOVED, and this file is what stops it coming back. It
+ * chased a driver for two PLANNED dates — a first reminder after twelve hours, a
+ * second twelve hours later, then the request marked unanswered. That work
+ * produced a guess about next week, while the dates that actually matter, when
+ * the driver reached home and when they left again, are read from the Dispatcher
+ * Board by services/homeTime/boardPresenceWatch.js.
+ *
+ * What stays on this timer is housekeeping with no audience: closing a request
+ * whose window has passed so it stops blocking the next one. Nobody is told.
+ */
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
 const path = require('node:path');
 
-const NOW = '2026-07-13T12:00:00.000Z';
+const SERVICE_PATH = path.resolve(__dirname, '../services/homeTimeReminderService.js');
+const service = require('../services/homeTimeReminderService');
 
-function loadService({ due = [], claimResult, settings, cancelResult } = {}) {
-  const servicePath = path.resolve(__dirname, '../services/homeTimeReminderService.js');
-  const htPath = path.resolve(__dirname, '../database/homeTime.js');
-  const htmlPath = path.resolve(__dirname, '../services/telegramHtml.js');
-  const geminiPath = path.resolve(__dirname, '../services/geminiClient.js');
-  for (const p of [servicePath, htPath, htmlPath, geminiPath]) delete require.cache[p];
-
-  const claims = [];
-  const marks = [];
-  const sends = [];
-  const cancels = [];
-
-  require.cache[htPath] = {
-    exports: {
-      async getHomeTimeSettings() {
-        return settings || { enabled: true, reminder_first_hours: 12, reminder_second_hours: 12 };
-      },
-      async listDueHomeTimeReminders() { return due; },
-      async claimHomeTimeReminder(id, opts) {
-        claims.push({ id, ...opts });
-        // Default: the claim succeeds and returns the (now-advanced) row.
-        if (typeof claimResult === 'function') return claimResult(id, opts);
-        const row = due.find((r) => r.id === id);
-        return { ...row, reminder_count: Number(row.reminder_count) + 1 };
-      },
-      async markHomeTimeClarificationUnanswered(id) { marks.push(id); return { id }; },
-      async cancelHomeTimeReminderSchedule(id, opts) {
-        cancels.push({ id, ...(opts || {}) });
-        if (typeof cancelResult === 'function') return cancelResult(id);
-        return { id, next_reminder_at: null };
-      },
-    },
-  };
-  require.cache[htmlPath] = { exports: { safeSend: async (fn) => fn() } };
-  require.cache[geminiPath] = {
-    exports: {
-      async callGeminiText() { throw new Error('no key'); }, // force deterministic fallback text
-    },
-  };
-
-  const telegram = {
-    async sendMessage(chatId, text, extra) { sends.push({ chatId, text, extra }); return { message_id: 1 }; },
-  };
-  return { service: require(servicePath), telegram, claims, marks, sends, cancels };
-}
-
-function dueRow(over = {}) {
-  return {
-    id: 1, reminder_count: 0, status: 'awaiting_return_to_road',
-    group_telegram_id: '-100', group_active: true, root_message_id: 55,
-    telegram_user_id: '900', telegram_username: 'driver', first_name: 'Pat', last_name: 'D',
-    language: 'en', unit_number: '5', group_name: 'U5', ...over,
-  };
-}
-
-test('first reminder is sent once, replying to the root message, and reschedules', async () => {
-  const { service, telegram, claims, sends, marks } = loadService({ due: [dueRow({ reminder_count: 0 })] });
-  const res = await service.runHomeTimeReminderCheck(telegram, { nowIso: NOW });
-  assert.equal(res.sent, 1);
-  assert.equal(claims.length, 1);
-  assert.equal(claims[0].expectedReminderCount, 0);
-  assert.notEqual(claims[0].nextReminderAt, null); // second reminder scheduled
-  assert.equal(sends.length, 1);
-  assert.equal(sends[0].extra.reply_to_message_id, 55);
-  assert.match(sends[0].text, /back on the road/i);
-  assert.match(sends[0].text, /tg:\/\/user\?id=900/); // driver tagged by stable id
-  assert.equal(marks.length, 0);
+test('the reminder sweep is gone from the module surface', () => {
+  assert.equal(service.runHomeTimeReminderCheck, undefined,
+    'a retired path kept "just in case" is a path that comes back');
+  assert.equal(typeof service.runHomeTimeCleanupSweep, 'function',
+    'closing a passed-window request is housekeeping and stays');
 });
 
-test('second reminder is the final one: clears the schedule and marks unanswered', async () => {
-  const { service, telegram, claims, sends, marks } = loadService({ due: [dueRow({ reminder_count: 1 })] });
-  const res = await service.runHomeTimeReminderCheck(telegram, { nowIso: NOW });
-  assert.equal(res.sent, 1);
-  assert.equal(claims[0].nextReminderAt, null); // no third reminder scheduled
-  assert.equal(marks.length, 1); // flagged for manual follow-up
-  assert.equal(res.unanswered, 1);
-});
-
-test('a lost claim (overlapping worker / restart) does NOT double-send', async () => {
-  const { service, telegram, sends } = loadService({
-    due: [dueRow({ reminder_count: 0 })],
-    claimResult: () => null, // someone else already claimed it
-  });
-  const res = await service.runHomeTimeReminderCheck(telegram, { nowIso: NOW });
-  assert.equal(res.sent, 0);
-  assert.equal(sends.length, 0);
-});
-
-test('an inactive group STANDS DOWN — the schedule is cleared, not just skipped', async () => {
-  // The request became immortal here. Skipping before the claim left
-  // `next_reminder_at` set, and `isHomeTimeRequestOutdated` reads a set schedule
-  // as "reminders still pending → still active" — so the 21-day stale expiry
-  // never fired either, and neither did anything else. 117 of 196 production
-  // requests are closed once their dates pass; these never got that far.
-  const { service, telegram, claims, sends, cancels } = loadService({
-    due: [dueRow({ group_active: false })],
-  });
-  const res = await service.runHomeTimeReminderCheck(telegram, { nowIso: NOW });
-  assert.equal(res.sent, 0);
-  assert.equal(claims.length, 0, 'still no reminder — the group is inactive');
-  assert.equal(sends.length, 0);
-  assert.deepEqual(cancels, [{ id: 1, onlyIfGroupInactive: true }],
-    'the schedule is cleared so the request can expire — and the reason is '
-    + 're-checked at UPDATE time, because an admin can reactivate the group '
-    + 'between the due-row read and this write and nothing would reschedule it');
-  assert.equal(res.standDown, 1, 'and it is counted, not silent');
-});
-
-test('standing down is idempotent — an already-cleared schedule is not re-counted', async () => {
-  const { service, telegram, cancels } = loadService({
-    due: [dueRow({ group_active: false })],
-    cancelResult: () => null, // the UPDATE matches nothing: already NULL
-  });
-  const res = await service.runHomeTimeReminderCheck(telegram, { nowIso: NOW });
-  assert.equal(cancels.length, 1);
-  assert.equal(res.standDown, 0, 'the count is of schedules actually cleared');
-});
-
-test('missing-field wording matches the awaiting status', async () => {
-  const { service } = loadService({});
-  assert.equal(service.missingFieldFor({ status: 'awaiting_return_to_road' }), 'return_to_road');
-  assert.equal(service.missingFieldFor({ status: 'awaiting_home_start' }), 'home_start');
-  assert.equal(service.missingFieldFor({ status: 'awaiting_dates' }), 'both');
-});
-
-test('disabled feature performs no work', async () => {
-  const { service, telegram, sends } = loadService({ due: [dueRow()], settings: { enabled: false } });
-  const res = await service.runHomeTimeReminderCheck(telegram, { nowIso: NOW });
-  assert.equal(res.enabled, false);
-  assert.equal(sends.length, 0);
-});
-
-// ── driver messaging disabled: reminders must never leak, and must not pile up ──
-
-const MESSAGING_OFF = {
-  enabled: true, reminder_first_hours: 12, reminder_second_hours: 12,
-  driver_clarification_enabled: false,
-};
-
-test('DISABLED: a due reminder is stood down instead of sent', async () => {
-  const {
-    service, telegram, sends, claims, cancels,
-  } = loadService({ due: [dueRow({ reminder_count: 0 })], settings: MESSAGING_OFF });
-  const res = await service.runHomeTimeReminderCheck(telegram, { nowIso: NOW });
-
-  assert.equal(sends.length, 0, 'nothing may reach the driver group');
-  assert.equal(res.sent, 0);
-  assert.equal(res.standDown, 1);
-  assert.deepEqual(cancels, [{ id: 1 }],
-    'the schedule is cleared — and WITHOUT the inactive-group guard, because '
-    + 'here the reason is that driver messaging is off, not that the group is');
-  assert.equal(claims.length, 0, 'the reminder allowance is NOT consumed');
-});
-
-test('DISABLED: standing down does not flag the request as unanswered', async () => {
-  const { service, telegram, marks } = loadService({
-    // reminder_count 1 → this would have been the FINAL reminder when enabled.
-    due: [dueRow({ reminder_count: 1 })],
-    settings: MESSAGING_OFF,
-  });
-  await service.runHomeTimeReminderCheck(telegram, { nowIso: NOW });
-  assert.deepEqual(marks, [], 'the request stays open for staff, not marked "No response"');
-});
-
-test('DISABLED: every due row is stood down, none slips through', async () => {
-  const {
-    service, telegram, sends, cancels,
-  } = loadService({
-    due: [dueRow({ id: 1 }), dueRow({ id: 2 }), dueRow({ id: 3 })],
-    settings: MESSAGING_OFF,
-  });
-  const res = await service.runHomeTimeReminderCheck(telegram, { nowIso: NOW });
-  assert.equal(sends.length, 0);
-  assert.deepEqual(cancels, [{ id: 1 }, { id: 2 }, { id: 3 }]);
-  assert.equal(res.standDown, 3);
-});
-
-test('RE-ENABLING replays nothing: cleared schedules are no longer due', async () => {
-  // Turning messaging off cleared next_reminder_at, so listDueHomeTimeReminders
-  // (which requires next_reminder_at IS NOT NULL AND <= now) returns nothing.
-  // Switching back on therefore cannot fire an accumulated backlog.
-  const { service, telegram, sends } = loadService({
-    due: [], // nothing due — the rows were stood down while messaging was off
-    settings: { enabled: true, reminder_first_hours: 12, reminder_second_hours: 12, driver_clarification_enabled: true },
-  });
-  const res = await service.runHomeTimeReminderCheck(telegram, { nowIso: NOW });
-  assert.equal(sends.length, 0, 'no burst of old reminders');
-  assert.equal(res.sent, 0);
-  assert.equal(res.due, 0);
-});
-
-test('ENABLED (or column absent) keeps sending exactly as before', async () => {
-  for (const settings of [
-    { enabled: true, reminder_first_hours: 12, reminder_second_hours: 12, driver_clarification_enabled: true },
-    { enabled: true, reminder_first_hours: 12, reminder_second_hours: 12 }, // pre-migration row
+test('nothing in the service schedules or sends a reminder any more', () => {
+  const source = fs.readFileSync(SERVICE_PATH, 'utf8');
+  // Comments explain why the loop went, so look for the machinery itself.
+  const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  for (const gone of [
+    'listDueHomeTimeReminders',
+    'claimHomeTimeReminder',
+    'markHomeTimeClarificationUnanswered',
+    'buildReminderMessage',
   ]) {
-    const {
-      service, telegram, sends, cancels,
-    } = loadService({ due: [dueRow({ reminder_count: 0 })], settings });
-    const res = await service.runHomeTimeReminderCheck(telegram, { nowIso: NOW });
-    assert.equal(sends.length, 1);
-    assert.equal(res.sent, 1);
-    assert.deepEqual(cancels, [], 'nothing is stood down while messaging is on');
+    assert.equal(code.includes(gone), false, `${gone} must not be reachable from the reminder service`);
   }
 });
 
-test('the overall tracking switch still short-circuits before anything else', async () => {
-  const { service, telegram, sends, cancels } = loadService({
-    due: [dueRow()],
-    settings: { enabled: false, driver_clarification_enabled: false },
-  });
-  const res = await service.runHomeTimeReminderCheck(telegram, { nowIso: NOW });
-  assert.equal(res.enabled, false);
-  assert.equal(sends.length, 0);
-  assert.deepEqual(cancels, []);
-});
-
-// ── what the run ledger is told ────────────────────────────────────────────
-
-/**
- * THE SUMMARY USED TO BE DISCARDED.
- *
- * The `withRunRecord` callback awaited both sweeps and returned undefined, so
- * `statusFromSummary` saw nothing and recorded `ok` — including when Home Time
- * is switched off entirely. A feature nobody has enabled must not look
- * identical to one chasing reminders every five minutes: the first is
- * `blocked`, the second is `healthy`, and telling them apart is the whole point
- * of the state vocabulary.
- */
-test('Home Time switched off is BLOCKED in the ledger, not a healthy pass', () => {
-  const { reminderRunSummary } = require('../services/homeTimeReminderService');
-  const out = reminderRunSummary({ enabled: false, due: 0, sent: 0, errors: 0 }, null);
-  assert.match(out.blocked, /switched off/);
-  assert.equal(out.error, undefined, 'switched off is not broken');
-});
-
-test('a normal tick reports what it did and carries no error', () => {
-  const { reminderRunSummary } = require('../services/homeTimeReminderService');
-  const out = reminderRunSummary(
-    { enabled: true, due: 3, sent: 3, errors: 0 }, { enabled: true, closed: 1 }
+test('a request is never given a next reminder time when it is recorded', () => {
+  const flow = fs.readFileSync(
+    path.resolve(__dirname, '../services/homeTimeClarificationFlow.js'), 'utf8'
   );
-  assert.deepEqual(out, { due: 3, sent: 3, closed: 1 });
+  const record = flow.slice(flow.indexOf('async function recordAndPostRequest'));
+  assert.match(record, /nextReminderAt:\s*null/,
+    'the one path that creates a request must schedule nothing');
 });
 
-test('every due reminder failing to send is a FAILED pass', () => {
-  const { reminderRunSummary } = require('../services/homeTimeReminderService');
-  const out = reminderRunSummary({ enabled: true, due: 2, sent: 0, errors: 2 }, null);
-  assert.match(out.error, /none of the 2 due reminder\(s\) could be sent/,
-    '`error` singular is the field the ledger reads');
+// ─── the run ledger still tells the truth about this worker ───
+
+test('Home Time switched off is BLOCKED in the ledger, not a healthy pass', () => {
+  const out = service.reminderRunSummary({ enabled: false });
+  assert.equal(out.blocked, 'Home Time is switched off in Settings');
+  assert.equal(out.closed, undefined, 'a blocked pass reports no work, not zero work');
 });
 
-test('one failure among three leaves the pass healthy', () => {
-  const { reminderRunSummary } = require('../services/homeTimeReminderService');
-  const out = reminderRunSummary({ enabled: true, due: 3, sent: 2, errors: 1 }, null);
+test('a normal tick reports what it closed and carries no error', () => {
+  const out = service.reminderRunSummary({ enabled: true, scanned: 12, closed: 2 });
+  assert.deepEqual(out, { scanned: 12, closed: 2 });
   assert.equal(out.error, undefined);
-  assert.equal(out.sent, 2);
+});
+
+test('a pass that found nothing to close is still a real pass', () => {
+  const out = service.reminderRunSummary({ enabled: true, scanned: 0, closed: 0 });
+  assert.deepEqual(out, { scanned: 0, closed: 0 });
+  assert.equal(out.blocked, undefined);
 });

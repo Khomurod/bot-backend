@@ -1,37 +1,35 @@
 /**
- * Home-Time clarification reminder service.
+ * Home-Time housekeeping ticker.
  *
- * When a driver has not supplied a missing home-time date, the bot sends exactly
- * TWO reminders (default 12h apart, both configurable), each replying to the
- * original home-time / Status: Home message and tagging the driver. After the
- * second unanswered reminder the flow is flagged 'clarification_unanswered' for
- * manual follow-up — no further messages are sent.
+ * WHAT THIS USED TO BE. A reminder service: when a driver had not supplied a
+ * missing home-time date, the bot sent two reminders twelve hours apart and then
+ * flagged the request `clarification_unanswered`. All of that is gone. It chased
+ * two PLANNED dates — a guess about next week, typed by somebody about to drive
+ * home — and the dates that are actually recorded as Home In and Home Out come
+ * from the Dispatcher Board and the driver's own status, never from a plan. A
+ * driver who does not answer a question about next Tuesday has done nothing
+ * wrong, and Wenze no longer asks.
  *
- * Restart-safe + idempotent (DB-side, mirrors roadBonusNotifierService): each
- * open clarification carries next_reminder_at (when the next reminder is due) and
- * reminder_count (capped at 2). A tick reads due rows, then ATOMICALLY claims each
- * (bump count + move/clear next_reminder_at, guarded on the unchanged count and
- * still-due time) before sending, so overlapping ticks or a restart never double
- * a reminder. No long in-memory timers.
- *
- * A reminder is a DRIVER-GROUP message, so the whole sweep respects the
- * driver-messaging switch (home_time_settings.driver_clarification_enabled). When
- * it is off, due reminders are stood down rather than sent — see the guard in
- * runHomeTimeReminderCheck.
+ * WHAT IT IS NOW. One cleanup sweep with no audience: a request whose window has
+ * passed is CLOSED so it stops blocking the next one, and nobody is told. The
+ * count reaches the run ledger so the worker's health is legible; it is not a
+ * notice, because the calendar advancing is not an operational problem.
  *
  * Two STAFF-facing retries ride this ticker as separate responsibilities: the
  * internal clarification alert, and the manager notices for the three home-time
  * events. Both are attempted inline when they happen; this is only the retry.
+ *
+ * The name is kept because `startHomeTimeReminderService` is imported by
+ * services/backgroundServices.js and a rename buys nothing; this header is the
+ * record of what it stopped being.
  */
 const { DateTime } = require('luxon');
 const ht = require('../database/homeTime');
 const { callGeminiText } = require('./geminiClient');
-const { buildReminderMessage } = require('./homeTimeRequestConstants');
 const { buildDriverMention } = require('./driverMention');
 const { isDriverMessagingEnabled, sendToDriverGroup } = require('./homeTimeDriverChannel');
 const { withRunRecord, noteHeartbeat } = require('./operations/runLedger');
 
-const MAX_REMINDERS = 2;
 const POLL_MS = 5 * 60 * 1000; // 5 min — reminders are hours apart, so this is ample
 const FIRST_TICK_DELAY_MS = 30 * 1000;
 
@@ -40,169 +38,25 @@ let serviceStopped = false;
 let tickRunning = false;
 let telegramClient = null;
 
-/** Which single date is this clarification still missing? */
-function missingFieldFor(row) {
-  if (row.status === 'awaiting_return_to_road') return 'return_to_road';
-  if (row.status === 'awaiting_home_start') return 'home_start';
-  return 'both';
-}
-
-function reminderPrompt(missingField, language) {
-  const langLine = language && !['en', 'english'].includes(String(language).toLowerCase())
-    ? `Write in the driver's language (${language}); keep it natural and simple.`
-    : "Match the driver's language when obvious; otherwise use English.";
-  const what = missingField === 'return_to_road'
-    ? 'the date they will be back on the road after home time'
-    : (missingField === 'home_start'
-      ? 'the date they plan to arrive home'
-      : 'their home-time dates (arrive home and back on the road)');
-  return 'You are a friendly but firm dispatch assistant for a US trucking company. Write ONE short reminder '
-    + `(1-2 sentences, plain text, no markdown) asking the driver to clarify ${what}. Say it is important for us `
-    + `to know. Do not be aggressive. ${langLine}`;
-}
-
-/** AI reminder text with a deterministic fallback (never throws). */
-async function buildReminderText(missingField, language) {
-  try {
-    const { text } = await callGeminiText({
-      capability: 'home_time_message',
-      userText: reminderPrompt(missingField, language),
-      maxOutputTokens: 100,
-    });
-    const clean = String(text || '').trim();
-    if (clean) return clean;
-  } catch (err) {
-    console.warn('[HOME-TIME-REMINDER] AI reminder text failed, using fallback:', err.message);
-  }
-  return buildReminderMessage(missingField);
-}
-
-/**
- * One reminder sweep. Sends the due reminders, advancing / clearing the schedule
- * atomically and flagging exhausted flows as unanswered. Pure-ish: pass the
- * telegram client so it is unit-testable.
+/*
+ * runHomeTimeReminderCheck lived here.
  *
- * @returns {{ enabled:boolean, due:number, sent:number, unanswered:number, errors:number }}
+ * It chased drivers for the two PLANNED dates of a home-time request: a first
+ * reminder after twelve hours, a second after twelve more, and then the request
+ * was marked unanswered. Every part of that was work in service of a guess —
+ * the planned dates were never what Home In and Home Out are recorded from, and
+ * a driver who does not answer a question about next week has not done anything
+ * wrong.
+ *
+ * A request is now recorded and delivered and finished, so there is nothing
+ * left to remind anybody about. What remains on this timer is the cleanup sweep
+ * below, which closes requests whose window has passed so they stop blocking the
+ * next one, and tells nobody.
+ *
+ * `next_reminder_at` is left in the schema and is simply never set: the column
+ * still carries what was scheduled for rows that predate this, which is history
+ * rather than a queue.
  */
-async function runHomeTimeReminderCheck(telegram, { nowIso } = {}) {
-  const settings = await ht.getHomeTimeSettings();
-  if (!settings || !settings.enabled) {
-    return { enabled: false, due: 0, sent: 0, unanswered: 0, errors: 0 };
-  }
-  const now = nowIso || DateTime.now().toUTC().toISO();
-  const secondHours = Math.max(1, Number(settings.reminder_second_hours) || 12);
-
-  const rows = await ht.listDueHomeTimeReminders(now, { maxReminders: MAX_REMINDERS });
-  let sent = 0;
-  let unanswered = 0;
-  let errors = 0;
-  let standDown = 0;
-
-  // Driver messaging switched off while reminders were already scheduled. Clear
-  // each due row's schedule WITHOUT sending, without consuming one of the two
-  // allowed reminders, and without flagging it unanswered: the request stays open
-  // in its awaiting_* status for staff to resolve. Clearing (rather than
-  // deferring) is what guarantees that switching the setting back on replays
-  // nothing and fires no accumulated backlog.
-  if (!isDriverMessagingEnabled(settings)) {
-    for (const row of rows) {
-      // eslint-disable-next-line no-await-in-loop
-      const cleared = await ht.cancelHomeTimeReminderSchedule(row.id).catch(() => null);
-      if (cleared) standDown += 1;
-    }
-    if (standDown) {
-      console.log(`[HOME-TIME-REMINDER] Driver messaging disabled — stood down ${standDown} due reminder(s) without sending.`);
-    }
-    return {
-      enabled: true, due: rows.length, sent: 0, unanswered: 0, errors: 0, standDown,
-    };
-  }
-
-  for (const row of rows) {
-    // AN INACTIVE GROUP STANDS DOWN — it does not merely get skipped.
-    //
-    // Skipping before the claim left `next_reminder_at` set, and
-    // `homeTimeDateResolver.isHomeTimeRequestOutdated` reads a set schedule as
-    // "reminders still pending → still active". So the request stopped being
-    // reminded AND stopped being expirable: no reminder, no 21-day stale
-    // sweep, no terminal state, forever. Clearing the schedule is what lets the
-    // expiry sweep finish the job the reminder no longer can.
-    //
-    // The reminder itself is still not sent — spec §11 stands, a driver whose
-    // group is gone must not be messaged. Only the immortality is fixed.
-    if (row.group_active === false) {
-      // `onlyIfGroupInactive` re-checks the reason at UPDATE time: an admin can
-      // reactivate the group between the due-row read and this write, and
-      // nothing reschedules a reminder on reactivation — so a stale read would
-      // cost the newly-active group that reminder permanently.
-      // eslint-disable-next-line no-await-in-loop
-      const cleared = await ht
-        .cancelHomeTimeReminderSchedule(row.id, { onlyIfGroupInactive: true })
-        .catch(() => null);
-      if (cleared) standDown += 1;
-      continue;
-    }
-    const isFinal = Number(row.reminder_count) + 1 >= MAX_REMINDERS;
-    const nextReminderAt = isFinal
-      ? null
-      : DateTime.fromISO(now).plus({ hours: secondHours }).toISO();
-    try {
-      // eslint-disable-next-line no-await-in-loop
-      const claimed = await ht.claimHomeTimeReminder(row.id, {
-        expectedReminderCount: Number(row.reminder_count),
-        nowIso: now,
-        nextReminderAt,
-      });
-      if (!claimed) continue; // another tick / restart already handled it
-
-      const missingField = missingFieldFor(row);
-      const mention = buildDriverMention({
-        telegramUserId: row.telegram_user_id,
-        username: row.telegram_username,
-        displayName: [row.first_name, row.last_name].filter(Boolean).join(' ').trim() || null,
-        groupName: row.group_name,
-      });
-      // eslint-disable-next-line no-await-in-loop
-      const body = await buildReminderText(missingField, row.language);
-      const text = `${mention.mentionHtml} ${escapeHtml(body)}`;
-      const chatId = row.group_telegram_id || row.telegram_group_id;
-      const replyTo = row.root_message_id || row.clarification_message_id || null;
-
-      // Routed through the central driver channel rather than calling Telegram
-      // directly. The sweep already returns early when messaging is off, so this
-      // is defence in depth: the ONE choke point stays the only way a Home-Time
-      // message reaches a driver group, and a future edit here cannot bypass it.
-      // eslint-disable-next-line no-await-in-loop
-      await sendToDriverGroup(telegram, chatId, text, {
-        replyToMessageId: replyTo,
-        settings,
-        reason: 'clarification reminder',
-        extra: { parse_mode: 'HTML' },
-      });
-      sent += 1;
-
-      if (isFinal) {
-        // eslint-disable-next-line no-await-in-loop
-        await ht.markHomeTimeClarificationUnanswered(row.id).catch(() => {});
-        unanswered += 1;
-      }
-      console.log(`[HOME-TIME-REMINDER] Reminder #${Number(row.reminder_count) + 1}/${MAX_REMINDERS} sent for request #${row.id}.`);
-    } catch (err) {
-      errors += 1;
-      console.error(`[HOME-TIME-REMINDER] Failed reminder for request #${row.id}:`, err.message);
-    }
-  }
-  return {
-    enabled: true, due: rows.length, sent, unanswered, errors, standDown,
-  };
-}
-
-function escapeHtml(text) {
-  return String(text || '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-}
 
 /**
  * Close outdated home-time requests (dates passed / stale clarification),
@@ -240,20 +94,13 @@ async function runHomeTimeCleanupSweep(telegram, { nowIso } = {}) {
  * without driving the timer, which is the only reason `tick` itself is not
  * exported.
  */
-function reminderRunSummary(reminders, cleanup) {
-  if (reminders?.enabled === false) {
+function reminderRunSummary(cleanup) {
+  if (cleanup?.enabled === false) {
     return { blocked: 'Home Time is switched off in Settings' };
   }
-  const due = reminders?.due ?? 0;
   return {
-    due,
-    sent: reminders?.sent ?? 0,
+    scanned: cleanup?.scanned ?? 0,
     closed: cleanup?.closed ?? 0,
-    // Every due reminder failing to send is the pass not having run; one among
-    // several is a driver group to look at.
-    ...(due && reminders?.errors === due
-      ? { error: `none of the ${due} due reminder(s) could be sent` }
-      : {}),
   };
 }
 
@@ -267,7 +114,6 @@ async function tick() {
     // the honest ledger state is `blocked`. A feature nobody has enabled must
     // not look identical to one chasing reminders every five minutes.
     await withRunRecord('home_time_reminders', async () => reminderRunSummary(
-      await runHomeTimeReminderCheck(telegramClient),
       await runHomeTimeCleanupSweep(telegramClient),
     ));
     // Rides this service's cadence but is a SEPARATE responsibility: the two
@@ -316,10 +162,6 @@ function stopHomeTimeReminderService() {
 }
 
 module.exports = {
-  MAX_REMINDERS,
-  missingFieldFor,
-  buildReminderText,
-  runHomeTimeReminderCheck,
   runHomeTimeCleanupSweep,
   reminderRunSummary,
   startHomeTimeReminderService,

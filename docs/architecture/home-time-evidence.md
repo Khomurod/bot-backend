@@ -30,9 +30,51 @@ ledger for the worker's health; no human is told, because the calendar advancing
 is not an operational problem. `'expired'` stays in the CHECK constraint for the
 rows already carrying it — history is not rewritten — and nothing writes it.
 
-A driver-facing clarification (`awaiting_dates`, `awaiting_home_start`,
-`awaiting_return_to_road`) is NOT this. The bot is asking the DRIVER for dates,
-which is how the request gets recorded properly, and that stays.
+**Wenze does not ask the driver for dates.** The clarification conversation —
+`awaiting_dates`, `awaiting_home_start`, `awaiting_return_to_road`, the two
+reminders twelve hours apart, `clarification_unanswered`, and the staff alert
+that named the missing fields while driver messaging was off — is gone with the
+rest of it. It existed to collect two **planned** dates: a guess about next
+week, typed by somebody about to drive home. Home In and Home Out are not read
+from a plan (see the next section), so the whole conversation cost the driver
+messages and staff attention to produce a number nothing reads.
+
+What replaced it is one function, `recordAndPostRequest` in
+[`services/homeTimeClarificationFlow.js`](../../services/homeTimeClarificationFlow.js):
+record the request with whatever dates were actually said (any of them may be
+null), tell the three managers, reply to the driver once, stop. `status` is
+`recorded` and `next_reminder_at` is always null.
+
+`home_time_settings.driver_clarification_enabled` still governs one thing —
+whether Wenze may write in a driver's group. It has never governed whether a
+request is recorded, and it does not reach the manager notice, which goes to a
+staff chat.
+
+Rows already sitting in an `awaiting_*` status keep their status and their
+dates. Nothing chases them; the housekeeping sweep closes one whose window has
+passed, and a driver who writes again is heard as making a fresh request rather
+than answering a question Wenze has stopped asking.
+
+**`next_reminder_at` is history, and `isHomeTimeRequestOutdated` does not read
+it.** The predicate used to return false whenever the column was set —
+"reminders still pending, so the flow is still active" — which was true while a
+worker existed to send them and clear it. Nothing writes the column now, so on
+every row that predates the removal it is frozen at whatever was last
+scheduled. Reading it would have made those rows uncloseable **forever**, and an
+open request blocks its driver's next one: that driver could never ask for home
+time again. This subsystem has already been bitten once by exactly that
+immortality (see `docs/brief/home-time.md`), which is why the column is now
+inert rather than merely unwritten.
+
+**Asking twice is one ask.** `recorded` is deliberately outside
+`OPEN_REQUEST_STATUSES`, so it cannot serve as the duplicate guard the
+`awaiting_*` row used to be — and the manager notice is keyed `request:<id>`, so
+a second row tags all three managers again. Both recording paths (the driver's
+own message and an approver mention) therefore call `mergeIntoRecentRequest`
+first: a second ask within `DUPLICATE_WINDOW_HOURS` (24) updates the request
+already recorded, filling in any date now supplied, never overwriting one
+already there, and telling nobody. Removing a reminder loop only to replace it
+with duplicate notices would be no improvement.
 
 ## Home In and Home Out come from operational evidence
 
@@ -137,5 +179,11 @@ Guarantees, all covered by tests:
   `closed` status, and `status_changed_at` ignoring an ETA edit
 * `tests/homeTimeApproval.test.js`, `tests/homeTimeExpiry.test.js` — closing is
   housekeeping and nothing is announced
+* `tests/homeTimeSilentMode.test.js` — the managers are told in both modes, the
+  driver gets one acknowledgment and never a question, and the clarification
+  functions stay deleted
+* `tests/homeTimeReminderService.test.js` — the reminder loop stays gone
+* `tests/homeTimeCentralDates.test.js` — the Central-date rule where it still
+  lives: the manager notice and the housekeeping sweep
 * `tests/retentionSignals.test.js`, `tests/retentionWatch.test.js` — no signal
   is generated from a non-response

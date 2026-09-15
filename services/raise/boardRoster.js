@@ -216,7 +216,10 @@ async function blocked(deps, reason) {
  * @returns `{ ok, summary, reviews, teams, boardAgeMs }`
  */
 async function reconcileRosterFromBoard({ deps = defaultDeps(), now = Date.now() } = {}) {
-  const settings = await deps.boardSettings.getDispatchBoardSettings();
+  // `getBoardConfig` is the real server-side Board config API — see the note in
+  // services/homeTime/boardPresenceWatch.js for why the wrong name survived
+  // every static check.
+  const settings = await deps.boardSettings.getBoardConfig();
   const fresh = boardFreshness(settings, now);
   if (!fresh.ok) {
     await blocked(deps, fresh.reason);

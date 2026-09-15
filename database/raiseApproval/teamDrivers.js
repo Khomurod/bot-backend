@@ -232,7 +232,12 @@ async function applyBoardAssignment({
     );
     const existing = existingRes.rows[0] || null;
 
-    if (existing && existing.assignment_source === 'manual') {
+    // THE SAME RULE AS `lib/raise/rosterPlan.js isHumanOverride`, enforced here
+    // as well so the guarantee does not depend on the caller: a row is a
+    // person's decision only when somebody actually made one, which
+    // `markManualOverride` records as a timestamp. A row merely inherited from
+    // before the Board could place anybody has no timestamp and is reconcilable.
+    if (existing && existing.assignment_source === 'manual' && existing.manual_override_at != null) {
       await client.query('ROLLBACK');
       return { moved: false, heldByOverride: true, fromTeamId: existing.team_id };
     }
@@ -294,17 +299,21 @@ async function applyBoardAssignment({
 }
 
 /**
- * Take a board-placed driver off the roster.
+ * Take a board-owned driver off the roster.
  *
- * Soft, and only ever for a row reconciliation itself placed: a manual row is
- * somebody's decision and is not withdrawn because the Board stopped mentioning
- * them. Nothing is deleted, so a later question about the period is answerable.
+ * Soft, and never for a row a person deliberately placed: a standing override
+ * is somebody's decision and is not withdrawn because the Board stopped
+ * mentioning them. A LEGACY row — typed before the Board could place anybody,
+ * so carrying no override timestamp — IS withdrawable, because leaving it would
+ * keep a driver on a team the Board no longer agrees with for ever. Nothing is
+ * deleted, so a later question about the period is answerable.
  */
 async function retireBoardAssignment(id) {
   const res = await query(
     `UPDATE dispatch_team_drivers
         SET active = FALSE, reconciled_at = NOW(), updated_at = NOW()
-      WHERE id = $1 AND active = TRUE AND assignment_source = 'board'
+      WHERE id = $1 AND active = TRUE
+        AND NOT (assignment_source = 'manual' AND manual_override_at IS NOT NULL)
       RETURNING id`,
     [id]
   );
@@ -335,8 +344,20 @@ async function clearManualOverride(id) {
   return res.rows[0] || null;
 }
 
-/** Replace the full driver assignment for a team (transactional). */
-async function setTeamDrivers(teamId, drivers) {
+/**
+ * Replace the full driver assignment for a team (transactional).
+ *
+ * EVERY ROW IT WRITES IS STAMPED AS A HUMAN OVERRIDE, in the INSERT itself.
+ * Reconciliation tells a person's decision from an inherited row by
+ * `manual_override_at`, not by the word `manual` (see `applyBoardAssignment` and
+ * `lib/raise/rosterPlan.js isHumanOverride`). This function used to rely on the
+ * column DEFAULT, which supplies `assignment_source = 'manual'` and no
+ * timestamp — so an administrator typing a roster here would have produced rows
+ * the very next rebuild treated as legacy and reassigned from the Board,
+ * silently undoing what they had just typed. The stamp goes in the same
+ * statement as the row so there is no window in which an unstamped one exists.
+ */
+async function setTeamDrivers(teamId, drivers, { overriddenBy = null } = {}) {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -344,10 +365,12 @@ async function setTeamDrivers(teamId, drivers) {
     for (const d of drivers) {
       await client.query(
         `INSERT INTO dispatch_team_drivers
-           (team_id, driver_external_id, driver_normalized_name, driver_name)
-         VALUES ($1, $2, $3, $4)
+           (team_id, driver_external_id, driver_normalized_name, driver_name,
+            assignment_source, manual_override_at, manual_override_by)
+         VALUES ($1, $2, $3, $4, 'manual', NOW(), $5)
          ON CONFLICT (team_id, driver_normalized_name) DO NOTHING`,
-        [teamId, d.driver_external_id || null, d.driver_normalized_name, d.driver_name]
+        [teamId, d.driver_external_id || null, d.driver_normalized_name, d.driver_name,
+          overriddenBy || null]
       );
     }
     await client.query('COMMIT');

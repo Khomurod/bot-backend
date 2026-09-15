@@ -24,22 +24,13 @@ const ht = require('../database/homeTime');
 const recentBuffer = require('./recentMessageBuffer');
 const { callGeminiJson } = require('./geminiClient');
 const {
-  buildHomeTimeDateReplyPrompt,
-  parseHomeTimeWindowText,
-  isReasonableHomeWindow,
-} = require('./homeTimeRequestConstants');
-const {
   looksLikeTemporaryHomeStop, looksLikeOperationalContext, looksLikeFirstPersonStatus,
 } = require('./homeTimeSignals');
-const {
-  normalizeHomeTimeWindow, isReasonableWindow,
-  classifyWindowAgainstPolicy, reopenWindowForPolicy,
-  isUsableKnownReturnDate, resolveRequestReturnDate, isHomeTimeRequestOutdated,
-} = require('./homeTimeDateResolver');
+const { isHomeTimeRequestOutdated } = require('./homeTimeDateResolver');
 const { classifyHomeTimeMessage, isHomeTimeCandidate } = require('./homeTimeIntentService');
-// The "what did the driver say, and may we accept it" half — no Telegram, no
-// cards. Re-exported below so no importer of this module moves.
-const { windowFieldsToReask, parseHomeTimeDates } = require('./homeTimeWindowResolution');
+// The "what did the driver say" half — no Telegram, no cards. Re-exported below
+// so no importer of this module moves.
+const { parseHomeTimeDates } = require('./homeTimeWindowResolution');
 const homeTimeStatus = require('./homeTimeService');
 const {
   CALLBACK_PREFIX, buildCardText, buildDecidedCardText,
@@ -47,8 +38,7 @@ const {
 const { generateRequestText } = require('./homeTimeMessageComposer');
 const { reactToDriverMessage } = require('./homeTimeDriverChannel');
 const {
-  todayIsoChicago, askKindForWindow, postRequestCard,
-  sendPolicyResponse, completeAndRespond, advanceClarification, createClarification,
+  todayIsoChicago, postRequestCard, sendPolicyResponse, recordAndPostRequest,
 } = require('./homeTimeClarificationFlow');
 // The approver-tag (@mention) entry point and its legacy classifier; re-exported
 // below so existing importers of this module are unchanged.
@@ -56,10 +46,6 @@ const { classifyHomeTimeRequest, handleApproverMention } = require('./homeTimeAp
 // The decision workflow (approve/decline + card settle + approval announcement)
 // lives in a focused module; re-exported below so existing importers are unchanged.
 const { closeOutdatedRequest } = require('./homeTimeApproval');
-
-// Company time. Home time is scheduled, reported and reasoned about in Central
-// throughout this subsystem (see homeTimeDateResolver.js, which declares the same).
-const TZ = 'America/Chicago';
 
 /**
  * Confidence floor for accepting a NON-deterministic, AI-detected status change.
@@ -78,19 +64,16 @@ function messageIso(message) {
   return DateTime.now().toUTC().toISO();
 }
 
-/**
- * The CALENDAR DATE an instant falls on, in company time (Central).
+/*
+ * centralDate lived here.
  *
- * Home time is a Central-time business concept: `todayIsoChicago()` above, the
- * date resolver and every AI prompt in this subsystem all reason in
- * America/Chicago. Turning a UTC instant into a date WITHOUT a zone uses the
- * process default instead — UTC in production on Render — so a driver who
- * arrived home at 19:00 Central got tomorrow's date recorded as their home
- * start, shifting the whole window and its bonus math by a day.
+ * It turned the instant a driver reached home into a Central calendar date for
+ * the arrival clarification to record. Wenze no longer records a date from an
+ * arrival — Home In comes from the Dispatcher Board — so its one caller went
+ * with the clarification. The Central-date rule it existed to enforce is still
+ * live in `todayIsoChicago()`, in the housekeeping sweep and in the manager
+ * notice, and tests/homeTimeCentralDates.test.js pins it there.
  */
-function centralDate(iso) {
-  return DateTime.fromISO(iso).setZone(TZ).toISODate();
-}
 
 /** null when we cannot tell; true/false when the sender matches the group's driver. */
 async function senderIsDriverOf(group, message, profile) {
@@ -176,136 +159,44 @@ async function handleActualHomeArrival(telegram, group, message, { homeStartIso 
   try {
     if (!group || group.group_type !== 'driver') return;
 
-    // A complete/approved/open request already covers this — do not ask again or
-    // duplicate. (Repeated Status: Home also lands here and is a no-op.)
+    // THE DRIVER IS HOME. THAT IS THE FACT, AND IT IS ALREADY RECORDED.
+    //
+    // `applyStateTransition` opened the cycle before this was called, and the
+    // managers were told by its own notice. What used to happen next was a
+    // question — "when will you be back on the road?" — recorded as an
+    // `awaiting_return_to_road` clarification and then chased by reminders.
+    //
+    // That question is gone. The answer it wanted is Home Out, and Home Out is
+    // now read from the Dispatcher Board: the truck going back into the dispatch
+    // pool, or a real new load, says the stay ended. A date the driver guesses on
+    // the day they arrive is not evidence of anything, and asking for it cost a
+    // message into the driver's group and a reminder clock behind it.
+    //
+    // A stale open request is still closed, because a finished row must not
+    // block the next one. Nothing is asked, and nothing is scheduled.
     const open = await ht.getOpenHomeTimeRequestForGroup(group.id);
     if (open && isHomeTimeRequestOutdated(open, { todayIso: todayIsoChicago() })) {
-      // A stale/outdated open request must not block a fresh home arrival.
-      await closeOutdatedRequest(telegram, open);
-    } else if (open) {
-      if ((open.status === 'awaiting_home_start') && (homeStartIso)) {
-        // We were waiting only on the arrival date and now the driver is home:
-        // fill it from the actual arrival and, if that completes the window, post.
-        const settings = await ht.getHomeTimeSettings();
-        const homeStartDate = centralDate(homeStartIso);
-        const window = normalizeHomeTimeWindow({
-          knownHomeStart: homeStartDate, knownReturnToRoad: open.return_to_road_date,
-        });
-        if (window.complete) {
-          await completeAndRespond(telegram, group, open, window, message, { settings, language: open.language });
-        }
-      }
-      return;
+      await closeOutdatedRequest(telegram, open).catch(() => {});
     }
-
-    const settings = await ht.getHomeTimeSettings();
-    const homeStartDate = homeStartIso
-      ? centralDate(homeStartIso)
-      : centralDate(messageIso(message));
-
-    // A valid return-to-road date may already be on record from an APPROVED
-    // request (registered by the driver earlier, by a manager, or corrected in
-    // the admin panel — an approved manual entry carries it too). When it is, use
-    // it and do NOT ask the driver again: no duplicate clarification, no reminder.
-    // The completed cycle still links to this request at close time via
-    // findDecidedRequestNearDate, so efficiency/commitment reporting is intact.
-    const approved = await ht.getApprovedHomeTimeRequestForGroup(group.id).catch(() => null);
-    const knownReturn = approved ? resolveRequestReturnDate(approved) : null;
-    if (knownReturn && isUsableKnownReturnDate(knownReturn, homeStartDate)) {
-      console.log(`[HOME-TIME-REQ] ${group.group_name || `Group ${group.id}`} arrived home; reusing registered return-to-road ${knownReturn} (no clarification).`);
-      return;
-    }
-
-    const window = normalizeHomeTimeWindow({ homeStart: homeStartDate });
-    await createClarification(telegram, group, message, {
-      window, askKind: 'ask_unplanned_return', isUnplanned: true, settings,
-      language: null, verdict: { intent: 'actual_home_status', reason: 'Unplanned home arrival (no earlier complete request).' },
-    });
   } catch (err) {
     console.error('[HOME-TIME-REQ] handleActualHomeArrival error:', err.message);
   }
 }
 
-/**
- * Plain-text follow-up handler: understand a later message that answers an open
- * clarification even without Telegram's reply feature. Uses the AI intent
- * classifier with the open-clarification context so unrelated chatter (or someone
- * else's unrelated date) is NOT consumed. Never throws.
+/*
+ * handleHomeTimeClarificationReply and its back-compat alias
+ * handleHomeTimeDateReply lived here.
  *
- * This is also the SILENT capture path: while driver messaging is off the driver
- * gets no question, but if they mention their dates anyway the same request is
- * updated — and completed, with its approval card — without any reply to them.
+ * They understood a later message as an ANSWER to a question Wenze had asked
+ * about planned home dates. Wenze no longer asks: a request is recorded with
+ * whatever the driver said and delivered to the managers, and the dates that
+ * matter — when the driver actually got home and actually left again — come
+ * from the Dispatcher Board, not from a plan typed days in advance.
+ *
+ * Deleted rather than left unreachable. A retired path kept "just in case" is a
+ * path that comes back, and this one's whole purpose was to sustain a
+ * conversation that no longer starts.
  */
-async function handleHomeTimeClarificationReply(telegram, group, message) {
-  try {
-    if (!group || group.group_type !== 'driver') return;
-    if (message?.from?.is_bot) return;
-    const text = message?.text || message?.caption || '';
-    if (!text) return;
-
-    const open = await ht.getOpenClarificationForGroup(group.id);
-    if (!open) return; // nothing waiting
-    // A late reply must never reopen/complete an outdated clarification — close it.
-    if (isHomeTimeRequestOutdated(open, { todayIso: todayIsoChicago() })) {
-      await closeOutdatedRequest(telegram, open);
-      return;
-    }
-    if (!isHomeTimeCandidate(text, { hasOpenClarification: true })) return; // cheap gate
-
-    const profile = await db.getDriverProfileByGroupId(group.id).catch(() => null);
-    const senderIsDriver = await senderIsDriverOf(group, message, profile);
-    const openQuestion = open.status === 'awaiting_return_to_road'
-      ? 'What date will you be back on the road after home time?'
-      : (open.status === 'awaiting_home_start' ? 'What date will you arrive home?' : 'Which home-time dates do you want?');
-
-    const verdict = await classifyHomeTimeMessage({
-      transcript: recentBuffer.renderTranscript(group.telegram_group_id),
-      triggerText: text,
-      todayIso: todayIsoChicago(),
-      senderIsDriver,
-      hasOpenClarification: true,
-      openQuestion,
-      knownHomeStart: open.home_from || null,
-      knownReturnToRoad: open.return_to_road_date || null,
-    });
-
-    // Only consume messages that actually answer the clarification. An unrelated
-    // message (or someone else's stray date) is ignored.
-    const answers = verdict.intent === 'home_time_followup'
-      || (verdict.requestedHomeTime && (verdict.window.homeStartDate || verdict.window.returnToRoadDate));
-    const gotNewDate = verdict.window.homeStartDate || verdict.window.returnToRoadDate;
-    if (!answers || !gotNewDate) return;
-
-    const settings = await ht.getHomeTimeSettings();
-    const reask = windowFieldsToReask(verdict.window, settings);
-    if (verdict.window.complete && !reask.length
-      && isReasonableWindow(verdict.window.homeStartDate, verdict.window.returnToRoadDate, todayIsoChicago())) {
-      await completeAndRespond(telegram, group, open, verdict.window, message, {
-        settings, language: verdict.language,
-      });
-      return;
-    }
-    // A start date past the horizon is a mis-parse, not a request — ask about
-    // those dates again rather than storing them (§6.1).
-    const window = reask.length ? reopenWindowForPolicy(verdict.window, reask) : verdict.window;
-    // Still partial — advance and ask for the remaining date. The `< 2` guard is
-    // about an UNANSWERED clarification, where asking again for both would be
-    // repeating the original question; when this code cleared the fields itself
-    // the driver did answer, and dropping their message in silence would be the
-    // worst of the three outcomes.
-    if (window.missingFields.length
-      && (window.missingFields.length < 2 || reask.length)) {
-      await advanceClarification(telegram, group, open, window, message, {
-        settings, language: verdict.language,
-      });
-    }
-  } catch (err) {
-    console.error('[HOME-TIME-REQ] handleHomeTimeClarificationReply error:', err.message);
-  }
-}
-
-/** Back-compat alias — the bot now routes through processHomeTimeMessage. */
-const handleHomeTimeDateReply = handleHomeTimeClarificationReply;
 
 /**
  * Orchestrator called once per driver-group message by the bot pipeline. Takes the
@@ -345,18 +236,13 @@ async function processHomeTimeMessage(telegram, group, message, { statusResult =
     const text = message?.text || message?.caption || '';
     if (message?.from?.is_bot || !text) return;
 
-    let open = await ht.getOpenClarificationForGroup(group.id);
-    if (open && isHomeTimeRequestOutdated(open, { todayIso: todayIsoChicago() })) {
-      // Outdated clarification: close it and let this message be judged fresh
-      // (it might be a brand-new request), never fed into the stale one.
-      await closeOutdatedRequest(telegram, open);
-      open = null;
-    }
-    if (open) {
-      // Delegate to the dedicated follow-up handler (it re-reads `open`).
-      await handleHomeTimeClarificationReply(telegram, group, message);
-      return;
-    }
+    // A LEGACY OPEN CLARIFICATION NO LONGER SWALLOWS THE MESSAGE. Nothing
+    // creates these any more; the rows still in `awaiting_*` are from before the
+    // loop was removed. Closing one on sight means a driver who writes again is
+    // heard as making a fresh request rather than answering a question Wenze has
+    // stopped asking. The row itself is kept, with its dates.
+    const legacyOpen = await ht.getOpenClarificationForGroup(group.id);
+    if (legacyOpen) await closeOutdatedRequest(telegram, legacyOpen).catch(() => {});
 
     if (!isHomeTimeCandidate(text, { hasOpenClarification: false })) return;
 
@@ -390,33 +276,23 @@ async function processHomeTimeMessage(telegram, group, message, { statusResult =
       return;
     }
 
-    // Driver-initiated request (no approver tag) — open a clarification / post card.
+    // Driver-initiated request. RECORD IT, TELL THE MANAGERS, STOP.
+    //
+    // There is deliberately no branch here on whether the driver spelled out
+    // both dates. That branch used to decide between "post the card" and "open a
+    // clarification and start asking", and the asking half is gone: the planned
+    // dates it chased are a guess about the future, and Home In and Home Out are
+    // recorded from the Dispatcher Board and the driver's own status instead.
+    // Whatever dates were said are kept; the rest stay null.
     const { open: shouldOpen, reason: openReason } = shouldOpenRequest(verdict, { text });
     if (shouldOpen) {
       const settings = await ht.getHomeTimeSettings();
-      const reask = windowFieldsToReask(verdict.window, settings);
-      if (verdict.window.complete && !reask.length
-        && isReasonableWindow(verdict.window.homeStartDate, verdict.window.returnToRoadDate, todayIsoChicago())) {
-        // Reuse the approver flow's card path by opening then immediately completing.
-        const created = await createClarification(telegram, group, message, {
-          window: normalizeHomeTimeWindow({}), askKind: 'ask_both', isUnplanned: false,
-          settings, language: verdict.language, verdict,
-        });
-        await completeAndRespond(telegram, group, created, verdict.window, message, {
-          settings, language: verdict.language,
-        });
-        return;
-      }
-      // A start date past the horizon is a mis-parse, not a request (§6.1).
-      const openingWindow = reask.length
-        ? reopenWindowForPolicy(verdict.window, reask) : verdict.window;
-      await createClarification(telegram, group, message, {
-        window: openingWindow,
-        askKind: askKindForWindow(openingWindow),
-        isUnplanned: false,
+      await recordAndPostRequest(telegram, group, message, {
+        window: verdict.window,
         settings,
         language: verdict.language,
         verdict,
+        isUnplanned: false,
       });
     } else if (verdict.requestedHomeTime || verdict.intent === 'home_time_request') {
       console.log(`[HOME-TIME-REQ] Request refused for ${group.group_name || `Group ${group.id}`}: ${openReason}.`);
@@ -440,11 +316,8 @@ module.exports = {
   AI_STATUS_CONFIDENCE_MIN,
   evaluateAiStatusChange,
   shouldOpenRequest,
-  askKindForWindow,
   handleApproverMention,
   handleActualHomeArrival,
-  handleHomeTimeClarificationReply,
-  handleHomeTimeDateReply,
   processHomeTimeMessage,
   parseHomeTimeDates,
   postRequestCard,
@@ -453,7 +326,5 @@ module.exports = {
   buildCardText,
   buildDecidedCardText,
   sendPolicyResponse,
-  createClarification,
-  completeAndRespond,
   reactThumbsUp,
 };

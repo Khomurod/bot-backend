@@ -46,14 +46,39 @@ test('outdated: an awaiting clarification that already carries a past return dat
   );
 });
 
-test('NOT outdated: an active clarification with reminders still pending', () => {
+/*
+ * A LEGACY `next_reminder_at` IS NOT A REASON TO KEEP A REQUEST OPEN.
+ *
+ * This assertion used to read the other way — "reminders still pending, so the
+ * flow is still active" — and it was right while a reminder worker existed to
+ * send them and clear the column. That worker is gone. Nothing writes
+ * `next_reminder_at` any more, so on every row that predates the removal it is
+ * frozen at whatever was last scheduled, and reading it would have made those
+ * rows uncloseable forever. An open request blocks its driver's next one, so
+ * "forever" means that driver could never ask for home time again.
+ */
+test('outdated: a long-open legacy row, even with a reminder still scheduled', () => {
   assert.equal(
     isHomeTimeRequestOutdated({
       status: 'awaiting_return_to_road', home_from: '2026-05-01',
       next_reminder_at: '2026-07-13T18:00:00Z', requested_at: '2026-05-01T00:00:00Z',
     }, { todayIso: TODAY }),
-    false,
+    true,
+    'a frozen reminder timestamp must not keep a two-month-old request alive',
   );
+});
+
+test('a RECENT row is still left alone, reminder timestamp or not', () => {
+  for (const nextReminderAt of ['2026-07-13T18:00:00Z', null]) {
+    assert.equal(
+      isHomeTimeRequestOutdated({
+        status: 'awaiting_dates', next_reminder_at: nextReminderAt,
+        requested_at: '2026-07-12T00:00:00Z',
+      }, { todayIso: TODAY }),
+      false,
+      'the stale-anchor rule, not the reminder column, decides',
+    );
+  }
 });
 
 test('outdated: a stale clarification — reminders exhausted and long open', () => {
@@ -137,7 +162,9 @@ test('sweep closes only the outdated requests and settles their cards', async ()
     { id: 1, status: 'pending', driver_name: 'A', home_from: '2026-07-01', home_to: '2026-07-04', return_to_road_date: '2026-07-05', ...CARD }, // past → expire
     { id: 2, status: 'pending', home_from: '2026-07-12', return_to_road_date: '2026-07-20' }, // future → keep
     { id: 3, status: 'clarification_unanswered', home_from: '2026-05-01', next_reminder_at: null, requested_at: '2026-05-01T00:00:00Z' }, // stale → expire
-    { id: 4, status: 'awaiting_dates', next_reminder_at: '2026-07-13T18:00:00Z', requested_at: '2026-07-12T00:00:00Z' }, // active → keep
+    // Recent, so the stale-anchor rule keeps it — NOT the reminder timestamp,
+    // which is no longer read at all.
+    { id: 4, status: 'awaiting_dates', next_reminder_at: '2026-07-13T18:00:00Z', requested_at: '2026-07-12T00:00:00Z' }, // recent → keep
   ];
   const { mod, telegram, expired, edits } = loadApproval({ open });
   const summary = await mod.sweepOutdatedHomeTimeRequests(telegram, { todayIso: TODAY });

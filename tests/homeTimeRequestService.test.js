@@ -77,19 +77,20 @@ test('approver tag WITH dates but NO notification group → card is NOT posted t
   assert.equal(messageLinks.length, 0);
 });
 
-test('approver tag WITHOUT dates opens a clarification, replying to the tag message', async () => {
-  const { service, telegram, inserts, sends, clarMsgs } = loadService({
+test('approver tag WITHOUT dates records the request anyway and asks nothing', async () => {
+  const { service, telegram, inserts, sends } = loadService({
     gemini: { json: { is_home_time_request: true, confidence: 'high', dates_specified: false }, text: new Error('force fallback') },
   });
   await service.handleApproverMention(telegram, GROUP, { message_id: 42, text: 'he wants to go home @tomr_robins0n', from: { id: 1 } });
   assert.equal(inserts.length, 1);
-  assert.equal(inserts[0].status, 'awaiting_dates');
+  // Recorded, not awaiting. Missing dates are missing, not a question.
+  assert.equal(inserts[0].status, 'recorded');
   assert.equal(inserts[0].rootMessageId, 42);
-  assert.ok(inserts[0].nextReminderAt, 'first reminder scheduled');
-  assert.equal(sends.length, 1);
-  assert.match(sends[0].text, /dates/i);
-  assert.equal(sends[0].extra?.reply_to_message_id, 42, 'clarification replies to the tag message');
-  assert.equal(clarMsgs.length, 1);
+  assert.equal(inserts[0].nextReminderAt, null, 'nothing is ever scheduled');
+  assert.equal(inserts[0].homeFrom, null, 'a date nobody gave is not invented');
+  assert.equal(inserts[0].returnToRoadDate, null);
+  const asked = sends.filter((m) => /date|back on the road/i.test(m.text || ''));
+  assert.deepEqual(asked, [], 'the driver is not asked for dates');
 });
 
 test('approver tag is a no-op when an open request already exists', async () => {
@@ -148,36 +149,30 @@ test('approver tag, AI unavailable + errand wording → not surfaced', async () 
   assert.equal(sends.length, 0);
 });
 
-test('approver tag, AI unavailable + genuine "go home" wording → clarification still opens', async () => {
-  const { service, telegram, inserts, sends } = loadService({
-    gemini: { json: new Error('no key'), text: new Error('force fallback') },
+test('approver tag, AI unavailable + genuine "go home" wording → still recorded', async () => {
+  const { service, telegram, inserts } = loadService({
+    gemini: { json: new Error('AI down'), text: new Error('AI down') },
   });
   await service.handleApproverMention(telegram, GROUP, {
-    message_id: 10, text: 'driver wants to go home, been out 6 weeks @tomr_robins0n', from: { id: 1 },
+    message_id: 43, text: 'send him home please @tomr_robins0n', from: { id: 1 },
   });
-  assert.equal(inserts.length, 1, 'genuine time-off wording is still surfaced during an outage');
-  assert.equal(inserts[0].status, 'awaiting_dates');
-  assert.equal(sends.length, 1);
+  assert.equal(inserts.length, 1, 'an AI outage must not lose the request');
+  assert.equal(inserts[0].status, 'recorded');
+  assert.equal(inserts[0].nextReminderAt, null);
 });
 
-// ── handleActualHomeArrival (Status: Home without an earlier request) ──
-
-test('Status: Home with no earlier request asks ONLY for the return-to-road date, replying to it', async () => {
+test('Status: Home records the arrival and asks the driver nothing', async () => {
   const homeStartIso = TODAY.toUTC().toISO();
   const { service, telegram, inserts, sends } = loadService({
     open: null, homeStatus: { state: 'home', state_since: homeStartIso },
     gemini: { text: new Error('force fallback') },
   });
   await service.handleActualHomeArrival(telegram, GROUP, { message_id: 77, text: 'Status: Home', from: { id: 900 } }, { homeStartIso });
-  assert.equal(inserts.length, 1);
-  assert.equal(inserts[0].status, 'awaiting_return_to_road');
-  assert.equal(inserts[0].isUnplannedArrival, true);
-  assert.equal(inserts[0].homeFrom, TODAY.toISODate()); // home start = the Status: Home date
-  assert.equal(inserts[0].returnToRoadDate, null); // never fabricated
-  assert.equal(inserts[0].rootMessageId, 77);
-  assert.equal(sends.length, 1);
-  assert.equal(sends[0].extra?.reply_to_message_id, 77);
-  assert.match(sends[0].text, /back on the road/i);
+  // The cycle was already opened by applyStateTransition and the managers were
+  // already told. "When are you back?" is Home Out, and Home Out is read from
+  // the Dispatcher Board, not guessed by the driver on the day they arrive.
+  assert.deepEqual(inserts, [], 'no clarification row is created');
+  assert.deepEqual(sends, [], 'nothing is sent into the driver group');
 });
 
 test('Status: Home does NOT re-ask when a complete request already exists (no duplicate)', async () => {
@@ -215,103 +210,29 @@ test('Status: Home reuses an approved window that only carries home_to (last day
   assert.equal(sends.length, 0);
 });
 
-test('Status: Home still asks when the only approved return date is stale/unusable', async () => {
-  // Approved return date is in the past relative to this arrival → not reused.
+test('Status: Home with a stale approved return date still asks nothing', async () => {
   const homeStartIso = TODAY.toUTC().toISO();
-  const stalePast = TODAY.minus({ days: 30 }).toISODate();
   const { service, telegram, inserts, sends } = loadService({
-    open: null,
-    approvedRequest: { id: 14, status: 'approved', home_from: stalePast, return_to_road_date: stalePast },
+    open: null, approved: { id: 9, status: 'approved', return_to_road_date: '2020-01-01' },
     homeStatus: { state: 'home', state_since: homeStartIso },
     gemini: { text: new Error('force fallback') },
   });
-  await service.handleActualHomeArrival(telegram, GROUP, { message_id: 77, text: 'Status: Home', from: { id: 900 } }, { homeStartIso });
-  assert.equal(inserts.length, 1, 'a fresh clarification is opened');
-  assert.equal(inserts[0].status, 'awaiting_return_to_road');
-  assert.equal(sends.length, 1);
-  assert.match(sends[0].text, /back on the road/i);
+  await service.handleActualHomeArrival(telegram, GROUP, { message_id: 78, text: 'Status: Home', from: { id: 900 } }, { homeStartIso });
+  assert.deepEqual(inserts, []);
+  assert.deepEqual(sends, []);
 });
 
-// ── handleHomeTimeClarificationReply (plain-text follow-up) ──
-
-test('driver answers the return date (no Telegram reply) → completes + tells managers + 👍 ack', async () => {
-  const { service, telegram, fulfills, sends, reactions } = loadService({
-    clarification: { id: 42, status: 'awaiting_return_to_road', home_from: FROM, return_to_road_date: null, language: 'en' },
-    gemini: {
-      json: {
-        intent: 'home_time_followup', confidence: 90, isActualStatusChange: false,
-        requestedHomeTime: false, returnToRoadDate: TO,
-      },
-      text: 'Awesome, noted.',
-    },
-    // Compliant: 40 days on road, 4 home days.
-    homeStatus: { state: 'home', state_since: TODAY.toUTC().toISO() },
-    openStay: { road_started_at: TODAY.minus({ days: 40 }).toUTC().toISO(), days_on_road: 40 },
-  });
-  await service.handleHomeTimeClarificationReply(telegram, GROUP, { message_id: 88, text: `back on the road ${TO}`, from: { id: 900, username: 'driver' } });
-  assert.equal(fulfills.length, 1);
-  assert.equal(fulfills[0].payload.returnToRoadDate, TO);
-  // one manager notice (notification group) + one ack (driver group)
-  assert.ok(sends.length >= 2, 'notice and acknowledgment both sent');
-  const notice = sends.find((s) => s.chatId === NOTIFY_GROUP_ID);
-  const ack = sends.find((s) => String(s.chatId) === String(GROUP.telegram_group_id));
-  assert.ok(notice, 'managers told');
-  assert.equal(notice.extra?.reply_markup, undefined, 'and told without buttons');
-  assert.match(notice.text, /Home-Time Request/);
-  assert.ok(ack, 'driver acknowledged');
-  assert.equal(ack.extra?.reply_to_message_id, 88, 'ack replies to the driver message');
-  assert.equal(reactions.length, 1, 'compliant → 👍 reaction on the driver message');
-  assert.equal(reactions[0].chatId, GROUP.telegram_group_id, 'reaction is in the driver group');
-});
-
-test('over-home window → firm policy reminder, NO 👍', async () => {
-  const longReturn = TODAY.plus({ days: 10 }).toISODate(); // ~10 home days > 4
-  const { service, telegram, fulfills, sends, reactions } = loadService({
-    clarification: { id: 42, status: 'awaiting_return_to_road', home_from: TODAY.toISODate(), return_to_road_date: null },
-    gemini: {
-      json: {
-        intent: 'home_time_followup', confidence: 90, isActualStatusChange: false, returnToRoadDate: longReturn,
-      },
-      text: new Error('force fallback'),
-    },
-    homeStatus: { state: 'home', state_since: TODAY.toUTC().toISO() },
-    openStay: { road_started_at: TODAY.minus({ days: 40 }).toUTC().toISO(), days_on_road: 40 },
-  });
-  await service.handleHomeTimeClarificationReply(telegram, GROUP, { message_id: 88, text: `back ${longReturn}`, from: { id: 900 } });
-  assert.equal(fulfills.length, 1);
-  assert.equal(reactions.length, 0, 'not compliant → no 👍');
-  const warning = sends.find((s) => /4 weeks on the road/i.test(s.text));
-  assert.ok(warning, 'firm policy reminder sent');
-  assert.equal(warning.chatId, GROUP.telegram_group_id, 'under-allowance reminder stays in the driver group');
-});
-
-test('unrelated plain text is NOT consumed as an answer', async () => {
-  const { service, telegram, fulfills, sends } = loadService({
-    clarification: { id: 42, status: 'awaiting_return_to_road', home_from: FROM },
-    gemini: { json: { intent: 'unrelated', confidence: 95, isActualStatusChange: false } },
-  });
-  await service.handleHomeTimeClarificationReply(telegram, GROUP, { message_id: 88, text: 'ok thanks boss', from: { id: 900 } });
-  assert.equal(fulfills.length, 0);
-  assert.equal(sends.length, 0);
-});
-
-test('no open clarification → follow-up handler is a no-op', async () => {
-  const { service, telegram, fulfills } = loadService({ clarification: null });
-  await service.handleHomeTimeClarificationReply(telegram, GROUP, { message_id: 88, text: `back ${TO}`, from: { id: 900 } });
-  assert.equal(fulfills.length, 0);
-});
-
-// ── processHomeTimeMessage orchestration ──
-
-test('orchestrator: road→home transition triggers the unplanned-arrival ask', async () => {
+test('orchestrator: road→home transition asks nothing and creates no clarification', async () => {
   const homeStartIso = TODAY.toUTC().toISO();
-  const { service, telegram, inserts } = loadService({ open: null, homeStatus: { state: 'home', state_since: homeStartIso }, gemini: { text: new Error('fb') } });
-  await service.processHomeTimeMessage(telegram, GROUP, { message_id: 77, text: 'Status: Home', from: { id: 900 } }, {
-    statusResult: { transition: 'road_to_home', eventAt: homeStartIso },
-    mentionsApprover: false,
+  const { service, telegram, inserts, sends } = loadService({
+    open: null, homeStatus: { state: 'home', state_since: homeStartIso },
+    gemini: { text: new Error('force fallback') },
   });
-  assert.equal(inserts.length, 1);
-  assert.equal(inserts[0].status, 'awaiting_return_to_road');
+  await service.processHomeTimeMessage(telegram, GROUP, { message_id: 79, text: 'Status: Home', from: { id: 900 } }, {
+    statusResult: { transition: 'road_to_home', eventAt: homeStartIso },
+  });
+  assert.deepEqual(inserts, []);
+  assert.deepEqual(sends, []);
 });
 
 test('orchestrator: repeated same-status line does nothing conversational', async () => {
@@ -324,64 +245,38 @@ test('orchestrator: repeated same-status line does nothing conversational', asyn
   assert.equal(sends.length, 0);
 });
 
-test('an APPROVER-TAGGED request past the horizon is asked about too', async () => {
-  // A mention makes a request more official, not more likely to be right about
-  // the year. This path inserts a complete window directly and was gated only on
-  // `isReasonableHomeWindow`'s one-year horizon, so 121–365 days out went in as
-  // `pending` through a different door from the conversational one.
-  const farOut = TODAY.plus({ days: 200 });
+test('an APPROVER-TAGGED request past the horizon is recorded without its bad date', async () => {
+  const farOut = TODAY.plus({ days: 400 }).toISODate();
   const { service, telegram, inserts, sends } = loadService({
+    gemini: { json: { is_home_time_request: true, confidence: 'high', dates_specified: true, home_from: farOut } },
+  });
+  await service.handleApproverMention(telegram, GROUP, {
+    message_id: 51, text: `home ${farOut} @tomr_robins0n`, from: { id: 1 },
+  });
+  assert.equal(inserts.length, 1, 'the request is still recorded');
+  assert.equal(inserts[0].status, 'recorded');
+  assert.equal(inserts[0].nextReminderAt, null);
+  const asked = sends.filter((m) => /date|back on the road/i.test(m.text || ''));
+  assert.deepEqual(asked, [], 'a mis-parsed year is not a reason to interrogate the driver');
+});
+
+test('a home start a year out is recorded, and the driver is not interrogated', async () => {
+  const farOut = TODAY.plus({ days: 380 }).toISODate();
+  const { service, telegram, inserts, sends } = loadService({
+    open: null,
     gemini: {
       json: {
         is_home_time_request: true, confidence: 'high', dates_specified: true,
-        home_from: farOut.toISODate(), home_to: farOut.plus({ days: 3 }).toISODate(),
-      },
-    },
-  });
-
-  await service.handleApproverMention(telegram, GROUP, {
-    message_id: 10, text: `home ${farOut.toISODate()} @tomr_robins0n`, from: { id: 1, username: 'rep' },
-  });
-
-  assert.equal(inserts.length, 1, 'a clarification is opened rather than a pending request');
-  assert.equal(inserts[0].status, 'awaiting_dates');
-  assert.ok(!inserts[0].homeFrom && !inserts[0].home_from, 'and the far-out date is not written down');
-  assert.equal(sends.some((s) => s.extra?.reply_markup), false,
-    'and no approval card is posted for a window nobody has agreed is real');
-});
-
-test('a home start a year out is ASKED ABOUT, not stored as a request', async () => {
-  // Request 139 holds `home_from 2027-01-02`. Nothing questioned it, because
-  // `isReasonableWindow`'s horizon is a full year and a mis-parsed year lands
-  // comfortably inside it. There is nothing here to record and nothing to
-  // answer — only a date to ask about again.
-  const farOut = TODAY.plus({ days: 200 });
-  const { service, telegram, inserts, sends } = loadService({
-    open: null, clarification: null,
-    homeStatus: { state: 'road', state_since: TODAY.minus({ days: 30 }).toUTC().toISO() },
-    gemini: {
-      json: {
-        intent: 'home_time_request', confidence: 95, isActualStatusChange: false,
-        requestedHomeTime: true,
-        homeStartDate: farOut.toISODate(),
-        returnToRoadDate: farOut.plus({ days: 3 }).toISODate(),
+        home_from: farOut, intent: 'home_time_request',
       },
     },
   });
   await service.processHomeTimeMessage(telegram, GROUP, {
-    message_id: 7, text: `home ${farOut.toISODate()} back ${farOut.plus({ days: 3 }).toISODate()}`,
-    from: { id: 900 },
+    message_id: 52, text: `I want to go home ${farOut}`, from: { id: 900 },
   }, { statusResult: null, mentionsApprover: false });
-
-  assert.equal(inserts.length, 1, 'a clarification is opened');
-  assert.ok(!inserts[0].homeFrom && !inserts[0].home_from,
-    'and the far-out start is NOT written down — that is the half in dispute');
-  assert.ok(!inserts[0].returnToRoadDate && !inserts[0].return_to_road_date,
-    'and neither is the equally far-future return date it was paired with');
-  assert.equal(inserts[0].status, 'awaiting_dates',
-    'a mis-parsed year puts BOTH ends past the horizon, so both are asked about; '
-    + 'keeping the return would let the corrected start merge with a stale one');
-  assert.ok(sends.length >= 1, 'the driver is asked');
+  const asked = sends.filter((m) => /date|back on the road/i.test(m.text || ''));
+  assert.deepEqual(asked, [], 'no clarification is opened for a date that parsed oddly');
+  for (const row of inserts) assert.equal(row.nextReminderAt, null);
 });
 
 test('orchestrator: AI "actual_home_status" on a brief ERRAND stop does NOT flip the tracker or ask', async () => {
@@ -439,22 +334,6 @@ test('approver tag: an OUTDATED open request is auto-closed and a fresh request 
   assert.ok(sends.length >= 1, 'a new card/message was sent');
 });
 
-test('late reply to an OUTDATED clarification is ignored (expired, never completed)', async () => {
-  const { service, telegram, fulfills, updates, expiries } = loadService({
-    clarification: {
-      id: 42, status: 'awaiting_return_to_road', home_from: PAST_FROM,
-      return_to_road_date: null, next_reminder_at: null, requested_at: `${PAST_FROM}T00:00:00Z`,
-    },
-    gemini: { json: { intent: 'home_time_followup', confidence: 90, returnToRoadDate: TO } },
-  });
-  await service.handleHomeTimeClarificationReply(telegram, GROUP, {
-    message_id: 88, text: `back ${TO}`, from: { id: 900 },
-  });
-  assert.deepEqual(expiries, [42], 'the stale clarification was expired');
-  assert.equal(fulfills.length, 0, 'the expired request is never completed');
-  assert.equal(updates.length, 0, 'the expired request is never advanced');
-});
-
 test('orchestrator: an OUTDATED open clarification is expired and the message is not fed to it', async () => {
   const { service, telegram, fulfills, inserts, expiries } = loadService({
     clarification: {
@@ -471,18 +350,18 @@ test('orchestrator: an OUTDATED open clarification is expired and the message is
   assert.equal(inserts.length, 0);
 });
 
-test('actual home arrival: an OUTDATED open request does not block a fresh unplanned-arrival flow', async () => {
+test('actual home arrival: an OUTDATED open request is closed and nothing is asked', async () => {
   const homeStartIso = TODAY.toUTC().toISO();
-  const { service, telegram, inserts, expiries } = loadService({
-    open: { id: 1, status: 'pending', home_from: PAST_FROM, return_to_road_date: PAST_RETURN },
+  const { service, telegram, inserts, sends, expiries } = loadService({
+    open: { id: 7, status: 'awaiting_return_to_road', home_from: '2020-01-01', home_to: '2020-01-05' },
     homeStatus: { state: 'home', state_since: homeStartIso },
     gemini: { text: new Error('force fallback') },
   });
   await service.handleActualHomeArrival(telegram, GROUP, {
-    message_id: 77, text: 'Status: Home', from: { id: 900 },
+    message_id: 80, text: 'Status: Home', from: { id: 900 },
   }, { homeStartIso });
-  assert.deepEqual(expiries, [1], 'the stale request was expired');
-  assert.equal(inserts.length, 1, 'a fresh unplanned-arrival clarification was opened');
-  assert.equal(inserts[0].status, 'awaiting_return_to_road');
-  assert.equal(inserts[0].isUnplannedArrival, true);
+  assert.deepEqual(expiries, [7], 'a finished row must not block the next one');
+  assert.deepEqual(inserts, [], 'and nothing new is opened to replace it');
+  assert.deepEqual(sends, []);
 });
+

@@ -1,24 +1,40 @@
+'use strict';
+
 /**
  * Home-Time silent mode, end to end through the real orchestrator.
  *
- * With home_time_settings.driver_clarification_enabled = false the feature must
- * keep working COMPLETELY — detect, record, capture later dates, and post the
- * approval card — while saying absolutely nothing in the driver's group. Staff
- * get one internal alert instead.
+ * THE RULE THIS FILE PROTECTS. `home_time_settings.driver_clarification_enabled`
+ * governs one thing and one thing only: whether Wenze may write in a DRIVER's
+ * group. It has never governed whether a request is recorded, and it must never
+ * govern whether the three managers are told — that notice goes to the staff
+ * notification group, which is never a driver's chat.
+ *
+ * WHAT CHANGED. These tests used to describe a clarification conversation: with
+ * messaging off the request opened `awaiting_dates`, was stamped
+ * `clarification_channel = internal`, and staff got an alert saying which dates
+ * were missing; with messaging on the driver was ASKED for those dates and a
+ * reminder was scheduled. None of that happens now. Wenze does not ask a driver
+ * for planned dates at all — Home In and Home Out are read from the Dispatcher
+ * Board — so a request is recorded, the managers are told, the driver gets at
+ * most one reply, and it is finished. The switch now changes exactly one
+ * observable thing: that reply.
  *
  * These tests drive services/homeTimeRequestService with its DB / AI / Telegram
  * dependencies mocked by the shared harness, so they exercise the real wiring
- * between the orchestrator, the clarification flow, the driver channel and the
- * internal alert.
+ * between the orchestrator, the request-delivery flow, the driver channel and
+ * the manager notice.
  */
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 
 const {
-  FROM, TO, LAST_DAY, NOTIFY_GROUP_ID, INTERNAL_GROUP_ID, GROUP, loadService,
+  TODAY, NOTIFY_GROUP_ID, GROUP, loadService,
 } = require('./helpers/homeTimeRequestServiceHarness');
 
-// A driver-initiated request with no dates → a clarification would normally open.
+// A driver-initiated request with no dates — once the trigger for the whole
+// clarification apparatus, now simply a request with two null columns.
 const REQUEST_NO_DATES = {
   intent: 'home_time_request', confidence: 90, isActualStatusChange: false,
   requestedHomeTime: true, language: 'en',
@@ -31,8 +47,22 @@ const DRIVER_MSG = {
   text: 'I need some home time soon, been out 6 weeks',
 };
 
+/** Silent: driver messaging off. `gemini.text` errors so the deterministic
+ *  wording is used and a test can assert the exact sentence. */
 function silent(extra = {}) {
-  return loadService({ gemini: { json: REQUEST_NO_DATES }, driverMessaging: false, ...extra });
+  return loadService({
+    gemini: { json: REQUEST_NO_DATES, text: new Error('force fallback') },
+    driverMessaging: false,
+    ...extra,
+  });
+}
+
+function loud(extra = {}) {
+  return loadService({
+    gemini: { json: REQUEST_NO_DATES, text: new Error('force fallback') },
+    driverMessaging: true,
+    ...extra,
+  });
 }
 
 // ── the driver hears nothing ──
@@ -40,175 +70,185 @@ function silent(extra = {}) {
 test('SILENT: a detected request sends NOTHING to the driver group', async () => {
   const h = silent();
   await h.service.processHomeTimeMessage(h.telegram, GROUP, DRIVER_MSG, {});
-  assert.equal(h.driverSends().length, 0, 'no clarification question to the driver');
+  assert.equal(h.driverSends().length, 0, 'not one word into the driver chat');
   assert.equal(h.reactions.length, 0, 'no reaction either');
 });
 
-test('SILENT: the request is still recorded, with dates, status and AI reasoning', async () => {
+test('SILENT: the request is still recorded, with its intent and AI reasoning', async () => {
   const h = silent();
   await h.service.processHomeTimeMessage(h.telegram, GROUP, DRIVER_MSG, {});
   assert.equal(h.inserts.length, 1, 'the request is still created');
   const row = h.inserts[0];
-  assert.equal(row.status, 'awaiting_dates');
+  assert.equal(row.status, 'recorded', 'recorded, never awaiting anybody');
   assert.equal(row.detectedIntent, 'home_time_request');
   assert.equal(row.aiConfidence, 90);
   assert.match(row.aiReasoning, /asking for home time/i);
   assert.equal(row.groupId, GROUP.id);
 });
 
-test('SILENT: the request is stamped clarification_channel = internal', async () => {
+test('SILENT: missing dates stay missing — they never become a question', async () => {
   const h = silent();
   await h.service.processHomeTimeMessage(h.telegram, GROUP, DRIVER_MSG, {});
-  assert.equal(h.inserts[0].clarificationChannel, 'internal');
+  const row = h.inserts[0];
+  assert.equal(row.homeFrom, null);
+  assert.equal(row.returnToRoadDate, null);
+  assert.equal(row.nextReminderAt, null, 'nothing is scheduled, so nothing can leak later');
 });
 
-test('SILENT: no reminder is scheduled, so none can leak or replay later', async () => {
+// ── the managers hear about it, in BOTH modes ──
+
+test('SILENT: the three managers are still told — the switch does not reach them', async () => {
   const h = silent();
   await h.service.processHomeTimeMessage(h.telegram, GROUP, DRIVER_MSG, {});
-  assert.equal(h.inserts[0].nextReminderAt, null);
-});
-
-// ── staff hear about it ──
-
-test('SILENT: exactly one internal alert is sent, to the configured staff group', async () => {
-  const h = silent();
-  await h.service.processHomeTimeMessage(h.telegram, GROUP, DRIVER_MSG, {});
-  const internal = h.internalSends();
-  assert.equal(internal.length, 1);
-  assert.equal(internal[0].chatId, INTERNAL_GROUP_ID);
-});
-
-test('SILENT: the internal alert carries the driver, group, message and gaps', async () => {
-  const h = silent();
-  await h.service.processHomeTimeMessage(h.telegram, GROUP, DRIVER_MSG, {});
-  const { text } = h.internalSends()[0];
-  assert.match(text, /Pascal F/, 'driver name');
-  assert.match(text, /96266/, 'unit number');
-  assert.match(text, /WENZE UNIT # 96266/, 'source driver group');
-  assert.match(text, /been out 6 weeks/, 'original message');
-  assert.match(text, /@tomr_robins0n/);
-  assert.match(text, /@SaffieBNett/);
-  assert.match(text, /arrive-home date and return-to-road date/, 'what is missing');
-});
-
-test('SILENT: DUPLICATE PREVENTION — a repeated detection does not re-alert', async () => {
-  const h = silent();
-  await h.service.processHomeTimeMessage(h.telegram, GROUP, DRIVER_MSG, {});
-  await h.service.processHomeTimeMessage(h.telegram, GROUP, DRIVER_MSG, {});
-  // Two requests were created (two separate detections), but the SAME request id
-  // is never alerted twice — the atomic claim is what guarantees it.
-  assert.equal(new Set(h.internalClaims).size, h.internalClaims.length,
-    'no request id claimed more than once');
-});
-
-test('SILENT: an unconfigured internal group loses no data', async () => {
-  const h = silent({ internalGroupId: null });
-  await h.service.processHomeTimeMessage(h.telegram, GROUP, DRIVER_MSG, {});
-  assert.equal(h.sends.length, 0, 'nothing sent anywhere');
-  assert.equal(h.inserts.length, 1, 'the request is STILL recorded for the admin panel');
-  assert.equal(h.inserts[0].clarificationChannel, 'internal');
-});
-
-// ── later silent date capture ──
-
-const OPEN_CLARIFICATION = {
-  id: 77,
-  status: 'awaiting_return_to_road',
-  home_from: FROM,
-  home_to: null,
-  return_to_road_date: null,
-  root_message_id: 9001,
-  language: 'en',
-  requested_at: new Date().toISOString(),
-};
-
-const FOLLOWUP_MSG = {
-  message_id: 9100, date: Math.floor(Date.now() / 1000),
-  from: { id: 900, username: 'driver' },
-  text: `I'll be back on the road ${TO}`,
-};
-
-const FOLLOWUP_VERDICT = {
-  intent: 'home_time_followup', confidence: 95, isActualStatusChange: false,
-  requestedHomeTime: false, language: 'en',
-  homeStartDate: FROM, returnToRoadDate: TO, lastDayHome: LAST_DAY,
-  reason: 'Driver supplied the return date.',
-};
-
-test('SILENT: a date the driver volunteers later is captured on the SAME request', async () => {
-  const h = loadService({
-    gemini: { json: FOLLOWUP_VERDICT },
-    clarification: OPEN_CLARIFICATION,
-    driverMessaging: false,
-  });
-  await h.service.processHomeTimeMessage(h.telegram, GROUP, FOLLOWUP_MSG, {});
-  assert.equal(h.fulfills.length, 1, 'the open request is completed');
-  assert.equal(h.fulfills[0].id, 77, 'the SAME request, not a new one');
-  assert.equal(h.fulfills[0].payload.returnToRoadDate, TO);
-});
-
-test('SILENT: completing the dates still tells the three managers', async () => {
-  const h = loadService({
-    gemini: { json: FOLLOWUP_VERDICT },
-    clarification: OPEN_CLARIFICATION,
-    driverMessaging: false,
-  });
-  await h.service.processHomeTimeMessage(h.telegram, GROUP, FOLLOWUP_MSG, {});
   const cards = h.notifySends();
-  assert.equal(cards.length, 1, 'the manager notice is unaffected by silent mode');
+  assert.equal(cards.length, 1, 'the staff notice is not a driver message');
   assert.equal(cards[0].chatId, NOTIFY_GROUP_ID);
   assert.equal(cards[0].extra?.reply_markup, undefined, 'and it carries no decision buttons');
   for (const who of ['@tomr_robins0n', '@SaffieBNett', '@amelia_wenze']) {
     assert.ok(cards[0].text.includes(who), `${who} is tagged`);
   }
+  assert.match(cards[0].text, /PASCAL F \(Unit 96266\)/, 'who it is about');
 });
 
-test('SILENT: completing the dates still says nothing to the driver', async () => {
-  const h = loadService({
-    gemini: { json: FOLLOWUP_VERDICT },
-    clarification: OPEN_CLARIFICATION,
-    driverMessaging: false,
-  });
-  await h.service.processHomeTimeMessage(h.telegram, GROUP, FOLLOWUP_MSG, {});
-  assert.equal(h.driverSends().length, 0, 'no acknowledgment and no policy warning');
-  assert.equal(h.reactions.length, 0, 'no 👍 to the driver');
+test('the manager notice is IDENTICAL whether or not the driver may be messaged', async () => {
+  const off = silent();
+  await off.service.processHomeTimeMessage(off.telegram, GROUP, DRIVER_MSG, {});
+  const on = loud();
+  await on.service.processHomeTimeMessage(on.telegram, GROUP, DRIVER_MSG, {});
+  assert.equal(off.notifySends()[0].text, on.notifySends()[0].text);
 });
 
-// ── the same flows with messaging ON are unchanged ──
-
-test('ENABLED: the driver IS asked, and no internal alert is raised', async () => {
-  const h = loadService({ gemini: { json: REQUEST_NO_DATES }, driverMessaging: true });
+test('SILENT: no internal clarification alert is raised — there is nothing to ask', async () => {
+  const h = silent();
   await h.service.processHomeTimeMessage(h.telegram, GROUP, DRIVER_MSG, {});
-  assert.equal(h.driverSends().length, 1, 'the driver is asked for dates');
-  assert.equal(h.internalSends().length, 0, 'no internal alert while messaging is on');
-  assert.equal(h.inserts[0].clarificationChannel, 'driver');
-  assert.ok(h.inserts[0].nextReminderAt, 'a reminder IS scheduled');
+  assert.equal(h.internalSends().length, 0,
+    'the staff alert existed to say which dates were missing; nothing asks for dates now');
+  assert.equal(h.internalClaims.length, 0, 'and nothing is enqueued for the alert worker');
 });
 
-test('ENABLED: completing the dates acknowledges the driver as before', async () => {
-  const h = loadService({
-    gemini: { json: FOLLOWUP_VERDICT },
-    clarification: OPEN_CLARIFICATION,
-    driverMessaging: true,
-  });
-  await h.service.processHomeTimeMessage(h.telegram, GROUP, FOLLOWUP_MSG, {});
-  assert.equal(h.notifySends().length, 1, 'card still posted');
-  assert.equal(h.driverSends().length, 1, 'driver still gets the policy response');
+test('SILENT: an unconfigured staff group loses no data', async () => {
+  const h = silent({ notifyGroupId: null });
+  await h.service.processHomeTimeMessage(h.telegram, GROUP, DRIVER_MSG, {});
+  assert.equal(h.sends.length, 0, 'nothing sent anywhere');
+  assert.equal(h.inserts.length, 1, 'the request is STILL recorded for the admin panel');
+  assert.equal(h.inserts[0].status, 'recorded');
 });
 
-// ── toggling ──
+// ── with messaging ON, the driver gets a reply, not a question ──
 
-test('TOGGLING off then on does not replay anything for the old request', async () => {
-  // Opened while silent: no reminder scheduled, channel internal, staff alerted.
+test('ENABLED: the driver gets ONE acknowledgment, and it asks for nothing', async () => {
+  const h = loud();
+  await h.service.processHomeTimeMessage(h.telegram, GROUP, DRIVER_MSG, {});
+  const sent = h.driverSends();
+  assert.equal(sent.length, 1, 'exactly one message, not a question and a reminder');
+  assert.equal(sent[0].text, 'Awesome, I took note. Thanks for letting me know.');
+  assert.equal(sent[0].text.includes('?'), false, 'Wenze no longer asks the driver anything');
+  assert.equal(h.reactions.length, 1, 'and a 👍 on the message it is replying to');
+});
+
+test('ENABLED: the request is recorded exactly as it is while silent', async () => {
+  const h = loud();
+  await h.service.processHomeTimeMessage(h.telegram, GROUP, DRIVER_MSG, {});
+  assert.equal(h.inserts.length, 1);
+  assert.equal(h.inserts[0].status, 'recorded');
+  assert.equal(h.inserts[0].nextReminderAt, null, 'a reminder is never scheduled, in either mode');
+  assert.equal(h.internalSends().length, 0);
+});
+
+// ── the shapes that must stay gone ──
+
+test('no request path can open an awaiting_* status any more', () => {
+  const flow = fs.readFileSync(
+    path.resolve(__dirname, '../services/homeTimeClarificationFlow.js'), 'utf8'
+  );
+  const code = flow.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  for (const gone of [
+    'createClarification',
+    'advanceClarification',
+    'statusForMissingFields',
+    'notifyInternalClarification',
+    'reminderTimeIfAllowed',
+  ]) {
+    assert.equal(code.includes(gone), false,
+      `${gone} must not be reachable — a retired conversation kept "just in case" comes back`);
+  }
+});
+
+test('TOGGLING off then on replays nothing, because nothing was ever scheduled', async () => {
   const off = silent();
   await off.service.processHomeTimeMessage(off.telegram, GROUP, DRIVER_MSG, {});
   assert.equal(off.inserts[0].nextReminderAt, null);
   assert.equal(off.driverSends().length, 0);
 
-  // Switched back on. A NEW detection behaves normally; the old request has no
-  // schedule to fire, so nothing is replayed to the driver about it.
-  const on = loadService({ gemini: { json: REQUEST_NO_DATES }, driverMessaging: true });
+  const on = loud();
   await on.service.processHomeTimeMessage(on.telegram, GROUP, DRIVER_MSG, {});
-  assert.equal(on.driverSends().length, 1, 'only the new request is asked about');
-  assert.equal(on.internalSends().length, 0);
+  assert.equal(on.driverSends().length, 1, 'only the new request is acknowledged');
+  assert.equal(on.inserts[0].nextReminderAt, null, 'and it too schedules nothing');
+});
+
+// ── asking twice is still one ask ──
+
+test('a SECOND message from the same driver does not record a second request', async () => {
+  const h = loud();
+  await h.service.processHomeTimeMessage(h.telegram, GROUP, DRIVER_MSG, {});
+  await h.service.processHomeTimeMessage(
+    h.telegram, GROUP,
+    { ...DRIVER_MSG, message_id: 9002, text: 'I really need some home time, been out 6 weeks' }, {}
+  );
+  assert.equal(h.inserts.length, 1, 'one ask, one row');
+  assert.equal(h.notifySends().length, 1,
+    'and the three managers are tagged once — the notice key is derived from the request id, '
+    + 'so a second row would have tagged them again');
+});
+
+test('the repeat is MERGED, not dropped: a date supplied later is kept', async () => {
+  const h = loud();
+  await h.service.processHomeTimeMessage(h.telegram, GROUP, DRIVER_MSG, {});
+  assert.equal(h.inserts[0].homeFrom, null, 'the first message carried no dates');
+
+  const later = TODAY.plus({ days: 4 }).toISODate();
+  const h2 = loadService({
+    gemini: {
+      json: {
+        intent: 'home_time_request', confidence: 90, isActualStatusChange: false,
+        requestedHomeTime: true, language: 'en', homeStartDate: later,
+        reason: 'Driver named a date.',
+      },
+      text: new Error('force fallback'),
+    },
+    driverMessaging: true,
+    // The request the earlier message recorded, as the database would return it.
+    recentRecorded: { id: 99, home_from: null, home_to: null, return_to_road_date: null },
+  });
+  await h2.service.processHomeTimeMessage(
+    h2.telegram, GROUP, { ...DRIVER_MSG, message_id: 9003, text: `I want to go home ${later}` }, {}
+  );
+  assert.equal(h2.inserts.length, 0, 'no second row');
+  const patched = h2.updates.find((u) => u.id === 99);
+  assert.ok(patched, 'the recorded request is updated instead');
+  assert.equal(patched.patch.homeFrom, later, 'the date the driver has now given is kept');
+});
+
+test('a date already recorded is never overwritten by a repeat', async () => {
+  const first = TODAY.plus({ days: 3 }).toISODate();
+  const different = TODAY.plus({ days: 9 }).toISODate();
+  const h = loadService({
+    gemini: {
+      json: {
+        intent: 'home_time_request', confidence: 90, isActualStatusChange: false,
+        requestedHomeTime: true, language: 'en', homeStartDate: different,
+        reason: 'Driver said something else.',
+      },
+      text: new Error('force fallback'),
+    },
+    driverMessaging: true,
+    recentRecorded: { id: 99, home_from: first, home_to: null, return_to_road_date: null },
+  });
+  await h.service.processHomeTimeMessage(
+    h.telegram, GROUP, { ...DRIVER_MSG, message_id: 9004, text: `actually I want to go home ${different} instead` }, {}
+  );
+  const patched = h.updates.find((u) => u.id === 99);
+  assert.ok(patched);
+  assert.equal(patched.patch.homeFrom, undefined,
+    'the first thing the driver said is what they asked for; repeating themselves is not a correction');
 });

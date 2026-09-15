@@ -45,7 +45,7 @@ function groupRow(over = {}) {
 function world(over = {}) {
   const calls = { assigned: [], retired: [], findings: [], resolved: [] };
   const state = {
-    settings: { enabled: true, lastPollAt: new Date(NOW - HOUR).toISOString(), lastPollOk: true },
+    settings: { enabled: true, configured: true, lastPollAt: new Date(NOW - HOUR).toISOString(), lastPollOk: true },
     teams: [{ id: 1, name: 'Charles', active: true }, { id: 2, name: 'Steven', active: true }],
     members: { 1: [{ name: 'Charles Whitfield' }], 2: [{ name: 'Steven Ruiz' }] },
     people: [JOHN],
@@ -56,7 +56,7 @@ function world(over = {}) {
     ...over,
   };
   const deps = {
-    boardSettings: { getDispatchBoardSettings: async () => state.settings },
+    boardSettings: { getBoardConfig: async () => state.settings },
     board: { listBoardRows: async () => state.boardRows },
     ra: {
       listDispatchTeams: async () => state.teams,
@@ -164,7 +164,12 @@ test('a driver who left the fleet is retired from the roster', async () => {
 
 test('a human override is left alone and never handed back to the board', async () => {
   const w = world({
-    current: [{ id: 99, teamId: 2, personId: 5, assignmentSource: 'manual' }],
+    // A real override carries the mark a person's decision leaves; without it
+    // this is a legacy row and the board is meant to reclaim it.
+    current: [{
+      id: 99, teamId: 2, personId: 5, assignmentSource: 'manual',
+      manualOverrideAt: '2026-09-15T10:00:00.000Z', manualOverrideBy: 'admin:jane',
+    }],
     boardRows: [boardRow({ dispatcher: 'Charles' })],
   });
   const out = await run(w);

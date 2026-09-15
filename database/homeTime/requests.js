@@ -160,6 +160,37 @@ async function getOpenHomeTimeRequestForGroup(groupId) {
 }
 
 /**
+ * A request this group ALREADY made, recently, that a fresh message would only
+ * be repeating.
+ *
+ * WHY THIS EXISTS. `recorded` is deliberately outside `OPEN_REQUEST_STATUSES`,
+ * because a recorded request waits for nobody and must not block the driver's
+ * next one. But that also means the old duplicate guard no longer fires: a
+ * driver who writes "I need home time" and then, a minute later, "been out six
+ * weeks" produced TWO rows, and — because the manager notice is keyed
+ * `request:<id>` — tagged the three managers twice. Removing the reminder noise
+ * only to replace it with duplicate notices would be no improvement.
+ *
+ * So the window, not the status, is the guard. A second ask inside
+ * `withinHours` is the same ask; a request days later is a real new one.
+ *
+ * @param {number} groupId
+ * @param {number} withinHours  how recent counts as "the same ask"
+ */
+async function findRecentRecordedRequestForGroup(groupId, withinHours = 24) {
+  const hours = Math.max(1, Number(withinHours) || 24);
+  const res = await query(
+    `SELECT * FROM home_time_requests
+      WHERE group_id = $1
+        AND status = 'recorded'
+        AND requested_at > NOW() - ($2 || ' hours')::interval
+      ORDER BY requested_at DESC LIMIT 1`,
+    [groupId, String(hours)]
+  );
+  return res.rows[0] || null;
+}
+
+/**
  * Most recent OPEN clarification flow for a group (still waiting on one or both
  * dates, including an unanswered flow a late reply can still complete). Backs the
  * plain-text follow-up handler; only one active flow should exist per driver.
@@ -391,6 +422,7 @@ module.exports = {
   getPendingHomeTimeRequestForGroup,
   getOpenHomeTimeRequestForGroup,
   getOpenClarificationForGroup,
+  findRecentRecordedRequestForGroup,
   getAwaitingDatesHomeTimeRequestForGroup,
   getApprovedHomeTimeRequestForGroup,
   findDecidedRequestNearDate,

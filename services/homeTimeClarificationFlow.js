@@ -1,16 +1,21 @@
 /**
- * Home-Time clarification flow — opening, advancing and completing the
- * conversational date clarification, plus the approval card and policy response.
+ * Home-Time request delivery — recording a request, posting the manager card,
+ * and the one reply the driver gets.
  *
- * Extracted from homeTimeRequestService (which stays the orchestrator) so both
- * files stay within the per-file line limit. The orchestrator decides WHETHER a
- * clarification should happen; this module carries it out.
+ * WHAT THIS FILE USED TO BE. A clarification flow: open a conversation about
+ * planned home dates, ask, remind, advance, complete. That is gone — see the
+ * block above `recordAndPostRequest` for why, and for what happens to the rows
+ * it left behind. The file name is kept because several modules import it and a
+ * rename buys nothing.
+ *
+ * WHAT IT IS NOW. A driver's request is recorded with whatever dates were
+ * actually said, the three managers are told, the driver gets one reply, and
+ * the request is finished.
  *
  * Every driver-group send here goes through services/homeTimeDriverChannel, so
- * when driver messaging is switched off the whole flow runs silently: dates,
- * status and AI reasoning are still recorded, the approval card still reaches
- * the staff notification group, and staff are alerted through
- * services/homeTimeInternalAlert instead of the driver being asked.
+ * when driver messaging is switched off the request is still recorded and the
+ * manager card still reaches the staff notification group — only the reply to
+ * the driver is skipped.
  */
 const { DateTime } = require('luxon');
 const db = require('../database/db');
@@ -18,38 +23,20 @@ const ht = require('../database/homeTime');
 const { safeSend } = require('./telegramHtml');
 const {
   isPolicyMet,
-  buildAskForDatesMessage,
-  buildClarificationMessage,
   buildPolicyAckMessage,
   buildPolicyWarningMessage,
   evaluatePolicy,
 } = require('./homeTimeRequestConstants');
 const { wholeDaysBetween } = require('./homeTimeConstants');
-const { statusForMissingFields } = require('./homeTimeDateResolver');
 const { inferDriverType } = require('../lib/drivers/driverProfileParse');
 const { noticeHomeTimeRequested } = require('./homeTime/managerNotices');
 const { generateMessage, generateRequestText } = require('./homeTimeMessageComposer');
 const {
-  isDriverMessagingEnabled, clarificationChannelFor,
-  sendToDriverGroup, reactToDriverMessage, reminderTimeIfAllowed,
+  isDriverMessagingEnabled, sendToDriverGroup, reactToDriverMessage,
 } = require('./homeTimeDriverChannel');
-const { notifyInternalClarification } = require('./homeTimeInternalAlert');
 
 function todayIsoChicago() {
   return DateTime.now().setZone('America/Chicago').toISODate();
-}
-
-function hoursFromNowIso(hours) {
-  const h = Math.max(1, Number(hours) || 12);
-  return DateTime.now().toUTC().plus({ hours: h }).toISO();
-}
-
-/** Which clarification question fits the dates we are still missing? */
-function askKindForWindow(window) {
-  const missing = window?.missingFields || [];
-  if (missing.includes('return_to_road') && !missing.includes('home_start')) return 'ask_return_to_road';
-  if (missing.includes('home_start') && !missing.includes('return_to_road')) return 'ask_home_start';
-  return 'ask_both';
 }
 
 async function resolveDriverLabel(group) {
@@ -179,112 +166,113 @@ async function sendPolicyResponse(telegram, group, request, {
   }
 }
 
-/**
- * Complete a clarification: fill both dates, post/refresh the approval card, and
- * send the policy response replying to the driver's latest message. Shared by the
- * plain-text follow-up path and the orchestrator.
+/*
+ * completeAndRespond, advanceClarification and createClarification lived here.
  *
- * Runs unchanged while driver messaging is off — the dates are recorded and the
- * managers are still told; only the policy reply to the driver is skipped.
+ * Together they were the clarification conversation: open a request in an
+ * `awaiting_*` status when the driver had not spelled out both dates, ask for
+ * the missing piece, schedule a reminder, accept a later reply, ask again for
+ * whatever was still missing, and finally fill the window. When driver
+ * messaging was off the same three functions ran silently and told staff
+ * instead, through services/homeTimeInternalAlert.
+ *
+ * All of it chased two PLANNED dates. Those dates are a guess about next week,
+ * and they were never what Home In and Home Out are recorded from — those come
+ * from the Dispatcher Board and the driver's own status, in
+ * services/homeTime/boardPresenceWatch.js. So the conversation cost the driver
+ * messages, staff a queue of alerts, and produced a number nothing reads.
+ *
+ * `recordAndPostRequest` below is what replaced all three: record what the
+ * driver said, tell the three managers, reply once, stop. Nothing is asked and
+ * nothing is scheduled, so there is no conversation to advance or complete.
+ *
+ * Deleted rather than left unreachable. Rows already sitting in `awaiting_*`
+ * keep their status and their dates; the housekeeping sweep closes them once
+ * their window passes, and nothing opens another.
  */
-async function completeAndRespond(telegram, group, request, window, message, {
-  settings, language,
-}) {
-  const allowanceWeeks = settings?.road_allowance_weeks || 4;
-  const { driverName, unitNumber, driverType } = await resolveDriverLabel(group);
-  const { roadStartedAt, daysOnRoad, policyMet } = await resolveRoadMetrics(group, allowanceWeeks, driverType);
 
-  const fulfilled = await ht.fulfillAwaitingHomeTimeRequest(request.id, {
-    homeFrom: window.homeStartDate,
-    homeTo: window.homeTo,
-    returnToRoadDate: window.returnToRoadDate,
-    roadStartedAt,
-    daysOnRoad,
-    policyMet,
-    aiReasoning: `Dates completed via conversation: home ${window.homeStartDate} → back ${window.returnToRoadDate}.`,
-    lastDriverMessageId: message?.message_id || null,
-    language,
-  });
-  if (!fulfilled) return null; // another reply won the race
-
-  await postRequestCard(telegram, group, {
-    requestId: fulfilled.id,
-    driverName, unitNumber, driverType, daysOnRoad, policyMet,
-    homeFrom: window.homeStartDate, homeTo: window.homeTo,
-    returnToRoadDate: window.returnToRoadDate, settings,
-  });
-  await sendPolicyResponse(telegram, group, fulfilled, {
-    window, daysOnRoad, driverType, settings,
-    replyToMessageId: message?.message_id || null, language,
-  });
-  console.log(`[HOME-TIME-REQ] Request #${fulfilled.id} completed (${window.homeStartDate} → ${window.returnToRoadDate}).`);
-  return fulfilled;
-}
+/** A second ask inside this many hours is the same ask. */
+const DUPLICATE_WINDOW_HOURS = 24;
 
 /**
- * Advance an open clarification that gained ONE new date but is still incomplete:
- * persist what we now know, flip to the precise awaiting status, and ask for the
- * remaining date (reply to the driver's message). Reschedules the reminder clock.
+ * Did this driver already make this request, and has it only been said again?
  *
- * While driver messaging is off this is the SILENT capture path: the newly
- * supplied date is recorded against the same request, no question is sent, and
- * no second internal alert is raised (the first one already told staff about it).
+ * ONE ASK, ONE NOTICE. Both paths that record a request — the driver writing in
+ * their own group, and a manager tagging the approver — call this first. A
+ * `recorded` request is deliberately not an OPEN one (it waits for nobody, so it
+ * must never block the driver's next request), which also means the status can
+ * no longer be the duplicate guard the old `awaiting_*` row was. Without
+ * something in its place, "I need home time" followed a minute later by "been
+ * out six weeks" produced two rows and tagged the three managers twice, because
+ * the notice key is derived from the request id.
+ *
+ * So the WINDOW is the guard, not the status: a second ask inside
+ * `DUPLICATE_WINDOW_HOURS` is the same ask, and one days later is a real new
+ * request. Anything the driver has now supplied and the request did not have is
+ * filled in; nothing already recorded is overwritten, because the first thing
+ * they said is what they asked for and repeating themselves is not a
+ * correction.
+ *
+ * @returns {object|null} the existing request when this is a repeat, else null
  */
-async function advanceClarification(telegram, group, request, window, message, {
-  settings, language,
-}) {
-  const missing = window.missingFields;
-  const nextStatus = statusForMissingFields(missing);
-  const firstHours = settings?.reminder_first_hours || 12;
-  await ht.updateHomeTimeRequestFields(request.id, {
-    homeFrom: window.homeStartDate,
-    homeTo: window.homeTo,
-    returnToRoadDate: window.returnToRoadDate,
-    missingFields: missing.join(','),
-    status: nextStatus,
-    lastDriverMessageId: message?.message_id || null,
-    language: language || undefined,
-    reminderCount: 0,
-    nextReminderAt: reminderTimeIfAllowed(settings, hoursFromNowIso(firstHours)),
-  });
-  const askKind = missing.includes('return_to_road') ? 'ask_return_to_road' : 'ask_home_start';
-  const fallbackKind = missing.includes('return_to_road') ? 'return_to_road' : 'home_start';
-  if (isDriverMessagingEnabled(settings)) {
-    const msg = await generateMessage({
-      kind: askKind, language, fallback: buildClarificationMessage(fallbackKind),
-    });
-    await sendToDriverGroup(telegram, group.telegram_group_id, msg, {
-      replyToMessageId: request.root_message_id || message?.message_id || null,
-      settings,
-      reason: 'follow-up date question',
-    });
+async function mergeIntoRecentRequest(group, message, known = {}) {
+  const recent = await ht.findRecentRecordedRequestForGroup(group.id, DUPLICATE_WINDOW_HOURS)
+    .catch(() => null);
+  if (!recent) return null;
+
+  const patch = { lastDriverMessageId: message?.message_id || null };
+  if (!recent.home_from && known.homeStartDate) patch.homeFrom = known.homeStartDate;
+  if (!recent.home_to && known.homeTo) patch.homeTo = known.homeTo;
+  if (!recent.return_to_road_date && known.returnToRoadDate) {
+    patch.returnToRoadDate = known.returnToRoadDate;
   }
-  console.log(`[HOME-TIME-REQ] Request #${request.id} advanced → ${nextStatus} (missing ${missing.join(',')}).`);
+  await ht.updateHomeTimeRequestFields(recent.id, patch).catch((err) => {
+    console.warn(`[HOME-TIME-REQ] Could not update request #${recent.id}:`, err.message);
+  });
+  console.log(
+    `[HOME-TIME-REQ] Request #${recent.id} was already recorded for this driver within `
+    + `${DUPLICATE_WINDOW_HOURS}h — updated, and the managers are not told twice.`
+  );
+  return recent;
 }
 
 /**
- * Create a brand-new clarification flow (rep tag without dates, unplanned home
- * arrival, or a driver-initiated request). Stores the reply-threading root, asks
- * for the missing piece(s), and schedules the first reminder.
+ * Record a home-time request, tell the staff group, and stop.
  *
- * When driver messaging is off nothing is asked and nothing is scheduled; the
- * request is stamped clarification_channel='internal' and staff are alerted once.
+ * THIS REPLACES THE CLARIFICATION LOOP. A request used to open in an
+ * `awaiting_*` status whenever the driver had not spelled out both dates, and
+ * Wenze then asked them, and asked again on a reminder clock, and eventually
+ * gave up. That whole apparatus existed to collect two PLANNED dates — a guess
+ * about the future, made by somebody who is about to drive home — and the
+ * planned dates were never what Home In and Home Out are recorded from anyway.
+ * Those come from the Dispatcher Board and the driver's own status, in
+ * services/homeTime/boardPresenceWatch.js. So the loop cost the driver messages
+ * and staff attention to produce a number nothing reads.
  *
- * @param {object} p.window   resolved (possibly partial) date window
- * @param {string} p.askKind  one of ask_both | ask_return_to_road | ask_home_start | ask_unplanned_return
- * @param {boolean} p.isUnplanned  driver went home with no earlier request
+ * WHAT A REQUEST IS NOW. The driver asked; that is the whole fact. It is
+ * recorded with whatever dates were actually said (any of them may be null),
+ * the three managers are told, the driver gets one reply, and the request is
+ * finished — `recorded`, with no reminder scheduled and nothing awaiting
+ * anybody.
+ *
+ * NOTHING HISTORICAL IS DISTURBED. Rows already sitting in `awaiting_*` keep
+ * their status and their dates; they simply stop being chased, and the cleanup
+ * sweep closes them once their window passes.
+ *
+ * ASKING TWICE IS STILL ONE ASK — `mergeIntoRecentRequest` above is the guard,
+ * and the reason it has to exist at all is on its own header.
  */
-async function createClarification(telegram, group, message, {
-  window, askKind, isUnplanned = false, settings, language, verdict,
+async function recordAndPostRequest(telegram, group, message, {
+  window, settings, language, verdict, isUnplanned = false,
 }) {
   const allowanceWeeks = settings?.road_allowance_weeks || 4;
   const { driverName, unitNumber, driverType } = await resolveDriverLabel(group);
   const { roadStartedAt, daysOnRoad, policyMet } = await resolveRoadMetrics(group, allowanceWeeks, driverType);
-  const missing = window.missingFields.length ? window.missingFields : ['home_start', 'return_to_road'];
-  const status = statusForMissingFields(missing);
   const fromUser = message?.from || {};
-  const firstHours = settings?.reminder_first_hours || 12;
-  const driverMessaging = isDriverMessagingEnabled(settings);
+  const known = window || {};
+
+  const recent = await mergeIntoRecentRequest(group, message, known);
+  if (recent) return recent;
 
   const request = await ht.insertHomeTimeRequest({
     groupId: group.id,
@@ -296,59 +284,53 @@ async function createClarification(telegram, group, message, {
     roadStartedAt,
     daysOnRoad,
     policyMet,
-    homeFrom: window.homeStartDate,
-    homeTo: window.homeTo,
-    returnToRoadDate: window.returnToRoadDate,
-    status,
+    // Whatever the driver actually said. A missing date stays missing rather
+    // than becoming a question.
+    homeFrom: known.homeStartDate || null,
+    homeTo: known.homeTo || null,
+    returnToRoadDate: known.returnToRoadDate || null,
+    // RECORDED, never `awaiting_*`: nothing is waiting for anybody.
+    status: 'recorded',
     source: 'telegram',
     isUnplannedArrival: isUnplanned,
     detectedIntent: verdict?.intent || null,
     aiConfidence: verdict?.confidence ?? null,
     language: language || (verdict?.language || null),
-    missingFields: missing.join(','),
     rootChatId: group.telegram_group_id,
     rootMessageId: message?.message_id || null,
     lastDriverMessageId: message?.message_id || null,
-    // No reminder is scheduled while driver messaging is off, so nothing can
-    // later leak into the driver group and nothing accumulates to replay.
-    nextReminderAt: reminderTimeIfAllowed(settings, hoursFromNowIso(firstHours)),
+    // NO REMINDER, EVER. There is nothing to remind anybody about.
+    nextReminderAt: null,
     aiReasoning: verdict?.reason || null,
-    clarificationChannel: clarificationChannelFor(settings),
   });
 
-  if (!driverMessaging) {
-    await notifyInternalClarification(telegram, {
-      request, group, message, verdict, settings, window: { ...window, missingFields: missing },
-    });
-    console.log(`[HOME-TIME-REQ] Request #${request.id} opened SILENTLY (${status}, unplanned=${isUnplanned}) — staff alerted, driver not messaged.`);
-    return request;
-  }
-
-  const fallback = askKind === 'ask_unplanned_return'
-    ? buildClarificationMessage('unplanned_return')
-    : (askKind === 'ask_return_to_road' ? buildClarificationMessage('return_to_road')
-      : (askKind === 'ask_home_start' ? buildClarificationMessage('home_start') : buildAskForDatesMessage()));
-  const msg = await generateMessage({ kind: askKind, language, fallback });
-  const sent = await sendToDriverGroup(telegram, group.telegram_group_id, msg, {
-    replyToMessageId: message?.message_id || null, settings, reason: 'date clarification',
+  await postRequestCard(telegram, group, {
+    requestId: request.id,
+    driverName, unitNumber, driverType, daysOnRoad, policyMet,
+    homeFrom: known.homeStartDate || null,
+    homeTo: known.homeTo || null,
+    returnToRoadDate: known.returnToRoadDate || null,
+    settings,
   });
-  await ht.setHomeTimeClarificationMessage(request.id, {
-    clarificationChatId: group.telegram_group_id,
-    clarificationMessageId: sent?.message_id || null,
+  // One reply to the driver, not a question. Suppressed by the same setting
+  // that governs every other message into a driver group.
+  await sendPolicyResponse(telegram, group, request, {
+    window: known, daysOnRoad, driverType, settings,
+    replyToMessageId: message?.message_id || null, language,
+  }).catch((err) => {
+    console.warn('[HOME-TIME-REQ] Could not reply to the driver:', err.message);
   });
-  console.log(`[HOME-TIME-REQ] Request #${request.id} clarification opened (${status}, unplanned=${isUnplanned}).`);
+  console.log(`[HOME-TIME-REQ] Request #${request.id} recorded and posted; nothing is awaited.`);
   return request;
 }
 
 module.exports = {
+  recordAndPostRequest,
+  mergeIntoRecentRequest,
+  DUPLICATE_WINDOW_HOURS,
   todayIsoChicago,
-  hoursFromNowIso,
-  askKindForWindow,
   resolveDriverLabel,
   resolveRoadMetrics,
   postRequestCard,
   sendPolicyResponse,
-  completeAndRespond,
-  advanceClarification,
-  createClarification,
 };

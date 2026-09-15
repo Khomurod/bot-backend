@@ -28,7 +28,7 @@ const {
 } = require('./homeTimeDateResolver');
 const {
   todayIsoChicago, resolveDriverLabel, resolveRoadMetrics, postRequestCard,
-  createClarification, askKindForWindow,
+  recordAndPostRequest, mergeIntoRecentRequest,
 } = require('./homeTimeClarificationFlow');
 const { closeOutdatedRequest } = require('./homeTimeApproval');
 
@@ -165,6 +165,14 @@ async function handleApproverMention(telegram, group, message) {
     const window = reask.length
       ? reopenWindowForPolicy(parsedWindow, reask) : parsedWindow;
 
+    // THE SAME ASK AGAIN TELLS THE MANAGERS ONCE. A `recorded` request is not an
+    // OPEN one, so the guard above cannot see it — and a manager tagging the
+    // approver right after the driver asked (or twice in a row) would otherwise
+    // record a second row and tag all three managers again, because the notice
+    // key is derived from the request id. Any date this message carries that the
+    // recorded request does not is merged in.
+    if (await mergeIntoRecentRequest(group, message, window)) return;
+
     if (window.complete) {
       const allowanceWeeks = settings?.road_allowance_weeks || 4;
       const { driverName, unitNumber, driverType } = await resolveDriverLabel(group);
@@ -199,14 +207,18 @@ async function handleApproverMention(telegram, group, message) {
       return;
     }
 
-    // No / partial dates — open a clarification and wait for the driver.
-    await createClarification(telegram, group, message, {
+    // NO / PARTIAL DATES IS NOT A REASON TO ASK. This used to open a
+    // clarification and wait for the driver to supply a plan. The request is
+    // the fact worth recording; the planned dates are a guess, and the dates
+    // that matter are read from the Dispatcher Board afterwards. So it is
+    // recorded with whatever was said and the managers are told, exactly as the
+    // complete-dates branch above does.
+    await recordAndPostRequest(telegram, group, message, {
       window,
-      askKind: askKindForWindow(window),
-      isUnplanned: false,
       settings,
       language,
       verdict: { intent: 'home_time_request', reason: verdict.reason, confidence: null },
+      isUnplanned: false,
     });
   } catch (err) {
     console.error('[HOME-TIME-REQ] handleApproverMention error:', err.message);

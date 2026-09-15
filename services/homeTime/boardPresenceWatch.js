@@ -131,9 +131,17 @@ async function runBoardPresencePass({ deps = defaultDeps(), now = Date.now(), te
   const summary = { checked: 0, opened: 0, closed: 0, held: 0, reviews: 0, errors: [] };
   const nowIso = new Date(now).toISOString();
 
-  const settings = await deps.boardSettings.getDispatchBoardSettings();
+  // `getBoardConfig`, NOT `getDispatchBoardSettings`. The latter never existed:
+  // this reached through a deps object, so the wrong name is a property access
+  // that returns undefined and throws only when called — invisible to
+  // `lint:imports`, green in every test that stubs `boardSettings`, and five
+  // consecutive failures in production. `assertDeps` below is the guard.
+  const settings = await deps.boardSettings.getBoardConfig();
   if (!settings || !settings.enabled) {
     return { blocked: 'the Dispatcher Board is switched off in Settings', ...summary };
+  }
+  if (!settings.configured) {
+    return { blocked: 'the Dispatcher Board has no address or token in Settings', ...summary };
   }
 
   const [rows, layer, states] = await Promise.all([

@@ -15,7 +15,9 @@ const assert = require('node:assert/strict');
 const {
   DECISION, MATCHED_ON, normaliseLabel, givenNameOf, matchDispatcherToTeam,
 } = require('../lib/raise/dispatcherTeam');
-const { OUTCOME, REVIEW_REASON, personKeyOf, planRoster } = require('../lib/raise/rosterPlan');
+const {
+  OUTCOME, REVIEW_REASON, isHumanOverride, personKeyOf, planRoster,
+} = require('../lib/raise/rosterPlan');
 
 const TEAMS = [
   { id: 1, name: 'Charles', memberNames: ['Charles Whitfield'] },
@@ -88,6 +90,11 @@ test('a two-letter given name is not a key — "Jo" must not claim "Jo Ann"', ()
 });
 
 // ─── the roster plan ───
+
+// A person's decision leaves a mark; a row merely inherited from the old way of
+// keeping a roster does not. Every fixture that means "somebody overrode the
+// board" has to carry the mark, or it is testing a legacy row by accident.
+const OVERRIDDEN_AT = '2026-09-15T10:00:00.000Z';
 
 const CHARLES_MATCH = { decision: DECISION.MATCHED, teamId: 1 };
 const STEVEN_MATCH = { decision: DECISION.MATCHED, teamId: 2 };
@@ -180,7 +187,7 @@ test('a driver who is no longer eligible leaves the roster', () => {
 test('a human override outranks the board and is reported, never overwritten', () => {
   const { actions, summary } = planRoster({
     eligible: [driver()],
-    current: [{ id: 1, teamId: 1, personId: 10, assignmentSource: 'manual' }],
+    current: [{ id: 1, teamId: 1, personId: 10, assignmentSource: 'manual', manualOverrideAt: OVERRIDDEN_AT }],
     boardByDriver: new Map([['person:10', { dispatcher: 'Steven', match: STEVEN_MATCH }]]),
   });
   assert.equal(summary.overrideHeld, 1);
@@ -193,7 +200,7 @@ test('a human override outranks the board and is reported, never overwritten', (
 test('a human override that agrees with the board reports no disagreement', () => {
   const { summary } = planRoster({
     eligible: [driver()],
-    current: [{ id: 1, teamId: 1, personId: 10, assignmentSource: 'manual' }],
+    current: [{ id: 1, teamId: 1, personId: 10, assignmentSource: 'manual', manualOverrideAt: OVERRIDDEN_AT }],
     boardByDriver: new Map([['person:10', { dispatcher: 'Charles', match: CHARLES_MATCH }]]),
   });
   assert.equal(summary.overrideDisagrees, 0);
@@ -202,7 +209,7 @@ test('a human override that agrees with the board reports no disagreement', () =
 test('a manual row for a driver who is no longer eligible is held, not removed', () => {
   const { actions, summary } = planRoster({
     eligible: [],
-    current: [{ id: 3, teamId: 1, personId: 10, assignmentSource: 'manual' }],
+    current: [{ id: 3, teamId: 1, personId: 10, assignmentSource: 'manual', manualOverrideAt: OVERRIDDEN_AT }],
     boardByDriver: new Map(),
   });
   assert.equal(summary.remove, 0);
@@ -218,4 +225,50 @@ test('the same person on a new truck keeps their place — the key is the person
   });
   assert.equal(summary.keep, 1, 'a truck change is not a new driver');
   assert.equal(summary.remove, 0);
+});
+
+// ─── a legacy row is not an override (production defect) ───
+
+test('a row inherited from before the board could place anybody is reconcilable', () => {
+  // Migration 0058 stamped every pre-existing row `manual`, which made the
+  // fleet's whole existing roster permanently exempt from the rebuild. A row is
+  // a person's decision only when a person actually made one.
+  const { actions, summary } = planRoster({
+    eligible: [driver()],
+    current: [{ id: 1, teamId: 1, personId: 10, assignmentSource: 'manual', manualOverrideAt: null }],
+    boardByDriver: new Map([['person:10', { dispatcher: 'Steven', match: STEVEN_MATCH }]]),
+  });
+  assert.equal(summary.overrideHeld, 0, 'a legacy row must not block the board');
+  assert.equal(summary.place, 1);
+  assert.equal(actions[0].teamId, 2);
+});
+
+test('a row a person deliberately overrode is still protected', () => {
+  const { summary } = planRoster({
+    eligible: [driver()],
+    current: [{
+      id: 1, teamId: 1, personId: 10, assignmentSource: 'manual',
+      manualOverrideAt: '2026-09-15T10:00:00Z', manualOverrideBy: 'admin:jane',
+    }],
+    boardByDriver: new Map([['person:10', { dispatcher: 'Steven', match: STEVEN_MATCH }]]),
+  });
+  assert.equal(summary.overrideHeld, 1);
+  assert.equal(summary.place, 0);
+});
+
+test('the timestamp is the test, not the word', () => {
+  assert.equal(isHumanOverride({ assignmentSource: 'manual', manualOverrideAt: '2026-09-15T10:00:00Z' }), true);
+  assert.equal(isHumanOverride({ assignmentSource: 'manual', manualOverrideAt: null }), false);
+  assert.equal(isHumanOverride({ assignmentSource: 'board', manualOverrideAt: '2026-09-15T10:00:00Z' }), false);
+  assert.equal(isHumanOverride(null), false);
+});
+
+test('a legacy row for a driver who left is retired rather than held for ever', () => {
+  const { summary } = planRoster({
+    eligible: [],
+    current: [{ id: 9, teamId: 1, personId: 10, assignmentSource: 'manual', manualOverrideAt: null }],
+    boardByDriver: new Map(),
+  });
+  assert.equal(summary.remove, 1);
+  assert.equal(summary.overrideHeld, 0);
 });

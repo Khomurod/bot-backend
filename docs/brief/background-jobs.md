@@ -39,7 +39,7 @@ without any timer firing), `tests/jobQueueScheduler.test.js` and
 | `mileageBonusService` | sleeps to the next Wed 07:00, capped 1h (was 60s) | milestone detection → bonus notification |
 | `raiseApprovalService` | sleeps to `next_run_at`, capped 1h; re-armed on a settings save (was 60s) | weekly raise round auto-send, `service_runs` dedupe |
 | `fuelStopAlertService` | 150s | fuel-stop proximity replies |
-| `homeTimeReminderService` | 5 min (first tick +30s) | the two clarification reminders |
+| `homeTimeReminderService` | 5 min (first tick +30s) | housekeeping: closing a request whose window passed (nobody is told), plus the retry ride for the internal-alert and manager-notice outboxes. The reminder loop it is named after is gone. |
 | `services/homeTime/returnToRoadWatch.js` (`startReturnToRoadWatch`) | 12 min, first tick 4 min | Watches drivers who are at home and decides whether they went back to work — Datatruck load + truck movement. No driver at home means no provider call at all. Files a finding; the corrections pass applies the high-confidence ones. **Each driver is checked inside its own try**: one that throws is counted and its error KIND recorded, and the pass is a failure only when every watched driver failed. Every timestamp it stores comes from a provider or from Datatruck and goes through `lib/database/timestampValue.js` first — an unreadable one becomes null rather than aborting the write |
 | `services/homeTime/boardPresenceWatch.js` (`startBoardPresenceWatch`) | 15 min, first tick 2 min | The other half of the same question: WHEN A DRIVER GOES HOME. Reads the Dispatcher Board snapshot somebody else's poller already fetched — no second integration and no extra network call — and opens a cycle when the board has said `HOME`/`VACATION` for twenty minutes, or closes one when the truck is back in the dispatch pool. Writes only through `applyStateTransition`. Three rules keep it from flapping (settle / dwell / hold), so a board a few minutes behind a driver's own message produces silence; only a twelve-hour disagreement files `home_time.board_disagrees_with_state`. Capped at 25 transitions a pass, so a board that suddenly claims the whole fleet went home is a slow problem somebody notices. `blocked` while the board is switched off |
 | `roadBonusNotifierService` | 10 min (first tick +20s) | retry safety net for road-bonus summaries |
@@ -169,7 +169,6 @@ retry.**
 | `fuel_monitor_inbox` | one fuel-stop post creating several watches |
 | `dispatch_eta_updates` / `fuel_stop_alerts` claim pattern (`FOR UPDATE SKIP LOCKED`) | two ticks working the same row |
 | `driver_road_history.bonus_posted_at` (atomic claim) | a completed road leg being announced twice |
-| home-time clarification claims (count + `next_reminder_at`) | a restart doubling a reminder |
 | `responses` UNIQUE `(driver_id, question_id)` | a driver answering one question twice |
 | `route_assignment_attachments` unique index | a second screenshot per assignment (replacement is a single UPSERT) |
 
