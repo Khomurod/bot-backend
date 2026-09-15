@@ -432,3 +432,65 @@ test('an APPLY run still files the blocked finding, because somebody must know',
   assert.equal(w.calls.findings.length, 1);
   assert.equal(w.calls.findings[0].severity, 'serious');
 });
+
+/*
+ * THE PRODUCTION SHAPE, END TO END: teams named after their people, and NO
+ * member rows. The matcher's own tests live in
+ * tests/raiseTeamNameAliases.test.js; this proves the placement actually
+ * happens through the reconciliation, with the board's label recorded.
+ */
+function realWorld(dispatcher) {
+  return world({
+    teams: [
+      { id: 1, name: 'Aaron / Jack', active: true },
+      { id: 2, name: 'Franky / Sam / Ali', active: true },
+      { id: 3, name: 'Anthony / Andy / James', active: true },
+    ],
+    // EMPTY ON PURPOSE — this is what production has.
+    members: { 1: [], 2: [], 3: [] },
+    boardRows: [boardRow({ dispatcher })],
+  });
+}
+
+test('a second name from the team NAME places the driver, with no member rows', async () => {
+  const w = realWorld('zAaron/Jack');
+  const out = await run(w);
+  assert.equal(out.summary.place, 1);
+  assert.equal(w.calls.assigned[0].teamId, 1);
+  assert.equal(w.calls.assigned[0].boardDispatcher, 'zAaron/Jack');
+  assert.equal(w.calls.findings.length, 0, 'nothing is left for a person');
+});
+
+test('every dispatcher named on a team places to that team', async () => {
+  for (const [dispatcher, teamId] of [
+    ['x Franky', 2], ['Sam', 2], ['Ali', 2],
+    ['y Anthony', 3], ['Andy', 3], ['James', 3], ['Jack', 1],
+  ]) {
+    // eslint-disable-next-line no-await-in-loop
+    const w = realWorld(dispatcher);
+    // eslint-disable-next-line no-await-in-loop
+    const out = await run(w);
+    assert.equal(out.summary.place, 1, dispatcher);
+    assert.equal(w.calls.assigned[0].teamId, teamId, dispatcher);
+  }
+});
+
+test('names from two different teams on one row is still Needs Review', async () => {
+  const w = realWorld('Jack/Sam');
+  const out = await run(w);
+  assert.equal(w.calls.assigned.length, 0, 'no driver is placed on a guess');
+  assert.equal(out.summary.review, 1);
+  assert.equal(out.reviews[0].reason, 'ambiguous_dispatcher');
+});
+
+test('the dry run reports the same placements and writes nothing', async () => {
+  const w = realWorld('zAaron/Jack');
+  const out = await reconcileRosterFromBoard({ deps: w.deps, now: NOW, apply: false });
+  assert.equal(out.dryRun, true);
+  assert.deepEqual(out.wouldPlace, [{
+    driver: 'JOHN SMITH', unitNumber: '310', teamId: 1, fromTeamId: null,
+    dispatcher: 'zAaron/Jack', via: 'multi_name',
+  }]);
+  assert.equal(w.calls.assigned.length, 0);
+  assert.equal(w.calls.findings.length, 0);
+});

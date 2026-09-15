@@ -51,6 +51,30 @@ It will **not** do near-matching. `steve` does not become `Steven`, and
 `Charlotte` is never `Charles`. A single-word cell that matches one team's name
 *and* another team's dispatcher's first name is ambiguous, not a winner.
 
+### A team is named after the people who run it
+
+Production names its dispatch teams `Aaron / Jack`, `Franky / Sam / Ali`,
+`Anthony / Andy / James` — and **`dispatch_team_members` is empty**, so the
+member list contributes nothing to the index.
+
+Every name inside an active team's name is therefore indexed as an alias for
+that team. Without it only the FIRST name resolved, because the given-name tier
+reads the first word: Aaron matched and Jack did not, Franky matched and Sam
+and Ali did not — and a board row reading `zAaron/Jack` failed the unanimity
+rule on a name that was written on the team all along.
+
+This is not fuzzy matching. The team name is split on the **same explicit
+separators** as a board label, so `Charles Whitfield` is one name and is never
+split into `CHARLES` and `WHITFIELD`; a surname must not become a way to reach
+a team. Aliases go through the same Set-keyed index as every other name, so one
+name claimed by two teams is `ambiguous` rather than a race between them, and a
+pure noise word inside a name (`Dispatch / Charles`) normalises to nothing and
+becomes no key at all.
+
+`matchedOn` reports `team_name_part` / `team_name_part_given_name` when a match
+came through this route, so the evidence says the placement rests on the team's
+own name rather than on a member row that does not exist.
+
 ### The two shapes the real Board writes
 
 Production does not put a bare name in every cell. It puts sorting markers in
@@ -229,6 +253,10 @@ drivers it was actually answered for, whatever the Board says afterwards.
 * `tests/raiseBoardDispatcherLabels.test.js` — the real Board formats (`x
   Franky`, `y Anthony`, `zAaron/Jack`), the names that must keep their first
   letter, and the multi-name refusals
+* `tests/raiseTeamNameAliases.test.js` — the real team-name structure with
+  **`memberNames: []` on purpose**, because a fixture that quietly supplies
+  members tests a database this company does not have, which is how this gap
+  survived a round
 * `tests/raiseReconcileRoute.test.js` — the reconcile-only endpoint cannot mint
   or send a round, and `send-now` stays the only route that can
 * `tests/raiseBoardRoster.test.js` — the rebuild: freshness, placement,

@@ -141,7 +141,11 @@ and every API client function is exactly what it was.
     `raise.roster_not_rebuilt` (serious) so the missing review is visible.
     A driver whose dispatcher maps to no team, or to more than one, is left OFF
     a roster and filed as `raise.driver_unplaced` — never placed on a plausible
-    team. The matcher reads the two shapes the real Board writes — a leading
+    team. Dispatch teams are NAMED after the people who run them (`Aaron /
+    Jack`, `Franky / Sam / Ali`) and `dispatch_team_members` is empty, so every
+    name inside a team's name is an alias for that team — without it only the
+    first name in each would ever resolve.
+    The matcher reads the two shapes the real Board writes — a leading
     sorting marker (`x Franky`, `zAaron/Jack`) and two dispatchers on one row —
     but only as FALLBACKS on a label that otherwise matched nothing, so the
     tolerance can rescue a Needs Review and can never redirect a correct
