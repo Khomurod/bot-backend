@@ -215,14 +215,21 @@ async function blocked(deps, reason) {
  *
  * @returns `{ ok, summary, reviews, teams, boardAgeMs }`
  */
-async function reconcileRosterFromBoard({ deps = defaultDeps(), now = Date.now() } = {}) {
+async function reconcileRosterFromBoard({ deps = defaultDeps(), now = Date.now(), apply = true } = {}) {
   // `getBoardConfig` is the real server-side Board config API — see the note in
   // services/homeTime/boardPresenceWatch.js for why the wrong name survived
   // every static check.
+  // A DRY RUN NEVER WRITES, INCLUDING WHEN IT REFUSES. `blocked` files a
+  // `serious` Needs Attention finding, and an endpoint that promises to change
+  // nothing must not change the operations page just because the Board happened
+  // to be stale when somebody looked. The caller still learns why, from the
+  // same thrown error.
+  const note = async (reason) => { if (apply) await blocked(deps, reason); };
+
   const settings = await deps.boardSettings.getBoardConfig();
   const fresh = boardFreshness(settings, now);
   if (!fresh.ok) {
-    await blocked(deps, fresh.reason);
+    await note(fresh.reason);
     throw serviceError('BOARD_NOT_USABLE', `The driver roster could not be rebuilt: ${fresh.reason}.`, 409);
   }
 
@@ -235,7 +242,7 @@ async function reconcileRosterFromBoard({ deps = defaultDeps(), now = Date.now()
   ]);
 
   if (!teams.length) {
-    await blocked(deps, 'no active dispatch team exists');
+    await note('no active dispatch team exists');
     throw serviceError('NO_TEAMS', 'The driver roster could not be rebuilt: no active dispatch team exists.', 409);
   }
 
@@ -261,6 +268,40 @@ async function reconcileRosterFromBoard({ deps = defaultDeps(), now = Date.now()
   // one.
   const writeErrors = [];
   const errors = [];
+
+  // A DRY RUN PLANS AND REPORTS, AND TOUCHES NOTHING. It exists because the
+  // only way to see what reconciliation would do used to be to let it mint and
+  // SEND a review round — so "check the roster is right first" and "do not send
+  // a round you did not mean" were in direct conflict. The plan above is pure,
+  // so this returns it without entering the write loop at all: no assignment
+  // moves, no finding is filed, no `resolveClearedFindings` runs.
+  if (!apply) {
+    return {
+      ok: true,
+      dryRun: true,
+      boardAgeMs: fresh.ageMs,
+      teams: teams.length,
+      summary: { ...summary, placed: 0, removed: 0 },
+      reviews: actions
+        .filter((a) => a.outcome === OUTCOME.REVIEW)
+        .map((a) => ({
+          driver: a.driver?.driverName || 'this driver',
+          reason: a.reason,
+          dispatcher: a.board?.dispatcher || null,
+        })),
+      wouldPlace: actions
+        .filter((a) => a.outcome === OUTCOME.PLACE)
+        .map((a) => ({
+          driver: a.driver?.driverName || null,
+          unitNumber: a.driver?.unitNumber || null,
+          teamId: a.teamId,
+          fromTeamId: a.fromTeamId ?? null,
+          dispatcher: a.board?.dispatcher || null,
+          via: a.board?.match?.via || null,
+        })),
+      errors: [],
+    };
+  }
 
   for (const action of actions) {
     try {

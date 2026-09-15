@@ -315,3 +315,120 @@ test('a rebuild with nothing to write is not treated as a failed one', async () 
   assert.deepEqual(out.errors, []);
   assert.equal(out.summary.keep, 1);
 });
+
+// ─── the real board labels, end to end through the reconciliation ───
+
+/**
+ * The matcher's own tests live in tests/raiseBoardDispatcherLabels.test.js.
+ * These prove the fix reaches an actual PLACEMENT — that a driver whose board
+ * cell says "x Franky" ends up on Franky's roster with the board's own label
+ * recorded against the row, which is what the Sunday review form reads.
+ */
+function labelWorld(dispatcher, extra = {}) {
+  return world({
+    teams: [
+      { id: 1, name: 'Charles', active: true },
+      { id: 2, name: 'Steven', active: true },
+      { id: 3, name: 'Franky', active: true },
+      { id: 4, name: 'Aaron', active: true },
+    ],
+    members: { 1: [{ name: 'Charles Whitfield' }], 2: [{ name: 'Steven Ruiz' }], 3: [], 4: [{ name: 'Jack Nunes' }] },
+    boardRows: [boardRow({ dispatcher })],
+    ...extra,
+  });
+}
+
+test('a sorting-marked board label places the driver on the right team', async () => {
+  const w = labelWorld('x Franky');
+  const out = await run(w);
+  assert.equal(out.summary.place, 1);
+  assert.equal(w.calls.assigned.length, 1);
+  assert.equal(w.calls.assigned[0].teamId, 3, 'Franky, not Needs Review');
+  assert.equal(w.calls.assigned[0].boardDispatcher, 'x Franky',
+    'the board cell is recorded VERBATIM — evidence is what dispatch typed');
+  assert.equal(w.calls.findings.length, 0, 'nothing is left for a person');
+});
+
+test('a glued marker with two dispatchers places the driver on their shared team', async () => {
+  const w = labelWorld('zAaron/Jack');
+  const out = await run(w);
+  assert.equal(out.summary.place, 1);
+  assert.equal(w.calls.assigned[0].teamId, 4);
+  assert.equal(w.calls.assigned[0].boardDispatcher, 'zAaron/Jack');
+});
+
+test('two dispatchers from different teams is still Needs Review, never a placement', async () => {
+  const w = labelWorld('Franky/Steven');
+  const out = await run(w);
+  assert.equal(out.summary.place, 0);
+  assert.equal(w.calls.assigned.length, 0, 'no driver is placed on a guess');
+  assert.equal(out.summary.review, 1);
+  assert.equal(out.reviews[0].reason, 'ambiguous_dispatcher');
+});
+
+test('an unrecognised name alongside a known one is Needs Review', async () => {
+  const w = labelWorld('Franky/Nobody');
+  const out = await run(w);
+  assert.equal(w.calls.assigned.length, 0);
+  assert.equal(out.summary.review, 1);
+  assert.equal(out.reviews[0].reason, 'unknown_dispatcher');
+  assert.equal(out.reviews[0].dispatcher, 'Franky/Nobody');
+});
+
+// ─── the dry run plans and touches nothing ───
+
+test('a DRY RUN writes nothing at all — no assignment, no finding, no resolve', async () => {
+  const w = labelWorld('x Franky');
+  const out = await reconcileRosterFromBoard({ deps: w.deps, now: NOW, apply: false });
+  assert.equal(out.dryRun, true);
+  assert.equal(w.calls.assigned.length, 0, 'no roster row moves');
+  assert.equal(w.calls.retired.length, 0);
+  assert.equal(w.calls.findings.length, 0, 'no finding is filed');
+  assert.equal(w.calls.resolved.length, 0, 'and none is resolved either');
+});
+
+test('a DRY RUN still reports what it WOULD do, and how it read each label', async () => {
+  const w = labelWorld('x Franky');
+  const out = await reconcileRosterFromBoard({ deps: w.deps, now: NOW, apply: false });
+  assert.equal(out.summary.place, 1, 'the plan is real even though nothing was written');
+  assert.equal(out.summary.placed, 0, 'but nothing was placed');
+  assert.deepEqual(out.wouldPlace, [{
+    driver: 'JOHN SMITH', unitNumber: '310', teamId: 3, fromTeamId: null,
+    dispatcher: 'x Franky', via: 'sort_marker',
+  }]);
+});
+
+test('a DRY RUN names the drivers a person still has to settle', async () => {
+  const w = labelWorld('Franky/Steven');
+  const out = await reconcileRosterFromBoard({ deps: w.deps, now: NOW, apply: false });
+  assert.equal(out.reviews.length, 1);
+  assert.equal(out.reviews[0].reason, 'ambiguous_dispatcher');
+  assert.deepEqual(out.wouldPlace, []);
+});
+
+test('a DRY RUN writes nothing even when it REFUSES', async () => {
+  // `blocked()` files a `serious` Needs Attention finding. An endpoint that
+  // promises to change nothing must not change the operations page just because
+  // the Board happened to be stale when somebody looked — while still telling
+  // the caller why, through the same thrown error.
+  for (const [over, fragment] of [
+    [{ settings: { enabled: false } }, /switched off|not usable|could not be rebuilt/i],
+    [{ teams: [] }, /dispatch team/i],
+  ]) {
+    const w = world(over);
+    await assert.rejects(
+      () => reconcileRosterFromBoard({ deps: w.deps, now: NOW, apply: false }),
+      (err) => { assert.match(err.message, fragment); return true; }
+    );
+    assert.deepEqual(w.calls.findings, [], 'a dry run files no finding, even on refusal');
+    assert.deepEqual(w.calls.resolved, []);
+    assert.deepEqual(w.calls.assigned, []);
+  }
+});
+
+test('an APPLY run still files the blocked finding, because somebody must know', async () => {
+  const w = world({ teams: [] });
+  await assert.rejects(() => run(w));
+  assert.equal(w.calls.findings.length, 1);
+  assert.equal(w.calls.findings[0].severity, 'serious');
+});

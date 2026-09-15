@@ -51,6 +51,63 @@ It will **not** do near-matching. `steve` does not become `Steven`, and
 `Charlotte` is never `Charles`. A single-word cell that matches one team's name
 *and* another team's dispatcher's first name is ambiguous, not a winner.
 
+### The two shapes the real Board writes
+
+Production does not put a bare name in every cell. It puts sorting markers in
+front so rows land where dispatch wants them, and it puts two dispatchers on one
+truck's row:
+
+| Board cell | Read as |
+|---|---|
+| `x Franky` | Franky |
+| `y Anthony` | Anthony |
+| `zAaron/Jack` | Aaron **and** Jack, who must be one team |
+
+All three used to come back `unknown`, so those company drivers reached Needs
+Review every week. `x Franky` failed because the given-name tier reads the first
+word, and `X` is under the three-character floor that stops an initial matching
+three people — so the tier never ran.
+
+**Both readings are fallbacks, and that is the safety property.** The literal
+label is resolved first, exactly as before. Only an `unknown` — nothing matched,
+so nothing is at stake — is re-read as marked or multi-name. A `matched` label
+cannot be changed by either pass, and an `ambiguous` one is never rescued into a
+guess. So the tolerance can turn a Needs Review into a placement; it can never
+turn a correct placement into a different one. `via` on the verdict records
+which reading was needed (`literal`, `sort_marker`, `multi_name`).
+
+The marker rule is deliberately narrow: only `x`, `y`, `z`, only leading, and
+when glued to the name (`zAaron`) only when the raw text shows a **lower-case**
+marker followed by an **upper-case** letter. `Zachary` and `Yusuf` keep their
+first letter; `J Smith` keeps its initial; an all-caps `ZAARON` has lost the
+signal that says which letter is the marker, so it stays Needs Review rather
+than being guessed at.
+
+**Several names on one row is unanimity, not majority.** Every name must
+resolve, and they must all name the same team. `Franky/Steven` is `ambiguous`
+(two teams genuinely disagree) and `Aaron/Nobody` is `unknown` — the name nobody
+recognises may be a dispatcher on another team who has not been registered, so
+placing the driver on Aaron's team would be a guess with a payroll consequence.
+This also fixed a defect that predated the marker work: the given-name tier
+reads the *first* word, so before this every multi-name label silently collapsed
+to its first name and `Franky/Steven` placed the driver on Franky's team.
+
+## Running the rebuild without sending a round
+
+`POST /api/raise/admin/roster/reconcile` rebuilds the roster from the Board and
+**mints nothing and sends nothing**. `{"dryRun": true}` (or `?dryRun=1`) goes
+further and writes nothing at all: it returns the plan — `wouldPlace` with each
+driver, the team, the board cell and the `via` that read it, plus the `reviews`
+a person still has to settle.
+
+It exists because reconciliation used to be reachable only from
+`openRoundAndPost`, so the only way to see what it would do to the roster was to
+let it send a review link to a dispatch group. That put "check the roster is
+right" and "do not send a round you did not mean" in direct conflict, and the
+second one always wins — so the roster went unverified. `send-now` remains the
+only route that can open a round, and `tests/raiseReconcileRoute.test.js`
+asserts it stays that way.
+
 ## Sunday, in order
 
 [`services/raiseApprovalService.js`](../../services/raiseApprovalService.js)
@@ -169,6 +226,11 @@ drivers it was actually answered for, whatever the Board says afterwards.
 
 * `tests/raiseDispatcherTeam.test.js` — the matcher and the plan, including
   every refusal
+* `tests/raiseBoardDispatcherLabels.test.js` — the real Board formats (`x
+  Franky`, `y Anthony`, `zAaron/Jack`), the names that must keep their first
+  letter, and the multi-name refusals
+* `tests/raiseReconcileRoute.test.js` — the reconcile-only endpoint cannot mint
+  or send a round, and `send-now` stays the only route that can
 * `tests/raiseBoardRoster.test.js` — the rebuild: freshness, placement,
   idempotency, overrides, Needs Review
 * `tests/raiseBoardRosterPg.test.js` — the transaction, the move, the override
