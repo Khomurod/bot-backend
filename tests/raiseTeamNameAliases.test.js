@@ -126,6 +126,27 @@ test('a SURNAME never becomes an alias — only explicit separators split a name
   assert.equal(matchDispatcherToTeam('Charles Whitfield', teams).teamId, 1);
 });
 
+test('a COMMA in a team name is a surname, not a list — no alias from it', () => {
+  // A team name and a board label are not equally safe to split. Splitting a
+  // LABEL wrongly costs a refusal; splitting a TEAM NAME wrongly costs a wrong
+  // KEY, and from then on any cell carrying that word places a driver there.
+  // The comma is the one mark that means both "and another person" and "one
+  // person, surname first", so a team name is never split on it.
+  const teams = [{ id: 1, name: 'John, Smith', memberNames: [] }, { id: 2, name: 'Steven', memberNames: [] }];
+  assert.equal(matchDispatcherToTeam('Smith', teams).decision, DECISION.UNKNOWN,
+    'a surname must not become a way to reach a team');
+  assert.equal(matchDispatcherToTeam('John', teams).teamId, 1, 'the given-name tier still works');
+  assert.equal(matchDispatcherToTeam('John, Smith', teams).teamId, 1, 'and the full name still matches itself');
+});
+
+test('the separators that DO mean another person still make aliases', () => {
+  for (const name of ['Aaron / Jack', 'Aaron & Jack', 'Aaron + Jack', 'Aaron and Jack', 'Aaron; Jack']) {
+    const teams = [{ id: 1, name, memberNames: [] }];
+    assert.equal(matchDispatcherToTeam('Jack', teams).teamId, 1, name);
+    assert.equal(matchDispatcherToTeam('Aaron', teams).teamId, 1, name);
+  }
+});
+
 test('one name on TWO teams is ambiguous, not a race between them', () => {
   // Aliases go through the same Set-keyed index as every other name, so a
   // collision is reported rather than resolved by iteration order.
