@@ -4,7 +4,7 @@
  * Every method a service calls on its injected dependencies really exists.
  *
  * THE BUG THIS EXISTS FOR. `boardPresenceWatch` and `boardRoster` both called
- * `deps.boardSettings.getBoardConfig()`. No such function was ever
+ * `deps.boardSettings.getDispatchBoardSettings()`. No such function was ever
  * exported — the real one is `getBoardConfig` — but because the call goes
  * through a `deps` object rather than a named import, every static check passed:
  * `lint:undef` sees a property access, `lint:imports` sees no import to verify,
