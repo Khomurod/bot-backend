@@ -215,7 +215,7 @@ async function blocked(deps, reason) {
  *
  * @returns `{ ok, summary, reviews, teams, boardAgeMs }`
  */
-async function reconcileRosterFromBoard({ deps = defaultDeps(), now = Date.now() } = {}) {
+async function reconcileRosterFromBoard({ deps = defaultDeps(), now = Date.now(), apply = true } = {}) {
   // `getBoardConfig` is the real server-side Board config API — see the note in
   // services/homeTime/boardPresenceWatch.js for why the wrong name survived
   // every static check.
@@ -261,6 +261,40 @@ async function reconcileRosterFromBoard({ deps = defaultDeps(), now = Date.now()
   // one.
   const writeErrors = [];
   const errors = [];
+
+  // A DRY RUN PLANS AND REPORTS, AND TOUCHES NOTHING. It exists because the
+  // only way to see what reconciliation would do used to be to let it mint and
+  // SEND a review round — so "check the roster is right first" and "do not send
+  // a round you did not mean" were in direct conflict. The plan above is pure,
+  // so this returns it without entering the write loop at all: no assignment
+  // moves, no finding is filed, no `resolveClearedFindings` runs.
+  if (!apply) {
+    return {
+      ok: true,
+      dryRun: true,
+      boardAgeMs: fresh.ageMs,
+      teams: teams.length,
+      summary: { ...summary, placed: 0, removed: 0 },
+      reviews: actions
+        .filter((a) => a.outcome === OUTCOME.REVIEW)
+        .map((a) => ({
+          driver: a.driver?.driverName || 'this driver',
+          reason: a.reason,
+          dispatcher: a.board?.dispatcher || null,
+        })),
+      wouldPlace: actions
+        .filter((a) => a.outcome === OUTCOME.PLACE)
+        .map((a) => ({
+          driver: a.driver?.driverName || null,
+          unitNumber: a.driver?.unitNumber || null,
+          teamId: a.teamId,
+          fromTeamId: a.fromTeamId ?? null,
+          dispatcher: a.board?.dispatcher || null,
+          via: a.board?.match?.via || null,
+        })),
+      errors: [],
+    };
+  }
 
   for (const action of actions) {
     try {

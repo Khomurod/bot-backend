@@ -141,7 +141,16 @@ and every API client function is exactly what it was.
     `raise.roster_not_rebuilt` (serious) so the missing review is visible.
     A driver whose dispatcher maps to no team, or to more than one, is left OFF
     a roster and filed as `raise.driver_unplaced` — never placed on a plausible
-    team. Manual assignment survives only as an explicit, recorded override that
+    team. The matcher reads the two shapes the real Board writes — a leading
+    sorting marker (`x Franky`, `zAaron/Jack`) and two dispatchers on one row —
+    but only as FALLBACKS on a label that otherwise matched nothing, so the
+    tolerance can rescue a Needs Review and can never redirect a correct
+    placement. Several names must be unanimous: `Franky/Steven` and
+    `Aaron/Nobody` both stay Needs Review.
+    `POST /api/raise/admin/roster/reconcile` rebuilds the roster **without**
+    minting or sending a round, and `{"dryRun": true}` reports the plan without
+    writing anything — so the roster can be checked without a review link
+    reaching a dispatch group. Manual assignment survives only as an explicit, recorded override that
     the rebuild reports and never overwrites, with a "Hand back to board" action
     to retire it. Normal operation needs no manual assignment at all. Historical
     `raise_round_picks` are untouched by any rebuild. See

@@ -337,6 +337,31 @@ adminRouter.delete('/members/:memberId', async (req, res) => {
   }
 });
 
+/**
+ * Rebuild the roster from the Dispatcher Board — AND NOTHING ELSE.
+ *
+ * WHY THIS EXISTS SEPARATELY FROM /send-now. Reconciliation used to be
+ * reachable only from `openRoundAndPost`, so the only way to see what it would
+ * do to the roster was to let it mint a review round and SEND the link to a
+ * dispatch group. That put "check the roster is right" and "do not send a round
+ * you did not mean" in direct conflict, and the second one always wins — so the
+ * roster went unverified.
+ *
+ * This endpoint mints nothing and sends nothing. `?dryRun=1` (or
+ * `{"dryRun": true}`) goes further and writes nothing at all: it returns the
+ * plan, including which drivers WOULD be placed and how each board label was
+ * read, so a person can check the placements before any row moves.
+ */
+adminRouter.post('/roster/reconcile', async (req, res) => {
+  try {
+    const dryRun = req.body?.dryRun === true || String(req.query?.dryRun || '') === '1';
+    const out = await raise.reconcileRosterFromBoard({ apply: !dryRun });
+    res.json({ ...out, roundSent: false });
+  } catch (err) {
+    sendServiceError(res, err, 'Failed to reconcile the roster from the board.');
+  }
+});
+
 adminRouter.post('/send-now', async (req, res) => {
   try {
     const periodStart = req.body?.periodStart || null;
