@@ -22,6 +22,7 @@ const { query } = require('../pool');
 async function insertRoadHistory({
   groupId, driverName, unitNumber, roadStartedAt, homeArrivedAt,
   daysOnRoad, exceededWeeks, bonusUsd, bonusPostedAt = null,
+  openedBy = null, openedEvidence = null,
 }) {
   const res = await query(
     // person_id is the group's OPEN association at write time (migration 0026):
@@ -29,12 +30,15 @@ async function insertRoadHistory({
     // layer has not met this group yet.
     `INSERT INTO driver_road_history
        (group_id, driver_name, unit_number, road_started_at, home_arrived_at,
-        days_on_road, exceeded_weeks, bonus_usd, bonus_posted_at, person_id)
+        days_on_road, exceeded_weeks, bonus_usd, bonus_posted_at, person_id,
+        opened_by, opened_evidence)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9,
-             (SELECT person_id FROM driver_person_groups WHERE group_id = $1 AND ended_at IS NULL LIMIT 1))
+             (SELECT person_id FROM driver_person_groups WHERE group_id = $1 AND ended_at IS NULL LIMIT 1),
+             $10, $11)
      RETURNING *`,
     [groupId, driverName || null, unitNumber || null, roadStartedAt, homeArrivedAt,
-      daysOnRoad, exceededWeeks, bonusUsd, bonusPostedAt]
+      daysOnRoad, exceededWeeks, bonusUsd, bonusPostedAt,
+      openedBy || null, openedEvidence || null]
   );
   return res.rows[0];
 }
@@ -93,16 +97,21 @@ async function listOpenHomeStays(groupId) {
  * optionally link the decided request that authorized it. Atomic guard on the
  * still-open state so a repeated home→road cannot overwrite a closed stay.
  */
-async function closeHomeStay(id, { returnToRoadAt, homeDays, linkedRequestId }) {
+async function closeHomeStay(id, {
+  returnToRoadAt, homeDays, linkedRequestId, closedBy = null, closedEvidence = null,
+}) {
   const res = await query(
     `UPDATE driver_road_history
        SET return_to_road_at = $2,
            home_days = $3,
-           linked_request_id = COALESCE($4, linked_request_id)
+           linked_request_id = COALESCE($4, linked_request_id),
+           closed_by = COALESCE($5, closed_by),
+           closed_evidence = COALESCE($6, closed_evidence)
      WHERE id = $1 AND return_to_road_at IS NULL
      RETURNING *`,
     [id, returnToRoadAt, homeDays == null ? null : homeDays,
-      linkedRequestId == null ? null : linkedRequestId]
+      linkedRequestId == null ? null : linkedRequestId,
+      closedBy || null, closedEvidence || null]
   );
   return res.rows[0] || null;
 }

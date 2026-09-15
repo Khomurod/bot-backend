@@ -106,7 +106,7 @@ function buildRetiredCardText(request) {
  * editing the message with this text and NO reply_markup removes the buttons, so
  * the card in the group clearly shows the request is closed and not actionable.
  */
-function buildExpiredCardText(request) {
+function buildClosedCardText(request) {
   const who = `${escapeHtml(request.driver_name || 'Driver')}`
     + `${request.unit_number ? ` (Unit ${escapeHtml(request.unit_number)})` : ''}`;
   const back = request.return_to_road_date
@@ -115,8 +115,8 @@ function buildExpiredCardText(request) {
   return [
     `🏠 <b>Home-Time Request — ${who}</b>`,
     '',
-    '⌛ <b>Expired — No Action</b>',
-    'The requested home-time dates passed with no decision, so this request is closed and no longer actionable.',
+    '✅ <b>Closed</b>',
+    'The requested home-time dates have passed, so this request is closed. It was recorded and the managers were told when it came in.',
     `Home time: <b>${escapeHtml(request.home_from || '—')} → ${escapeHtml(request.home_to || '—')}</b>${back}`,
   ].join('\n');
 }
@@ -128,5 +128,5 @@ module.exports = {
   buildCardText,
   buildDecidedCardText,
   buildRetiredCardText,
-  buildExpiredCardText,
+  buildClosedCardText,
 };

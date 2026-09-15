@@ -233,7 +233,15 @@ async function applyStateTransition(
       // return: a road→home insert can only follow a road state, so that
       // moment IS the observed return (class-B evidence, seen from this side).
       // It is also what lets the one-open-stay-per-group index hold.
-      await closeLingeringHomeStays(group, { returnToRoadIso: current.state_since });
+      await closeLingeringHomeStays(group, {
+        returnToRoadIso: current.state_since,
+        // NOT this transition's source. What closes these stays is the fact
+        // that a road period was observed AFTER them — the evidence is the
+        // road start itself, seen from the far side, and saying otherwise
+        // would credit the wrong observer.
+        closedBy: 'evidence',
+        closedEvidence: 'a later road period was observed, so this stay had ended',
+      });
       const historyRow = await ht.insertRoadHistory({
         groupId: group.id,
         driverName,
@@ -243,6 +251,12 @@ async function applyStateTransition(
         daysOnRoad,
         exceededWeeks,
         bonusUsd,
+        // WHO SAID THE DRIVER CAME HOME, and what they said. A manager reading
+        // "home 14 - 18 Sep" needs to be able to ask whether a person wrote it
+        // or a spreadsheet did; a correction nobody can trace is a correction
+        // nobody can argue with.
+        openedBy: detectedBy || null,
+        openedEvidence: evidenceSummary || null,
         // Born already-claimed on a silent path. The notifier polls for
         // `bonus_usd > 0 AND bonus_posted_at IS NULL`, so claiming afterwards
         // leaves a window: insert succeeds, claim fails, and an import of last
@@ -304,7 +318,11 @@ async function applyStateTransition(
     // every caller must remember is a rule that some caller will forget, so the
     // function that moves the state now owns both halves of the transition.
     if (previousState === 'home' && newState === 'road') {
-      const closed = await closeHomeStayOnReturn(group, { returnToRoadIso: eventAt });
+      const closed = await closeHomeStayOnReturn(group, {
+        returnToRoadIso: eventAt,
+        closedBy: detectedBy || null,
+        closedEvidence: evidenceSummary || null,
+      });
       if (announce) {
         await tellManagers('back_on_road', async () => {
           const { driverName, unitNumber } = await resolveDriverLabel(group);
@@ -364,7 +382,7 @@ async function applyStateTransition(
  * @param {string} opts.returnToRoadIso  the home→road transition time (ISO)
  * @returns {object|null} the closed road-history row, or null
  */
-async function closeOneStay(group, open, returnToRoadIso) {
+async function closeOneStay(group, open, returnToRoadIso, provenance = {}) {
   const homeDays = wholeDaysBetween(open.home_arrived_at, returnToRoadIso);
   let linkedRequestId = open.linked_request_id || null;
   if (!linkedRequestId) {
@@ -374,17 +392,21 @@ async function closeOneStay(group, open, returnToRoadIso) {
     const decided = await ht.findDecidedRequestNearDate(open.group_id || group.id, homeArrivedDate).catch(() => null);
     if (decided) linkedRequestId = decided.id;
   }
-  return ht.closeHomeStay(open.id, { returnToRoadAt: returnToRoadIso, homeDays, linkedRequestId });
+  return ht.closeHomeStay(open.id, {
+    returnToRoadAt: returnToRoadIso, homeDays, linkedRequestId,
+    closedBy: provenance.closedBy || null,
+    closedEvidence: provenance.closedEvidence || null,
+  });
 }
 
 /** Every open stay of this driver, on any of their chats, closed at one observed moment. Best effort. */
-async function closeLingeringHomeStays(group, { returnToRoadIso } = {}) {
+async function closeLingeringHomeStays(group, { returnToRoadIso, ...provenance } = {}) {
   try {
     const open = await ht.listOpenHomeStays(group.id);
     let closed = 0;
     for (const stay of open) {
       if (!stay.home_arrived_at) continue;
-      if (await closeOneStay(group, stay, returnToRoadIso)) closed += 1;
+      if (await closeOneStay(group, stay, returnToRoadIso, provenance)) closed += 1;
     }
     return closed;
   } catch (err) {
@@ -393,7 +415,7 @@ async function closeLingeringHomeStays(group, { returnToRoadIso } = {}) {
   }
 }
 
-async function closeHomeStayOnReturn(group, { returnToRoadIso } = {}) {
+async function closeHomeStayOnReturn(group, { returnToRoadIso, ...provenance } = {}) {
   try {
     if (!group || !returnToRoadIso) return null;
     // Newest open stay of this DRIVER — the person's, not only the chat's, so a
@@ -401,7 +423,7 @@ async function closeHomeStayOnReturn(group, { returnToRoadIso } = {}) {
     const [open] = await ht.listOpenHomeStays(group.id);
     let closed = null;
     if (open && open.home_arrived_at) {
-      closed = await closeOneStay(group, open, returnToRoadIso);
+      closed = await closeOneStay(group, open, returnToRoadIso, provenance);
     }
     // The home window is over → retire any clarification still waiting on dates and
     // stop its reminders (spec §11: stop when the driver returns to the road) —

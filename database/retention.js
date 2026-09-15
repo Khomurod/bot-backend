@@ -108,13 +108,10 @@ async function gatherRetentionInputs({ windowDays = WINDOW_DAYS } = {}) {
                 AND cl.created_at >= NOW() - INTERVAL '7 days'
             )::int AS recent_messages,
 
-            -- What the company did. Home requests that ended badly.
-            (SELECT COUNT(*) FROM home_time_requests r
-              WHERE r.group_id = d.group_id
-                AND r.status IN ('expired', 'clarification_unanswered')
-                AND r.requested_at >= NOW() - INTERVAL '90 days'
-            )::int AS unanswered_home_requests,
-
+            -- What the company DID. A request that simply reached the end of
+            -- its dates is NOT counted here: nobody was ever meant to answer
+            -- it, so counting it made the retention list mostly calendar. A
+            -- declined request is a real decision a person took, and stays.
             (SELECT COUNT(*) FROM home_time_requests r
               WHERE r.group_id = d.group_id
                 AND r.status = 'denied'
@@ -190,13 +187,25 @@ function mapInputs(row) {
     recentMessages: Number(row.recent_messages || 0),
     daysOnRoad,
     roadWeeksOverAllowance: weeksOver,
-    unansweredHomeRequests: Number(row.unanswered_home_requests || 0),
     deniedHomeRequests: Number(row.denied_home_requests || 0),
     unpaidBonusUsd: Number(row.unpaid_bonus_usd || 0),
     unpaidBonusCount: Number(row.unpaid_bonus_count || 0),
     emptySince: row.empty_since || null,
-    // Filled by the watcher from the efficiency classifier, which needs cycles
-    // rather than counts and so cannot be a subselect here.
+    // ALWAYS ZERO TODAY, and the comment that used to sit here said the watcher
+    // filled them from the efficiency classifier. It does not: nothing calls
+    // that classifier from `services/retention/watch.js`, and even if it did,
+    // `classifyCommitment` counts a broken promise only where a request was
+    // `approved` -- a status nothing has written since home time stopped being
+    // approved at all. So both signals are structurally dead rather than merely
+    // unwired, and the weights in `lib/retention/signals.js` keep working the
+    // moment somebody supplies them.
+    //
+    // NOT REPLACED BY A REQUEST DATE, deliberately. A request is a driver's
+    // plan, not a promise the company made, so scoring a missed request date as
+    // a broken commitment would put drivers back on the call list for the
+    // calendar -- which is exactly the noise removing `unanswered_home_requests`
+    // took out. Defining what the company now promises is a business decision,
+    // not a code change.
     brokenHomeCommitments: 0,
     raiseNotQualifiedRounds: 0,
   };

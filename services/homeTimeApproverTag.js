@@ -30,7 +30,7 @@ const {
   todayIsoChicago, resolveDriverLabel, resolveRoadMetrics, postRequestCard,
   createClarification, askKindForWindow,
 } = require('./homeTimeClarificationFlow');
-const { expireOutdatedRequest } = require('./homeTimeApproval');
+const { closeOutdatedRequest } = require('./homeTimeApproval');
 
 /**
  * Ask the AI whether the recent conversation is a home-time request. Unchanged
@@ -131,7 +131,7 @@ async function handleApproverMention(telegram, group, message) {
     if (existing) {
       // An outdated open request must not block a new one — close it first.
       if (!isHomeTimeRequestOutdated(existing, { todayIso: todayIsoChicago() })) return; // one active flow per driver
-      await expireOutdatedRequest(telegram, existing);
+      await closeOutdatedRequest(telegram, existing);
     }
 
     // Already home? A "send them home" card makes no sense — the unplanned-arrival

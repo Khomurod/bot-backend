@@ -92,7 +92,7 @@ test('no card builder produces an inline keyboard any more', () => {
   // Comments still explain why editing a card without a keyboard clears it, so
   // look for the telegraf builder itself rather than the words.
   assert.equal(/require\('telegraf'\)|Markup\.|inlineKeyboard\(/.test(src), false);
-  for (const build of ['buildCardText', 'buildDecidedCardText', 'buildRetiredCardText', 'buildExpiredCardText']) {
+  for (const build of ['buildCardText', 'buildDecidedCardText', 'buildRetiredCardText', 'buildClosedCardText']) {
     assert.equal(typeof cards[build](
       { driver_name: 'A', home_from: '2026-09-18', home_to: '2026-09-21' }, 'approved', 'x'
     ), 'string', `${build} returns text only`);

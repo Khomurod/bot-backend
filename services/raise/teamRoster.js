@@ -126,7 +126,7 @@ async function listAssignableDrivers({ companyOnly = true, includeInactive = fal
  * to a dispatch team. Delegates conflict/move handling to the DB layer.
  */
 async function assignDriverToTeamFromGroups({
-  teamId, groupId = null, driverProfileId = null, force = false,
+  teamId, groupId = null, driverProfileId = null, force = false, overriddenBy = null,
 }) {
   if (!teamId) throw serviceError('NO_TEAM', 'Select a dispatch team.', 400);
   if (!groupId && !driverProfileId) throw serviceError('NO_DRIVER', 'Select a driver to assign.', 400);
@@ -141,7 +141,7 @@ async function assignDriverToTeamFromGroups({
     throw serviceError('NO_DRIVER_NAME',
       'This driver has no name in Driver Groups. Set the driver name there first.', 400);
   }
-  return ra.assignDriverToTeam({
+  const result = await ra.assignDriverToTeam({
     teamId,
     driverProfileId: cand.driver_profile_id,
     groupId: cand.group_id,
@@ -150,6 +150,14 @@ async function assignDriverToTeamFromGroups({
     driverNormalizedName: cand.driver_normalized_name,
     force,
   });
+  // A PERSON DECIDED THIS, so it is recorded as a person's decision and the
+  // Sunday reconciliation leaves it alone. Without the mark, the next rebuild
+  // would quietly move the driver back to whoever the Board names and the
+  // administrator would have no way to tell that their change had been undone.
+  if (result?.assignment?.id) {
+    await ra.markManualOverride(result.assignment.id, overriddenBy || null);
+  }
+  return { ...result, manualOverride: true };
 }
 
 // ─── Dispatch team members (dispatchers with Telegram usernames) ───
@@ -239,8 +247,24 @@ async function backfillLegacyTeamDriverLinks() {
   return { linked, needsReview };
 }
 
+/**
+ * Hand a manually-placed driver back to the Dispatcher Board.
+ *
+ * The other half of an override: an administrator who fixed something the Board
+ * had wrong needs a way to say "the Board is right again now" without deleting
+ * the assignment and re-adding it. The next reconciliation then treats the row
+ * as its own.
+ */
+async function releaseDriverToBoard(assignmentId) {
+  if (!assignmentId) throw serviceError('NO_ASSIGNMENT', 'Select an assignment.', 400);
+  const row = await ra.clearManualOverride(assignmentId);
+  if (!row) throw serviceError('ASSIGNMENT_NOT_FOUND', 'That assignment was not found.', 404);
+  return row;
+}
+
 module.exports = {
   DRIVER_ROLES,
+  releaseDriverToBoard,
   fetchCompanyDriverCandidates,
   candidateFromDirectoryRow,
   listAssignableDrivers,

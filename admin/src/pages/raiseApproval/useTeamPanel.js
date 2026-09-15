@@ -100,6 +100,19 @@ export function useTeamPanel(flash, clearStatus, refreshTeams) {
     }
   };
 
+  // The other half of an override: "the board is right again now". Deleting and
+  // re-adding the driver would work too, but it loses the record that a person
+  // ever disagreed — and re-adding is itself a new override.
+  const releaseAssignedDriver = async (driver) => {
+    try {
+      await api.releaseRaiseDriverToBoard(driver.id);
+      await refreshDriverPanel();
+      flash("success", `${driver.driver_name} follows the dispatcher board again.`);
+    } catch (err) {
+      flash("error", err.message);
+    }
+  };
+
   const openMembersManager = async (team) => {
     clearStatus();
     try {
@@ -169,7 +182,7 @@ export function useTeamPanel(flash, clearStatus, refreshTeams) {
     managingTeam, panelMode, closePanel,
     assignedDrivers, candidates, candidateSearch, setCandidateSearch, candidatesLoading,
     pendingConflict, setPendingConflict,
-    loadCandidates, openDriverManager, assignCandidate, removeAssignedDriver,
+    loadCandidates, openDriverManager, assignCandidate, removeAssignedDriver, releaseAssignedDriver,
     members, memberForm, setMemberForm,
     openMembersManager, addMember, toggleMemberActive, removeMember,
   };

@@ -97,7 +97,7 @@ test('an inactive group STANDS DOWN — the schedule is cleared, not just skippe
   // `next_reminder_at` set, and `isHomeTimeRequestOutdated` reads a set schedule
   // as "reminders still pending → still active" — so the 21-day stale expiry
   // never fired either, and neither did anything else. 117 of 196 production
-  // requests are `expired`; these are the ones that never even got that far.
+  // requests are closed once their dates pass; these never got that far.
   const { service, telegram, claims, sends, cancels } = loadService({
     due: [dueRow({ group_active: false })],
   });
@@ -243,9 +243,9 @@ test('Home Time switched off is BLOCKED in the ledger, not a healthy pass', () =
 test('a normal tick reports what it did and carries no error', () => {
   const { reminderRunSummary } = require('../services/homeTimeReminderService');
   const out = reminderRunSummary(
-    { enabled: true, due: 3, sent: 3, errors: 0 }, { enabled: true, expired: 1 }
+    { enabled: true, due: 3, sent: 3, errors: 0 }, { enabled: true, closed: 1 }
   );
-  assert.deepEqual(out, { due: 3, sent: 3, expired: 1 });
+  assert.deepEqual(out, { due: 3, sent: 3, closed: 1 });
 });
 
 test('every due reminder failing to send is a FAILED pass', () => {

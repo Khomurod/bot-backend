@@ -110,20 +110,24 @@ test('earned road bonus that was never posted is counted in dollars', async (t) 
   assert.equal(sam.unpaidBonusUsd, 300, 'the posted one does not count');
 });
 
-test('home requests that expired unanswered are counted apart from ones that were declined', async (t) => {
+test('a request nobody was ever meant to answer is NOT a retention grievance', async (t) => {
   if (await skipWithoutPg(t)) return;
   const h = await seed(t);
   await h.query(
     `INSERT INTO home_time_requests (group_id, status, requested_at)
-     VALUES (7, 'expired', NOW() - INTERVAL '10 days'),
+     VALUES (7, 'closed', NOW() - INTERVAL '10 days'),
             (7, 'clarification_unanswered', NOW() - INTERVAL '20 days'),
+            (7, 'expired', NOW() - INTERVAL '30 days'),
             (7, 'denied', NOW() - INTERVAL '5 days'),
-            (7, 'approved', NOW() - INTERVAL '5 days'),
-            (7, 'expired', NOW() - INTERVAL '200 days')`
+            (7, 'approved', NOW() - INTERVAL '5 days')`
   );
   const { retention } = loadInputs(h);
   const sam = (await retention.gatherRetentionInputs()).find((r) => r.groupId === 7);
-  assert.equal(sam.unansweredHomeRequests, 2, 'and the 200-day-old one is out of the window');
+  // Closed, unanswered-clarification and the legacy 'expired' rows all describe
+  // the calendar moving on, not the company failing anybody. Counting them is
+  // what put a third of the fleet on the call list.
+  assert.equal(sam.unansweredHomeRequests, undefined, 'the count is gone, not merely zero');
+  // A DECLINED request is a decision a person actually took, and still counts.
   assert.equal(sam.deniedHomeRequests, 1);
 });
 

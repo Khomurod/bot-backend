@@ -81,6 +81,10 @@ const {
   stopReturnToRoadWatch,
 } = require('./homeTime/returnToRoadWatch');
 const {
+  startBoardPresenceWatch,
+  stopBoardPresenceWatch,
+} = require('./homeTime/boardPresenceWatch');
+const {
   startLoadLifecycleWatch,
   stopLoadLifecycleWatch,
 } = require('./loads/lifecycleWatch');
@@ -178,6 +182,10 @@ function startBackgroundServices({ telegram }) {
   // Notices when a driver who is home goes back to work — a Datatruck load plus
   // the truck's own movement, never one of them alone.
   startReturnToRoadWatch();
+  // The other half of the same question: WHEN A DRIVER GOES HOME. Dispatch
+  // records it on the board because they work from it, so Wenze reads it there
+  // rather than waiting for somebody to type a date.
+  startBoardPresenceWatch(telegram);
   // Works out what each load is actually doing from where the truck is, because
   // a board status is a plan and is routinely days out of date.
   startLoadLifecycleWatch();
@@ -253,6 +261,7 @@ function stopBackgroundServices() {
   try { stopRoadBonusNotifierService(); } catch (err) { console.error('[SHUTDOWN] stopRoadBonusNotifierService failed:', err.message); }
   try { stopHomeTimeReminderService(); } catch (err) { console.error('[SHUTDOWN] stopHomeTimeReminderService failed:', err.message); }
   try { stopReturnToRoadWatch(); } catch (err) { console.error('[SHUTDOWN] stopReturnToRoadWatch failed:', err.message); }
+  try { stopBoardPresenceWatch(); } catch (err) { console.error('[SHUTDOWN] stopBoardPresenceWatch failed:', err.message); }
   try { stopLoadLifecycleWatch(); } catch (err) { console.error('[SHUTDOWN] stopLoadLifecycleWatch failed:', err.message); }
   try { stopFuelRiskWatch(); } catch (err) { console.error('[SHUTDOWN] stopFuelRiskWatch failed:', err.message); }
   try { stopSafetyCoach(); } catch (err) { console.error('[SHUTDOWN] stopSafetyCoach failed:', err.message); }

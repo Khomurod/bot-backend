@@ -99,6 +99,15 @@ export async function assignRaiseDriver(teamId, { groupId, driverProfileId, forc
   return res.json();
 }
 
+/** Hand a manually-placed driver back to the Dispatcher Board's judgement. */
+export async function releaseRaiseDriverToBoard(driverId) {
+  const res = await fetch(`${RAISE_ADMIN}/team-drivers/${driverId}/release-to-board`, {
+    method: 'POST', headers: getHeaders(),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
 export async function removeRaiseTeamDriver(driverId) {
   const res = await fetch(`${RAISE_ADMIN}/team-drivers/${driverId}`, {
     method: 'DELETE', headers: getHeaders(),

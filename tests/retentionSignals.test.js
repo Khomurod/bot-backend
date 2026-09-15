@@ -27,7 +27,7 @@ const CALM = {
   quitSignals: 0, complaints: 0, avgSentiment: 0.4,
   baselineMessages: 20, recentMessages: 18,
   roadWeeksOverAllowance: 0, brokenHomeCommitments: 0,
-  unansweredHomeRequests: 0, deniedHomeRequests: 0,
+  deniedHomeRequests: 0,
   unpaidBonusUsd: 0, unpaidBonusCount: 0, raiseNotQualifiedRounds: 0,
   emptySince: null,
 };
@@ -54,11 +54,21 @@ test('saying they are leaving is the heaviest single signal, because it is the o
   assert.match(out.actions[0], /Ring them today/);
 });
 
-test('a broken home promise on top of an over-run road clock is urgent', () => {
-  const out = at({ roadWeeksOverAllowance: 3, brokenHomeCommitments: 1, unansweredHomeRequests: 1 });
+test('a broken home promise on top of an over-run road clock is worth watching', () => {
+  // NOT urgent, and that is the corrected arithmetic rather than a softening.
+  // This pair used to score three signals because a request whose dates simply
+  // passed was counted alongside the broken promise — the same grievance twice.
+  // One real grievance plus a long road clock is a driver to watch; urgency
+  // needs something else to be true as well.
+  const out = at({ roadWeeksOverAllowance: 3, brokenHomeCommitments: 1 });
+  assert.equal(out.level, 'watch');
+  assert.ok(out.score >= THRESHOLDS.notice && out.score < THRESHOLDS.urgent);
+  assert.match(out.actions.join(' '), /home date/);
+});
+
+test('a third real grievance still reaches urgent', () => {
+  const out = at({ roadWeeksOverAllowance: 3, brokenHomeCommitments: 1, unpaidBonusUsd: 400 });
   assert.equal(out.level, 'urgent');
-  assert.ok(out.score >= THRESHOLDS.urgent);
-  assert.match(out.actions.join(' '), /home time request/);
 });
 
 test('silence counts against the driver\'s OWN baseline, never an absolute', () => {
@@ -116,7 +126,7 @@ test('NO SIGNAL IS AN ASSESSMENT OF THE DRIVER', () => {
   // said. There is no "refused loads", no "coached three times", no lateness.
   const everything = at({
     quitSignals: 2, complaints: 5, avgSentiment: -1.8, baselineMessages: 40, recentMessages: 0,
-    roadWeeksOverAllowance: 4, brokenHomeCommitments: 2, unansweredHomeRequests: 2,
+    roadWeeksOverAllowance: 4, brokenHomeCommitments: 2,
     deniedHomeRequests: 3, unpaidBonusUsd: 900, raiseNotQualifiedRounds: 2,
     emptySince: '2026-09-01T00:00:00Z',
   });
@@ -137,14 +147,14 @@ test('EVERY SUGGESTED ACTION IS SOMETHING THE COMPANY DOES', () => {
   });
   assert.ok(everything.actions.length > 0);
   for (const action of everything.actions) {
-    assert.match(action, /^(Ring|Answer|Get|Check|Find|Read|Tell)/, action);
+    assert.match(action, /^(Ring|Answer|Get|Give|Check|Find|Read|Tell)/, action);
   }
 });
 
 test('at most three actions — a list of eight is a list nobody starts', () => {
   const out = at({
     quitSignals: 1, complaints: 4, roadWeeksOverAllowance: 3, brokenHomeCommitments: 1,
-    unansweredHomeRequests: 1, unpaidBonusUsd: 500, raiseNotQualifiedRounds: 2,
+    unpaidBonusUsd: 500, raiseNotQualifiedRounds: 2,
     emptySince: '2026-09-01T00:00:00Z', baselineMessages: 40, recentMessages: 0,
   });
   assert.ok(out.actions.length <= 3);

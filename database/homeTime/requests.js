@@ -309,12 +309,16 @@ async function markHomeTimeAcknowledged(id, policyResult) {
 
 /**
  * Retire every open clarification for a group (driver went back on the road, or an
- * admin closed it): mark them 'expired' and stop their reminders. Returns count.
+ * admin closed it): mark them 'closed' and stop their reminders. Returns count.
+ *
+ * 'closed', not 'expired': the driver is back on the road, so the conversation
+ * about dates is over. Nothing failed, and the retention watch must not be able
+ * to read this as the company having ignored somebody.
  */
 async function expireOpenClarificationsForGroup(groupId, { reason } = {}) {
   const res = await query(
     `UPDATE home_time_requests
-       SET status = 'expired', next_reminder_at = NULL,
+       SET status = 'closed', next_reminder_at = NULL,
            ai_reasoning = COALESCE($3, ai_reasoning)
      WHERE group_id = $1 AND status = ANY($2)
      RETURNING id`,

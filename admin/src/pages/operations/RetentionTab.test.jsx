@@ -22,11 +22,11 @@ vi.mock("../../api", () => ({
 const URGENT = {
   id: 3, driverName: "Sam Rivera", groupId: 7, level: "urgent", score: 10,
   signals: [
-    { key: "home_request_unanswered", detail: "1 home time request expired without an answer" },
+    { key: "home_commitment_broken", detail: "A home window was agreed and not honoured (1 time)" },
     { key: "road_clock_over", detail: "3 weeks past the road allowance" },
     { key: "bonus_unpaid", detail: "$300 of earned bonus has not been paid or posted" },
   ],
-  actions: ["Answer their home time request and give them a date they can hold you to"],
+  actions: ["Give them a home date they can hold you to — the last one did not happen"],
   acknowledgedAt: null,
 };
 
@@ -48,14 +48,14 @@ beforeEach(() => {
 
 test("every reason is shown, not just a verdict", async () => {
   await open();
-  expect(screen.getByText(/1 home time request expired without an answer/)).toBeInTheDocument();
+  expect(screen.getByText(/A home window was agreed and not honoured/)).toBeInTheDocument();
   expect(screen.getByText(/3 weeks past the road allowance/)).toBeInTheDocument();
   expect(screen.getByText(/\$300 of earned bonus/)).toBeInTheDocument();
 });
 
 test("the thing to DO is the strongest element on the row", async () => {
   await open();
-  const action = screen.getByText(/Answer their home time request/);
+  const action = screen.getByText(/Give them a home date they can hold you to/);
   expect(action).toBeInTheDocument();
   expect(action.closest("strong")).toBeTruthy();
 });

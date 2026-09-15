@@ -131,6 +131,21 @@ and every API client function is exactly what it was.
   - **One submission per team per round** (a second attempt gets 409). Drivers
     never open this page and never receive an OTP.
   - An admin closes the round from `/api/raise/admin/*`.
+  - **Which drivers a team reviews is rebuilt from the Dispatcher Board, not
+    typed.** Every Sunday, as the FIRST thing `openRoundAndPost` does — before
+    the round row exists and before the link is posted — every team's roster is
+    reconciled from the Board's dispatcher column, so the form a dispatcher
+    opens shows who is actually theirs that week. Send now does it too.
+    **A Board that is off, unread, failed or more than six hours stale stops the
+    round** rather than producing a confidently wrong one, and files
+    `raise.roster_not_rebuilt` (serious) so the missing review is visible.
+    A driver whose dispatcher maps to no team, or to more than one, is left OFF
+    a roster and filed as `raise.driver_unplaced` — never placed on a plausible
+    team. Manual assignment survives only as an explicit, recorded override that
+    the rebuild reports and never overwrites, with a "Hand back to board" action
+    to retire it. Normal operation needs no manual assignment at all. Historical
+    `raise_round_picks` are untouched by any rebuild. See
+    `docs/architecture/driver-raise-roster.md`.
 - **Road / extra-week bonus** — posted as **one summary at the road→home
   transition**, never week-by-week. Company drivers only (owner-operators earn
   $0). Claimed atomically per completed leg in `driver_road_history`, with a

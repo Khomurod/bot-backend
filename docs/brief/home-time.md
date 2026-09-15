@@ -273,7 +273,7 @@ marks the stay closed.
   — `applyHomeTimeDecision`, `announceApproval`, `canApproveWindow`,
   `settleDecisionCard` — is DELETED, not disabled: a retired path kept "just in
   case" is a path that comes back. `services/homeTimeApproval.js` keeps only
-  `expireOutdatedRequest`, which closes a request whose window passed with
+  `closeOutdatedRequest`, which closes a request whose window passed with
   nothing having happened — housekeeping, never a decision. A legacy `pending`
   row shows a sentence in the driver timeline saying nothing is waiting for it,
   because a row reading "pending" with nothing beside it looks like a task.
@@ -326,3 +326,68 @@ marks the stay closed.
   start — the window and the bonus math that reads it were a day out. Guarded by
   `tests/homeTimeCentralDates.test.js`, which pins the instant rather than
   trusting the clock.
+
+
+## A request is recorded and delivered, and then it is done
+
+- **Nothing waits on a home-time request, so nothing may be inferred from
+  waiting.** The driver asks, three managers are told, the row is recorded —
+  stop. What was removed with this: a request "expiring" for want of an answer,
+  the sweep announcing "N home time requests expired without an answer", the
+  retention signal `home_request_unanswered` and the `unanswered_home_requests`
+  count behind it. That chain is what produced "34 drivers worth a call" on a
+  fleet of about a hundred: a request whose dates simply passed was being read
+  as the company failing the driver.
+- **`closed`, not `expired`.** A request whose window has gone by is set to
+  `status = 'closed'` so it stops blocking the next one; the count reaches the
+  run ledger and no human. `'expired'` survives in the CHECK for the rows that
+  already carry it — history is not rewritten — and nothing writes it.
+  **The widened CHECK is in `database/baseline/012_home_time.sql`, not only in
+  migration 0059**, for the reason recorded above: `schema.sql` re-applies its
+  unconditional DROP / ADD CONSTRAINT pair on every boot, so a status added by a
+  run-once migration alone stops the application starting the moment a real row
+  carries it. `tests/homeTimeCycleEvidencePg.test.js` applies the baseline twice
+  over a `closed` row to prove it.
+- **A home-time request is never evidence that a driver went home.** It is a
+  plan. Where a driver actually is comes from the Dispatcher Board and the
+  driver's own messages, never from a request or its status.
+- **A driver-facing clarification is not this.** `awaiting_dates`,
+  `awaiting_home_start` and `awaiting_return_to_road` are the bot asking the
+  DRIVER for dates so the request can be recorded properly, and they stay.
+
+## Home In and Home Out are read, not typed
+
+- **The Dispatcher Board opens and closes home cycles.** `HOME` / `VACATION`
+  held for twenty minutes opens one; a truck back in the dispatch pool closes
+  it. Decided by `lib/homeTime/boardPresence.js` (pure), applied by
+  `services/homeTime/boardPresenceWatch.js`, and — like every other path —
+  written only through `applyStateTransition`, which owns the state machine, the
+  cycle and the bonus.
+- **`READY` ends a home stay but never means "working".** It stays `neutral` in
+  `boardSaysWorking`, which the contradiction checks read, because a truck
+  marked available says nothing about whether its driver is driving. The third
+  list, `boardEndsHomeStay`, is asked only of a driver Wenze already has at
+  home. `REST` and `SHOP` end nothing: a driver can rest at home, and a truck
+  can sit in a shop while its driver is on their couch.
+- **Three rules stop it flapping, and most passes therefore do nothing.** The
+  Board must hold a status for twenty minutes (settle); a state Wenze set within
+  thirty minutes is not reversed (dwell); the driver's own message within two
+  hours outranks the spreadsheet (hold). A Board a few minutes behind a driver's
+  "I'm rolling" produces silence, not a Needs Attention item — only a
+  disagreement standing for twelve hours becomes
+  `home_time.board_disagrees_with_state`, warning, with nothing proposed.
+- **`dispatch_board_rows.status_changed_at` exists because `last_changed_at`
+  also moves when an ETA is retyped**, which would restart the confirmation
+  window for a driver whose status never moved. It defaults to `NOW()` so a row
+  the poller sees for the first time can still transition.
+- **Each side of a cycle records who said it.** `driver_road_history` carries
+  `opened_by` / `opened_evidence` and `closed_by` / `closed_evidence`
+  (`driver_message`, `dispatcher_board`, `ai_intent`, `admin`, `import`,
+  `evidence`), shown in the driver's history. Rows written before this are left
+  blank rather than backfilled with a guess.
+- **It does not compete with the return-to-road watch.** That one proves a truck
+  physically left, from a load plus movement. Once a stay is closed
+  `listDriversAtHome` stops returning the driver, so whichever sees it first
+  wins and the other goes quiet.
+
+See `docs/architecture/home-time-evidence.md`.

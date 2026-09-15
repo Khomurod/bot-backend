@@ -158,7 +158,7 @@ async function considerDriver(driver, { nowIso, deps, options }) {
   // ONLY `urgent` gets its own message. Production answered this within half an
   // hour of going live: fifty drivers came back at `watch` on a fleet of about
   // a hundred and ten — truthfully, because this fleet really does have that
-  // many people past the road allowance with home requests that expired. Fifty
+  // many people past the road allowance and owed bonus money. Fifty
   // separate notices is not fifty times the information; it is a channel
   // nobody opens again. The cohort is summarised by the caller instead, and
   // the full list is on the screen where it can be sorted and worked through.

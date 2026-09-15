@@ -27,13 +27,13 @@ const CALM = {
   quitSignals: 0, complaints: 0, avgSentiment: 0.2,
   baselineMessages: 20, recentMessages: 18,
   daysOnRoad: 10, roadWeeksOverAllowance: 0,
-  unansweredHomeRequests: 0, deniedHomeRequests: 0,
+  deniedHomeRequests: 0,
   unpaidBonusUsd: 0, unpaidBonusCount: 0,
   emptySince: null, brokenHomeCommitments: 0, raiseNotQualifiedRounds: 0,
 };
 // score 10 → urgent: a broken promise, weeks over the allowance and unpaid money.
 const AT_RISK = {
-  ...CALM, roadWeeksOverAllowance: 3, unansweredHomeRequests: 1, unpaidBonusUsd: 300,
+  ...CALM, roadWeeksOverAllowance: 3, brokenHomeCommitments: 1, unpaidBonusUsd: 300,
 };
 // score 4 → watch: enough to be worth a call, not enough to interrupt somebody.
 const WORTH_WATCHING = { ...CALM, deniedHomeRequests: 2, complaints: 2 };
@@ -85,7 +85,7 @@ test('a driver at risk produces one notice with the reasons and a thing to do', 
   const notice = calls.notified[0];
   assert.equal(notice.category, 'retention', 'the operations chat, never the driver\'s');
   assert.ok(notice.lines.length >= 2, 'the reasons, not just a verdict');
-  assert.match(notice.action, /^(Ring|Answer|Get|Check|Find|Read|Tell)/, 'something a person DOES');
+  assert.match(notice.action, /^(Ring|Answer|Get|Give|Check|Find|Read|Tell)/, 'something a person DOES');
   assert.equal(calls.marked.length, 1, 'what was announced is recorded');
 });
 
@@ -124,7 +124,7 @@ test('a model that reaches for an employment decision is refused', async () => {
   await watch.runRetentionPass({ now: NOW, deps });
   const title = calls.notified[0].title;
   assert.ok(!/replacement|unreliable/i.test(title), 'the refused wording never ships');
-  assert.match(title, /expired without an answer|road allowance|bonus/i, 'the fixed sentence went instead');
+  assert.match(title, /not honoured|road allowance|bonus/i, 'the fixed sentence went instead');
 });
 
 test('the validator handed to the router is the real guard, not a stub', async () => {

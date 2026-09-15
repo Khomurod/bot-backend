@@ -65,8 +65,12 @@ export function requestStatusMeta(status, clarificationChannel) {
       return { label: "Denied", color: "#ef4444", background: "rgba(239, 68, 68, 0.14)" };
     case "cancelled":
       return { label: "Cancelled", color: "#94a3b8", background: "rgba(148, 163, 184, 0.14)" };
+    case "closed":
+      return { label: "Closed", color: "#a78bfa", background: "rgba(167, 139, 250, 0.14)" };
+    // Legacy only. Nothing writes 'expired' any more; rows that carry it were
+    // written when a request was a ticket somebody was meant to answer.
     case "expired":
-      return { label: "Expired — No Action", color: "#a78bfa", background: "rgba(167, 139, 250, 0.14)" };
+      return { label: "Closed (legacy)", color: "#a78bfa", background: "rgba(167, 139, 250, 0.14)" };
     case "clarification_unanswered":
       return { label: "No response", color: "#fb923c", background: "rgba(251, 146, 60, 0.14)" };
     case "awaiting_dates":
@@ -121,4 +125,32 @@ export function activityTitle(item) {
 export function sortArrow(active, direction) {
   if (!active) return "<>";
   return direction === "asc" ? "^" : "v";
+}
+
+/**
+ * Who said a home cycle opened or closed, in words rather than a token.
+ *
+ * A home stay can now be opened by the dispatcher board as well as by a driver
+ * writing in their own chat, and the difference matters to whoever is reading
+ * the row: one is a person saying where they are, the other is dispatch
+ * recording it. An unrecognised token is shown as itself rather than hidden —
+ * a source nobody has named yet is still better than a blank.
+ */
+export function sourceLabel(source) {
+  switch (String(source || "")) {
+    case "driver_message":
+      return "driver said so";
+    case "dispatcher_board":
+      return "dispatcher board";
+    case "ai_intent":
+      return "driver's words (AI read)";
+    case "admin":
+      return "admin";
+    case "import":
+      return "screenshot import";
+    case "evidence":
+      return "load + GPS";
+    default:
+      return source || "unknown";
+  }
 }

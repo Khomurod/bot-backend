@@ -18,7 +18,7 @@ import { driverTypeLabel } from "../routeControlGroupSearch.mjs";
  */
 export function DriverAssignmentPanel({
   managingTeam, closePanel, pendingConflict, setPendingConflict,
-  assignedDrivers, removeAssignedDriver,
+  assignedDrivers, removeAssignedDriver, releaseAssignedDriver,
   candidates, candidateSearch, setCandidateSearch, candidatesLoading,
   loadCandidates, assignCandidate,
 }) {
@@ -30,8 +30,10 @@ export function DriverAssignmentPanel({
       <button className="btn btn-ghost btn-sm" onClick={closePanel}>Close</button>
     </div>
     <p style={{ color: "#888" }}>
-      Drivers come from <strong>Driver Groups</strong> (the source of truth). A driver can
-      belong to only one active team — assigning one already on another team asks you to move them.
+      Rosters are rebuilt from the <strong>Dispatcher Board</strong> every Sunday, just before the
+      review link goes out — you should not normally need to assign anybody here. Assigning a driver
+      by hand marks them as <strong>yours</strong>: the Sunday rebuild reports the disagreement and
+      leaves your choice alone until you hand the driver back to the board.
     </p>
 
     {pendingConflict && (
@@ -54,10 +56,30 @@ export function DriverAssignmentPanel({
           <span>
             {d.driver_name}
             {d.unit_number ? ` — Unit ${d.unit_number}` : ""}
+            {d.assignment_source === "board" ? (
+              <span className="badge" style={{ marginLeft: 8 }} title={
+                d.board_dispatcher ? `The board names ${d.board_dispatcher} as the dispatcher` : "Placed from the dispatcher board"
+              }>Board</span>
+            ) : (
+              <span className="badge badge-muted" style={{ marginLeft: 8 }} title={
+                d.manual_override_by ? `Set by ${d.manual_override_by}` : "Set by hand — the Sunday rebuild leaves this alone"
+              }>Manual</span>
+            )}
             {d.needs_review && <span className="badge badge-muted" style={{ marginLeft: 8 }}>Needs review</span>}
             {!d.driver_profile_id && <span className="badge badge-muted" style={{ marginLeft: 8 }}>Legacy</span>}
           </span>
-          <button className="btn btn-ghost btn-sm" onClick={() => removeAssignedDriver(d)}>Remove</button>
+          <span style={{ display: "flex", gap: 6 }}>
+            {d.assignment_source === "manual" && releaseAssignedDriver && (
+              <button
+                className="btn btn-ghost btn-sm"
+                title="Let the Dispatcher Board decide this driver's team again from the next rebuild"
+                onClick={() => releaseAssignedDriver(d)}
+              >
+                Hand back to board
+              </button>
+            )}
+            <button className="btn btn-ghost btn-sm" onClick={() => removeAssignedDriver(d)}>Remove</button>
+          </span>
         </div>
       ))}
       {assignedDrivers.length === 0 && <p style={{ color: "#888" }}>No drivers assigned yet.</p>}
