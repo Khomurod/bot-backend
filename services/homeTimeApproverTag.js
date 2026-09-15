@@ -28,7 +28,7 @@ const {
 } = require('./homeTimeDateResolver');
 const {
   todayIsoChicago, resolveDriverLabel, resolveRoadMetrics, postRequestCard,
-  createClarification, askKindForWindow,
+  recordAndPostRequest,
 } = require('./homeTimeClarificationFlow');
 const { closeOutdatedRequest } = require('./homeTimeApproval');
 
@@ -199,14 +199,18 @@ async function handleApproverMention(telegram, group, message) {
       return;
     }
 
-    // No / partial dates — open a clarification and wait for the driver.
-    await createClarification(telegram, group, message, {
+    // NO / PARTIAL DATES IS NOT A REASON TO ASK. This used to open a
+    // clarification and wait for the driver to supply a plan. The request is
+    // the fact worth recording; the planned dates are a guess, and the dates
+    // that matter are read from the Dispatcher Board afterwards. So it is
+    // recorded with whatever was said and the managers are told, exactly as the
+    // complete-dates branch above does.
+    await recordAndPostRequest(telegram, group, message, {
       window,
-      askKind: askKindForWindow(window),
-      isUnplanned: false,
       settings,
       language,
       verdict: { intent: 'home_time_request', reason: verdict.reason, confidence: null },
+      isUnplanned: false,
     });
   } catch (err) {
     console.error('[HOME-TIME-REQ] handleApproverMention error:', err.message);

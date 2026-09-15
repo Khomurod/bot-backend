@@ -16,11 +16,13 @@ were written after something went wrong.
 - Driver-group messages containing `Status: Home / Ready / Rolling` drive a
   per-group home/road state machine (`homeTimeService.js`) — event-driven, no
   timer.
-- Missing dates trigger a clarification flow with **exactly two** reminders
-  (default 12h apart), atomically claimed so a restart can never double one;
-  after the second unanswered reminder the flow is flagged for manual follow-up.
-- Reminders respect the driver-messaging switch
-  (`home_time_settings.driver_clarification_enabled`).
+- **Missing dates are recorded as missing.** A request is recorded with whatever
+  the driver actually said, the three managers are told, the driver gets one
+  reply, and it is finished. Wenze asks nothing and schedules nothing.
+- `home_time_settings.driver_clarification_enabled` governs exactly one thing:
+  whether Wenze may write in a DRIVER's group. It never governed whether a
+  request is recorded, and it does not reach the manager notice, which goes to a
+  staff chat.
 - **A chat id saved in Home-Time settings is checked for REACHABILITY, not just
   shape.** A Telegram group id is negative, and
   `home_time_settings.internal_clarification_group_id` held `5052301861` for a
@@ -155,22 +157,22 @@ marks the stay closed.
 - Guarded by `tests/homeTimeCycleInvariant.test.js`, which asserts the
   **negative**: after a `home → road` change by any route, no open cycle may
   remain. Nothing asserted that before, which is why it broke.
-- **An inactive group STANDS DOWN; it is not merely skipped.** The reminder
-  service used to `continue` past an inactive group before claiming, leaving
-  `next_reminder_at` set — and `isHomeTimeRequestOutdated` reads a set schedule
-  as "reminders still pending → still active". The request therefore stopped
-  being reminded AND stopped being expirable: no reminder, no 21-day stale
-  sweep, no terminal state, forever. The reminder is still not sent (a driver
-  whose group is gone must not be messaged); only the immortality is fixed. The
-  clearing UPDATE re-checks the group's state at write time: an admin can
-  reactivate a group between the due-row read and the write, and nothing
-  reschedules a reminder on reactivation.
+- **The reminder loop is gone, and with it the immortal request.** A request for
+  an inactive group used to keep `next_reminder_at` set — and
+  `isHomeTimeRequestOutdated` reads a set schedule as "reminders still pending →
+  still active", so the row was neither reminded nor expirable, forever. Nothing
+  schedules a reminder now (`next_reminder_at` is always written null), so the
+  condition cannot arise. The column stays in the schema carrying what was
+  scheduled for rows that predate this: history, not a queue.
 - **A home start past the horizon is asked about, not stored.** `2027-01-02` on
   request 139 is a mis-parsed year that `isReasonableWindow` waved through,
   because a full year is inside its horizon. `classifyWindowAgainstPolicy`
   (pure) separates *"are these dates plausible"* from *"does the company grant
   them"*, and the service re-opens the disputed dates so the existing
-  clarification flow asks about them — no new send path, no new status.
+  disputed dates are recorded as missing rather than stored — no new send path,
+  no new status. (Until the clarification loop was removed this re-opened a
+  question to the driver; now it simply leaves the column null, and the date
+  that matters is read from the Board.)
   Three things it has to get right, each of them a way the gate leaks:
   **both** ends are cleared (a corrected near-term start merging with the stale
   far-future return produces a `too_long` window, which is deliberately
@@ -319,13 +321,15 @@ marks the stay closed.
   the deterministic score decides, and the model may only lower a verdict or
   raise a medium once movement and a load are both already proven.
 - **Every home-time date is a `America/Chicago` calendar date.** The state
-  machine, the date resolver, the clarification flow and every AI prompt all
-  reason in Central; a UTC instant must be zoned before it becomes a date.
+  machine, the date resolver, the manager notice and every AI prompt all reason
+  in Central; a UTC instant must be zoned before it becomes a date.
   `homeTimeRequestService.js` used the process default (UTC on Render), so a
   driver arriving home after 19:00 Central had TOMORROW recorded as their home
   start — the window and the bonus math that reads it were a day out. Guarded by
   `tests/homeTimeCentralDates.test.js`, which pins the instant rather than
-  trusting the clock.
+  trusting the clock, against the two derivations that survive the removal of
+  the clarification loop: `lib/homeTime/managerNotice.js` `shortDate` and the
+  housekeeping sweep's `todayIso`.
 
 
 ## A request is recorded and delivered, and then it is done
@@ -351,9 +355,16 @@ marks the stay closed.
 - **A home-time request is never evidence that a driver went home.** It is a
   plan. Where a driver actually is comes from the Dispatcher Board and the
   driver's own messages, never from a request or its status.
-- **A driver-facing clarification is not this.** `awaiting_dates`,
-  `awaiting_home_start` and `awaiting_return_to_road` are the bot asking the
-  DRIVER for dates so the request can be recorded properly, and they stay.
+- **Wenze does not ask the driver for dates.** The clarification conversation —
+  `awaiting_dates`, `awaiting_home_start`, `awaiting_return_to_road`, the two
+  reminders, `clarification_unanswered`, and the staff alert naming the missing
+  fields — is removed. It collected two PLANNED dates, and Home In / Home Out
+  are not read from a plan. `recordAndPostRequest` replaced all of it: record,
+  tell the managers, reply once, stop. Rows already in an `awaiting_*` status
+  keep their status and their dates; the housekeeping sweep closes one whose
+  window has passed, and a driver who writes again is heard as making a fresh
+  request. Guarded by `tests/homeTimeSilentMode.test.js` and
+  `tests/homeTimeReminderService.test.js`.
 
 ## Home In and Home Out are read, not typed
 

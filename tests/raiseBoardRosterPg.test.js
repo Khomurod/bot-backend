@@ -177,3 +177,69 @@ test('a submitted round keeps the drivers it actually had — history is not rew
   assert.deepEqual(picks, [{ driver_normalized_name: 'JOHN SMITH', team_id: teamA }],
     'the completed review still shows the team and driver it was answered for');
 });
+
+// ─── legacy rows must not block the rebuild for ever (production defect) ───
+
+test('migration 0062 hands legacy rows back to the board and leaves real overrides alone', async (t) => {
+  if (skipWithoutPg(t)) return;
+  const { h, ra, teamA, person } = await setup(t);
+
+  const legacy = await ra.applyBoardAssignment(DRIVER(teamA, person));
+  const decided = (await h.query(
+    `INSERT INTO dispatch_team_drivers
+       (team_id, driver_normalized_name, driver_name, active, assignment_source, manual_override_at, manual_override_by)
+     VALUES ($1,'MARIA GARCIA','MARIA GARCIA', TRUE, 'manual', NOW(), 'admin:jane') RETURNING id`,
+    [teamA]
+  )).rows[0].id;
+  // Make the first row look like one migration 0058 stamped: manual, no mark.
+  await h.query(
+    "UPDATE dispatch_team_drivers SET assignment_source = 'manual', manual_override_at = NULL WHERE id = $1",
+    [legacy.id]
+  );
+
+  await h.applySchemaSql(ALL_MIGRATIONS);
+
+  const rows = (await h.query(
+    'SELECT id, assignment_source, manual_override_by FROM dispatch_team_drivers ORDER BY id'
+  )).rows;
+  const back = rows.find((r) => r.id === legacy.id);
+  const kept = rows.find((r) => r.id === decided);
+  assert.equal(back.assignment_source, 'board', 'a row with no mark follows the board again');
+  assert.equal(kept.assignment_source, 'manual', "a person's decision is untouched");
+  assert.equal(kept.manual_override_by, 'admin:jane');
+});
+
+test('a legacy row does not hold the board off under lock', async (t) => {
+  if (skipWithoutPg(t)) return;
+  const { h, ra, teamA, teamB, person } = await setup(t);
+
+  const placed = await ra.applyBoardAssignment(DRIVER(teamA, person));
+  await h.query(
+    "UPDATE dispatch_team_drivers SET assignment_source = 'manual', manual_override_at = NULL WHERE id = $1",
+    [placed.id]
+  );
+
+  const moved = await ra.applyBoardAssignment({ ...DRIVER(teamB, person), boardDispatcher: 'Steven' });
+  assert.notEqual(moved.heldByOverride, true, 'the guarantee must not depend on the planner alone');
+  const active = (await h.query('SELECT team_id FROM dispatch_team_drivers WHERE active')).rows;
+  assert.deepEqual(active.map((r) => r.team_id), [teamB]);
+});
+
+test('a legacy row can be retired, a deliberate override cannot', async (t) => {
+  if (skipWithoutPg(t)) return;
+  const { h, ra, teamA, person } = await setup(t);
+
+  const legacy = await ra.applyBoardAssignment(DRIVER(teamA, person));
+  await h.query(
+    "UPDATE dispatch_team_drivers SET assignment_source = 'manual', manual_override_at = NULL WHERE id = $1",
+    [legacy.id]
+  );
+  assert.equal(await ra.retireBoardAssignment(legacy.id), true,
+    'otherwise a driver stays on a team the board no longer agrees with for ever');
+
+  const other = await ra.applyBoardAssignment({
+    ...DRIVER(teamA, null), driverNormalizedName: 'MARIA GARCIA', driverName: 'MARIA GARCIA',
+  });
+  await ra.markManualOverride(other.id, 'admin:jane');
+  assert.equal(await ra.retireBoardAssignment(other.id), false);
+});

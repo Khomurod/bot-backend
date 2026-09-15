@@ -156,7 +156,7 @@ test('the evidence sentence names the board and what it said', () => {
 function world(over = {}) {
   const calls = { transitions: [], findings: [], resolved: [] };
   const state = {
-    settings: { enabled: true },
+    settings: { enabled: true, configured: true },
     boardRows: [{
       rowKey: '310|JOHN SMITH', present: true, cleanName: 'JOHN SMITH', fleetType: 'company',
       truckNorm: '310', truckDigits: '310', isTeam: false, teamMembers: [], personId: null,
@@ -172,7 +172,7 @@ function world(over = {}) {
   };
   const rowPeople = require('../services/dispatchBoard/rowPeople');
   const deps = {
-    boardSettings: { getDispatchBoardSettings: async () => state.settings },
+    boardSettings: { getBoardConfig: async () => state.settings },
     board: { listBoardRows: async () => state.boardRows },
     rowPeople: {
       loadPersonLayer: async () => ({ people: state.people, units: state.units }),

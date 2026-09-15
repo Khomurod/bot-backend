@@ -101,16 +101,39 @@ Manual assignment survives as an explicit override, not as a parallel system.
 
 * assigning a driver by hand sets `assignment_source = 'manual'` together with
   `manual_override_at` and `manual_override_by`
-* the rebuild **never** rewrites a manual row. It reports the disagreement
+* the rebuild **never** rewrites a human override. It reports the disagreement
   (`overrideDisagrees` in the summary, a `Manual` badge and the board's opinion
   in the admin) and leaves the row alone
-* a manual row is not retired when the driver stops being eligible either —
+* a human override is not retired when the driver stops being eligible either —
   somebody put them there
 * **Hand back to board** (`POST /team-drivers/:id/release-to-board`) clears the
   override, and the next rebuild owns the row again
 
 Normal operation needs no manual assignment at all. If it does, that is a
 finding to read rather than a roster to type.
+
+### The TIMESTAMP is the override, not the word
+
+`assignment_source = 'manual'` alone is **not** a human override. The test is
+`manual_override_at IS NOT NULL`, in the pure planner
+(`lib/raise/rosterPlan.js` `isHumanOverride`) and in both SQL guards in
+`database/raiseApproval/teamDrivers.js`. There is exactly one rule, in one
+predicate, and nothing may re-derive it from the source column alone.
+
+This is not a nicety. Migration 0058 stamped every roster row that already
+existed `'manual'`, reasoning that somebody must have typed it — correct about
+the past, and wrong about the consequence. Those rows carry no
+`manual_override_at`, because no human ever pressed the button that sets it, so
+under a source-only test the entire pre-existing roster was permanently exempt
+from every rebuild. The Board could never take ownership of a single driver who
+was already on a team, which is most of the fleet, and the reconciliation that
+runs before each Sunday round quietly did nothing.
+
+Migration `0062_legacy_raise_assignments_follow_board.sql` moves those rows back
+to `assignment_source = 'board'`. It is additive, idempotent and narrow —
+`WHERE assignment_source = 'manual' AND manual_override_at IS NULL` — so a
+genuine override, which always has the timestamp, is untouched. Historical
+rounds and submissions are snapshots and are not read by it at all.
 
 ## Identity
 
@@ -133,6 +156,7 @@ drivers it was actually answered for, whatever the Board says afterwards.
 * `tests/raiseBoardRoster.test.js` — the rebuild: freshness, placement,
   idempotency, overrides, Needs Review
 * `tests/raiseBoardRosterPg.test.js` — the transaction, the move, the override
-  under lock, and history staying put
+  under lock, a legacy `manual` row with no timestamp being moved and retired,
+  and history staying put
 * `tests/raiseApproval.test.js` — the ORDER (reconcile, then mint, then send)
   and the refusal stopping the round

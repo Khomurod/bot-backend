@@ -232,7 +232,12 @@ async function applyBoardAssignment({
     );
     const existing = existingRes.rows[0] || null;
 
-    if (existing && existing.assignment_source === 'manual') {
+    // THE SAME RULE AS `lib/raise/rosterPlan.js isHumanOverride`, enforced here
+    // as well so the guarantee does not depend on the caller: a row is a
+    // person's decision only when somebody actually made one, which
+    // `markManualOverride` records as a timestamp. A row merely inherited from
+    // before the Board could place anybody has no timestamp and is reconcilable.
+    if (existing && existing.assignment_source === 'manual' && existing.manual_override_at != null) {
       await client.query('ROLLBACK');
       return { moved: false, heldByOverride: true, fromTeamId: existing.team_id };
     }
@@ -294,17 +299,21 @@ async function applyBoardAssignment({
 }
 
 /**
- * Take a board-placed driver off the roster.
+ * Take a board-owned driver off the roster.
  *
- * Soft, and only ever for a row reconciliation itself placed: a manual row is
- * somebody's decision and is not withdrawn because the Board stopped mentioning
- * them. Nothing is deleted, so a later question about the period is answerable.
+ * Soft, and never for a row a person deliberately placed: a standing override
+ * is somebody's decision and is not withdrawn because the Board stopped
+ * mentioning them. A LEGACY row — typed before the Board could place anybody,
+ * so carrying no override timestamp — IS withdrawable, because leaving it would
+ * keep a driver on a team the Board no longer agrees with for ever. Nothing is
+ * deleted, so a later question about the period is answerable.
  */
 async function retireBoardAssignment(id) {
   const res = await query(
     `UPDATE dispatch_team_drivers
         SET active = FALSE, reconciled_at = NOW(), updated_at = NOW()
-      WHERE id = $1 AND active = TRUE AND assignment_source = 'board'
+      WHERE id = $1 AND active = TRUE
+        AND NOT (assignment_source = 'manual' AND manual_override_at IS NOT NULL)
       RETURNING id`,
     [id]
   );
