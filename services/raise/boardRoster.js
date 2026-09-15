@@ -219,10 +219,17 @@ async function reconcileRosterFromBoard({ deps = defaultDeps(), now = Date.now()
   // `getBoardConfig` is the real server-side Board config API — see the note in
   // services/homeTime/boardPresenceWatch.js for why the wrong name survived
   // every static check.
+  // A DRY RUN NEVER WRITES, INCLUDING WHEN IT REFUSES. `blocked` files a
+  // `serious` Needs Attention finding, and an endpoint that promises to change
+  // nothing must not change the operations page just because the Board happened
+  // to be stale when somebody looked. The caller still learns why, from the
+  // same thrown error.
+  const note = async (reason) => { if (apply) await blocked(deps, reason); };
+
   const settings = await deps.boardSettings.getBoardConfig();
   const fresh = boardFreshness(settings, now);
   if (!fresh.ok) {
-    await blocked(deps, fresh.reason);
+    await note(fresh.reason);
     throw serviceError('BOARD_NOT_USABLE', `The driver roster could not be rebuilt: ${fresh.reason}.`, 409);
   }
 
@@ -235,7 +242,7 @@ async function reconcileRosterFromBoard({ deps = defaultDeps(), now = Date.now()
   ]);
 
   if (!teams.length) {
-    await blocked(deps, 'no active dispatch team exists');
+    await note('no active dispatch team exists');
     throw serviceError('NO_TEAMS', 'The driver roster could not be rebuilt: no active dispatch team exists.', 409);
   }
 

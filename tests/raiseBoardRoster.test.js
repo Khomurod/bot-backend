@@ -405,3 +405,30 @@ test('a DRY RUN names the drivers a person still has to settle', async () => {
   assert.equal(out.reviews[0].reason, 'ambiguous_dispatcher');
   assert.deepEqual(out.wouldPlace, []);
 });
+
+test('a DRY RUN writes nothing even when it REFUSES', async () => {
+  // `blocked()` files a `serious` Needs Attention finding. An endpoint that
+  // promises to change nothing must not change the operations page just because
+  // the Board happened to be stale when somebody looked — while still telling
+  // the caller why, through the same thrown error.
+  for (const [over, fragment] of [
+    [{ settings: { enabled: false } }, /switched off|not usable|could not be rebuilt/i],
+    [{ teams: [] }, /dispatch team/i],
+  ]) {
+    const w = world(over);
+    await assert.rejects(
+      () => reconcileRosterFromBoard({ deps: w.deps, now: NOW, apply: false }),
+      (err) => { assert.match(err.message, fragment); return true; }
+    );
+    assert.deepEqual(w.calls.findings, [], 'a dry run files no finding, even on refusal');
+    assert.deepEqual(w.calls.resolved, []);
+    assert.deepEqual(w.calls.assigned, []);
+  }
+});
+
+test('an APPLY run still files the blocked finding, because somebody must know', async () => {
+  const w = world({ teams: [] });
+  await assert.rejects(() => run(w));
+  assert.equal(w.calls.findings.length, 1);
+  assert.equal(w.calls.findings[0].severity, 'serious');
+});

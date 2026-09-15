@@ -165,6 +165,21 @@ test('the separators dispatch actually uses all split the same way', () => {
   }
 });
 
+test('a trailing NOISE word does not turn one dispatcher into a list', () => {
+  // `normaliseLabel` already reduces "dispatch" and "team" to nothing, so
+  // "Charles/dispatch" is one dispatcher with a word after him. Deciding "is
+  // this a list?" from the raw text saw the slash, treated `dispatch` as a
+  // second person nobody could resolve, and left the driver off the roster —
+  // a regression against labels that matched before the multi-name rule.
+  const teams = [{ id: 1, name: 'North', memberNames: ['Charles Whitfield'] }];
+  for (const label of ['Charles/dispatch', 'Charles / dispatch', 'Charles/team', 'Charles, dispatcher']) {
+    const m = matchDispatcherToTeam(label, teams);
+    assert.equal(m.decision, DECISION.MATCHED, label);
+    assert.equal(m.teamId, 1, label);
+    assert.equal(splitDispatcherNames(label), null, `${label} is one name, not a list`);
+  }
+});
+
 test('a single name is not a list — splitting reports that honestly', () => {
   assert.equal(splitDispatcherNames('Charles'), null);
   assert.equal(splitDispatcherNames('Charles Whitfield'), null,
