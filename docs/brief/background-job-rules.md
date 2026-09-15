@@ -201,8 +201,8 @@ would make re-enabling capture a rewrite instead of a switch — but
 `retention_chat_signals` reports it as needing a person. Missing data means
 unknown, never zero.
 
-The other retention signals — weeks on the road, a home window agreed and not honoured,
-unpaid bonuses — read their own tables and are unaffected.
+The other retention signals — weeks on the road, unpaid bonuses, sitting empty
+— read their own tables and are unaffected.
 
 ## What all of this costs, in writes
 
