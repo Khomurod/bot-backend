@@ -26,6 +26,7 @@
  * than "those three rows were unusual".
  */
 const { findLessons } = require('../../lib/operations/learning');
+const { proposePractice } = require('../../lib/operations/practiceReadiness');
 const { withRunRecord } = require('./runLedger');
 
 const POLL_MS = 12 * 60 * 60 * 1000;
@@ -40,9 +41,26 @@ function defaultDeps() {
     checkSettings: require('../../database/operationalCheckSettings'),
     store: require('../../database/operationalLearning'),
     knowledge: require('../../database/controlKnowledge'),
+    // Rehearsals: "act" verdicts a check reached and did not carry out.
+    practice: require('../../database/decisionPractice'),
+    // Which action each check would take, and its tier — only an `auto` action
+    // is ever proposed for Autopilot.
+    actions: require('./corrections/actions'),
     notify: require('../notifications/send').notify,
   };
   /* eslint-enable global-require */
+}
+
+/** `{ checkKey: tier }` from the correction registry; empty when it is not wired. */
+function tiersByCheck(actions) {
+  const out = {};
+  const entries = (m) => (m instanceof Map ? [...m.entries()] : Object.entries(m || {}));
+  const actionOf = (key) => (actions?.ACTIONS instanceof Map ? actions.ACTIONS.get(key) : actions?.ACTIONS?.[key]);
+  for (const [checkKey, actionKey] of entries(actions?.CHECK_TO_ACTION)) {
+    const tier = actionOf(actionKey)?.tier;
+    if (tier) out[checkKey] = tier;
+  }
+  return out;
 }
 
 /**
@@ -66,7 +84,7 @@ async function gatherSources(deps, { limit = 500 } = {}) {
     unreadable.push(what);
   };
 
-  const [corrections, conversations, decisions, memories, outcomes, settings] = await Promise.all([
+  const [corrections, conversations, decisions, memories, outcomes, settings, practice] = await Promise.all([
     deps.corrections.listCorrections({ live: false, limit })
       .catch((err) => { lost('reverted corrections')(err); return []; }),
     deps.conversations.listConversations({ limit: 200 })
@@ -102,6 +120,12 @@ async function gatherSources(deps, { limit = 500 } = {}) {
     Promise.resolve(deps.checkSettings?.listCheckSettings?.())
       .then((rows) => rows || [])
       .catch((err) => { lost('the confidence floors in force')(err); return []; }),
+    // REHEARSALS, which exist even when nobody answers anything — the case
+    // that left the other sources empty on this fleet. Same optional chain:
+    // a partial dependency map loses this source only.
+    Promise.resolve(deps.practice?.summarisePractice?.({ sinceDays: 30 }))
+      .then((rows) => rows || [])
+      .catch((err) => { lost('rehearsed decisions')(err); return []; }),
   ]);
   return {
     corrections,
@@ -113,6 +137,9 @@ async function gatherSources(deps, { limit = 500 } = {}) {
     checkFloors: Object.fromEntries(
       (settings || []).map((row) => [row.checkKey, row.minConfidence ?? null])
     ),
+    practice,
+    checkModes: Object.fromEntries((settings || []).map((row) => [row.checkKey, row.mode || null])),
+    actionTiers: tiersByCheck(deps.actions),
     // Named, so the pass can say what it lost rather than reporting a clean
     // run over inputs it never saw. SOURCE_COUNT below is what "all of them"
     // is measured against.
@@ -121,7 +148,7 @@ async function gatherSources(deps, { limit = 500 } = {}) {
 }
 
 /** How many inputs `gatherSources` reads. All of them lost is a failed pass. */
-const SOURCE_COUNT = 6;
+const SOURCE_COUNT = 7;
 
 /**
  * One pass.
@@ -166,7 +193,10 @@ async function runLearningPass({ now = Date.now(), deps = defaultDeps(), options
     };
   }
 
-  const lessons = findLessons(sources, { ...options, now: nowIso });
+  const lessons = [
+    ...findLessons(sources, { ...options, now: nowIso }),
+    ...proposePractice(sources.practice, { modes: sources.checkModes, tiers: sources.actionTiers }),
+  ];
   summary.found = lessons.length;
 
   for (const lesson of lessons) {

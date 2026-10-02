@@ -173,10 +173,11 @@ test('a pass that lost EVERY source is a failed pass, not an empty one', async (
   deps.decisions = { async listRecentDecisions() { return boom(); }, async confidenceOutcomes() { return boom(); } };
   deps.knowledge = { async listMemories() { return boom(); } };
   deps.checkSettings = { async listCheckSettings() { return boom(); } };
+  deps.practice = { async summarisePractice() { return boom(); } };
 
   const summary = await pass.runLearningPass({ now: NOW, deps });
-  assert.equal(summary.sourcesUnreadable, 6);
-  assert.match(summary.error, /none of the 6 sources could be read/,
+  assert.equal(summary.sourcesUnreadable, 7);
+  assert.match(summary.error, /none of the 7 sources could be read/,
     '`error` singular is the field the ledger reads');
   assert.deepEqual(calls.notified, []);
 });
@@ -201,4 +202,28 @@ test('a failure storing one suggestion costs that one only', async () => {
 
 test('the pass runs twice a day, not hourly — a proposal about behaviour should arrive rarely', () => {
   assert.equal(pass.POLL_MS, 12 * 60 * 60 * 1000);
+});
+
+test('REHEARSALS become a proposal even when nobody has answered anything', async () => {
+  // The production shape of 2026-10-02: no reverts, no answers, no acted
+  // decisions — and a check that had reached "act" again and again.
+  const { deps, calls } = harness({});
+  deps.practice = {
+    async summarisePractice() {
+      return [{
+        checkKey: 'board.person_link', subjects: 40, flips: 0, rejected: 0, confirmed: 0,
+        firstAt: '2026-08-25T00:00:00Z', lastAt: '2026-09-15T00:00:00Z',
+      }];
+    },
+  };
+  deps.checkSettings = { async listCheckSettings() { return [{ checkKey: 'board.person_link', mode: 'suggest' }]; } };
+  deps.actions = {
+    CHECK_TO_ACTION: new Map([['board.person_link', 'board.link_person']]),
+    ACTIONS: new Map([['board.link_person', { tier: 'auto' }]]),
+  };
+  const summary = await pass.runLearningPass({ now: NOW, deps });
+  const stored = calls.upserts.find((r) => r.kind === 'practice_ready');
+  assert.ok(stored, 'the proposal is stored');
+  assert.equal(stored.applyAction, null, 'and carries nothing to apply');
+  assert.ok(summary.proposed >= 1);
 });

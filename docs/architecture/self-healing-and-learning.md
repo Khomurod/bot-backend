@@ -358,6 +358,31 @@ reads is a setting that does not exist, which is the defect class this repositor
 keeps finding — so that read is the point of the whole feature, not a detail of
 it.
 
+## Rehearsals: a record of what it WOULD have done
+
+On 2026-10-02 four of twelve checks ran on Autopilot. The other eight reached
+"act" again and again and waited for a person who had answered none of the
+fifteen questions asked — and the three signals above were all empty, because
+they learn from undone corrections, refused drafts and answers, and there were
+none. Every one of those waiting decisions is nonetheless a rehearsal: Wenze
+said what it would do and did not do it.
+
+`practice_ready` (`lib/operations/practiceReadiness.js`, counts from
+`database/decisionPractice.js`) reads the last 30 days of `act` verdicts that
+were NOT carried out (suggest/observe mode, or shadow) and proposes Autopilot
+for a check only when ALL of these hold:
+
+- at least 10 different cases, over at least 7 days;
+- not one finding a person dismissed;
+- it changed its mind (a later hold/unknown on the same case) on at most 10%;
+- the check's correction is tier `auto` — an `approval` action is a person's
+  by definition — and the check is not already on Autopilot.
+
+How many a person confirmed is REPORTED, never required; on this fleet it is
+zero, and the proposal says so in those words. **It carries no action**: the
+registry still holds exactly one, and it only switches things off. Accepting
+records agreement; switching the check on is the owner's act.
+
 ## Part 3 — asking about what it decided NOT to do
 
 A check the owner has permitted to act can still decide `hold` or `unknown`. It
