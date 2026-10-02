@@ -322,6 +322,15 @@ that closes that. Before it sends a question it records the suggestion —
 uses — so a question asked and never answered still leaves a record of what
 Wenze proposed and on what evidence.
 
+The ask pass stops while five questions sit unanswered, so that alone left the
+record frozen on a fleet whose owner was not answering. **The planner now
+writes them too** (`services/operations/corrections/rehearsals.js`): every six
+hours, up to 25 open `auto`-tier findings per Suggest-mode check go through
+`takeDecision` with `mode: 'suggest'`. `applyMode` makes the verdict `suggest`,
+`mayAct` is false, nothing is applied — and the learning pass reads them as
+rehearsals (`self-healing-and-learning.md` → Rehearsals). Observe-mode checks
+are still never journalled.
+
 When the owner then answers **yes** in Telegram,
 `services/control/actions.js` records a second decision and calls `acted()` on
 it with the correction id. Its mode is `suggest` too, and honestly so: the check

@@ -33,6 +33,9 @@ function loadModules(harness) {
     '../services/operations/corrections/actions',
     '../services/operations/corrections/apply',
     '../services/operations/corrections/autoApply',
+    // Its six-hour clock is module state: a fresh one per test, or the first
+    // test's run silently throttles every later one.
+    '../services/operations/corrections/rehearsals',
   ]) delete require.cache[require.resolve(p)];
 
   const autoApply = require('../services/operations/corrections/autoApply');
@@ -248,8 +251,29 @@ test('SHADOW WRITES WHAT IT WOULD HAVE DONE, and changes nothing',
     assert.equal(cycle.return_to_road_at, null, 'and the fleet is untouched');
   });
 
-test('a check the owner has not enabled decides nothing at all',
+test('a check in Observe decides nothing at all',
   { skip: skipWithoutPg() }, async (t) => {
+    const harness = await harnessWith(t);
+    const { runAutoCorrections, store } = loadModules(harness);
+    const groupId = await seedGroup(harness);
+    const cycleId = await seedOpenCycle(harness, groupId);
+    await enable(harness, { mode: 'observe' });
+    await fileFinding(store, cycleId);
+
+    const { summary } = await runAutoCorrections({ apply: true });
+    assert.equal(summary.skipped.disabled, 1);
+    assert.equal(summary.rehearsed, 0);
+
+    const rows = (await harness.query('SELECT * FROM operational_decisions')).rows;
+    assert.equal(rows.length, 0, 'Observe is "watch, do not even ask" — nothing is journalled');
+  });
+
+test('A CHECK IN SUGGEST MODE REHEARSES — a `suggest` row, nothing applied, and practice counts it',
+  { skip: skipWithoutPg() }, async (t) => {
+    // The bug this guards: the practice reader looked for `act` rows, and a
+    // check in Suggest never writes one — `applyMode` turns supported evidence
+    // into `suggest`. Hand-inserted `act` rows in the test hid it. These rows
+    // come from the real planner and the real journal.
     const harness = await harnessWith(t);
     const { runAutoCorrections, store } = loadModules(harness);
     const groupId = await seedGroup(harness);
@@ -258,9 +282,23 @@ test('a check the owner has not enabled decides nothing at all',
     await fileFinding(store, cycleId);
 
     const { summary } = await runAutoCorrections({ apply: true });
-    assert.equal(summary.skipped.disabled, 1);
+    assert.equal(summary.applied, 0);
+    assert.equal(summary.rehearsed, 1);
 
     const rows = (await harness.query('SELECT * FROM operational_decisions')).rows;
-    assert.equal(rows.length, 0,
-      'permission is checked before evidence — a check nobody switched on is not a decision');
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].verdict, 'suggest');
+    assert.equal(rows[0].mode, 'suggest');
+    assert.equal(rows[0].shadow, false);
+
+    const cycle = (await harness.query(
+      'SELECT return_to_road_at FROM driver_road_history WHERE id = $1', [cycleId]
+    )).rows[0];
+    assert.equal(cycle.return_to_road_at, null, 'a rehearsal changes nothing');
+
+    const { decisionPractice } = harness.loadDataLayer(['decisionPractice']);
+    const practice = await decisionPractice.summarisePractice({ sinceDays: 30 });
+    assert.equal(practice.length, 1);
+    assert.equal(practice[0].checkKey, 'home_time.closable_open_cycle');
+    assert.equal(practice[0].subjects, 1);
   });
