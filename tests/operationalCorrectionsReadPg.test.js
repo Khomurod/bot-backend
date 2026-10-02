@@ -123,15 +123,21 @@ test('the summary is zero-filled and splits system from human', { skip: skipWith
   const { operationalCorrections: store } = load(harness);
 
   const empty = await store.summariseCorrections();
-  assert.deepEqual(empty, { total: 0, live: 0, reverted: 0, bySystem: 0, byAdmin: 0 },
+  assert.deepEqual(empty, {
+    total: 0, live: 0, reverted: 0, bySystem: 0, byAdmin: 0, revertedBySystem: 0,
+  },
     'a tile that vanishes at zero reads as broken, not as quiet');
 
   await insertCorrection(harness, { subjectId: '1' });
   await insertCorrection(harness, { subjectId: '2', reverted: true });
   await insertCorrection(harness, { subjectId: '3', initiator: 'admin:1', reverted: false });
+  // A PERSON's change undone is not Wenze's change undone.
+  await insertCorrection(harness, { subjectId: '4', initiator: 'admin:1', reverted: true });
 
   const s = await store.summariseCorrections();
-  assert.deepEqual(s, { total: 3, live: 2, reverted: 1, bySystem: 2, byAdmin: 1 });
+  assert.deepEqual(s, {
+    total: 4, live: 2, reverted: 2, bySystem: 2, byAdmin: 2, revertedBySystem: 1,
+  });
 });
 
 test('the audit log finally has a reader, scoped to corrections', { skip: skipWithoutPg() }, async (t) => {

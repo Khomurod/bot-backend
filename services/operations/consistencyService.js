@@ -256,6 +256,15 @@ async function tick() {
       await withRunRecord('control_ask_pass', () => runAskPass({}));
     } catch (err) {
       console.error('[CONSISTENCY] control ask pass error:', err.message);
+    }
+    // The morning summary, after the questions it brings back. Once a day is
+    // the outbox's guarantee, not this timer's — see services/control/dailyDigest.js.
+    try {
+      // eslint-disable-next-line global-require
+      const { runDailyDigest } = require('../control/dailyDigest');
+      await withRunRecord('control_daily_digest', () => runDailyDigest({}));
+    } catch (err) {
+      console.error('[CONSISTENCY] daily summary error:', err.message);
     } finally {
       askRunning = false;
     }
@@ -303,7 +312,11 @@ function stopConsistencyService() {
 
 /** For /api/health and the Operations page: did the sweep run, and what did it see. */
 function getConsistencyStatus() {
-  return { running: Boolean(serviceTimer), lastRun, lastCorrections };
+  // eslint-disable-next-line global-require
+  const { getRehearsalStatus } = require('./corrections/rehearsals');
+  return {
+    running: Boolean(serviceTimer), lastRun, lastCorrections, rehearsals: getRehearsalStatus(),
+  };
 }
 
 module.exports = {

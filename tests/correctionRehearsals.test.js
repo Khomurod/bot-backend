@@ -8,7 +8,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 
 const {
-  recordRehearsals, resetRehearsalClock, PER_CHECK, EVERY_MS,
+  recordRehearsals, resetRehearsalClock, getRehearsalStatus, PER_CHECK, EVERY_MS,
 } = require('../services/operations/corrections/rehearsals');
 
 function harness({ modes = {}, findings = {}, failFor = null } = {}) {
@@ -92,4 +92,14 @@ test('no action, no payload, or a journal that fails costs that one finding only
   });
   const out = await recordRehearsals({ ...args, now: 1_000 });
   assert.strictEqual(out.rehearsed, 2, 'findings 1 and 4');
+});
+
+test('the last pass that RAN is what health reads — a throttled pass does not overwrite it', async () => {
+  resetRehearsalClock();
+  assert.equal(getRehearsalStatus(), null);
+  const { args } = harness({ modes: { 'a.suggest': 'suggest' }, findings: { 'a.suggest': many(3) } });
+  await recordRehearsals({ ...args, now: Date.parse('2026-10-02T22:00:00Z') });
+  assert.deepEqual(getRehearsalStatus(), { at: '2026-10-02T22:00:00.000Z', rehearsed: 3, checks: 1 });
+  await recordRehearsals({ ...args, now: Date.parse('2026-10-02T22:15:00Z') });
+  assert.equal(getRehearsalStatus().rehearsed, 3, 'still the pass that wrote something');
 });
