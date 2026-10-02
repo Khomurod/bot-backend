@@ -214,7 +214,10 @@ pure in `lib/operations/deliveryTruth.js`):
 | `home_time_manager_notices` (new, critical) | over the past week ≥ 3 notices failed AND more failed than were delivered. Quotes the latest Telegram error with every id, token and URL removed — it is a public endpoint. |
 
 Both are critical, so the self-healing watch announces them like any other
-failure. Both answer `cannot_determine` when their rows cannot be read.
+failure. Both answer `cannot_determine` when their rows cannot be read — and for
+the safety pipeline that includes events SEEN with the stored rows uncountable:
+a missing table or a permission fault stops recording and counting at once, and
+falling back to "the poller ran" would have called that healthy.
 
 ## Where it lives
 

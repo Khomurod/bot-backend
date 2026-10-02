@@ -81,3 +81,19 @@ test('notices being delivered read healthy; an unreadable outbox reads unknown',
   const unread = await obs.gatherAllObservations(d, { now: NOW, bootedAt: BOOTED });
   assert.equal(find(unread, 'home_time_manager_notices').state, 'cannot_determine');
 });
+
+test('events seen but the stored rows cannot be counted is UNKNOWN — never healthy', async () => {
+  // A missing table, a permission problem or a database fault stops recording
+  // AND counting at once. Falling back to "the poller ran" called that healthy.
+  const runMap = new Map([['samsara_safety_pipeline', pollerBeat({ eventsSeenTotal: 8 })]]);
+  const all = await obs.gatherAllObservations(deps({ runMap, safetyRecordedSince: null }), { now: NOW, bootedAt: BOOTED });
+  const safety = find(all, 'samsara_safety_pipeline');
+  assert.equal(safety.state, 'cannot_determine');
+  assert.match(safety.reason, /picked up 8 event\(s\).*could not be counted/);
+});
+
+test('nothing seen and nothing countable keeps the run verdict — there is nothing to lose', async () => {
+  const runMap = new Map([['samsara_safety_pipeline', pollerBeat({ eventsSeenTotal: 0 })]]);
+  const all = await obs.gatherAllObservations(deps({ runMap, safetyRecordedSince: null }), { now: NOW, bootedAt: BOOTED });
+  assert.equal(find(all, 'samsara_safety_pipeline').state, 'healthy');
+});

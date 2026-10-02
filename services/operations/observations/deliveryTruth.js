@@ -14,17 +14,25 @@ const { integration } = require('./shape');
 /**
  * Safety events the poller saw and the store did not keep.
  *
- * Returns null when there is nothing to say (counts agree, or cannot be
- * compared), so the caller keeps its own run-based verdict. Returns the
- * failure when events are being lost — that outranks "the poller ran".
+ * Returns null when there is nothing to say — the counts agree, or the poller
+ * reports no total, or it saw nothing — so the caller keeps its run verdict.
+ * Returns `{ unknown }` when events WERE seen and the stored rows cannot be
+ * counted: a missing table or a permission fault stops recording and counting
+ * at once, and falling back to "the poller ran" would call that healthy.
+ * Returns the failure when events are being lost — that outranks a clean run.
  */
 async function safetyEventsLost(deps, pollerRow) {
   const summary = pollerRow?.lastSummary || {};
   const seen = Number.isFinite(Number(summary.eventsSeenTotal)) ? Number(summary.eventsSeenTotal) : null;
   const since = summary.seenSince || null;
-  if (seen == null || !since) return null;
+  if (seen == null || !since || seen === 0) return null;
   const recorded = await Promise.resolve(deps.safety?.countRecordedSince?.(since)).catch(() => null);
-  if (recorded == null) return null;
+  if (recorded == null) {
+    return {
+      unknown: true,
+      reason: `the poller picked up ${seen} event(s) since it booted and the stored rows could not be counted`,
+    };
+  }
   const verdict = reconcileSafetyCounts(seen, recorded);
   if (verdict.state !== 'events_lost' || !safetyLossNeedsAPerson(seen, recorded)) return null;
   const refused = Number(summary.recordingRefused);

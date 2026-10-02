@@ -303,18 +303,21 @@ async function integrationObservations(deps, nowMs) {
     // time while every event it hands on is dropped read "healthy" here for
     // three weeks; the reconciliation that said "events_lost" sat one field
     // away on /api/health. Loss outranks a clean run.
-    const lost = verdict.actionable ? null : await safetyEventsLost(deps, row).catch(() => null);
-    out.push(integration('samsara_safety_pipeline', lost
-      ? { ok: false, state: RUN_STATES.NEEDS_ATTENTION, detail: lost.reason, reason: lost.reason }
-      : {
-        ok: !verdict.actionable,
-        // The poller beats `blocked` when Samsara is switched off in the admin.
-        // That verdict was being computed and then thrown away here.
-        blocked: verdict.blocked === true,
-        state: verdict.state,
-        detail: verdict.actionable ? verdict.reason : null,
-        reason: verdict.reason,
-      }));
+    const lost = verdict.actionable
+      ? null
+      : await safetyEventsLost(deps, row).catch(() => ({ unknown: true, reason: 'the stored rows could not be counted' }));
+    let outcome = null;
+    if (lost?.unknown) outcome = { ok: true, state: RUN_STATES.UNKNOWN, reason: lost.reason };
+    else if (lost) outcome = { ok: false, state: RUN_STATES.NEEDS_ATTENTION, detail: lost.reason, reason: lost.reason };
+    out.push(integration('samsara_safety_pipeline', outcome || {
+      ok: !verdict.actionable,
+      // The poller beats `blocked` when Samsara is switched off in the admin.
+      // That verdict was being computed and then thrown away here.
+      blocked: verdict.blocked === true,
+      state: verdict.state,
+      detail: verdict.actionable ? verdict.reason : null,
+      reason: verdict.reason,
+    }));
   } catch (_) {
     out.push(integration('samsara_safety_pipeline', { ok: true, state: RUN_STATES.UNKNOWN, reason: 'could not read' }));
   }
