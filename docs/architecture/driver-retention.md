@@ -43,7 +43,7 @@ word like *performance*, *attitude*, *unreliable* or *discipline*.
 | `raise_not_qualified` | 2 | `raise_round_picks.qualified = false` |
 | `complaints` | 2 | `intent = 'complaint'`, 2 or more |
 | `gone_quiet` | 2 | volume against **this driver's own** earlier baseline |
-| `sitting_empty` | 2 | `load_lifecycle.phase = 'empty'` for 3+ days |
+| `sitting_empty` | 2 | `load_lifecycle.phase = 'empty'` for 3+ days, on a load still on the board (`retired_at IS NULL`) |
 | `negative_sentiment` | 1 | mean `sentiment` ≤ −0.5 on the annotator's −2..+2 scale |
 
 **Two of these are structurally dead today, and the table would mislead without

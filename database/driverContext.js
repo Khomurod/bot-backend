@@ -87,6 +87,10 @@ async function readLoads(personId) {
        FROM load_lifecycle l
        JOIN driver_person_groups g ON g.group_id = l.group_id AND g.ended_at IS NULL
       WHERE g.person_id = $1
+        -- CURRENT loads only. A retired one is frozen wherever the board last
+        -- left it, and "in transit" from a load nobody has seen for a week is
+        -- not evidence of anything (migration 0063).
+        AND l.retired_at IS NULL
         AND l.phase IN ('heading_to_pickup', 'at_pickup', 'in_transit', 'at_delivery')
       ORDER BY l.updated_at DESC
       LIMIT 1`,
@@ -233,6 +237,7 @@ async function listContradictionCandidates({ limit = 200, activeWithinHours = 12
       WHERE g.ended_at IS NULL
         AND g.person_id IS NOT NULL
         AND s.state = 'home'
+        AND l.retired_at IS NULL
         AND l.phase IN ('heading_to_pickup', 'at_pickup', 'in_transit', 'at_delivery')
      UNION
      -- called quiet by one feature while another shows them plainly working
@@ -256,6 +261,7 @@ async function listContradictionCandidates({ limit = 200, activeWithinHours = 12
                        JOIN driver_person_groups pg
                          ON pg.group_id = l.group_id AND pg.ended_at IS NULL
                       WHERE pg.person_id = r.person_id
+                        AND l.retired_at IS NULL
                         AND l.phase IN ('heading_to_pickup', 'at_pickup',
                                         'in_transit', 'at_delivery'))
         )

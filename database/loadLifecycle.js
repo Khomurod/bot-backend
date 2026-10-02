@@ -114,6 +114,10 @@ async function recordLoadObservation(orderId, {
        signals = $17::jsonb,
        conflicts = $18::jsonb,
        last_checked_at = COALESCE($19::timestamptz, NOW()),
+       -- SEEN AGAIN, SO CURRENT AGAIN. An order the window dropped and then
+       -- returned (a date moved, a fetch that briefly missed it) is live.
+       retired_at = NULL,
+       retired_reason = NULL,
        updated_at = NOW()
      RETURNING *`,
     [
@@ -148,10 +152,47 @@ async function pruneFinishedLoads({ deliveredAfterDays = 7, staleAfterDays = 30 
   return res.rowCount;
 }
 
-/** For /api/health: how many loads are tracked, and in what phase. */
+/**
+ * Mark the loads the board stopped returning as finished.
+ *
+ * THE BOARD IS THE AUTHORITY ON WHAT IS CURRENT. The watch reads Datatruck's
+ * order window and touches only the orders in it; an order missing from it is
+ * one the watch will never look at again, so its phase is frozen wherever it
+ * was. Left unmarked, every reader went on treating that frozen phase as now —
+ * see migration 0063.
+ *
+ * ONLY ON A GOOD READ. The caller passes the order ids of a fetch that
+ * succeeded; a failed fetch, or an empty one, must not retire the fleet. And a
+ * load is only retired once it has been missing for `graceMinutes`, so one
+ * fetch that happens to miss an order does not flip it.
+ *
+ * @param {string[]} seenOrderIds  every order id the board returned this pass
+ * @returns {Promise<{retired:number, delivered:number}>}
+ */
+async function retireMissingLoads(seenOrderIds, { graceMinutes = 60 } = {}) {
+  const res = await query(
+    `UPDATE load_lifecycle
+        SET retired_at = NOW(),
+            retired_reason = CASE WHEN phase = 'delivered' THEN 'delivered' ELSE 'left_the_board' END
+      WHERE retired_at IS NULL
+        AND NOT (order_id = ANY($1::text[]))
+        AND COALESCE(last_checked_at, updated_at) < NOW() - ($2 || ' minutes')::interval
+      RETURNING retired_reason`,
+    [(seenOrderIds || []).map(String), String(Math.max(1, Number(graceMinutes) || 60))]
+  );
+  const delivered = res.rows.filter((r) => r.retired_reason === 'delivered').length;
+  return { retired: res.rowCount, delivered };
+}
+
+/**
+ * For /api/health: the loads that are CURRENT, and in what phase — plus how
+ * many have been retired. 713 tracked for a hundred trucks was the old reading
+ * of this, because it counted every load of the last month as if it were live.
+ */
 async function summariseLoadPhases() {
   const res = await query(
-    `SELECT phase, confidence, COUNT(*)::int AS n FROM load_lifecycle GROUP BY phase, confidence`
+    `SELECT phase, confidence, COUNT(*)::int AS n FROM load_lifecycle
+      WHERE retired_at IS NULL GROUP BY phase, confidence`
   );
   const byPhase = {};
   let unclear = 0;
@@ -161,10 +202,17 @@ async function summariseLoadPhases() {
     if (row.confidence && row.confidence !== 'high') unclear += row.n;
     total += row.n;
   }
-  const conflicted = await query(
-    `SELECT COUNT(*)::int AS n FROM load_lifecycle WHERE jsonb_array_length(COALESCE(conflicts,'[]'::jsonb)) > 0`
+  const extra = await query(
+    `SELECT COUNT(*) FILTER (WHERE retired_at IS NULL
+                               AND jsonb_array_length(COALESCE(conflicts,'[]'::jsonb)) > 0)::int AS conflicted,
+            COUNT(*) FILTER (WHERE retired_at IS NOT NULL)::int AS retired
+       FROM load_lifecycle`
   );
-  return { total, byPhase, unclear, conflicted: conflicted.rows[0]?.n || 0 };
+  return {
+    total, byPhase, unclear,
+    conflicted: extra.rows[0]?.conflicted || 0,
+    retired: extra.rows[0]?.retired || 0,
+  };
 }
 
 module.exports = {
@@ -172,5 +220,6 @@ module.exports = {
   getLoadState,
   recordLoadObservation,
   pruneFinishedLoads,
+  retireMissingLoads,
   summariseLoadPhases,
 };
