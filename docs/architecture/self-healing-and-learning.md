@@ -393,7 +393,11 @@ ask pass put a question to the owner, and the ask pass stops while five sit
 unanswered — so on this fleet the record could never grow. The planner now
 writes them itself (`services/operations/corrections/rehearsals.js`): every
 six hours, up to 25 open `auto`-tier findings per Suggest-mode check go through
-`takeDecision` in Suggest mode. `mayAct` is false; nothing is applied. The
+`takeDecision` in Suggest mode. `mayAct` is false; nothing is applied. **A
+check with no settings row counts as Suggest** — the schema's default mode, and
+how `practiceReadiness` already reads it. The first production pass read
+"no row" as "not Suggest" and rehearsed nothing (`rehearsed: 0, checks: 0`),
+because no check outside Autopilot had ever been given a row. The
 last pass that ran is published on `/api/health` →
 `operations.corrections.rehearsals` (`at`, `rehearsed`, `checks`) — null until
 the first pass after a restart.

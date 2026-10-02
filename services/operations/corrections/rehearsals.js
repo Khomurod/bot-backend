@@ -13,7 +13,8 @@
  * check not on Autopilot.
  *
  * So the planner now writes them down itself. Each open `auto`-tier finding of
- * a check in SUGGEST mode is put through `takeDecision` with that mode. The
+ * a check in SUGGEST mode — including one with no settings row, which is in
+ * Suggest by default — is put through `takeDecision` with that mode. The
  * journal's own `applyMode` turns supported evidence into a `suggest` verdict
  * and `mayAct` is false — nothing here can change anything, and nothing reads
  * the result except the journal. Evidence that does not support acting comes
@@ -76,7 +77,12 @@ async function recordRehearsals({
   let checks = 0;
   for (const checkKey of checkKeys) {
     const setting = settings?.get?.(checkKey);
-    if (modeOf(setting) !== 'suggest') continue;
+    // NO ROW IS SUGGEST. A check nobody has configured is in the schema's
+    // default mode, and `practiceReadiness` reads a missing mode the same way.
+    // Reading "no row" as "not Suggest" left production at rehearsed 0 /
+    // checks 0 on the first pass, because no check outside Autopilot had a
+    // row. Observe and Autopilot still never rehearse here.
+    if ((modeOf(setting) ?? 'suggest') !== 'suggest') continue;
     const action = actionFor(checkKey);
     if (!action) continue;
 
