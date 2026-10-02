@@ -83,7 +83,7 @@ function describeRefreshError(text) {
   return { status, kind: classifyFailure({ status, message }).kind };
 }
 
-function summariseCorrections(lastCorrections) {
+function summariseCorrections(lastCorrections, rehearsals = null) {
   if (!lastCorrections) return null;
   const s = lastCorrections.summary || null;
   return {
@@ -103,6 +103,13 @@ function summariseCorrections(lastCorrections) {
       ? s.capped.map((c) => ({ checkKey: c.checkKey, wanted: c.wanted ?? null, cap: c.cap ?? null }))
       : (s?.capped ?? null),
     error: lastCorrections.error || null,
+    // WHAT A CHECK IN SUGGEST MODE WROTE DOWN about what it would have done —
+    // the record the learning pass reads before it proposes Autopilot. It runs
+    // every six hours, so this is the last pass that ran, not this one. Counts
+    // and a timestamp only.
+    rehearsals: rehearsals
+      ? { at: rehearsals.at || null, rehearsed: rehearsals.rehearsed ?? null, checks: rehearsals.checks ?? null }
+      : null,
   };
 }
 
@@ -275,7 +282,7 @@ async function getOperationsHealth(deps = defaultDeps()) {
         filed: status.lastRun?.summary?.filed ?? null,
         resolved: status.lastRun?.summary?.resolved ?? null,
       },
-      corrections: summariseCorrections(status.lastCorrections),
+      corrections: summariseCorrections(status.lastCorrections, status.rehearsals),
       findings,
       // How many people Wenze can recognise from a messaging account alone —
       // what makes a driver findable after their chat is recreated.

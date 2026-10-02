@@ -332,6 +332,34 @@ and the question says **why** in plain words. The journal's own reason names a
 check key and may never travel into a chat; `heldLineFor` maps its shape to one
 sentence instead.
 
+## The morning summary
+
+Once a day, from 08:00 Chicago time, one message in the `needs_attention`
+group (`services/control/dailyDigest.js`, pure wording in
+`lib/control/digest.js`, rides the consistency sweep under
+`withRunRecord('control_daily_digest')`):
+
+- **the questions still waiting** — how many, and the three that have waited
+  longest by name and age. This is the escalation: a question nobody answered
+  slides up the chat and is, in practice, gone; the summary brings it back.
+  One per finding (a re-ask is not a second thing waiting), first questions
+  only (a "why?" belongs to its question), delivered, unanswered, about a
+  finding still open and not snoozed (`database/controlDigest.js`);
+- what Wenze changed on its own in the last day, and how many were undone;
+- how many problems are open (serious · warnings);
+- which workers need a look, by their catalogue label — never a key.
+
+**Once a day is the outbox's guarantee.** The local date is the notice's
+discriminator, so the UNIQUE notice key refuses a second summary that day
+whatever restarts. Before building it the pass checks that key with
+`noticeSentWithin`, and a failed check counts as "already sent". Not after
+20:00: a process down all day must not post the morning summary at midnight.
+
+**Unread is never empty.** Each part reads independently; one that fails is
+named in a closing "Could not read …" line instead of being reported as
+"no questions" or "all systems running". The summary carries no question and
+no buttons, and is off whenever the control channel is off.
+
 ## What the control channel deliberately does NOT do
 
 - auto-apply a remembered `approve`. That would be autopilot through a side
@@ -370,7 +398,8 @@ actually works: a question enqueued and never sent reached nobody.
 `controlIntent`, `controlQuestion`, `controlActions`, `controlReplyHandler`,
 `controlButtons`,
 `controlAskPass`, `controlHandlerRegistration`, `controlNoCodeAccess`,
-`controlFingerprint`, `controlAiIntent`, `controlChannelPg` and
+`controlFingerprint`, `controlAiIntent`, `controlDailyDigest`, `controlDigestPg`
+(requires `TEST_DATABASE_URL`), `controlChannelPg` and
 `controlKnowledgePg` (both require `TEST_DATABASE_URL`), plus the question and
 threaded-reply cases in `notificationSend` and the `control.remembered` cases in
 `healthOperationsBlock`, plus `engineeringRequestsPg` and `decisionHoldsPg`

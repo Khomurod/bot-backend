@@ -125,6 +125,8 @@ test('the summary is counts and timestamps, and a capped check is named with its
     // WHICH check stopped itself, and by how much — check keys are code
     // identifiers, and without this a capped pass reads "0 applied" with no why.
     capped: [{ checkKey: 'identity.group_without_person', wanted: 151, cap: 150 }],
+    // No rehearsal pass in this harness — see tests/healthRehearsals.test.js.
+    rehearsals: null,
   });
   assert.equal(s.identity.groupsWithoutPerson, 0);
   // The invariant, plus what the feature is actually DOING. The live half is

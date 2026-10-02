@@ -393,7 +393,10 @@ ask pass put a question to the owner, and the ask pass stops while five sit
 unanswered — so on this fleet the record could never grow. The planner now
 writes them itself (`services/operations/corrections/rehearsals.js`): every
 six hours, up to 25 open `auto`-tier findings per Suggest-mode check go through
-`takeDecision` in Suggest mode. `mayAct` is false; nothing is applied.
+`takeDecision` in Suggest mode. `mayAct` is false; nothing is applied. The
+last pass that ran is published on `/api/health` →
+`operations.corrections.rehearsals` (`at`, `rehearsed`, `checks`) — null until
+the first pass after a restart.
 
 How many a person confirmed is REPORTED, never required; on this fleet it is
 zero, and the proposal says so in those words. **It carries no action**: the

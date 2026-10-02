@@ -33,10 +33,21 @@ const PER_CHECK = 25;
 const EVERY_MS = 6 * 3600_000;
 
 let lastRunAt = 0;
+// What the last pass that actually ran wrote — for /api/health, so whether the
+// rehearsal record is growing can be read from outside. In memory: a restart
+// clears it, and the first sweep after a restart runs (the clock is cleared
+// too) and fills it again.
+let lastResult = null;
 
 /** For tests: forget when it last ran. */
 function resetRehearsalClock() {
   lastRunAt = 0;
+  lastResult = null;
+}
+
+/** @returns {{at:string, rehearsed:number, checks:number}|null} */
+function getRehearsalStatus() {
+  return lastResult;
 }
 
 /**
@@ -87,9 +98,10 @@ async function recordRehearsals({
       if (decision) rehearsed += 1;
     }
   }
+  lastResult = { at: new Date(now).toISOString(), rehearsed, checks };
   return { rehearsed, checks };
 }
 
 module.exports = {
-  PER_CHECK, EVERY_MS, recordRehearsals, resetRehearsalClock,
+  PER_CHECK, EVERY_MS, recordRehearsals, resetRehearsalClock, getRehearsalStatus,
 };
