@@ -25,20 +25,22 @@ async function finding(h, subjectId, { status = 'open', title = `finding ${subje
 }
 
 let seq = 0;
+const CHAT = '-100123';
+
 async function question(h, findingId, {
-  daysAgo = 1, state = 'delivered', answered = false, parentId = null,
+  daysAgo = 1, state = 'delivered', answered = false, parentId = null, chatId = CHAT,
 } = {}) {
   seq += 1;
   const res = await h.query(
     `INSERT INTO operational_notifications
        (notice_key, category, chat_id, routed_via, body, state, question_json, finding_id,
         parent_notice_id, answered_at, created_at)
-     VALUES ($1, 'needs_attention', '-100123', 'default', 'q', $2,
+     VALUES ($1, 'needs_attention', $7, 'default', 'q', $2,
              '{"offeredActions":[{"key":"dismiss"}]}'::jsonb, $3, $4,
              CASE WHEN $5 THEN NOW() END, NOW() - ($6 || ' days')::interval)
      RETURNING id`,
     [`needs_attention:control_question:${findingId}:r${seq}`, state, findingId, parentId,
-      answered, String(daysAgo)]
+      answered, String(daysAgo), chatId]
   );
   return res.rows[0].id;
 }
@@ -67,8 +69,13 @@ test('waiting = first questions, delivered, unanswered, about something still op
     const snoozed = await finding(h, 6, { snoozedHours: 48 });
     await question(h, snoozed);
 
+    // Asked in a chat the summary is NOT going to — e.g. before the
+    // destination was changed. Its title must not reach the new group.
+    const elsewhere = await finding(h, 7, { title: 'asked in the old chat' });
+    await question(h, elsewhere, { daysAgo: 9, chatId: '-100999' });
+
     const { controlDigest } = h.loadDataLayer(['controlDigest']);
-    const out = await controlDigest.listWaitingQuestions({ limit: 3 });
+    const out = await controlDigest.listWaitingQuestions({ limit: 3, chatId: CHAT });
     assert.equal(out.total, 2);
     assert.deepEqual(out.oldest.map((q) => q.title), ['the oldest', 'the newer']);
     // The age is from the FIRST time it was asked.
@@ -84,7 +91,7 @@ test('the count covers everything waiting, beyond the few that are named',
       await question(h, await finding(h, 100 + i), { daysAgo: 10 - i });
     }
     const { controlDigest } = h.loadDataLayer(['controlDigest']);
-    const out = await controlDigest.listWaitingQuestions({ limit: 3 });
+    const out = await controlDigest.listWaitingQuestions({ limit: 3, chatId: CHAT });
     assert.equal(out.total, 5);
     assert.equal(out.oldest.length, 3);
   });
@@ -92,5 +99,12 @@ test('the count covers everything waiting, beyond the few that are named',
 test('nothing waiting reads as zero, not as unreadable', { skip: skipWithoutPg() }, async (t) => {
   const h = await createPgHarness(t, { extraDdl: ALL_MIGRATIONS });
   const { controlDigest } = h.loadDataLayer(['controlDigest']);
-  assert.deepEqual(await controlDigest.listWaitingQuestions(), { total: 0, oldest: [] });
+  assert.deepEqual(await controlDigest.listWaitingQuestions({ chatId: CHAT }), { total: 0, oldest: [] });
+});
+
+test('no destination chat means no titles at all', { skip: skipWithoutPg() }, async (t) => {
+  const h = await createPgHarness(t, { extraDdl: ALL_MIGRATIONS });
+  await question(h, await finding(h, 1));
+  const { controlDigest } = h.loadDataLayer(['controlDigest']);
+  assert.equal(await controlDigest.listWaitingQuestions({ limit: 3 }), null);
 });

@@ -344,10 +344,19 @@ group (`services/control/dailyDigest.js`, pure wording in
   slides up the chat and is, in practice, gone; the summary brings it back.
   One per finding (a re-ask is not a second thing waiting), first questions
   only (a "why?" belongs to its question), delivered, unanswered, about a
-  finding still open and not snoozed (`database/controlDigest.js`);
-- what Wenze changed on its own in the last day, and how many were undone;
+  finding still open and not snoozed (`database/controlDigest.js`) — and
+  **only questions asked in the chat the summary is going to**. A question
+  keeps the chat it was asked in; after the destination changes, naming the
+  old ones would show finding titles to a group that never received them. The
+  destination is resolved exactly as `notify` resolves it; with none, nothing
+  is read or sent;
+- what Wenze changed on its own in the last day, and how many of **those**
+  were undone (`revertedBySystem` — a person's undone edit is not counted
+  against Wenze);
 - how many problems are open (serious · warnings);
-- which workers need a look, by their catalogue label — never a key.
+- which workers are broken, and separately which are switched off or waiting
+  on a setting (`waiting`, never in `down`) — by catalogue label, never a key.
+  "All systems running" is said only when both lists are empty.
 
 **Once a day is the outbox's guarantee.** The local date is the notice's
 discriminator, so the UNIQUE notice key refuses a second summary that day

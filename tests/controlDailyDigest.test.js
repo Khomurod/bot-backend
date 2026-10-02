@@ -48,7 +48,7 @@ test('the questions still waiting come first, the oldest named, the rest counted
       { title: 'Chat without a person', askedAt: '2026-10-05T13:30:00Z' },
     ],
     waitingTotal: 15,
-    changes: { bySystem: 4, reverted: 1 },
+    changes: { bySystem: 4, reverted: 1, revertedBySystem: 1 },
     findings: { serious: 1, warning: 6 },
     systemsDown: [],
     now: MORNING,
@@ -99,19 +99,26 @@ test('broken systems are named by their plain labels, at most three', () => {
 // ── the pass ────────────────────────────────────────────────────────────────
 
 function makeDeps(overrides = {}) {
-  const calls = { notified: [], keysChecked: [] };
+  const calls = { notified: [], keysChecked: [], waitingAsked: [] };
   const deps = {
     settings: { getControlSettings: async () => ({ enabled: true }) },
     notices: {
       noticeSentWithin: async (key) => { calls.keysChecked.push(key); return false; },
     },
-    digest: {
-      listWaitingQuestions: async () => ({
-        total: 2,
-        oldest: [{ title: 'Open home stay', askedAt: '2026-10-03T15:00:00Z' }],
+    notificationSettings: {
+      getNotificationSettings: async () => ({
+        enabled: true, defaultChatId: '-100111', categoryChatIds: { needs_attention: '-100222' },
       }),
     },
-    corrections: { summariseCorrections: async () => ({ bySystem: 3, reverted: 0 }) },
+    digest: {
+      listWaitingQuestions: async (opts) => {
+        calls.waitingAsked.push(opts);
+        return { total: 2, oldest: [{ title: 'Open home stay', askedAt: '2026-10-03T15:00:00Z' }] };
+      },
+    },
+    corrections: {
+      summariseCorrections: async () => ({ bySystem: 3, reverted: 2, revertedBySystem: 0 }),
+    },
     findings: { summariseFindings: async () => ({ serious: 0, warning: 2 }) },
     systemHealth: { summariseHealthStates: async () => ({ down: ['fuel_risk'] }) },
     notify: async (n) => { calls.notified.push(n); return { recorded: true }; },
@@ -170,4 +177,60 @@ test('a source that cannot be read is left out, the rest is still sent', async (
   assert.ok(lines.includes('Could not read the questions, system health this morning.'));
   assert.ok(!lines.includes('No questions waiting for you.'));
   assert.ok(lines.includes('Done on my own in the last day: 3 changes.'));
+});
+
+// ── review findings, PR #255 ────────────────────────────────────────────────
+
+test('TITLES ONLY FROM QUESTIONS ASKED IN THE CHAT THE SUMMARY GOES TO', async () => {
+  // Codex P1: after the destination changes, old questions keep their old
+  // chat — naming them in the new chat would show finding titles to a group
+  // that never received them.
+  const deps = makeDeps();
+  await runDailyDigest({ now: MORNING }, deps);
+  assert.deepEqual(deps.calls.waitingAsked, [{ limit: 3, chatId: '-100222' }],
+    'scoped to the needs_attention override, not the default');
+});
+
+test('with nowhere to send it, nothing is read and nothing is sent', async () => {
+  const deps = makeDeps({
+    notificationSettings: { getNotificationSettings: async () => ({ enabled: true, defaultChatId: null, categoryChatIds: {} }) },
+  });
+  const out = await runDailyDigest({ now: MORNING }, deps);
+  assert.equal(out.reason, 'no_destination');
+  assert.equal(deps.calls.waitingAsked.length, 0);
+  assert.equal(deps.calls.notified.length, 0);
+});
+
+test('"undone" counts only automatic changes that were undone', () => {
+  // Codex P2: one live automatic change plus one reverted ADMIN change read
+  // "1 change (1 undone)", as though Wenze's own change had been undone.
+  const out = composeDigest({
+    waiting: [], waitingTotal: 0, changes: { bySystem: 1, reverted: 1, revertedBySystem: 0 },
+    findings: { serious: 0, warning: 0 }, systemsDown: [], now: MORNING,
+  });
+  assert.ok(out.lines.includes('Done on my own in the last day: 1 change.'));
+});
+
+test('a system switched off or waiting on a setting is never "all systems running"', () => {
+  // Codex P2: `blocked` components are in `waiting`, never in `down`.
+  const out = composeDigest({
+    waiting: [], waitingTotal: 0, systemsDown: [], systemsWaiting: ['the leads bot'], now: MORNING,
+  });
+  assert.ok(!out.lines.includes('All systems running.'));
+  assert.ok(out.lines.includes('Nothing is broken. Waiting on a setting: the leads bot.'));
+
+  const both = composeDigest({
+    waiting: [], waitingTotal: 0, systemsDown: ['fuel'], systemsWaiting: ['leads'], now: MORNING,
+  });
+  assert.ok(both.lines.includes('Needs a look: fuel.'));
+  assert.ok(both.lines.includes('Waiting on a setting: leads.'));
+});
+
+test('the pass hands the waiting components over by label', async () => {
+  const deps = makeDeps({
+    systemHealth: { summariseHealthStates: async () => ({ down: [], waiting: ['leads_bot'] }) },
+  });
+  await runDailyDigest({ now: MORNING }, deps);
+  const { lines } = deps.calls.notified[0];
+  assert.ok(lines.some((l) => /^Nothing is broken\. Waiting on a setting: /.test(l) && !/leads_bot/.test(l)), lines.join(' | '));
 });

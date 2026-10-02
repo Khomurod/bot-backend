@@ -27,10 +27,13 @@ const defaultDigest = require('../../database/controlDigest');
 const defaultCorrections = require('../../database/operationalCorrections');
 const defaultFindings = require('../../database/operationalFindings');
 const defaultSystemHealth = require('../../database/systemHealth');
+const defaultNotificationSettings = require('../../database/operationalNotificationSettings');
+const { resolveDestination } = require('../../lib/notifications/categories');
 const defaultSend = require('../notifications/send');
 const { digestDayFor, composeDigest, MAX_WAITING_NAMED } = require('../../lib/control/digest');
 const { serviceLabel } = require('../../lib/operations/backgroundServiceCatalog');
 
+const CATEGORY = 'needs_attention';
 const SUBJECT_TYPE = 'control_digest';
 const SUBJECT_ID = 'daily';
 
@@ -42,13 +45,14 @@ function defaultDeps() {
     corrections: defaultCorrections,
     findings: defaultFindings,
     systemHealth: defaultSystemHealth,
+    notificationSettings: defaultNotificationSettings,
     notify: defaultSend.notify,
   };
 }
 
 /** The notice key `notify` writes for one day's summary. */
 function digestKeyFor(day) {
-  return `needs_attention:${SUBJECT_TYPE}:${SUBJECT_ID}:${day}`;
+  return `${CATEGORY}:${SUBJECT_TYPE}:${SUBJECT_ID}:${day}`;
 }
 
 /**
@@ -68,9 +72,22 @@ async function runDailyDigest({ now = new Date() } = {}, deps = defaultDeps()) {
   const already = await deps.notices.noticeSentWithin(digestKeyFor(day), 24).catch(() => true);
   if (already) return { sent: false, day, reason: 'already_sent' };
 
+  // WHERE IT IS GOING decides which questions it may name. A question keeps
+  // the chat it was asked in; when the destination changes, naming the old
+  // ones would show finding titles to a group that never received them. The
+  // same resolution `notify` makes, so the two cannot disagree.
+  const config = await Promise.resolve(deps.notificationSettings.getNotificationSettings())
+    .catch(() => null);
+  const chatId = config
+    ? resolveDestination(CATEGORY, {
+      defaultChatId: config.defaultChatId, overrides: config.categoryChatIds,
+    }).chatId
+    : null;
+  if (!chatId) return { sent: false, day, reason: 'no_destination' };
+
   const since = new Date(new Date(now).getTime() - 24 * 3600_000).toISOString();
   const [waiting, changes, findings, health] = await Promise.all([
-    deps.digest.listWaitingQuestions({ limit: MAX_WAITING_NAMED }).catch(() => null),
+    deps.digest.listWaitingQuestions({ limit: MAX_WAITING_NAMED, chatId }).catch(() => null),
     deps.corrections.summariseCorrections({ sinceIso: since }).catch(() => null),
     deps.findings.summariseFindings().catch(() => null),
     deps.systemHealth.summariseHealthStates().catch(() => null),
@@ -82,11 +99,12 @@ async function runDailyDigest({ now = new Date() } = {}, deps = defaultDeps()) {
     changes,
     findings,
     systemsDown: health ? (health.down || []).map(serviceLabel) : null,
+    systemsWaiting: health ? (health.waiting || []).map(serviceLabel) : null,
     now,
   });
 
   const result = await Promise.resolve(deps.notify({
-    category: 'needs_attention',
+    category: CATEGORY,
     title: body.title,
     lines: body.lines,
     subjectType: SUBJECT_TYPE,

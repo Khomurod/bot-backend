@@ -106,7 +106,9 @@ async function summariseCorrections({ sinceIso = null } = {}) {
             COUNT(*) FILTER (WHERE reverted_at IS NULL)::int AS live,
             COUNT(*) FILTER (WHERE reverted_at IS NOT NULL)::int AS reverted,
             COUNT(*) FILTER (WHERE initiator = 'system')::int AS by_system,
-            COUNT(*) FILTER (WHERE initiator <> 'system')::int AS by_admin
+            COUNT(*) FILTER (WHERE initiator <> 'system')::int AS by_admin,
+            COUNT(*) FILTER (WHERE initiator = 'system' AND reverted_at IS NOT NULL)::int
+              AS reverted_by_system
        FROM operational_corrections
       WHERE ($1::timestamptz IS NULL OR applied_at >= $1)`,
     [sinceIso]
@@ -115,6 +117,9 @@ async function summariseCorrections({ sinceIso = null } = {}) {
   return {
     total: r.total, live: r.live, reverted: r.reverted,
     bySystem: r.by_system, byAdmin: r.by_admin,
+    // Wenze's own changes that were undone — the daily summary's "undone",
+    // which must not count a person's reverted edit against Wenze.
+    revertedBySystem: r.reverted_by_system,
   };
 }
 

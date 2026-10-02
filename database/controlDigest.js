@@ -18,7 +18,10 @@ const { query } = require('./pool');
  * @returns {Promise<{total:number, oldest:{title:string|null, askedAt:string}[]}|null>}
  *   null when it could not be read — "could not tell" is not "none waiting".
  */
-async function listWaitingQuestions({ limit = 3 } = {}) {
+async function listWaitingQuestions({ limit = 3, chatId = null } = {}) {
+  // NO CHAT, NO TITLES. The summary may only name questions asked in the chat
+  // it is going to — see services/control/dailyDigest.js.
+  if (chatId == null || String(chatId).trim() === '') return null;
   try {
     const res = await query(
       `SELECT title, created_at, COUNT(*) OVER ()::int AS total
@@ -30,6 +33,7 @@ async function listWaitingQuestions({ limit = 3 } = {}) {
              FROM operational_notifications n
              JOIN operational_findings f ON f.id = n.finding_id
             WHERE n.question_json IS NOT NULL
+              AND n.chat_id = $2
               AND n.parent_notice_id IS NULL
               AND n.answered_at IS NULL
               AND n.state = 'delivered'
@@ -39,7 +43,7 @@ async function listWaitingQuestions({ limit = 3 } = {}) {
          ) waiting
         ORDER BY created_at ASC
         LIMIT $1`,
-      [Math.max(1, Math.min(20, Number(limit) || 3))]
+      [Math.max(1, Math.min(20, Number(limit) || 3)), String(chatId)]
     );
     return {
       total: res.rows[0]?.total || 0,
