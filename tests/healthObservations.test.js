@@ -469,3 +469,4 @@ test('days nobody can be answered on are named without blocking the feature', as
   assert.equal(row.state, 'healthy');
   assert.match(row.reason, /No candidate can be answered on Mon, Tue, Wed, Thu, Fri/);
 });
+

@@ -196,6 +196,26 @@ The counter is reset by a restart, which is exactly why the instant travels with
 the count rather than being assumed.
 
 
+### …and a verdict nobody reads is not a health signal either
+
+On 2026-10-02 the reconciliation above said `events_lost` (8 seen, 0 kept) while
+`systems.failed` said `0` and the attention list did not mention it. The verdict
+sat one field away from the answer and nothing joined them. In the same week
+none of the 29 home-time notices to the managers was delivered, the outbox
+counted every failure, and health still said all was well. Both workers RAN on
+schedule; a "did the pass finish" check cannot see a pass whose OUTPUT is lost.
+
+So two observations ask "did it arrive" (`observations/deliveryTruth.js`, rules
+pure in `lib/operations/deliveryTruth.js`):
+
+| component | `needs_human_attention` when |
+|---|---|
+| `samsara_safety_pipeline` | the run is fine but ≥ 3 events were lost AND fewer than half kept — one event in flight, or one re-seen after a restart, is not a fault. Names how many the poller's store refused for a missing field. |
+| `home_time_manager_notices` (new, critical) | over the past week ≥ 3 notices failed AND more failed than were delivered. Quotes the latest Telegram error with every id, token and URL removed — it is a public endpoint. |
+
+Both are critical, so the self-healing watch announces them like any other
+failure. Both answer `cannot_determine` when their rows cannot be read.
+
 ## Where it lives
 
 `services/operations/healthObservations.js` passed the 500-line cap and split
@@ -204,7 +224,8 @@ along the seam it already had:
 | module | answers |
 |---|---|
 | `observations/shape.js` | the SHAPE every observation takes, `CUSTOM_INTEGRATIONS`, and the staleness constants |
-| `observations/integrations.js` | the nine hand-written integration checks |
+| `observations/integrations.js` | the hand-written integration checks |
+| `observations/deliveryTruth.js` | the two "did it arrive" checks above |
 | `healthObservations.js` | `defaultDeps`, the ledger-driven worker half, and `gatherAllObservations` |
 
 `CUSTOM_INTEGRATIONS` is now exported and `tests/backgroundServiceCatalog.test.js`

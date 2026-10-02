@@ -234,6 +234,21 @@ async function countFailedNotices() {
   return { count: res.rows[0]?.n || 0, oldestAt: res.rows[0]?.oldest || null };
 }
 
+/**
+ * The most recent delivery error, and when. The reason the managers are not
+ * being told is in `last_error` and was readable only from the database; this
+ * is what lets the health watch name it.
+ */
+async function latestNoticeFailure() {
+  const res = await query(
+    `SELECT last_error, created_at FROM home_time_manager_notices
+      WHERE last_error IS NOT NULL
+      ORDER BY id DESC LIMIT 1`
+  );
+  const row = res.rows[0];
+  return row ? { lastError: row.last_error, createdAt: row.created_at } : null;
+}
+
 /** The recent timeline for one driver, for the admin. Newest first. */
 async function listNoticesForPerson(personId, { limit = 20 } = {}) {
   const res = await query(
@@ -259,5 +274,6 @@ module.exports = {
   markNoticeFailed,
   releaseNoticeClaim,
   countFailedNotices,
+  latestNoticeFailure,
   listNoticesForPerson,
 };

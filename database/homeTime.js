@@ -39,6 +39,7 @@ module.exports = {
   reapExhaustedNotices: notices.reapExhaustedNotices,
   markNoticeDelivered: notices.markNoticeDelivered,
   markNoticeFailed: notices.markNoticeFailed,
+  latestNoticeFailure: notices.latestNoticeFailure,
   releaseNoticeClaim: notices.releaseNoticeClaim,
   countFailedNotices: notices.countFailedNotices,
   listNoticesForPerson: notices.listNoticesForPerson,

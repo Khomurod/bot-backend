@@ -16,6 +16,7 @@ const { afterHoursReadiness } = require('../../../lib/recruiting/readiness');
 const {
   ELD_STALE_MINUTES, NOTICE_STUCK_MINUTES, minutesSince, integration,
 } = require('./shape');
+const { safetyEventsLost, managerNoticeObservation } = require('./deliveryTruth');
 
 /**
  * The integrations, each from evidence the application already stores.
@@ -298,19 +299,27 @@ async function integrationObservations(deps, nowMs) {
     const verdict = classifyRun(row, {
       now: nowMs, expectedIntervalSeconds: entry.expectedIntervalSeconds,
     });
-    out.push(integration('samsara_safety_pipeline', {
-      ok: !verdict.actionable,
-      // The poller beats `blocked` when Samsara is switched off in the admin.
-      // That verdict was being computed and then thrown away here.
-      blocked: verdict.blocked === true,
-      state: verdict.state,
-      detail: verdict.actionable ? verdict.reason : null,
-      reason: verdict.reason,
-    }));
+    // THE POLLER RUNNING IS NOT THE EVENTS ARRIVING. A poller that beats on
+    // time while every event it hands on is dropped read "healthy" here for
+    // three weeks; the reconciliation that said "events_lost" sat one field
+    // away on /api/health. Loss outranks a clean run.
+    const lost = verdict.actionable ? null : await safetyEventsLost(deps, row).catch(() => null);
+    out.push(integration('samsara_safety_pipeline', lost
+      ? { ok: false, state: RUN_STATES.NEEDS_ATTENTION, detail: lost.reason, reason: lost.reason }
+      : {
+        ok: !verdict.actionable,
+        // The poller beats `blocked` when Samsara is switched off in the admin.
+        // That verdict was being computed and then thrown away here.
+        blocked: verdict.blocked === true,
+        state: verdict.state,
+        detail: verdict.actionable ? verdict.reason : null,
+        reason: verdict.reason,
+      }));
   } catch (_) {
     out.push(integration('samsara_safety_pipeline', { ok: true, state: RUN_STATES.UNKNOWN, reason: 'could not read' }));
   }
 
+  out.push(await managerNoticeObservation(deps));
   return out;
 }
 module.exports = { integrationObservations };
