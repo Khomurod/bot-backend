@@ -103,3 +103,21 @@ test('the last pass that RAN is what health reads — a throttled pass does not 
   await recordRehearsals({ ...args, now: Date.parse('2026-10-02T22:15:00Z') });
   assert.equal(getRehearsalStatus().rehearsed, 3, 'still the pass that wrote something');
 });
+
+test('A CHECK NOBODY HAS CONFIGURED IS IN SUGGEST — the schema\'s own default — and rehearses', async () => {
+  // Production, 2026-10-02, the first pass after deploy: rehearsed 0, checks
+  // 0. Every check not on Autopilot had no settings row at all, and "no row"
+  // was read as "not Suggest" — so the record this exists to build was never
+  // started. A row's default mode is 'suggest', and practiceReadiness already
+  // reads a missing mode as 'suggest'; this now agrees with both.
+  resetRehearsalClock();
+  const { args, calls } = harness({
+    modes: { 'a.observe': 'observe' },
+    findings: { 'no.row': many(2), 'a.observe': many(2) },
+  });
+  const out = await recordRehearsals({
+    ...args, checkKeys: ['no.row', 'a.observe'], now: 1_000,
+  });
+  assert.strictEqual(out.rehearsed, 2);
+  assert.deepStrictEqual(calls.listed.map((q) => q.checkKey), ['no.row'], 'Observe still never rehearses');
+});
