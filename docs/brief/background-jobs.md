@@ -32,6 +32,7 @@ without any timer firing), `tests/jobQueueScheduler.test.js` and
 |---|---|---|
 | `schedulerService` | 60s + hourly retention | delivers due `scheduled_messages` |
 | `dataRetention` (on the scheduler's hourly retention tick) | 1h | prunes the seven tables that grow — safety events, AI call log, coaching, resolved findings, finished notices, resolved duplicate reports, `service_runs` idempotency keys. Catalogued `data_retention` and recorded through `withRunRecord`, so a prune that stops is visible; it used to report only to `console.error` |
+| `telegramDestinationProbe` | 6h, first 2 min after boot | asks Telegram about every configured destination chat; a group upgraded to a supergroup is followed to its new id everywhere (settings, `groups` row, queued notices) before a send has to fail on it. Catalogued `telegram_destination_probe`; see `docs/architecture/operational-notifications.md` |
 | `dispatchEtaUpdateService` | 90s | per-group ETA updates, `FOR UPDATE SKIP LOCKED` claims |
 | `birthdayService` (drivers) | sleeps to the next 08:00, re-checks hourly (was 60s) | wishes at an hour/timezone **hardcoded in the module** (08:00 America/Chicago) — there is no settings row or env var for it |
 | `employeeBirthdayWishService` | sleeps to the configured send time, re-checks hourly (was 60s) | wishes at the `send_hour` / `send_minute` / `timezone` from `employee_birthday_settings` |

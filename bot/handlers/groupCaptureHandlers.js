@@ -11,6 +11,8 @@
  * required here import bot/bot.js, so the require graph stays acyclic.
  */
 const db = require('../../database/db');
+const chatMigration = require('../../services/telegramChatMigration');
+const { notify: notifyOps } = require('../../services/notifications/send');
 const botUsers = require('../../database/botUsers');
 const { handleFuelStopMessage } = require('../../services/fuelStopAlertService');
 const { handleDriverGroupStatus } = require('../../services/homeTimeService');
@@ -209,19 +211,21 @@ function registerGroupCaptureHandlers(bot) {
 
   bot.on('message', async (ctx, next) => {
     try {
-      // Catch Telegram group upgrades to Supergroups
-      if (ctx.message && ctx.message.migrate_to_chat_id) {
-        const oldId = ctx.chat.id;
-        const newId = ctx.message.migrate_to_chat_id;
-        try {
-          await db.query(
-            'UPDATE groups SET telegram_group_id = $1 WHERE telegram_group_id = $2',
-            [newId, oldId]
-          );
-          console.log(`[BOT] Migrated group ID from ${oldId} to ${newId}`);
-        } catch (e) {
-          console.error('[BOT] Failed to migrate group ID:', e.message);
-        }
+      // A GROUP UPGRADED TO A SUPERGROUP gets a new id. This used to move only
+      // the `groups` row, so every SETTING naming the group (the managers'
+      // home-time chat among them) kept the dead id and every send failed. The
+      // migration service moves all of them in one audited transaction.
+      // `migrate_to_chat_id` arrives in the old chat, `migrate_from_chat_id`
+      // in the new one; either is enough, and the second call is a no-op.
+      const fromOld = ctx.message?.migrate_to_chat_id ? [ctx.chat.id, ctx.message.migrate_to_chat_id] : null;
+      const fromNew = ctx.message?.migrate_from_chat_id ? [ctx.message.migrate_from_chat_id, ctx.chat.id] : null;
+      const move = fromOld || fromNew;
+      if (move) {
+        const summary = await chatMigration.followMigration(move[0], move[1], {
+          reason: 'Telegram announced the group was upgraded to a supergroup',
+        });
+        const said = chatMigration.migrationNotice(summary);
+        if (said) notifyOps(said).catch(() => {});
         return next();
       }
       const chat = ctx.chat;
