@@ -3,9 +3,16 @@
 /**
  * Each check's rehearsal record, for lib/operations/practiceReadiness.js.
  *
- * A rehearsal is a decision of "act" that was NOT carried out — the check was
- * in suggest/observe mode, or in shadow. Read-only, one statement, counted per
- * check over a window:
+ * A rehearsal is a decision the evidence supported that was NOT carried out:
+ *   `suggest`              the check is in Suggest mode — `applyMode` turns a
+ *                          supported decision into `suggest`, never `act`, so
+ *                          an `act` row can NEVER come from this mode;
+ *   `act` with shadow      the check is on Autopilot in shadow.
+ * (Observe narrows to `hold`, indistinguishable from evidence that did not
+ * support acting, and is deliberately not counted — see
+ * services/operations/corrections/rehearsals.js.)
+ *
+ * Read-only, one statement, counted per check over a window:
  *   subjects   different things it would have acted on
  *   flips      of those, how many it later held or could not decide on
  *   rejected   how many a PERSON dismissed (the finding, with a name on it)
@@ -18,7 +25,7 @@ async function summarisePractice({ sinceDays = 30 } = {}) {
     `WITH acts AS (
        SELECT check_key, subject_type, subject_id, first_decided_at, last_decided_at
          FROM operational_decisions
-        WHERE verdict = 'act' AND (shadow = TRUE OR mode <> 'autopilot')
+        WHERE (verdict = 'suggest' OR (verdict = 'act' AND shadow = TRUE))
           AND last_decided_at > NOW() - ($1 || ' days')::interval
      ),
      flips AS (

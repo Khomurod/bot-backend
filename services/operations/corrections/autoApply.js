@@ -37,6 +37,7 @@ const { actionForCheck, CHECK_TO_ACTION } = require('./actions');
 const { applyCorrection, StaleCorrectionError } = require('./apply');
 const { takeDecision } = require('../../decisions/journal');
 const { MIN_CONFIDENCE, recordDecisionFor } = require('./decisionSeam');
+const { recordRehearsals } = require('./rehearsals');
 const { SETTINGS_COLUMNS } = require('../../../database/operationalCheckSettings');
 
 const DEFAULT_CAP = 50;
@@ -376,6 +377,17 @@ async function runAutoCorrections({
     })
       .catch(() => null);
   }
+
+  // ── what a check in Suggest mode would have done ─────────────────────────
+  //
+  // Journalled, never applied — see ./rehearsals.js. This is the practice
+  // record the learning pass reads before it proposes Autopilot.
+  const rehearsal = await recordRehearsals({
+    settings, store, checkKeys: [...CHECK_TO_ACTION.keys()],
+    actionFor: actionForCheck, payloadFor, modeOf, floorFor,
+    recordDecisionFor, takeDecision: takeDecisionFn,
+  }).catch(() => null);
+  summary.rehearsed = rehearsal?.rehearsed || 0;
 
   const results = [];
   for (const item of plan) {

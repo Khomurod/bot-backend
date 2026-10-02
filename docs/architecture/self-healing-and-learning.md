@@ -368,15 +368,32 @@ none. Every one of those waiting decisions is nonetheless a rehearsal: Wenze
 said what it would do and did not do it.
 
 `practice_ready` (`lib/operations/practiceReadiness.js`, counts from
-`database/decisionPractice.js`) reads the last 30 days of `act` verdicts that
-were NOT carried out (suggest/observe mode, or shadow) and proposes Autopilot
-for a check only when ALL of these hold:
+`database/decisionPractice.js`) reads the last 30 days of decisions the
+evidence supported and nobody carried out, and proposes Autopilot for a check
+only when ALL of these hold:
 
 - at least 10 different cases, over at least 7 days;
 - not one finding a person dismissed;
 - it changed its mind (a later hold/unknown on the same case) on at most 10%;
 - the check's correction is tier `auto` — an `approval` action is a person's
   by definition — and the check is not already on Autopilot.
+
+**What counts as a rehearsal, exactly.** The journal never writes `act` for a
+check in Suggest: `applyMode` narrows supported evidence to a `suggest`
+verdict. So a rehearsal is a `suggest` row, or an `act` row in shadow. A first
+version read `act` rows in Suggest mode — a row that cannot exist — and its
+test passed only because it inserted such rows by hand; the planner-driven
+test in `tests/decisionSeamPg.test.js` now produces them through the real
+journal. Observe narrows to `hold`, which cannot be told apart from evidence
+that did not support acting, so Observe is not counted: the rung after Observe
+is Suggest, not Autopilot.
+
+**Who writes them.** A check in Suggest used to reach the journal only when the
+ask pass put a question to the owner, and the ask pass stops while five sit
+unanswered — so on this fleet the record could never grow. The planner now
+writes them itself (`services/operations/corrections/rehearsals.js`): every
+six hours, up to 25 open `auto`-tier findings per Suggest-mode check go through
+`takeDecision` in Suggest mode. `mayAct` is false; nothing is applied.
 
 How many a person confirmed is REPORTED, never required; on this fleet it is
 zero, and the proposal says so in those words. **It carries no action**: the
