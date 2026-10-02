@@ -255,6 +255,40 @@ When the target message is gone (deleted, or too old for Telegram to resolve),
 `deliverOne` retries **once, unthreaded**. The words still reach the person; they
 just do not hang under the question. Any other send failure is still a failure.
 
+## Buttons
+
+Every question goes out with **Yes / No / Later** buttons under it — only the
+answers it offered, so a question with nothing to apply shows No and Later.
+Production, 2026-10-02: fifteen questions asked, none answered. A typed reply
+is long-press, Reply, type; a button is one tap.
+
+**A tap is the word it stands for.** `lib/control/buttons.js` turns the button
+back into `yes`, `no` or `later`, and `services/control/answerQuestion.js` —
+the same code a typed reply reaches after its own gates — parses and acts on
+it. There is no second rulebook for buttons, so a button can never do anything
+the word would not. "No" still asks why (the follow-up hangs under the
+question, with buttons of its own); "No" on the "why?" closes it with the
+default reason, exactly as a second bare "no" does.
+
+**What a button carries:** `ctl:<notice id>:<a|d|s>` — never an action key,
+never a finding id. `buttonHandler.js` refuses a tap whose notice id is not the
+notice the button is actually attached to, and an action the question did not
+offer.
+
+**One owner answer per question.** An operator's tap claims
+`(chat, the question's own message id)` in `control_replies`, so a double tap,
+or a second operator a second later, finds it taken and is told "already
+answered" (a typed reply can still change it). A **stranger's** tap is recorded
+under the **negated** message id instead: it leaves a trace and can never take
+the claim the owner's tap needs — otherwise whoever tapped first would decide
+whether the owner could answer at all. A stranger is answered with an empty
+toast, the same silence a stranger's typed reply gets.
+
+Once a question has an answer its buttons come off (`editMessageReplyMarkup`),
+so nobody taps something already settled. The handler is registered with
+`bot.action` before the survey handler's `callback_query` catch-all, and
+`tests/controlHandlerRegistration.test.js` asserts the order.
+
 ## Attribution
 
 `initiatorFor` in `services/operations/corrections/apply.js` learned a third
@@ -330,6 +364,7 @@ actually works: a question enqueued and never sent reached nobody.
 ## Tests
 
 `controlIntent`, `controlQuestion`, `controlActions`, `controlReplyHandler`,
+`controlButtons`,
 `controlAskPass`, `controlHandlerRegistration`, `controlNoCodeAccess`,
 `controlFingerprint`, `controlAiIntent`, `controlChannelPg` and
 `controlKnowledgePg` (both require `TEST_DATABASE_URL`), plus the question and

@@ -294,8 +294,10 @@ repository-wide working rules. The highest-consequence items:
   column and stuck one driver for a day.
 
 - **Being in a Telegram group is not authorisation, and Wenze never edits its
-  own source.** A finding can be answered by replying to it in the notifications
-  group. `control_operators` decides whose reply is obeyed — numeric ids only,
+  own source.** A finding can be answered by tapping Yes / No / Later under it,
+  or by replying to it, in the notifications group — a tap is read as the word
+  it stands for, through the same parser and writer. `control_operators` decides
+  whose reply or tap is obeyed — numeric ids only,
   seeded with the creator id and nobody else, the last one un-removable, every
   change audited; anybody else's reply is recorded and never answered, because
   answering tells a stranger it was read. A reply may only choose an action the

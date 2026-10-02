@@ -21,6 +21,8 @@
  * asserts that structurally, so the rule survives an edit that forgets it.
  */
 const { handleControlReply, defaultDeps } = require('../services/control/replyHandler');
+const { handleControlButton } = require('../services/control/buttonHandler');
+const { PATTERN } = require('../lib/control/buttons');
 const { notify } = require('../services/notifications/send');
 
 /**
@@ -41,7 +43,43 @@ async function ackInThread({ chatId, inReplyToMessageId, text }) {
   }).catch(() => null);
 }
 
+/**
+ * A tap on Yes / No / Later.
+ *
+ * Every tap is answered — Telegram leaves the button spinning otherwise — but
+ * a stranger's tap is answered with nothing, the same silence a stranger's
+ * typed reply gets. Once the question has an answer its buttons come off, so
+ * nobody taps a question that is already settled.
+ */
+async function onControlButton(ctx) {
+  let result = { handled: false };
+  try {
+    result = await handleControlButton({
+      data: ctx.callbackQuery?.data,
+      chatId: ctx.chat?.id,
+      chatType: ctx.chat?.type,
+      messageId: ctx.callbackQuery?.message?.message_id,
+      telegramUserId: ctx.from?.id,
+      fromIsBot: Boolean(ctx.from?.is_bot),
+    }, { ...defaultDeps(), ack: ackInThread });
+  } catch (err) {
+    console.warn('[CONTROL] button error:', err.message);
+  }
+  try {
+    await ctx.answerCbQuery(result.toast || undefined);
+  } catch (_) { /* an old tap Telegram no longer accepts an answer for */ }
+  if (result.clear) {
+    try {
+      await ctx.editMessageReplyMarkup({ inline_keyboard: [] });
+    } catch (_) { /* already cleared, or the message is gone */ }
+  }
+}
+
 function registerControlReplyHandlers(bot) {
+  // Before the survey handler's callback catch-all, which `bot.js` registers
+  // much later — Telegraf runs handlers in registration order.
+  bot.action(PATTERN, onControlButton);
+
   bot.on('message', async (ctx, next) => {
     const msg = ctx.message;
     // The cheapest possible rejection, before anything is awaited: almost every
@@ -69,4 +107,4 @@ function registerControlReplyHandlers(bot) {
   });
 }
 
-module.exports = { registerControlReplyHandlers, ackInThread };
+module.exports = { registerControlReplyHandlers, ackInThread, onControlButton };

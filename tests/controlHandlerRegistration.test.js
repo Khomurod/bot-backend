@@ -29,9 +29,12 @@ test('registered after the capture pipeline and before every other message handl
 
 function fakeBot() {
   const handlers = [];
+  const actions = [];
   return {
     handlers,
+    actions,
     on(event, fn) { handlers.push({ event, fn }); },
+    action(pattern, fn) { actions.push({ pattern, fn }); },
   };
 }
 
@@ -62,4 +65,39 @@ test('only the `message` event is claimed', () => {
   const bot = fakeBot();
   registerControlReplyHandlers(bot);
   assert.deepStrictEqual(bot.handlers.map((h) => h.event), ['message']);
+});
+
+// ── the Yes / No / Later buttons ─────────────────────────────────────────────
+
+test('the buttons are registered for our callback data, and only ours', () => {
+  const bot = fakeBot();
+  registerControlReplyHandlers(bot);
+  assert.strictEqual(bot.actions.length, 1);
+  const { pattern } = bot.actions[0];
+  assert.ok(pattern.test('ctl:3:a'));
+  assert.ok(!pattern.test('mbonus:paid:3'), 'another feature\'s buttons are not caught');
+  assert.ok(!pattern.test('rc:replace:1:2'));
+});
+
+test('registered before the survey handler\'s callback catch-all', () => {
+  const source = fs.readFileSync(path.join(__dirname, '..', 'bot', 'bot.js'), 'utf8');
+  const control = source.indexOf('registerControlReplyHandlers(bot);');
+  const surveys = source.indexOf('registerSurveyCallbackHandlers(bot);');
+  assert.ok(control > 0 && surveys > 0);
+  assert.ok(control < surveys, 'a catch-all registered first would swallow every tap');
+});
+
+test('a tap that is not one of ours is still answered, so the button stops spinning', async () => {
+  const { onControlButton } = require('../bot/controlReplyHandlers');
+  const answered = [];
+  const edited = [];
+  await onControlButton({
+    callbackQuery: { data: 'ctl:3:a' }, // no message under it
+    chat: { id: -100, type: 'private' },
+    from: { id: 5, is_bot: false },
+    answerCbQuery: async (t) => { answered.push(t); },
+    editMessageReplyMarkup: async (m) => { edited.push(m); },
+  });
+  assert.strictEqual(answered.length, 1);
+  assert.strictEqual(edited.length, 0, 'the buttons stay — nothing was answered');
 });
