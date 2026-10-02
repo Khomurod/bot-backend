@@ -161,3 +161,26 @@ test('a row count that could not be read CANNOT DETERMINE, not "events lost"', a
   assert.equal(r.reconciliation.state, 'cannot_determine');
   assert.match(r.reconciliation.reason, /could not be counted/);
 });
+
+test('the destination probe\'s last run is visible: counts and Telegram\'s words, no ids', async () => {
+  const s = await getOperationsHealth(summaryDeps({
+    destinationProbeRun: {
+      lastStatus: 'error',
+      lastFinishedAt: '2026-10-02T20:26:00.000Z',
+      lastSummary: {
+        checked: 4, moved: 0, unreachable: 1, followFailed: 1,
+        reasons: '400: Bad Request: chat not found (x1)',
+      },
+    },
+  }));
+  assert.deepEqual(s.chatDestinations, {
+    lastRunAt: '2026-10-02T20:26:00.000Z', status: 'error',
+    checked: 4, moved: 0, unreachable: 1, followFailed: 1,
+    reasons: '400: Bad Request: chat not found (x1)',
+  });
+});
+
+test('a probe that never ran reads null, not zeros', async () => {
+  const s = await getOperationsHealth(summaryDeps());
+  assert.equal(s.chatDestinations, null);
+});

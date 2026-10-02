@@ -222,7 +222,14 @@ test('a provider is named by its catalogue key only — a free-text provider_key
 });
 
 test('the summary never carries a name, a title or a chat id', async () => {
-  const s = await getOperationsHealth(summaryDeps());
+  // With the destination probe populated too: its block is the newest place a
+  // chat-related word could leak into this public payload.
+  const s = await getOperationsHealth(summaryDeps({
+    destinationProbeRun: {
+      lastStatus: 'ok', lastFinishedAt: '2026-10-02T20:26:00.000Z',
+      lastSummary: { checked: 2, moved: 1, unreachable: 1, followFailed: 0, reasons: '400: Bad Request: chat not found (x1)' },
+    },
+  }));
   const text = JSON.stringify(s);
   for (const forbidden of ['title', 'groupName', 'group_name', 'telegram', 'apiKey', 'api_key', 'displayName']) {
     assert.equal(text.includes(forbidden), false, `${forbidden} must not appear in a health payload`);

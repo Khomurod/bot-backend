@@ -16,6 +16,7 @@
 const { withRunRecord } = require('./operations/runLedger');
 const chatMigration = require('./telegramChatMigration');
 const { notify } = require('./notifications/send');
+const { publicTelegramError } = require('../lib/operations/deliveryTruth');
 
 const SERVICE_KEY = 'telegram_destination_probe';
 const PROBE_INTERVAL_MS = 6 * 60 * 60 * 1000;
@@ -29,26 +30,69 @@ function defaultDeps() {
   return { store: require('../database/telegramChatMigration'), migration: chatMigration, notify };
 }
 
+/**
+ * Ask about every destination. `getChat` first: it is read-only and answers
+ * for every healthy chat without anyone seeing anything. Only when it FAILS
+ * is `sendChatAction` tried — a write, which for a moved group returns the
+ * same "upgraded to a supergroup" error a real send does, new id included.
+ * Production showed why both are needed: the first pass after this shipped
+ * asked every destination and followed nothing, while every real send to the
+ * managers' chat was still failing with exactly that error.
+ *
+ * A move found but not applied (the database refused) is NOT a clean run:
+ * it is reported as an error so the ledger, the Systems tab and the
+ * self-healing watch all see it, instead of a quiet "ok".
+ */
 async function probeOnce({ telegram, deps = defaultDeps() } = {}) {
   if (!telegram?.getChat) return { blocked: 'no Telegram client to ask' };
   const ids = await deps.store.listDestinationChatIds();
-  const summary = { ok: true, checked: 0, moved: 0, unreachable: 0 };
+  const summary = { ok: true, checked: 0, moved: 0, unreachable: 0, followFailed: 0 };
+  const reasons = {};
+  const why = (err) => publicTelegramError(err?.response?.description || err?.message) || 'unknown error';
   for (const id of ids) {
     summary.checked += 1;
+    let lastErr = null;
     try {
       // eslint-disable-next-line no-await-in-loop
       await telegram.getChat(id);
-    } catch (err) {
-      // eslint-disable-next-line no-await-in-loop
-      const moved = await deps.migration.followMigrationFromError(err, id);
-      if (moved) {
-        summary.moved += 1;
-        const said = deps.migration.migrationNotice(moved.summary);
-        if (said) Promise.resolve(deps.notify(said)).catch(() => {});
-      } else {
-        summary.unreachable += 1;
+      continue;
+    } catch (err) { lastErr = err; }
+    // eslint-disable-next-line no-await-in-loop
+    let moved = await deps.migration.followMigrationFromError(lastErr, id);
+    if (!moved && telegram.sendChatAction) {
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        await telegram.sendChatAction(id, 'typing');
+        // Reading refused but sending works: reachable, nothing to follow.
+        const key = `read refused, sending works: ${why(lastErr)}`;
+        reasons[key] = (reasons[key] || 0) + 1;
+        continue;
+      } catch (err) {
+        lastErr = err;
+        // eslint-disable-next-line no-await-in-loop
+        moved = await deps.migration.followMigrationFromError(err, id);
       }
     }
+    if (moved && !moved.summary) {
+      summary.followFailed += 1;
+    } else if (moved) {
+      summary.moved += 1;
+      const said = deps.migration.migrationNotice(moved.summary);
+      if (said) Promise.resolve(deps.notify(said)).catch(() => {});
+    } else {
+      summary.unreachable += 1;
+      const key = why(lastErr);
+      reasons[key] = (reasons[key] || 0) + 1;
+    }
+  }
+  // ONE STRING, because the run ledger keeps only numbers, booleans and short
+  // strings (database/backgroundRuns.js safeSummary) — a nested map would be
+  // dropped silently, and /api/health would show no reason exactly when one
+  // matters.
+  const said = Object.entries(reasons).map(([k, n]) => `${k} (x${n})`).join('; ');
+  if (said) summary.reasons = said.slice(0, 200);
+  if (summary.followFailed > 0) {
+    summary.error = `${summary.followFailed} moved group(s) found but the move could not be applied`;
   }
   return summary;
 }

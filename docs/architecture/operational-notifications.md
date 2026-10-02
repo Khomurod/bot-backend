@@ -295,6 +295,15 @@ transaction (`database/telegramChatMigration.js`, list of destinations in
 The third matters most: once a notice has used its six attempts nothing sends
 to the old id again, so nothing would ever hit the error that names the new one.
 
+The probe READS first (`getChat`), which leaves a healthy chat untouched. Only
+when reading fails does it try a write (`sendChatAction`), because a write to a
+moved group returns the same error a real send does, new id included. The first
+production pass after this shipped read every destination and followed nothing
+while real sends still failed with the move — reading alone was not enough. A
+move found but not applied is reported as an ERROR, and the last pass's counts
+(`checked`, `moved`, `unreachable`, `followFailed`, Telegram's words with ids
+removed) are on `/api/health → operations.chatDestinations`.
+
 What moves: every destination setting (twelve columns today; a test scans the
 schema so a new one cannot be missed), the `groups` row — unless a row already
 holds the new id, which is reported, not merged — and undelivered rows in the

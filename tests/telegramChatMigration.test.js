@@ -101,13 +101,83 @@ test('the probe follows a moved group and leaves an unreachable one alone', asyn
       notify: async (n) => { said.push(n); },
     },
   });
-  assert.deepEqual(out, { ok: true, checked: 3, moved: 1, unreachable: 1 });
+  assert.equal(out.checked, 3);
+  assert.equal(out.moved, 1);
+  assert.equal(out.unreachable, 1);
+  assert.equal(out.followFailed, 0);
+  assert.equal(out.reasons, '400: Bad Request: chat not found (x1)', 'Telegram\'s words, no id');
+  assert.equal(out.error, undefined);
   assert.deepEqual(followed, [['-5052301861', '-1007777777777']]);
   await new Promise((r) => setImmediate(r));
   assert.equal(said.length, 1, 'the owner is told once');
+});
+
+function migrationDeps({ applied = true } = {}) {
+  const followed = [];
+  return {
+    followed,
+    store: { async listDestinationChatIds() { return ['-5052301861']; } },
+    migration: {
+      async followMigrationFromError(err, id) {
+        const to = migrationTargetFrom(err);
+        if (!to) return null;
+        followed.push([id, to]);
+        return { newChatId: to, summary: applied ? { from: id, to, changed: [{ rows: 1 }], requeued: 0, nothingToDo: false } : null };
+      },
+      migrationNotice: () => null,
+    },
+    notify: async () => {},
+  };
+}
+
+test('when reading refuses WITHOUT naming the new id, a write is tried — and its error does', async () => {
+  // The first production pass asked every destination and followed nothing,
+  // while every real send to the managers' chat still failed with the move.
+  const actions = [];
+  const telegram = {
+    async getChat() { throw Object.assign(new Error('400: Bad Request: chat not found'), { response: { error_code: 400 } }); },
+    async sendChatAction(id, action) { actions.push([id, action]); throw upgradedError(-1007777777777); },
+  };
+  const d = migrationDeps();
+  const out = await probeOnce({ telegram, deps: d });
+  assert.deepEqual(actions, [['-5052301861', 'typing']]);
+  assert.deepEqual(d.followed, [['-5052301861', '-1007777777777']]);
+  assert.equal(out.moved, 1);
+  assert.equal(out.unreachable, 0);
+});
+
+test('a healthy chat is only READ — nothing appears in it', async () => {
+  const actions = [];
+  const telegram = { async getChat(id) { return { id }; }, async sendChatAction(...a) { actions.push(a); } };
+  const out = await probeOnce({ telegram, deps: migrationDeps() });
+  assert.deepEqual(actions, [], 'no "typing…" in a working staff chat');
+  assert.equal(out.checked, 1);
+  assert.equal(out.moved, 0);
+});
+
+test('a move found but not applied is an ERROR, never a quiet clean run', async () => {
+  const telegram = { async getChat() { throw upgradedError(-1007777777777); } };
+  const out = await probeOnce({ telegram, deps: migrationDeps({ applied: false }) });
+  assert.equal(out.followFailed, 1);
+  assert.equal(out.moved, 0);
+  assert.match(out.error, /could not be applied/);
 });
 
 test('the probe without a Telegram client stands down as blocked, not failed', async () => {
   assert.deepEqual(await probeOnce({ telegram: null }), { blocked: 'no Telegram client to ask' });
 });
 
+
+test('the probe\'s reasons survive the run ledger — it keeps only flat values', async () => {
+  // database/backgroundRuns.js safeSummary drops every object-valued field; a
+  // reasons MAP would vanish and /api/health would show none exactly when it
+  // matters. Run the real sanitiser over a real probe summary.
+  const { safeSummary } = require('../database/backgroundRuns');
+  const telegram = {
+    async getChat() { throw Object.assign(new Error('403: Forbidden: bot was kicked from the group chat'), { response: { error_code: 403 } }); },
+  };
+  const out = await probeOnce({ telegram, deps: migrationDeps() });
+  const stored = safeSummary(out);
+  assert.equal(stored.reasons, '403: Forbidden: bot was kicked from the group chat (x1)');
+  assert.equal(stored.unreachable, 1);
+});

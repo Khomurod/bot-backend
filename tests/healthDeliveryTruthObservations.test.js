@@ -67,7 +67,7 @@ test('the managers not being told is raised, with what Telegram said', async () 
   assert.equal(notices.state, 'needs_human_attention');
   assert.equal(notices.critical, true, 'so the self-healing watch announces it');
   assert.match(notices.detail, /none of the 29/);
-  assert.match(notices.detail, /Telegram said: "400: Bad Request: chat not found"/);
+  assert.match(notices.detail, /The reason given: "400: Bad Request: chat not found"/);
 });
 
 test('notices being delivered read healthy; an unreadable outbox reads unknown', async () => {
