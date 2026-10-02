@@ -80,7 +80,10 @@ test('a worker that stopped is separated from one that found nothing', async () 
     ['fuel_risk', run()],
     ['load_lifecycle', run({ lastFinishedAt: minutesAgo(400) })],
   ]);
-  const all = await obs.gatherAllObservations(deps({ runMap }), { now: NOW });
+  // The boot time is pinned to the same clock as `now`. It used to be the real
+  // process boot time, so this test changed answer on the day the real clock
+  // passed NOW and failed every CI run after 2026-09-20.
+  const all = await obs.gatherAllObservations(deps({ runMap }), { now: NOW, bootedAt: NOW - 24 * 3600 * 1000 });
 
   assert.equal(find(all, 'fuel_risk').state, 'healthy');
   assert.equal(find(all, 'fuel_risk').ok, true);
@@ -89,6 +92,21 @@ test('a worker that stopped is separated from one that found nothing', async () 
   assert.equal(stopped.state, 'stale_stopped');
   assert.equal(stopped.ok, false, 'and this one is actionable');
   assert.match(stopped.detail, /no pass has finished/);
+});
+
+test('the answer does not depend on when the test machine booted', async () => {
+  const runMap = new Map([['load_lifecycle', run({ lastFinishedAt: minutesAgo(400) })]]);
+  for (const bootedAt of [NOW - 30 * 24 * 3600 * 1000, NOW + 30 * 24 * 3600 * 1000]) {
+    // eslint-disable-next-line no-await-in-loop
+    const all = await obs.gatherAllObservations(deps({ runMap }), { now: NOW, bootedAt });
+    assert.equal(find(all, 'load_lifecycle').state, 'stale_stopped', `bootedAt ${new Date(bootedAt).toISOString()}`);
+  }
+});
+
+test('a worker inside the window after a deploy is still not called stopped', async () => {
+  const runMap = new Map([['load_lifecycle', run({ lastFinishedAt: minutesAgo(400) })]]);
+  const all = await obs.gatherAllObservations(deps({ runMap }), { now: NOW, bootedAt: NOW - 5 * 60000 });
+  assert.notEqual(find(all, 'load_lifecycle').state, 'stale_stopped');
 });
 
 test('one failed pass is degraded and does NOT raise anything', async () => {

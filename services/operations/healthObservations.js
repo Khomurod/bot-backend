@@ -105,7 +105,7 @@ function unreadableWorkers(reason) {
  * `state` is the full seven-state answer, carried alongside for /api/health,
  * which has room for nuance a Telegram message does not.
  */
-async function workerObservations(deps, nowMs) {
+async function workerObservations(deps, nowMs, bootedAtMs = BOOTED_AT) {
   let byKey;
   try {
     byKey = await deps.runs.getRunMap();
@@ -128,7 +128,7 @@ async function workerObservations(deps, nowMs) {
     const verdict = classifyRun(row, {
       now: nowMs,
       expectedIntervalSeconds: entry.expectedIntervalSeconds,
-      bootedAtMs: BOOTED_AT,
+      bootedAtMs,
       firstRunDelaySeconds: 30 * 60,
     });
 
@@ -166,9 +166,9 @@ async function workerObservations(deps, nowMs) {
  * indistinguishable from "there is nothing to watch", and a caller counting
  * what it could not read cannot count something that was never handed to it.
  */
-async function gatherAllObservations(deps = defaultDeps(), { now = Date.now() } = {}) {
+async function gatherAllObservations(deps = defaultDeps(), { now = Date.now(), bootedAt = BOOTED_AT } = {}) {
   const [workers, integrations] = await Promise.all([
-    workerObservations(deps, now).catch((err) => unreadableWorkers(err.message)),
+    workerObservations(deps, now, bootedAt).catch((err) => unreadableWorkers(err.message)),
     integrationObservations(deps, now).catch((err) => [...CUSTOM_INTEGRATIONS].map(
       (key) => integration(key, {
         ok: true, state: RUN_STATES.UNKNOWN,
