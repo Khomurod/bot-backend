@@ -347,6 +347,22 @@ async function runLoadLifecycleCheck({ now = Date.now(), deps = defaultDeps() } 
 
     // A load that became clear stops being a question.
     await deps.findings.resolveClearedFindings([CHECK_UNCLEAR], keep.filter(Boolean)).catch(() => {});
+
+    // A LOAD THE BOARD STOPPED RETURNING IS FINISHED. Only on a read that
+    // succeeded: `getActiveOrders` hands back the LAST GOOD order set with an
+    // error when a fetch fails, and retiring against a stale list would retire
+    // whatever was booked since. Optional-chained so a partial dependency map
+    // costs the retirement and never the pass.
+    if (!orderResult?.error) {
+      // The SAME extraction `checkOneLoad` keys its rows by, so "seen" means
+      // exactly what "recorded" means — a different reading of the order id
+      // here would retire every load the board is still returning.
+      const seen = orders.map((o) => {
+        try { return deps.loads.extractLoadFromOrder(o)?.orderId ?? null; } catch (_) { return null; }
+      }).filter((id) => id != null).map(String);
+      const retired = await Promise.resolve(deps.store.retireMissingLoads?.(seen)).catch(() => null);
+      summary.retired = retired?.retired || 0;
+    }
     summary.pruned = await deps.store.pruneFinishedLoads().catch(() => 0);
 
     if (summary.conflicts) {

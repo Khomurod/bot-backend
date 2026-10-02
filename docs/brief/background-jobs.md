@@ -249,8 +249,24 @@ Locations snapshot, which geocodes and computes ETAs nothing here reads.
 The driver on a load is resolved through `driver_units` to a **person**, not a
 chat, so a truck or group change does not detach a load from its history.
 
-Visible on `/api/health` → `operations.loads`: how many loads are tracked, in
-what phase, how many are unclear and how many have a board disagreement.
+**A load the board stops returning is retired** (migration 0063,
+`retireMissingLoads`). The watch only ever reads Datatruck's order window (two
+days back, five ahead), so a load that drops out of it is never looked at again
+and its phase freezes. Production, 2026-10-02: 713 tracked for about a hundred
+trucks, 289 frozen in `assigned` — and every reader treated the frozen phase as
+now, so a load frozen `in_transit` contradicted a driver at home and one frozen
+`empty` fed retention's "sitting empty since" for weeks. Now each pass marks
+`retired_at` / `retired_reason` (`delivered`, or `left_the_board`) on every
+load missing from the window for more than an hour — **only on a read that
+succeeded**, because a failed fetch hands back the last good list — and an
+order that reappears is current again on its next observation. It is a soft
+mark: the 30-day prune still deletes. Every reader that means "now"
+(`driverContext` loads and the contradiction screen, retention's
+`empty_since`, the health summary) filters `retired_at IS NULL`.
+
+Visible on `/api/health` → `operations.loads`: how many loads are CURRENT, in
+what phase, how many are unclear, how many have a board disagreement, and how
+many are retired.
 
 ## Fuel risk watch (every 20 minutes, first pass 7 minutes after boot)
 

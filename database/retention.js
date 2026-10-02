@@ -147,6 +147,7 @@ async function gatherRetentionInputs({ windowDays = WINDOW_DAYS } = {}) {
             -- Sitting empty, from the load lifecycle rather than inferred.
             (SELECT l.phase_since FROM load_lifecycle l
               WHERE l.group_id = d.group_id AND l.phase = 'empty'
+                AND l.retired_at IS NULL
               ORDER BY l.phase_since ASC LIMIT 1) AS empty_since
        FROM driver d
       ORDER BY d.group_id`,
