@@ -285,7 +285,11 @@ whether the owner could answer at all. A stranger is answered with an empty
 toast, the same silence a stranger's typed reply gets.
 
 Once a question has an answer its buttons come off (`editMessageReplyMarkup`),
-so nobody taps something already settled. The handler is registered with
+so nobody taps something already settled. A question answered **in words**
+keeps its buttons on screen — the typed path cannot remove them — so a tap on
+a notice that already has `answered_at` is refused ("already answered") and
+takes them off then. Without that, a typed "later" (which leaves the finding
+open) followed by a tap on the stale Yes would have applied the correction. The handler is registered with
 `bot.action` before the survey handler's `callback_query` catch-all, and
 `tests/controlHandlerRegistration.test.js` asserts the order.
 

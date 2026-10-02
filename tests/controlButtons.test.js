@@ -269,3 +269,24 @@ test('a failure inside is answered, never thrown', async () => {
   assert.strictEqual(got.outcome, 'failed');
   assert.match(got.toast, /reply to the question in words/i);
 });
+
+test('A QUESTION ALREADY ANSWERED IN WORDS IS NOT ANSWERED AGAIN BY ITS STALE BUTTONS', async () => {
+  // Codex, PR #254: a typed "later" snoozes the finding and leaves it OPEN, and
+  // the typed path never removes the keyboard — so a later tap on Yes would
+  // have applied a correction to a question already answered.
+  const deps = makeDeps({
+    notices: {
+      findNoticeByTelegramMessage: async () => ({
+        id: 3, findingId: 11, answeredAt: '2026-10-02T20:00:00Z',
+        question: { findingId: 11, offeredActions: ALL },
+      }),
+      markNoticeAnswered: async () => true,
+    },
+  });
+  const got = await handleControlButton(TAP, deps);
+  assert.strictEqual(got.outcome, 'no_op');
+  assert.strictEqual(got.clear, true, 'the stale buttons come off');
+  assert.match(got.toast, /Already answered/);
+  assert.strictEqual(deps.calls.recorded.length, 0, 'nothing is claimed');
+  assert.strictEqual(deps.calls.executed.length, 0, 'and nothing is applied');
+});

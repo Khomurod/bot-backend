@@ -14,8 +14,10 @@
  *   3. switched off   silence.
  *   4. WHO            the allow-list. A stranger's tap is recorded and never
  *                     obeyed; the button just stops spinning.
- *   5. once           the claim. ONE BUTTON ANSWER PER QUESTION: an operator's
- *                     tap claims `(chat, the question's own message id)`. A
+ *   5. once           a question already answered in words is not answered
+ *                     again by its stale buttons. Then the claim — ONE BUTTON
+ *                     ANSWER PER QUESTION: an operator's tap claims
+ *                     `(chat, the question's own message id)`. A
  *                     double tap, or a second operator a second later, finds
  *                     it taken and is told "already answered". A stranger's
  *                     tap is recorded under the NEGATED id instead, so it can
@@ -99,6 +101,19 @@ async function handleControlButton(tap, deps) {
     }
 
     // ── 5. once ─────────────────────────────────────────────────────────────
+    //
+    // ANSWERED IN WORDS ALREADY. The typed path closes the notice but cannot
+    // take the buttons off it, and a typed "later" leaves the finding OPEN —
+    // so without this a tap on the stale Yes would apply a correction to a
+    // question already settled. The buttons come off now instead.
+    if (notice.answeredAt) {
+      return {
+        handled: true,
+        outcome: 'no_op',
+        toast: 'Already answered. To change it, reply to the question in words.',
+        clear: true,
+      };
+    }
     const claim = await deps.replies.recordReply({
       ...record, replyMessageId: messageId, outcome: 'no_op',
     });
