@@ -105,3 +105,33 @@ test('the destinations to ask about are every configured chat, once each', { ski
   const ids = (await m.listDestinationChatIds()).sort();
   assert.deepEqual(ids, [OTHER, OLD].sort());
 });
+
+test('the AI terms-watcher alerts move with their chat — an unsent one gets its attempts back',
+  { skip: skipWithoutPg() }, async (t) => {
+    const h = await seeded(t);
+    const f1 = (await h.query(`INSERT INTO ai_policy_findings (source_url, summary) VALUES ('https://x.test', 'a') RETURNING id`)).rows[0].id;
+    const f2 = (await h.query(`INSERT INTO ai_policy_findings (source_url, summary) VALUES ('https://x.test', 'b') RETURNING id`)).rows[0].id;
+    await h.query(`INSERT INTO ai_policy_alert_outbox (finding_id, chat_id, body, attempts, last_error) VALUES ($1, $2, 'b', 6, 'upgraded')`, [f1, OLD]);
+    await h.query(`INSERT INTO ai_policy_alert_outbox (finding_id, chat_id, body, attempts, sent_at) VALUES ($1, $2, 'b', 1, NOW())`, [f2, OLD]);
+    const { telegramChatMigration: m } = h.loadDataLayer(['telegramChatMigration']);
+    await m.followChatMigration(OLD, NEW);
+    const rows = (await h.query('SELECT finding_id, chat_id, attempts, sent_at IS NOT NULL AS sent FROM ai_policy_alert_outbox ORDER BY finding_id')).rows;
+    assert.deepEqual(rows, [
+      { finding_id: f1, chat_id: NEW, attempts: 0, sent: false },
+      { finding_id: f2, chat_id: OLD, attempts: 1, sent: true },
+    ], 'the unsent alert follows the move and is retried; a delivered one is history and stays as it was');
+  });
+
+test('a repeated call never revives a notice that failed on the NEW chat for another reason',
+  { skip: skipWithoutPg() }, async (t) => {
+    const h = await seeded(t);
+    await h.query(
+      `INSERT INTO home_time_manager_notices (event_key, event_type, chat_id, body, state, attempts, last_error)
+       VALUES ('back_on_road:9', 'back_on_road', $1, 'b', 'failed', 6, '403: Forbidden: bot was kicked')`, [NEW]
+    );
+    const { telegramChatMigration: m } = h.loadDataLayer(['telegramChatMigration']);
+    await m.followChatMigration(OLD, NEW);
+    await m.followChatMigration(OLD, NEW);
+    const row = (await h.query(`SELECT state, attempts FROM home_time_manager_notices WHERE event_key = 'back_on_road:9'`)).rows[0];
+    assert.deepEqual(row, { state: 'failed', attempts: 6 }, 'somebody else\'s failure is left alone');
+  });

@@ -289,7 +289,7 @@ transaction (`database/telegramChatMigration.js`, list of destinations in
 | trigger | where |
 |---|---|
 | a send fails and Telegram's error names the new id (`migrate_to_chat_id`) | the managers' notices and the operations notices — the notice is then sent to the new id at once |
-| the bot sees the group's own "upgraded" service message | `bot/handlers/groupCaptureHandlers.js` |
+| the bot sees the group's own "upgraded" service message (either side) | `bot/handlers/groupCaptureHandlers.js` — in the registration middleware, BEFORE the chat is registered: `migrate_from_chat_id` arrives in the NEW chat, and registering it first would give one Telegram group two `groups` rows |
 | every configured destination is asked about (`getChat`) two minutes after boot and every six hours | `services/telegramDestinationProbe.js`, catalogued `telegram_destination_probe` |
 
 The third matters most: once a notice has used its six attempts nothing sends
@@ -297,8 +297,11 @@ to the old id again, so nothing would ever hit the error that names the new one.
 
 What moves: every destination setting (twelve columns today; a test scans the
 schema so a new one cannot be missed), the `groups` row — unless a row already
-holds the new id, which is reported, not merged — and undelivered notices.
-Failed notices from the last 48 hours are resent; older ones stay failed,
+holds the new id, which is reported, not merged — and undelivered rows in the
+three queues that send a STORED chat id (managers' notices, operations notices,
+the AI terms watcher's alerts). Of the rows THIS call moved, failed ones from
+the last 48 hours are resent; a row already on the new id that failed for
+another reason is never revived by a repeated call. Older ones stay failed,
 because a backlog of stale alerts in a live staff chat is what this repository
 decided not to do. The owner is told once, in words, with no ids
 (`self_healing`).

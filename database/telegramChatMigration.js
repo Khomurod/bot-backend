@@ -22,10 +22,33 @@ const {
   DESTINATION_SETTINGS, DESTINATION_MAPS, REQUEUE_WITHIN_HOURS, normaliseChatId, rewriteChatMap,
 } = require('../lib/telegram/chatMigration');
 
-/** The queues whose undelivered rows still name a chat. */
+/**
+ * The queues whose undelivered rows still name a chat, and how each says
+ * "undelivered" and "failed". Every one is read by a sender that sends the
+ * STORED chat id, so a row left on the old id fails for ever.
+ */
 const OUTBOXES = Object.freeze([
-  { table: 'home_time_manager_notices', touchesUpdatedAt: false },
-  { table: 'operational_notifications', touchesUpdatedAt: true },
+  {
+    table: 'home_time_manager_notices',
+    undelivered: "state IN ('pending', 'failed')",
+    failed: "state = 'failed'",
+    reset: "state = 'pending', attempts = 0, next_attempt_at = NOW(), claimed_until = NULL, last_error = NULL",
+  },
+  {
+    table: 'operational_notifications',
+    undelivered: "state IN ('pending', 'failed')",
+    failed: "state = 'failed'",
+    reset: "state = 'pending', attempts = 0, next_attempt_at = NOW(), claimed_until = NULL, last_error = NULL, updated_at = NOW()",
+  },
+  {
+    // The AI terms watcher's alerts: no state column; undelivered is
+    // `sent_at IS NULL`, and every unsent row is retried until its attempts
+    // run out, so a moved row is simply given its attempts back.
+    table: 'ai_policy_alert_outbox',
+    undelivered: 'sent_at IS NULL',
+    failed: 'sent_at IS NULL',
+    reset: 'attempts = 0, next_attempt_at = NOW(), locked_at = NULL, last_error = NULL',
+  },
 ]);
 
 async function existingColumns(client, tables) {
@@ -77,29 +100,38 @@ async function moveGroupRow(client, have, from, to) {
   return { moved: res.rowCount, conflict: false };
 }
 
+/**
+ * Point undelivered rows at the new chat, and give back the attempts of the
+ * recent failed ones — ONLY among the rows this call moved. A row already on
+ * the new id that failed for some other reason is somebody else's failure, and
+ * reviving it on a repeated (otherwise no-op) call would resend it unasked.
+ */
 async function moveOutboxes(client, have, from, to) {
   let pointed = 0;
   let requeued = 0;
   for (const box of OUTBOXES) {
     if (!have.has(`${box.table}.chat_id`)) continue;
-    const touch = box.touchesUpdatedAt ? ', updated_at = NOW()' : '';
+    // Three statements, not one: two data-modifying CTEs touching the same
+    // row in one statement apply only one of the changes, unpredictably.
     // eslint-disable-next-line no-await-in-loop
-    const moved = await client.query(
-      `UPDATE ${box.table} SET chat_id = $2${touch}
-        WHERE chat_id = $1 AND state IN ('pending', 'failed')`,
-      [from, to]
+    const sel = await client.query(
+      `SELECT id, (${box.failed} AND created_at > NOW() - ($2 || ' hours')::interval) AS revive
+         FROM ${box.table}
+        WHERE chat_id = $1 AND ${box.undelivered}
+        FOR UPDATE`,
+      [from, String(REQUEUE_WITHIN_HOURS)]
     );
-    pointed += moved.rowCount;
+    if (sel.rowCount === 0) continue;
+    const ids = sel.rows.map((r) => r.id);
+    const reviveIds = sel.rows.filter((r) => r.revive).map((r) => r.id);
     // eslint-disable-next-line no-await-in-loop
-    const back = await client.query(
-      `UPDATE ${box.table}
-          SET state = 'pending', attempts = 0, next_attempt_at = NOW(),
-              claimed_until = NULL, last_error = NULL${touch}
-        WHERE chat_id = $1 AND state = 'failed'
-          AND created_at > NOW() - ($2 || ' hours')::interval`,
-      [to, String(REQUEUE_WITHIN_HOURS)]
-    );
-    requeued += back.rowCount;
+    await client.query(`UPDATE ${box.table} SET chat_id = $2 WHERE id = ANY($1::bigint[])`, [ids, to]);
+    if (reviveIds.length) {
+      // eslint-disable-next-line no-await-in-loop
+      await client.query(`UPDATE ${box.table} SET ${box.reset} WHERE id = ANY($1::bigint[])`, [reviveIds]);
+    }
+    pointed += ids.length;
+    requeued += reviveIds.length;
   }
   return { pointed, requeued };
 }
