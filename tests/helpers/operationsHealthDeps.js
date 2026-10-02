@@ -61,6 +61,7 @@ function summaryDeps(overrides = {}) {
     // table apart from a quiet fleet.
     runs: {
       async getRun(key) {
+        if (key === 'telegram_destination_probe') return over.destinationProbeRun ?? null;
         if (key !== 'samsara_safety_pipeline') return null;
         return over.safetyPollerRun === undefined
           ? {

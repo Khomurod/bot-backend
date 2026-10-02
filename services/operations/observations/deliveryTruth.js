@@ -53,7 +53,7 @@ async function managerNoticeObservation(deps) {
     if (verdict.ok) return integration('home_time_manager_notices', { ok: true, reason: verdict.reason });
     const last = await Promise.resolve(deps.homeTime?.latestNoticeFailure?.()).catch(() => null);
     const said = publicTelegramError(last?.lastError);
-    const reason = said ? `${verdict.reason}. Telegram said: "${said}"` : verdict.reason;
+    const reason = said ? `${verdict.reason}. The reason given: "${said}"` : verdict.reason;
     return integration('home_time_manager_notices', {
       ok: false, state: RUN_STATES.NEEDS_ATTENTION, detail: reason, reason,
     });

@@ -205,6 +205,21 @@ function pollerSeen(row, recordedSince = null) {
   };
 }
 
+/** The last destination probe, from its ledger row. Null when it never ran. */
+function summariseDestinationProbe(row) {
+  if (!row) return null;
+  const sum = row.lastSummary || {};
+  return {
+    lastRunAt: row.lastFinishedAt || null,
+    status: row.lastStatus || null,
+    checked: sum.checked ?? null,
+    moved: sum.moved ?? null,
+    unreachable: sum.unreachable ?? null,
+    followFailed: sum.followFailed ?? null,
+    reasons: sum.reasons || {},
+  };
+}
+
 async function getOperationsHealth(deps = defaultDeps()) {
   try {
     const status = deps.consistency.getConsistencyStatus();
@@ -212,7 +227,7 @@ async function getOperationsHealth(deps = defaultDeps()) {
       findings, coverage, telegramIdentities, duplicates, indexPresent, providers, homeTimeLive,
       loadPhases, safety, safetyPoller, fuelReadings, systems, observed, learning, retention, notifyConfig,
       discards, controlReplies, controlSettings, controlOperators, controlQuestions,
-      controlKnowledge, engineeringRequests,
+      controlKnowledge, engineeringRequests, destinationProbe,
     ] = await Promise.all([
       deps.findings.summariseFindings(),
       deps.people.summariseIdentityCoverage(),
@@ -239,6 +254,7 @@ async function getOperationsHealth(deps = defaultDeps()) {
       Promise.resolve(deps.notificationStore?.summariseControlQuestions?.()).catch(() => null),
       Promise.resolve(deps.controlKnowledge?.summariseKnowledge?.()).catch(() => null),
       Promise.resolve(deps.engineering?.summariseRequests?.()).catch(() => null),
+      Promise.resolve(deps.runs?.getRun?.('telegram_destination_probe')).catch(() => null),
     ]);
 
     // SEQUENTIAL BECAUSE IT DEPENDS ON THE ANSWER ABOVE: the window to count
@@ -298,6 +314,10 @@ async function getOperationsHealth(deps = defaultDeps()) {
       // is not a healthy fleet, it is a blind one — and those two silences are
       // indistinguishable without this.
       fuel: fuelReadings,
+      // WHETHER EVERY CONFIGURED CHAT STILL EXISTS. Counts and Telegram's own
+      // words with ids removed (the probe sanitises them). `followFailed` above
+      // zero is a group that moved and could not be followed.
+      chatDestinations: summariseDestinationProbe(destinationProbe),
       // WHICH PARTS OF WENZE ARE WORKING, and which have never been looked at —
       // counted separately, because "not checked" and "fine" are different
       // answers and only one of them is reassuring.
