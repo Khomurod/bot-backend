@@ -24,6 +24,7 @@ const { composeNotice, noticeKeyFor } = require('../../lib/notifications/compose
 const {
   LEVELS, CEILING, priorityFor, shouldSuppress, suppressionKeyFor,
 } = require('../../lib/notifications/priority');
+const { keyboardFor } = require('../../lib/control/buttons');
 
 const ICONS = Object.freeze({
   automatic_corrections: '🔧',
@@ -303,6 +304,10 @@ async function deliverOne(notice, deps = defaultDeps()) {
   }
   const options = { parse_mode: 'HTML', disable_web_page_preview: true };
   if (notice.replyToMessageId) options.reply_to_message_id = Number(notice.replyToMessageId);
+  // A QUESTION CARRIES ITS ANSWERS AS BUTTONS — only the ones it offered, and
+  // only the notice id and a letter in each. See lib/control/buttons.js.
+  const buttons = notice.question ? keyboardFor(notice.id, notice.question.offeredActions) : null;
+  if (buttons) options.reply_markup = buttons;
   try {
     let sent;
     try {

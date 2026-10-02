@@ -344,3 +344,26 @@ test('any other send failure is still a failure — the fallback is not a retry-
   assert.equal(out.delivered, false);
   assert.equal(calls.failed.length, 1);
 });
+
+test('A QUESTION ARRIVES WITH ITS ANSWERS AS BUTTONS — only the offered ones', async () => {
+  const { deps, calls } = harness();
+  await notify({
+    ...FUEL,
+    category: 'needs_attention',
+    findingId: 11,
+    question: { findingId: 11, offeredActions: [{ key: 'dismiss' }, { key: 'snooze' }] },
+  }, deps);
+  const kb = calls.sent[0].opts.reply_markup;
+  assert.ok(kb, 'the question carries a keyboard');
+  assert.deepEqual(
+    kb.inline_keyboard[0].map((b) => b.callback_data),
+    ['ctl:1:d', 'ctl:1:s'],
+    'the notice id and a letter, and no Yes where nothing can be applied'
+  );
+});
+
+test('a notice that asks nothing has no buttons', async () => {
+  const { deps, calls } = harness();
+  await notify(FUEL, deps);
+  assert.equal(calls.sent[0].opts.reply_markup, undefined);
+});

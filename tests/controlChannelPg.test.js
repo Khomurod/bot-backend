@@ -147,6 +147,36 @@ test('THE REDELIVERY GUARD IS A CONSTRAINT — a second claim on the same reply 
   assert.ok(elsewhere?.id);
 });
 
+test('A BUTTON TAP: one owner answer per question, and a stranger\'s tap cannot take it', {
+  skip: skipWithoutPg(),
+}, async (t) => {
+  // services/control/buttonHandler.js claims a tap under the QUESTION's own
+  // message id, and records a stranger's tap under the negated id. Both have
+  // to survive the real column type and the real UNIQUE.
+  const { controlReplies } = await setup(t);
+  const tap = {
+    chatId: '-100777', repliedToMessageId: 4321, rawText: 'yes (button)',
+  };
+  const stranger = await controlReplies.recordReply({
+    ...tap, replyMessageId: -4321, telegramUserId: '999999',
+    authorised: false, outcome: 'ignored_unauthorised',
+  });
+  assert.ok(stranger?.id);
+  assert.equal(stranger.replyMessageId, '-4321');
+
+  const owner = await controlReplies.recordReply({
+    ...tap, replyMessageId: 4321, telegramUserId: String(CREATOR_USER_ID),
+    authorised: true, outcome: 'no_op',
+  });
+  assert.ok(owner?.id, 'the stranger tapped first and the owner still answers');
+
+  const doubleTap = await controlReplies.recordReply({
+    ...tap, replyMessageId: 4321, telegramUserId: String(CREATOR_USER_ID),
+    authorised: true, outcome: 'no_op',
+  });
+  assert.equal(doubleTap, null, 'a second tap on the same question applies nothing');
+});
+
 test('an unauthorised reply is recorded, with the refusal as its outcome', {
   skip: skipWithoutPg(),
 }, async (t) => {
