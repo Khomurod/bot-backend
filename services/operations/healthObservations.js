@@ -54,6 +54,10 @@ function defaultDeps() {
     recruitingKnowledge: require('../../database/recruitingKnowledge'),
     smsMirrors: require('../../database/facebookLeads/smsMirrors'),
     capabilityGate: require('../ai/capabilityGate'),
+    // "Did it arrive" needs the rows the outcome lands in, not the run ledger.
+    safety: require('../../database/driverSafety'),
+    homeTime: require('../../database/homeTime'),
+    homeTimeObservability: require('../../database/homeTime/observability'),
   };
   /* eslint-enable global-require */
 }

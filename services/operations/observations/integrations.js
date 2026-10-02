@@ -16,6 +16,7 @@ const { afterHoursReadiness } = require('../../../lib/recruiting/readiness');
 const {
   ELD_STALE_MINUTES, NOTICE_STUCK_MINUTES, minutesSince, integration,
 } = require('./shape');
+const { safetyEventsLost, managerNoticeObservation } = require('./deliveryTruth');
 
 /**
  * The integrations, each from evidence the application already stores.
@@ -298,7 +299,17 @@ async function integrationObservations(deps, nowMs) {
     const verdict = classifyRun(row, {
       now: nowMs, expectedIntervalSeconds: entry.expectedIntervalSeconds,
     });
-    out.push(integration('samsara_safety_pipeline', {
+    // THE POLLER RUNNING IS NOT THE EVENTS ARRIVING. A poller that beats on
+    // time while every event it hands on is dropped read "healthy" here for
+    // three weeks; the reconciliation that said "events_lost" sat one field
+    // away on /api/health. Loss outranks a clean run.
+    const lost = verdict.actionable
+      ? null
+      : await safetyEventsLost(deps, row).catch(() => ({ unknown: true, reason: 'the stored rows could not be counted' }));
+    let outcome = null;
+    if (lost?.unknown) outcome = { ok: true, state: RUN_STATES.UNKNOWN, reason: lost.reason };
+    else if (lost) outcome = { ok: false, state: RUN_STATES.NEEDS_ATTENTION, detail: lost.reason, reason: lost.reason };
+    out.push(integration('samsara_safety_pipeline', outcome || {
       ok: !verdict.actionable,
       // The poller beats `blocked` when Samsara is switched off in the admin.
       // That verdict was being computed and then thrown away here.
@@ -311,6 +322,7 @@ async function integrationObservations(deps, nowMs) {
     out.push(integration('samsara_safety_pipeline', { ok: true, state: RUN_STATES.UNKNOWN, reason: 'could not read' }));
   }
 
+  out.push(await managerNoticeObservation(deps));
   return out;
 }
 module.exports = { integrationObservations };

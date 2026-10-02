@@ -125,9 +125,11 @@ test('a hand-written integration check exists for every key that claims one', ()
   // 500-line split; the list of keys that claim one lives in `shape.js`, which
   // is where both halves read it from.
   const { CUSTOM_INTEGRATIONS } = require('../services/operations/observations/shape');
-  const src = fs.readFileSync(
-    require.resolve('../services/operations/observations/integrations'), 'utf8'
-  );
+  // `deliveryTruth.js` holds the observations that ask "did it arrive" rather
+  // than "did the pass run"; they are hand-written checks like the rest.
+  const src = ['integrations', 'deliveryTruth'].map((f) => fs.readFileSync(
+    require.resolve(`../services/operations/observations/${f}`), 'utf8'
+  )).join('\n');
   for (const key of CUSTOM_INTEGRATIONS) {
     assert.ok(getServiceEntry(key), `${key} claims a custom check but is not in the catalogue`);
     assert.ok(src.includes(`integration('${key}'`),

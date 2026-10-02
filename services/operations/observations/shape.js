@@ -26,7 +26,7 @@ const { RUN_STATES } = require('../../../lib/operations/runHealth');
 const CUSTOM_INTEGRATIONS = new Set([
   'recruiter_logins', 'ai_providers', 'eld_location_freshness', 'telegram_delivery',
   'notifications', 'notification_destination', 'samsara_safety_pipeline',
-  'recruiting_after_hours', 'retention_chat_signals',
+  'recruiting_after_hours', 'retention_chat_signals', 'home_time_manager_notices',
 ]);
 
 /** When this process started, so a first pass that is not due yet is not "stopped". */

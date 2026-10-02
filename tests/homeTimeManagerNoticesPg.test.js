@@ -263,3 +263,19 @@ test('a second boot keeps `recorded` legal — the baseline agrees with 0029',
     );
     assert.equal(rows.rows[0].n, 2);
   });
+
+test('the latest delivery error is readable, so the health watch can name it',
+  { skip: skipWithoutPg() }, async (t) => {
+    const harness = await harnessWith(t);
+    const ht = load(harness);
+    assert.equal(await ht.latestNoticeFailure(), null, 'nothing failed yet');
+
+    const first = await ht.enqueueNotice({ ...BASE, eventKey: 'arrived_home:10' });
+    const second = await ht.enqueueNotice({ ...BASE, eventKey: 'arrived_home:11' });
+    await ht.markNoticeFailed(first.id, '403: Forbidden: bot was kicked from the group chat');
+    await ht.markNoticeFailed(second.id, '400: Bad Request: chat not found');
+
+    const latest = await ht.latestNoticeFailure();
+    assert.equal(latest.lastError, '400: Bad Request: chat not found', 'the newest notice, not the oldest');
+    assert.ok(latest.createdAt);
+  });

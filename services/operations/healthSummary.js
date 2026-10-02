@@ -46,6 +46,7 @@ const defaultDeps = () => ({
 });
 
 const { FAILURE, classifyFailure } = require('../../lib/ai/classify');
+const { reconcileSafetyCounts } = require('../../lib/operations/deliveryTruth');
 const { getCatalogEntry } = require('../../lib/ai/providerCatalog');
 
 /**
@@ -169,29 +170,6 @@ function summariseWorkers(observations) {
  * events the poller's LAST poll found, which is the number that tells an empty
  * safety table apart from a quiet fleet.
  */
-/**
- * Do the two counts agree?
- *
- * NULL EVERYWHERE IT CANNOT TELL, and never a verdict from a missing number.
- * An older poller reports no total; a failed count returns null; either way the
- * honest answer is "cannot determine", not "reconciled".
- */
-function reconcile(seen, recorded) {
-  if (seen == null) return { state: 'cannot_determine', reason: 'the poller reports no running total yet' };
-  if (recorded == null) return { state: 'cannot_determine', reason: 'the recorded rows could not be counted' };
-  if (seen === 0 && recorded === 0) {
-    return { state: 'reconciled', reason: 'the poller has picked up nothing, and nothing was recorded' };
-  }
-  if (recorded >= seen) {
-    return { state: 'reconciled', reason: `${seen} event(s) picked up, ${recorded} row(s) recorded` };
-  }
-  return {
-    state: 'events_lost',
-    reason: `the poller picked up ${seen} event(s) since it booted and only ${recorded} `
-      + 'row(s) were recorded — events are arriving and not being stored',
-  };
-}
-
 function pollerSeen(row, recordedSince = null) {
   if (!row) return { available: false, reason: 'the Samsara poller has never reported' };
   const summary = row.lastSummary || {};
@@ -216,11 +194,14 @@ function pollerSeen(row, recordedSince = null) {
     seenSinceBoot: seenTotal,
     pollerBootedAt: summary.seenSince || null,
     recordedSinceBoot: recordedSince,
-    reconciliation: reconcile(seenTotal, recordedSince),
+    reconciliation: reconcileSafetyCounts(seenTotal, recordedSince),
     // Whether the poller's own store believes it can write. `seenLastPoll`
     // above zero with this false is a recorder problem named outright, rather
     // than inferred from an empty table.
     recordingReady: typeof summary.recordingReady === 'boolean' ? summary.recordingReady : null,
+    // How many events the poller's store REFUSED for a missing field since it
+    // booted. Beside the reconciliation it says why events were lost.
+    recordingRefused: Number.isFinite(Number(summary.recordingRefused)) ? Number(summary.recordingRefused) : null,
   };
 }
 
