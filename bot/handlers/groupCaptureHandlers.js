@@ -11,6 +11,8 @@
  * required here import bot/bot.js, so the require graph stays acyclic.
  */
 const db = require('../../database/db');
+const chatMigration = require('../../services/telegramChatMigration');
+const { notify: notifyOps } = require('../../services/notifications/send');
 const botUsers = require('../../database/botUsers');
 const { handleFuelStopMessage } = require('../../services/fuelStopAlertService');
 const { handleDriverGroupStatus } = require('../../services/homeTimeService');
@@ -143,6 +145,17 @@ async function captureUsersFromUpdate(ctx, group = null) {
  *   2. the user/group capture middleware;
  *   3. the group message pipeline.
  */
+/**
+ * The move a service message announces, or null. `migrate_to_chat_id`
+ * arrives in the OLD chat, `migrate_from_chat_id` in the NEW one.
+ */
+function migrationOf(ctx) {
+  const m = ctx?.message;
+  if (m?.migrate_to_chat_id) return { from: ctx.chat.id, to: m.migrate_to_chat_id };
+  if (m?.migrate_from_chat_id) return { from: m.migrate_from_chat_id, to: ctx.chat.id };
+  return null;
+}
+
 function registerGroupCaptureHandlers(bot) {
   // ── 1. Detect when bot is added/removed from a group ──
   bot.on('my_chat_member', async (ctx) => {
@@ -181,6 +194,22 @@ function registerGroupCaptureHandlers(bot) {
   // ── 2. Register drivers AND groups on any interaction ──
   bot.use(async (ctx, next) => {
     try {
+      // A GROUP UPGRADED TO A SUPERGROUP gets a new id, and this is where it
+      // must be followed: FIRST. `migrate_from_chat_id` arrives in the NEW
+      // chat, and registering that chat below before following the move
+      // inserts a second `groups` row for the same group — the move then finds
+      // the new id taken and leaves everything attached to the obsolete row.
+      // The move covers every setting naming the group too (the managers'
+      // home-time chat once kept a dead id for a week); one audited
+      // transaction, and the second side of the same move is a no-op.
+      const move = migrationOf(ctx);
+      if (move) {
+        const summary = await chatMigration.followMigration(move.from, move.to, {
+          reason: 'Telegram announced the group was upgraded to a supergroup',
+        });
+        const said = chatMigration.migrationNotice(summary);
+        if (said) notifyOps(said).catch(() => {});
+      }
       // Auto-register the group if not already in DB
       let group = null;
       if (ctx.chat && (ctx.chat.type === 'group' || ctx.chat.type === 'supergroup')) {
@@ -209,21 +238,10 @@ function registerGroupCaptureHandlers(bot) {
 
   bot.on('message', async (ctx, next) => {
     try {
-      // Catch Telegram group upgrades to Supergroups
-      if (ctx.message && ctx.message.migrate_to_chat_id) {
-        const oldId = ctx.chat.id;
-        const newId = ctx.message.migrate_to_chat_id;
-        try {
-          await db.query(
-            'UPDATE groups SET telegram_group_id = $1 WHERE telegram_group_id = $2',
-            [newId, oldId]
-          );
-          console.log(`[BOT] Migrated group ID from ${oldId} to ${newId}`);
-        } catch (e) {
-          console.error('[BOT] Failed to migrate group ID:', e.message);
-        }
-        return next();
-      }
+      // A group's own "upgraded to a supergroup" service message was already
+      // followed by the registration middleware above, BEFORE the group was
+      // registered. Nothing else here applies to it.
+      if (migrationOf(ctx)) return next();
       const chat = ctx.chat;
       // Only log if it's a group
       if (chat && (chat.type === 'group' || chat.type === 'supergroup')) {

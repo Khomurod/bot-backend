@@ -57,6 +57,9 @@ function defaultDeps() {
     settings: require('../../database/operationalNotificationSettings'),
     // No `telegram` key on purpose — see resolveTelegram.
     safeSend: require('../telegramHtml').safeSend,
+    // Following a group that Telegram moved to a new id. See
+    // services/telegramChatMigration.js.
+    migration: require('../telegramChatMigration'),
   };
   /* eslint-enable global-require */
 }
@@ -305,13 +308,24 @@ async function deliverOne(notice, deps = defaultDeps()) {
     try {
       sent = await deps.safeSend(() => telegram.sendMessage(notice.chatId, notice.body, options));
     } catch (err) {
-      // THE TARGET MESSAGE IS GONE — deleted, or old enough that Telegram no
-      // longer resolves it. Sending it unthreaded is strictly better than not
-      // sending it: the words still reach the person, they just do not hang
-      // under the question. Any other failure is a real failure and rethrows.
-      if (!options.reply_to_message_id || !/reply.*not found|message to (be )?repl/i.test(err.message || '')) throw err;
-      delete options.reply_to_message_id;
-      sent = await deps.safeSend(() => telegram.sendMessage(notice.chatId, notice.body, options));
+      // THE GROUP MOVED. Telegram names the new id in the error; every setting
+      // naming the old one is moved and this notice goes to the new id now. A
+      // reply target does not survive the move, so the resend is unthreaded.
+      const moved = await deps.migration?.followMigrationFromError?.(err, notice.chatId);
+      if (moved) {
+        delete options.reply_to_message_id;
+        sent = await deps.safeSend(() => telegram.sendMessage(moved.newChatId, notice.body, options));
+        const said = deps.migration.migrationNotice(moved.summary);
+        if (said) notify(said, deps).catch(() => {});
+      } else {
+        // THE TARGET MESSAGE IS GONE — deleted, or old enough that Telegram no
+        // longer resolves it. Sending it unthreaded is strictly better than not
+        // sending it: the words still reach the person, they just do not hang
+        // under the question. Any other failure is a real failure and rethrows.
+        if (!options.reply_to_message_id || !/reply.*not found|message to (be )?repl/i.test(err.message || '')) throw err;
+        delete options.reply_to_message_id;
+        sent = await deps.safeSend(() => telegram.sendMessage(notice.chatId, notice.body, options));
+      }
     }
     await deps.store.markNotificationDelivered(notice.id, {
       telegramMessageId: sent?.message_id || null,

@@ -22,6 +22,8 @@ const people = require('../../database/driverPeople');
 const { safeSend } = require('../telegramHtml');
 const { HOME_TIME_MANAGER_MENTIONS } = require('../homeTimeRequestConstants');
 const { buildNotice, eventKeyFor } = require('../../lib/homeTime/managerNotice');
+const chatMigration = require('../telegramChatMigration');
+const { notify: sendNotice } = require('../notifications/send');
 
 /** Where staff home-time news goes. Same chat the request card used. */
 function noticeChatId(settings) {
@@ -83,16 +85,33 @@ async function recordAndSend(telegram, {
   }
 }
 
-/** Send one recorded notice. Failure is recorded for the sweep, never thrown. */
-async function deliverOne(telegram, notice) {
+/**
+ * Send one recorded notice. Failure is recorded for the sweep, never thrown.
+ *
+ * A GROUP THAT MOVED IS FOLLOWED, NOT RETRIED. When the managers' group was
+ * upgraded to a supergroup its id changed, and every notice for a week failed
+ * six times against the old one and stopped. Telegram names the new id in that
+ * very error, so it is followed here: every setting naming the old id moves
+ * (one transaction, audited), this notice goes to the new id at once, and the
+ * owner is told once what Wenze did.
+ */
+async function deliverOne(telegram, notice, { migration = chatMigration, notify = sendNotice } = {}) {
   if (!telegram) {
     await ht.markNoticeFailed(notice.id, 'no telegram client available').catch(() => {});
     return false;
   }
+  const options = { parse_mode: 'HTML', disable_web_page_preview: true };
   try {
-    const sent = await safeSend(() => telegram.sendMessage(notice.chatId, notice.body, {
-      parse_mode: 'HTML', disable_web_page_preview: true,
-    }));
+    let sent;
+    try {
+      sent = await safeSend(() => telegram.sendMessage(notice.chatId, notice.body, options));
+    } catch (err) {
+      const moved = await migration.followMigrationFromError(err, notice.chatId);
+      if (!moved) throw err;
+      const said = migration.migrationNotice(moved.summary);
+      if (said) Promise.resolve(notify(said)).catch(() => {});
+      sent = await safeSend(() => telegram.sendMessage(moved.newChatId, notice.body, options));
+    }
     await ht.markNoticeDelivered(notice.id, { telegramMessageId: sent?.message_id || null });
     return true;
   } catch (err) {

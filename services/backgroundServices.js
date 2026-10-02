@@ -143,6 +143,7 @@ const {
 } = require('./ai/discovery/modelMaintenance');
 const { setModelRefusalListener } = require('./ai/router');
 const { onProfileSaved } = require('./identity/personResolver');
+const { startTelegramDestinationProbe, stopTelegramDestinationProbe } = require('./telegramDestinationProbe');
 const { setProfileSavedHook } = require('../database/driverProfiles');
 
 /**
@@ -240,6 +241,10 @@ function startBackgroundServices({ telegram }) {
   // Telegram id). Registered here so database/ never depends upward.
   setProfileSavedHook(onProfileSaved);
   startPolicyWatcher({ telegram: telegram || null });
+  // A Telegram group upgraded to a supergroup gets a new id and every send to
+  // the old one fails. This asks about each configured destination and follows
+  // a move before a notice has to fail on it.
+  startTelegramDestinationProbe({ telegram: telegram || null });
   // Daily model refresh, plus a debounced look whenever the router is refused a
   // model. Its Telegram lines ride the policy watcher's outbox above.
   startModelMaintenance({ setModelRefusalListener });
@@ -276,6 +281,7 @@ function stopBackgroundServices() {
   try { stopFinanceWeeklyReport(); } catch (err) { console.error('[SHUTDOWN] stopFinanceWeeklyReport failed:', err.message); }
   try { stopPolicyWatcher(); } catch (err) { console.error('[SHUTDOWN] stopPolicyWatcher failed:', err.message); }
   try { stopModelMaintenance(); } catch (err) { console.error('[SHUTDOWN] stopModelMaintenance failed:', err.message); }
+  try { stopTelegramDestinationProbe(); } catch (err) { console.error('[SHUTDOWN] stopTelegramDestinationProbe failed:', err.message); }
 }
 
 module.exports = { startBackgroundServices, stopBackgroundServices };
