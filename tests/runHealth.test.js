@@ -129,6 +129,17 @@ test('the first pass after a deploy is not yet due, not stopped', () => {
     + 'state meaningless for ten minutes after every release');
 });
 
+test('a boot time later than "now" grants no grace — the two came from different clocks', () => {
+  // The shape that broke CI on 2026-09-20: a test pinned `now` while the
+  // process boot time was real. Once the real clock passed the pinned one, the
+  // difference went negative, read as "inside the window", and a stopped
+  // worker was reported healthy.
+  const v = classifyRun(row({ lastFinishedAt: minutesAgo(600) }), {
+    now: NOW, bootedAtMs: NOW + 12 * 24 * 3600 * 1000, firstRunDelaySeconds: 600,
+  });
+  assert.equal(v.state, RUN_STATES.STALE);
+});
+
 test('a worker with no expected interval is never called stale, because nothing says what late means', () => {
   const v = at(row({ lastFinishedAt: minutesAgo(5000), expectedIntervalSeconds: null }));
   assert.notEqual(v.state, RUN_STATES.STALE);
