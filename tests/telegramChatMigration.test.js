@@ -105,7 +105,7 @@ test('the probe follows a moved group and leaves an unreachable one alone', asyn
   assert.equal(out.moved, 1);
   assert.equal(out.unreachable, 1);
   assert.equal(out.followFailed, 0);
-  assert.deepEqual(out.reasons, { '400: Bad Request: chat not found': 1 }, 'Telegram\'s words, no id');
+  assert.equal(out.reasons, '400: Bad Request: chat not found (x1)', 'Telegram\'s words, no id');
   assert.equal(out.error, undefined);
   assert.deepEqual(followed, [['-5052301861', '-1007777777777']]);
   await new Promise((r) => setImmediate(r));
@@ -167,3 +167,17 @@ test('the probe without a Telegram client stands down as blocked, not failed', a
   assert.deepEqual(await probeOnce({ telegram: null }), { blocked: 'no Telegram client to ask' });
 });
 
+
+test('the probe\'s reasons survive the run ledger — it keeps only flat values', async () => {
+  // database/backgroundRuns.js safeSummary drops every object-valued field; a
+  // reasons MAP would vanish and /api/health would show none exactly when it
+  // matters. Run the real sanitiser over a real probe summary.
+  const { safeSummary } = require('../database/backgroundRuns');
+  const telegram = {
+    async getChat() { throw Object.assign(new Error('403: Forbidden: bot was kicked from the group chat'), { response: { error_code: 403 } }); },
+  };
+  const out = await probeOnce({ telegram, deps: migrationDeps() });
+  const stored = safeSummary(out);
+  assert.equal(stored.reasons, '403: Forbidden: bot was kicked from the group chat (x1)');
+  assert.equal(stored.unreachable, 1);
+});

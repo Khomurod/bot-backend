@@ -169,14 +169,14 @@ test('the destination probe\'s last run is visible: counts and Telegram\'s words
       lastFinishedAt: '2026-10-02T20:26:00.000Z',
       lastSummary: {
         checked: 4, moved: 0, unreachable: 1, followFailed: 1,
-        reasons: { '400: Bad Request: chat not found': 1 },
+        reasons: '400: Bad Request: chat not found (x1)',
       },
     },
   }));
   assert.deepEqual(s.chatDestinations, {
     lastRunAt: '2026-10-02T20:26:00.000Z', status: 'error',
     checked: 4, moved: 0, unreachable: 1, followFailed: 1,
-    reasons: { '400: Bad Request: chat not found': 1 },
+    reasons: '400: Bad Request: chat not found (x1)',
   });
 });
 

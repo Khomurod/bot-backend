@@ -46,7 +46,8 @@ function defaultDeps() {
 async function probeOnce({ telegram, deps = defaultDeps() } = {}) {
   if (!telegram?.getChat) return { blocked: 'no Telegram client to ask' };
   const ids = await deps.store.listDestinationChatIds();
-  const summary = { ok: true, checked: 0, moved: 0, unreachable: 0, followFailed: 0, reasons: {} };
+  const summary = { ok: true, checked: 0, moved: 0, unreachable: 0, followFailed: 0 };
+  const reasons = {};
   const why = (err) => publicTelegramError(err?.response?.description || err?.message) || 'unknown error';
   for (const id of ids) {
     summary.checked += 1;
@@ -64,7 +65,7 @@ async function probeOnce({ telegram, deps = defaultDeps() } = {}) {
         await telegram.sendChatAction(id, 'typing');
         // Reading refused but sending works: reachable, nothing to follow.
         const key = `read refused, sending works: ${why(lastErr)}`;
-        summary.reasons[key] = (summary.reasons[key] || 0) + 1;
+        reasons[key] = (reasons[key] || 0) + 1;
         continue;
       } catch (err) {
         lastErr = err;
@@ -81,9 +82,15 @@ async function probeOnce({ telegram, deps = defaultDeps() } = {}) {
     } else {
       summary.unreachable += 1;
       const key = why(lastErr);
-      summary.reasons[key] = (summary.reasons[key] || 0) + 1;
+      reasons[key] = (reasons[key] || 0) + 1;
     }
   }
+  // ONE STRING, because the run ledger keeps only numbers, booleans and short
+  // strings (database/backgroundRuns.js safeSummary) — a nested map would be
+  // dropped silently, and /api/health would show no reason exactly when one
+  // matters.
+  const said = Object.entries(reasons).map(([k, n]) => `${k} (x${n})`).join('; ');
+  if (said) summary.reasons = said.slice(0, 200);
   if (summary.followFailed > 0) {
     summary.error = `${summary.followFailed} moved group(s) found but the move could not be applied`;
   }

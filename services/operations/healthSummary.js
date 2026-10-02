@@ -216,7 +216,7 @@ function summariseDestinationProbe(row) {
     moved: sum.moved ?? null,
     unreachable: sum.unreachable ?? null,
     followFailed: sum.followFailed ?? null,
-    reasons: sum.reasons || {},
+    reasons: typeof sum.reasons === 'string' ? sum.reasons : null,
   };
 }
 
