@@ -19,8 +19,11 @@
 --   released           the summary may be posted (the poller posts it)
 --   needs_review       a person must approve it first (Needs Attention / Telegram)
 --   forfeited          home longer than the allowance: no bonus
--- NULL is every leg from before this change. Those were already posted or
--- claimed at the transition, and nothing reads them for a decision.
+-- NULL is a leg from before this change that was already posted or claimed.
+-- A leg from before this change that is NOT yet posted — Telegram was down at
+-- the transition, or the bonus group was not configured, and the old poller
+-- was retrying it — is moved to `waiting_home_stay` below, so it is decided
+-- by the owner's rule like any other rather than dropped from the queue.
 --
 -- Additive and idempotent.
 
@@ -40,6 +43,13 @@ BEGIN
       );
   END IF;
 END $$;
+
+-- Legacy legs still waiting to be posted join the new flow.
+UPDATE driver_road_history
+   SET bonus_decision = 'waiting_home_stay'
+ WHERE bonus_decision IS NULL
+   AND bonus_usd > 0
+   AND bonus_posted_at IS NULL;
 
 -- The two questions the poller asks every ten minutes: which legs can now be
 -- decided, and which decided legs are waiting to be posted.

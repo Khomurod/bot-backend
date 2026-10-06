@@ -133,6 +133,36 @@ test('a bonus that is not held cannot be "released"', { skip: skipWithoutPg() },
   );
 });
 
+test('editing a leg RE-OPENS its decision until it is posted (review, #260)', { skip: skipWithoutPg() }, async (t) => {
+  const { ht } = await setup(t);
+  const released = await insertLeg(ht, { bonusDecision: 'released' });
+  const edited = await ht.updateRoadHistory(released.id, {
+    roadStartedAt: '2026-06-01T00:00:00Z', homeArrivedAt: '2026-09-26T00:00:00Z',
+    daysOnRoad: 117, exceededWeeks: 12, bonusUsd: 1200,
+  });
+  assert.equal(edited.bonus_decision, 'waiting_home_stay', 'decided again from the corrected days');
+  assert.equal((await ht.listUnpostedRoadBonuses()).length, 0, 'and not paid on the old decision');
+
+  const posted = await insertLeg(ht, { bonusDecision: 'released' });
+  await ht.claimRoadBonusPost(posted.id);
+  const after = await ht.updateRoadHistory(posted.id, {
+    roadStartedAt: '2026-08-01T00:00:00Z', homeArrivedAt: '2026-09-12T00:00:00Z',
+    daysOnRoad: 42, exceededWeeks: 2, bonusUsd: 200,
+  });
+  assert.equal(after.bonus_decision, 'released', 'a posted leg is history and keeps its decision');
+});
+
+test('migration 0064 moves a legacy UNPOSTED leg into the new flow (review, #260)', { skip: skipWithoutPg() }, async (t) => {
+  const { h, ht } = await setup(t);
+  const legacy = await insertLeg(ht, { bonusDecision: null });
+  const done = await insertLeg(ht, { bonusDecision: null, bonusPostedAt: '2026-09-12T00:00:00Z' });
+  // eslint-disable-next-line global-require
+  const fs = require('node:fs');
+  await h.query(fs.readFileSync(path.resolve(__dirname, '../database/migrations/0064_road_bonus_decision.sql'), 'utf8'));
+  const rows = await h.query('SELECT id, bonus_decision FROM driver_road_history WHERE id = ANY($1) ORDER BY id', [[legacy.id, done.id]]);
+  assert.deepEqual(rows.rows.map((r) => r.bonus_decision), ['waiting_home_stay', null]);
+});
+
 test('a restart no longer marks waiting bonuses as posted', { skip: skipWithoutPg() }, async (t) => {
   // The baseline ran a "one-time" UPDATE on every boot that stamped every
   // unposted leg as posted. Re-applying the whole baseline is what a boot does.

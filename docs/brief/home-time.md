@@ -75,7 +75,13 @@ applied by `roadBonusNotifierService` every 10 minutes):
 4. Otherwise `released`, and the 🚚 summary is posted.
 
 Rule 2 beats rule 3. A home stay that closed without a measured length goes to a
-person. A NULL decision is a leg from before this existed (already posted).
+person. A NULL decision is a leg from before this existed that was already
+posted; one that was NOT yet posted was moved to `waiting_home_stay` by
+migration 0064. **Editing a leg's days or amount re-opens its decision** until
+its summary is posted (`updateRoadHistory`), so a corrected clock is judged
+again. **A decided leg is never re-checked for driver type**: its bonus was
+computed with the type at the time, and the chat may have been reassigned
+during the home stay.
 
 **The baseline must never stamp `bonus_posted_at`.** It used to carry a
 "one-time" backfill that, because the baseline runs on every boot, marked every

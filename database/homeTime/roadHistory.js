@@ -275,10 +275,21 @@ async function getRoadHistoryById(id) {
 async function updateRoadHistory(id, {
   roadStartedAt, homeArrivedAt, daysOnRoad, exceededWeeks, bonusUsd,
 }) {
+  // AN EDIT RE-OPENS THE BONUS DECISION. The days and the amount are what the
+  // decision was made from, so a leg released at 35 days and corrected to 117
+  // must not be paid without the review the longer trip requires — nor a held
+  // 117-day leg stay held once its clock is fixed. A leg whose summary already
+  // went out is history and keeps its decision.
   const res = await query(
     `UPDATE driver_road_history
        SET road_started_at = $2, home_arrived_at = $3,
-           days_on_road = $4, exceeded_weeks = $5, bonus_usd = $6
+           days_on_road = $4, exceeded_weeks = $5, bonus_usd = $6::numeric,
+           bonus_decision = CASE WHEN bonus_posted_at IS NULL AND $6::numeric > 0
+                                 THEN 'waiting_home_stay' ELSE bonus_decision END,
+           bonus_decision_reason = CASE WHEN bonus_posted_at IS NULL AND $6::numeric > 0
+                                        THEN NULL ELSE bonus_decision_reason END,
+           bonus_decided_at = CASE WHEN bonus_posted_at IS NULL AND $6::numeric > 0
+                                   THEN NULL ELSE bonus_decided_at END
      WHERE id = $1 RETURNING *`,
     [id, roadStartedAt, homeArrivedAt, daysOnRoad, exceededWeeks, bonusUsd]
   );

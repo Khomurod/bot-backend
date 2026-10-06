@@ -113,8 +113,15 @@ async function postCompletedRoadLeg(telegram, historyRow, { allowanceWeeks } = {
   if (!historyRow || !(Number(historyRow.bonus_usd) > 0)) {
     return { posted: false, reason: 'no_bonus' };
   }
-  const driverType = driverTypeFromRow(historyRow);
-  if (!homeTimePolicyApplies(driverType)) return { posted: false, reason: 'owner_operator' };
+  // A DECIDED LEG WAS EARNED BY A COMPANY DRIVER — its bonus was computed with
+  // the type at the time, and an owner-operator's is zero. Re-reading the type
+  // now, from whatever profile holds that chat days later, would drop a bonus
+  // the moment the chat was reassigned. Only a legacy, undecided leg is
+  // re-checked.
+  if (!historyRow.bonus_decision) {
+    const driverType = driverTypeFromRow(historyRow);
+    if (!homeTimePolicyApplies(driverType)) return { posted: false, reason: 'owner_operator' };
+  }
 
   const chatId = await messageGroups.getGroupId('roadBonus');
   if (!chatId) {

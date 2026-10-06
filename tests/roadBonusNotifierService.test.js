@@ -158,12 +158,23 @@ test('postCompletedRoadLeg refuses an owner-operator even if a bonus slipped thr
   const { service, telegram, sends } = loadService({ settings: SETTINGS, rows: [legRow()] });
   const result = await service.postCompletedRoadLeg(
     telegram,
-    { ...legRow({ id: 9, driver_type: 'owner', bonus_usd: 200 }) },
+    // A LEGACY, undecided leg: the only kind whose type is still re-checked.
+    { ...legRow({ id: 9, driver_type: 'owner', bonus_usd: 200, bonus_decision: null }) },
     { allowanceWeeks: 4 }
   );
   assert.equal(result.posted, false);
   assert.equal(result.reason, 'owner_operator');
   assert.equal(sends.length, 0);
+});
+
+test('a DECIDED bonus is posted even if the chat now belongs to an owner-operator (review, #260)', async () => {
+  // Earned by a company driver, decided days later — by which time the chat may
+  // have been reassigned. Re-reading the type then would drop it for ever.
+  const { service, telegram, sends } = loadService({
+    settings: SETTINGS, rows: [legRow({ driver_type: 'owner', group_name: 'WENZE UNIT # 310 OWNER OPERATOR' })],
+  });
+  await service.runRoadBonusCheck(telegram);
+  assert.equal(sends.length, 1);
 });
 
 test('missing Extra Week group ID prevents sending and leaves the leg unposted', async () => {
