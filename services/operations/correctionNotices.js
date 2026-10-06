@@ -25,22 +25,61 @@
  * of a message.
  */
 const { describeCorrection } = require('../../lib/operations/correctionLabels');
+const {
+  extractUnitFromGroupName, extractDriverNameFromGroupTitle,
+} = require('../../lib/drivers/driverGroupTitle');
 
 /** Above this many corrections in one pass, send a summary instead of each one. */
 const SUMMARY_THRESHOLD = 4;
 
 function defaultDeps() {
   /* eslint-disable global-require */
-  return { notify: require('../notifications/send').notify };
+  return {
+    notify: require('../notifications/send').notify,
+    groups: require('../../database/groups'),
+    people: require('../../database/driverPeople'),
+  };
   /* eslint-enable global-require */
 }
 
-function subjectLine(correction) {
-  const parts = [];
-  if (correction.subjectType && correction.subjectId) {
-    parts.push(`${correction.subjectType} ${correction.subjectId}`);
+/**
+ * A driver group as a dispatcher says it: "Unit 310 — JOHN DOE". Falls back to
+ * the title itself when it carries neither, which is still a name.
+ */
+function groupLabel(groupName) {
+  const unit = extractUnitFromGroupName(groupName);
+  const name = extractDriverNameFromGroupTitle(groupName);
+  if (unit && name) return `Unit ${unit} — ${name}`;
+  if (unit) return `Unit ${unit}`;
+  return String(groupName || '').trim() || null;
+}
+
+/**
+ * WHO the correction was about, in words.
+ *
+ * It said "group 59835" — the database's own row id, which nobody in the chat
+ * can act on without opening the admin and searching. A group is a driver, and
+ * a person has a name, so both are looked up. Anything else keeps the old
+ * shape, and a lookup that fails falls back to it: a notice that names a row
+ * id is worse than one that names the driver, and far better than no notice.
+ */
+async function subjectLine(correction, deps) {
+  const { subjectType, subjectId } = correction;
+  if (!subjectType || !subjectId) return '';
+  const fallback = `${subjectType} ${subjectId}`;
+  try {
+    if (subjectType === 'group' && deps.groups?.getGroupByIdAnyType) {
+      const group = await deps.groups.getGroupByIdAnyType(subjectId);
+      return groupLabel(group?.group_name) || fallback;
+    }
+    if (subjectType === 'person' && deps.people?.getPersonById) {
+      const person = await deps.people.getPersonById(subjectId);
+      return person?.displayName || fallback;
+    }
+  } catch (_) {
+    return fallback;
   }
-  return parts.join(' ');
+  return fallback;
 }
 
 /**
@@ -79,10 +118,12 @@ async function announceCorrections(applied = [], deps = defaultDeps()) {
     for (const r of rows) {
       const meta = describeCorrection(r.actionKey);
       // eslint-disable-next-line no-await-in-loop
+      const who = await subjectLine(r, deps);
+      // eslint-disable-next-line no-await-in-loop
       const out = await deps.notify({
         category: 'automatic_corrections',
         title: meta.did,
-        lines: [subjectLine(r)].filter(Boolean),
+        lines: [who].filter(Boolean),
         reason: meta.why,
         action: meta.undoable ? 'Undo it in Needs attention → History' : null,
         subjectType: 'correction',
@@ -98,4 +139,4 @@ async function announceCorrections(applied = [], deps = defaultDeps()) {
   }
 }
 
-module.exports = { SUMMARY_THRESHOLD, announceCorrections };
+module.exports = { SUMMARY_THRESHOLD, announceCorrections, groupLabel };

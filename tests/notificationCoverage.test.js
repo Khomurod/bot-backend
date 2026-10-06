@@ -53,9 +53,11 @@ function sentCategories() {
   const sent = new Set();
   for (const file of SERVICE_FILES) {
     const src = fs.readFileSync(file, 'utf8');
-    for (const m of src.matchAll(/notify\s*\(\s*\{[\s\S]{0,400}?category:\s*['"`]([a-z_]+)['"`]/g)) {
+    for (const m of src.matchAll(/notify\s*(?:\?\.)?\s*\(\s*\{[\s\S]{0,400}?category:\s*['"`]([a-z_]+)['"`]/g)) {
       sent.add(m[1]);
     }
+    // `notify?.({` is the same call, optional-chained so a partial dependency
+    // map costs the notice rather than the pass.
     // The self-healing announcer builds its notice a function earlier and hands
     // the whole object to notify; catch those the same way.
     for (const m of src.matchAll(/category:\s*['"`]([a-z_]+)['"`],[\s\S]{0,200}?title:/g)) {

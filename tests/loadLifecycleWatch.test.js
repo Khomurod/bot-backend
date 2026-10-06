@@ -129,7 +129,7 @@ test('a remembered arrival reaches the rules, so a departure can be read', async
 
 test('a board running ahead of the truck files a finding NO action can apply', async () => {
   const { deps, calls } = harness({
-    orders: [{ ...ORDER, status: 'in_transit' }],
+    orders: [{ ...ORDER, status: 'delivered' }],
     position: { ...SHIPPER, speedMph: 0, at: at(5) },
   });
   const summary = await watcher.runLoadLifecycleCheck({ now: NOW, deps });
@@ -145,8 +145,8 @@ test('a board running ahead of the truck files a finding NO action can apply', a
 test('the finding is keyed on the ORDER, so a driver\'s second load is its own question', async () => {
   const { deps, calls } = harness({
     orders: [
-      { ...ORDER, orderId: 'ORD-1', status: 'in_transit' },
-      { ...ORDER, orderId: 'ORD-2', status: 'in_transit' },
+      { ...ORDER, orderId: 'ORD-1', status: 'delivered' },
+      { ...ORDER, orderId: 'ORD-2', status: 'delivered' },
     ],
     position: { ...SHIPPER, speedMph: 0, at: at(5) },
   });
@@ -249,7 +249,12 @@ test('a disagreement is ALWAYS a question, however fresh', async () => {
   const { deps, calls } = harness({
     orders: [{ ...ORDER, status: 'in_transit' }],
     position: { ...SHIPPER, speedMph: 0, at: at(5) },
-    stored: { orderId: 'ORD-1', phase: 'at_pickup', phaseSince: at(2), wasAtPickup: true },
+    // Four hours at the shipper: longer than a load takes, far short of the
+    // twelve that makes an unreadable load "stuck" — a disagreement is asked
+    // about well before that.
+    stored: {
+      orderId: 'ORD-1', phase: 'at_pickup', phaseSince: at(240), wasAtPickup: true, firstAtPickupAt: at(240),
+    },
   });
   const summary = await watcher.runLoadLifecycleCheck({ now: NOW, deps });
   assert.equal(summary.conflicts, 1);

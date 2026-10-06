@@ -222,6 +222,23 @@ caller:
   `board_ahead_of_what_has_been_observed`, which keeps the confidence honest
   without making it somebody's question.
 
+  **"Loaded while still at the shipper" waits three hours** (`loadingGraceMinutes`,
+  measured from when the CURRENT stay at the pickup began — the `at_pickup`
+  phase start, not `first_at_pickup_at`, which keeps the first visit forever). Dispatch marks a load loaded at
+  check-in and loading takes hours, so before that it is the signal
+  `loading_at_the_shipper`, not a disagreement. **A load whose pickup and
+  delivery are the same place in Datatruck** (within the 3-mile stop circle) is
+  an address problem, not a phase question: nothing is concluded from its
+  coordinates, a finding is filed, and ONE notice per load (`load_address`, no
+  daily discriminator) asks for the stops to be fixed.
+
+  **What the chat reads.** A notice names the driver ("Unit 310 — NAME", from
+  the group title) and writes each disagreement as a sentence
+  (`lib/loads/lifecycle.js describeConflict`). The stored codes are never shown:
+  they are long enough that the composer's credential filter replaced them with
+  `[redacted]`. The once-a-day repeat guard reads the real stored key prefix
+  `load_lifecycle:load:<order>:`; it read `load:<order>` and never matched.
+
 **WHO the load belongs to is attached only when it is certain.** A load carries
 a unit NUMBER, and a number is not a truck: Company 310, Owner-Operator 310 and
 Lease 310 are three of them, and production carries ten numbers held in more

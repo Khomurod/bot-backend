@@ -105,10 +105,51 @@ test('a board running BEHIND the truck is normal and is not reported', () => {
 test('a board running AHEAD of the truck IS reported — somebody recorded work that has not happened', () => {
   const v = derivePhase({
     nowIso: NOW, load: { ...LOAD, status: 'in_transit' }, position: pos(SHIPPER),
+    // Standing at the shipper for four hours: longer than a load takes.
+    remembered: { phase: PHASES.AT_PICKUP, wasAtPickup: true, atPickupSince: at(240) },
   });
   assert.equal(v.phase, PHASES.AT_PICKUP, 'the coordinates decide');
   assert.deepEqual(v.conflicts, ['board_says_loaded_but_the_truck_is_still_at_the_shipper']);
   assert.equal(v.confidence, 'medium', 'medium means a person looks — it does not move the state');
+});
+
+test('a truck at the shipper under a "loaded" board is BEING LOADED for the first three hours', () => {
+  // Dispatch marks a load loaded at check-in; loading takes hours. Production
+  // reported this the moment trucks arrived, and it was most of the chat.
+  for (const remembered of [{}, { phase: PHASES.AT_PICKUP, wasAtPickup: true, atPickupSince: at(170) }]) {
+    const v = derivePhase({
+      nowIso: NOW, load: { ...LOAD, status: 'in_transit' }, position: pos(SHIPPER), remembered,
+    });
+    assert.deepEqual(v.conflicts, []);
+    assert.ok(v.signals.includes('loading_at_the_shipper'));
+  }
+});
+
+test('every conflict code has a sentence, and the sentence has no underscores', () => {
+  const { CONFLICT_TEXT, describeConflict } = require('../lib/loads/lifecycle');
+  for (const [code, text] of Object.entries(CONFLICT_TEXT)) {
+    assert.equal(describeConflict(code), text);
+    assert.equal(text.includes('_'), false);
+  }
+  assert.equal(describeConflict('some_future_code'), 'some future code', 'never dropped, never a code');
+});
+
+test('the SAME place for pickup and delivery is an address problem, never a conflict', () => {
+  const v = derivePhase({
+    nowIso: NOW,
+    load: { ...LOAD, deliveryLat: SHIPPER.lat, deliveryLng: SHIPPER.lng, status: 'delivered' },
+    position: pos(SHIPPER),
+  });
+  assert.equal(v.addressProblem, 'pickup_and_delivery_are_the_same_place');
+  assert.deepEqual(v.conflicts, [], 'one circle cannot tell the shipper from the receiver');
+  assert.equal(v.confidence, 'low');
+  assert.equal(v.facts.sameStops, true);
+});
+
+test('a normal load is not an address problem', () => {
+  const v = run({ position: pos(MIDWAY, 60), remembered: { wasAtPickup: true } });
+  assert.equal(v.addressProblem, undefined);
+  assert.equal(v.facts.sameStops, false);
 });
 
 // ── a board ahead is not, by itself, a conflict ──────────────────────────────

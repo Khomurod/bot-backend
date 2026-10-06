@@ -17,7 +17,13 @@
  * correction. Nothing in this file writes to a driver's record.
  */
 const { derivePhase, PHASES, PHASE_LABELS } = require('../../lib/loads/lifecycle');
-const { extractUnitFromGroupName } = require('../../lib/drivers/driverGroupTitle');
+const {
+  CHECK_UNCLEAR, buildFinding, buildNotice, worthAsking,
+} = require('../../lib/loads/lifecycleReport');
+const {
+  extractUnitFromGroupName, extractDriverNameFromGroupTitle,
+} = require('../../lib/drivers/driverGroupTitle');
+const { noticeKeyFor } = require('../../lib/notifications/compose');
 const { withRunRecord } = require('../operations/runLedger');
 
 const POLL_MS = 10 * 60 * 1000;
@@ -29,9 +35,8 @@ const POLL_MS = 10 * 60 * 1000;
  */
 const REPEAT_AFTER_HOURS = 24;
 const FIRST_TICK_DELAY_MS = 5 * 60 * 1000;
-
-/** The unclear cases a person should see. High confidence files nothing. */
-const CHECK_UNCLEAR = 'load.phase_unclear';
+/** Where a load notice is routed. Spelled out again at the `notify()` call. */
+const LOAD_CATEGORY = 'load_lifecycle';
 
 function defaultDeps() {
   /* eslint-disable global-require */
@@ -64,84 +69,6 @@ function positionFor(fleets, unit, driverName, deps) {
 }
 
 /**
- * A finding for a load whose phase cannot be settled.
- *
- * There is no `auto` tier here and no registered action, which is what makes
- * "Wenze never guesses a load's status" true by construction rather than by
- * care. The finding says what it saw and what disagreed; a person decides.
- */
-function buildFinding(state, verdict) {
-  const who = state.unitNumber ? `Unit ${state.unitNumber}` : `Load ${state.loadIdentifier || state.orderId}`;
-  const why = verdict.conflicts.length
-    ? 'the load board and the truck disagree'
-    : 'there is not enough evidence to say';
-  return {
-    checkKey: CHECK_UNCLEAR,
-    subjectType: 'load',
-    // The order, not the driver: a driver runs many loads and each one is its
-    // own question. Keyed on the driver, the second load would update the
-    // first's finding instead of becoming a new one.
-    subjectId: String(state.orderId),
-    title: `${who}: ${why} — ${verdict.summary}`,
-    severity: verdict.conflicts.length ? 'warning' : 'info',
-    tier: 'warning',
-    confidence: verdict.confidence === 'medium' ? 60 : 30,
-    evidence: {
-      phase: verdict.phase,
-      boardStatus: verdict.facts.boardStatus,
-      signals: verdict.signals,
-      conflicts: verdict.conflicts,
-      ...verdict.facts,
-    },
-    proposedChange: null,
-  };
-}
-
-/** How long a load may sit unreadable before it is a question rather than a Tuesday. */
-const STUCK_HOURS = 12;
-
-/**
- * Is this load a QUESTION, or just an ordinary load?
- *
- * The first version filed a finding for every load that was not high
- * confidence, and production showed immediately why that is wrong: 191 of 235
- * loads, which buried the fifteen findings that actually needed somebody.
- *
- * The reason is in this module's own design. `heading_to_pickup` is ALWAYS
- * medium confidence — deliberately, because it is an inference from a truck
- * moving the right way and never an observation — so every load in that phase
- * filed a permanent "there is not enough evidence to say", for the whole trip.
- * That is not a question anybody can answer. It is what the phase means.
- *
- * A load is worth asking about when:
- *
- *   THE SOURCES DISAGREE. The board says delivered and the truck is at the
- *   pickup. Somebody has to reconcile that, and it is exactly the case the
- *   owner asked to be surfaced instead of guessed.
- *
- *   OR IT HAS BEEN UNREADABLE FOR HALF A DAY. A load assigned twenty minutes
- *   ago whose truck has not set off is not a problem; the same load twelve
- *   hours later is either not moving or not being reported, and both are worth
- *   a look.
- *
- * Everything else is ordinary uncertainty about a load that is fine.
- */
-function worthAsking(out, nowIso) {
-  if (out.verdict.confidence === 'high') return false;
-  if (out.verdict.conflicts.length > 0) return true;
-
-  // Unchanged phase plus a stale start is what "stuck" means. A phase that just
-  // moved is not stuck however little is known about it.
-  if (out.phaseChanged) return false;
-  // The REMEMBERED phase start, not the row just written. "How long has this
-  // been stuck" is a question about what was already there; reading it off the
-  // write couples the answer to whatever the store happens to return.
-  const since = Date.parse(out.remembered?.phaseSince || '');
-  if (!Number.isFinite(since)) return false;
-  return (Date.parse(nowIso) - since) >= STUCK_HOURS * 3600 * 1000;
-}
-
-/**
  * The one person recorded in a unit number, or nobody — and WHICH KIND of
  * nobody.
  *
@@ -162,7 +89,9 @@ async function onlyHolderOf(deps, unit) {
 }
 
 /** One load, one verdict, one row written. */
-async function checkOneLoad(order, { fleets, groupsByUnit, nowIso, deps }) {
+async function checkOneLoad(order, {
+  fleets, groupsByUnit, ambiguousUnits = new Set(), nowIso, deps,
+}) {
   const load = deps.loads.extractLoadFromOrder(order);
   if (!load || !load.orderId) return null;
 
@@ -197,7 +126,18 @@ async function checkOneLoad(order, { fleets, groupsByUnit, nowIso, deps }) {
     load,
     position,
     remembered: remembered
-      ? { phase: remembered.phase, wasAtPickup: remembered.wasAtPickup, wasAtDelivery: remembered.wasAtDelivery }
+      ? {
+        phase: remembered.phase,
+        wasAtPickup: remembered.wasAtPickup,
+        wasAtDelivery: remembered.wasAtDelivery,
+        // When THIS stay at the shipper began — what tells a truck being
+        // loaded from one that has stood there for hours. The phase start,
+        // not `first_at_pickup_at`: that is the first visit ever and is kept
+        // forever, so a truck that left and came back would read as having
+        // stood there since its first visit. Leaving changes the phase, and
+        // returning starts a new `phase_since`.
+        atPickupSince: remembered.phase === PHASES.AT_PICKUP ? (remembered.phaseSince || null) : null,
+      }
       : {},
   });
 
@@ -230,7 +170,18 @@ async function checkOneLoad(order, { fleets, groupsByUnit, nowIso, deps }) {
     checkedAt: nowIso,
   });
 
-  return { state, verdict, remembered, phaseChanged: remembered ? remembered.phase !== verdict.phase : true };
+  return {
+    state, verdict, remembered,
+    // A NAME ONLY WHEN THE UNIT IS UNAMBIGUOUS. `groupsByUnit` keeps the first
+    // of several groups sharing a number, which is fine for a position lookup
+    // and wrong for saying WHO: naming that group's driver would pin the
+    // disagreement on somebody who may not be carrying this load. The same
+    // rule the person attribution above follows.
+    driverName: group && holder.person && !ambiguousUnits.has(String(unit))
+      ? (extractDriverNameFromGroupTitle(group.group_name) || null)
+      : null,
+    phaseChanged: remembered ? remembered.phase !== verdict.phase : true,
+  };
 }
 
 /**
@@ -266,9 +217,11 @@ async function runLoadLifecycleCheck({ now = Date.now(), deps = defaultDeps() } 
     // Unit → group, so a load can name the driver carrying it. Built ONCE per
     // pass and matched locally: a per-load lookup would be one query per order.
     const groupsByUnit = new Map();
+    const ambiguousUnits = new Set();
     const groups = await deps.groups.getDriverGroupsByActiveFilter('active').catch(() => []);
     for (const g of groups) {
       const unit = extractUnitFromGroupName(g.group_name);
+      if (unit && groupsByUnit.has(String(unit))) ambiguousUnits.add(String(unit));
       // First one wins. A unit on two active groups is a real condition in this
       // fleet — `identity.duplicate_unit` already files it for a person — and
       // picking the later row here would make a load's driver depend on the
@@ -279,7 +232,9 @@ async function runLoadLifecycleCheck({ now = Date.now(), deps = defaultDeps() } 
     const keep = [];
     for (const order of orders) {
       // eslint-disable-next-line no-await-in-loop
-      const out = await checkOneLoad(order, { fleets, groupsByUnit, nowIso, deps }).catch((err) => {
+      const out = await checkOneLoad(order, {
+        fleets, groupsByUnit, ambiguousUnits, nowIso, deps,
+      }).catch((err) => {
         console.warn('[LOADS] could not read one order:', err.message);
         return null;
       });
@@ -295,49 +250,39 @@ async function runLoadLifecycleCheck({ now = Date.now(), deps = defaultDeps() } 
       } else {
         summary.asked += 1;
         // eslint-disable-next-line no-await-in-loop
-        const filed = await deps.findings.upsertFinding(buildFinding(out.state, out.verdict))
+        const filed = await deps.findings.upsertFinding(buildFinding(out.state, out.verdict, out.driverName))
           .catch(() => null);
         if (filed?.id) keep.push(filed.id);
 
-        // AND TELL SOMEBODY. The `load_lifecycle` category has been
-        // configurable in the admin since it was written and NOTHING EVER SENT
-        // IT: this module required `notify` and never called it, so the row an
-        // administrator could point at a Telegram group could not carry
-        // anything. A finding on a page nobody has open is not a notice.
-        //
-        // Only where the sources genuinely CONTRADICT each other. A load that
-        // is merely unreadable is a finding to look at when convenient; a board
-        // claiming work the truck's position says did not happen is somebody's
-        // afternoon.
-        if (out.verdict.conflicts.length) {
-          // eslint-disable-next-line no-await-in-loop
+        // AND TELL SOMEBODY — only where the sources genuinely contradict each
+        // other, or the load's own addresses are unusable. A load that is merely
+        // unreadable is a finding to look at when convenient; a board claiming
+        // work the truck's position says did not happen is somebody's afternoon.
+        const notice = buildNotice(out, out.driverName);
+        if (notice) {
+          // The REAL key prefix. This read `load:<id>`, which no notice key has
+          // ever started with — they start with the category — so the guard
+          // never matched and only the per-day key kept repeats down. The
+          // trailing colon stops order 12 matching order 123.
+          const prefix = `${noticeKeyFor(LOAD_CATEGORY, notice.subjectType, notice.subjectId)}:`;
+          // An address problem is said once per load, ever; a disagreement at
+          // most once a day.
+          const isAddress = notice.subjectType === 'load_address';
           // Optional-chained: telling somebody is observational, and a caller
           // that supplies a partial dependency map must lose the notice rather
           // than the pass. Without this a missing `notifications` throws a
           // TypeError before `.catch` can attach and abandons the remaining
           // orders mid-loop.
-          const recentlySaid = await Promise.resolve(
-            deps.notifications?.noticeSentWithin?.(`load:${out.state.orderId}`, REPEAT_AFTER_HOURS)
+          // eslint-disable-next-line no-await-in-loop
+          const recentlySaid = isAddress ? false : await Promise.resolve(
+            deps.notifications?.noticeSentWithin?.(prefix, REPEAT_AFTER_HOURS)
           ).catch(() => false);
           if (!recentlySaid) {
             // eslint-disable-next-line no-await-in-loop
             const sent = await Promise.resolve(deps.notify?.({
               category: 'load_lifecycle',
-              title: `${out.state.unitNumber ? `Unit ${out.state.unitNumber}` : `Load ${out.state.loadIdentifier || out.state.orderId}`}`
-                + ': the load board and the truck disagree',
-              lines: [out.verdict.summary].filter(Boolean),
-              reason: out.verdict.conflicts.join('; '),
-              action: 'Check which is right — Wenze will not pick a side',
-              subjectType: 'load',
-              subjectId: String(out.state.orderId),
-              discriminator: nowIso.slice(0, 10),
-              personId: out.state.personId ?? null,
-              groupId: out.state.groupId ?? null,
-              evidence: {
-                phase: out.verdict.phase,
-                boardStatus: out.verdict.facts.boardStatus,
-                conflicts: out.verdict.conflicts,
-              },
+              ...notice,
+              discriminator: isAddress ? null : nowIso.slice(0, 10),
             })).catch(() => ({ recorded: false }));
             if (sent?.recorded) summary.announced += 1;
           }
@@ -415,6 +360,7 @@ module.exports = {
   PHASES,
   PHASE_LABELS,
   buildFinding,
+  buildNotice,
   checkOneLoad,
   runLoadLifecycleCheck,
   startLoadLifecycleWatch,
