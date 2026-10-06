@@ -86,6 +86,8 @@ test('a text-only capability is not listed as changing state', () => {
   // `retention_summary` and `recruiting_after_hours_reply` are the deliberate
   // exceptions and are explained in their own rows: one sends an SMS in a
   // person's name, the other is listed to record that it changes nothing.
-  const allowed = new Set(['retention_summary', 'recruiting_after_hours_reply']);
+  // `load_alarm_review` is listed for the same reason as `retention_summary`:
+  // to record that it decides only whether the chat hears something.
+  const allowed = new Set(['retention_summary', 'recruiting_after_hours_reply', 'load_alarm_review']);
   assert.deepEqual(wronglyListed.filter((k) => !allowed.has(k)), []);
 });

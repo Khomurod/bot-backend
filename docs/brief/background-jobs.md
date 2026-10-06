@@ -239,6 +239,14 @@ caller:
   `[redacted]`. The once-a-day repeat guard reads the real stored key prefix
   `load_lifecycle:load:<order>:`; it read `load:<order>` and never matched.
 
+  **A second opinion before the chat hears it** (`load_alarm_review`,
+  `lib/loads/alarmReview.js`). A disagreement not already said today is shown
+  to an AI as statuses, distances, speed and GPS age — no name, address or
+  coordinate. A confident (≥ 80) "likely bad data" keeps it out of the chat
+  (`heldByAi` in the pass summary); anything else sends it with one added
+  sentence, "Wenze's read: …". The finding is filed either way, with the
+  review in its evidence, and AI being unavailable changes nothing.
+
 **WHO the load belongs to is attached only when it is certain.** A load carries
 a unit NUMBER, and a number is not a truck: Company 310, Owner-Operator 310 and
 Lease 310 are three of them, and production carries ten numbers held in more

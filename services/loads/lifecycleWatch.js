@@ -51,6 +51,7 @@ function defaultDeps() {
     loads: require('../datatruckLoadService'),
     notify: require('../notifications/send').notify,
     notifications: require('../../database/operationalNotifications'),
+    reviewAlarm: require('./alarmReview').reviewLoadAlarm,
   };
   /* eslint-enable global-require */
 }
@@ -193,7 +194,7 @@ async function checkOneLoad(order, {
 async function runLoadLifecycleCheck({ now = Date.now(), deps = defaultDeps() } = {}) {
   const summary = {
     checked: 0, changed: 0, unclear: 0,
-    asked: 0, conflicts: 0, announced: 0, pruned: 0, providerErrors: 0,
+    asked: 0, conflicts: 0, announced: 0, heldByAi: 0, pruned: 0, providerErrors: 0,
   };
   const nowIso = new Date(now).toISOString();
   try {
@@ -249,43 +250,55 @@ async function runLoadLifecycleCheck({ now = Date.now(), deps = defaultDeps() } 
         keep.push(null); // nothing filed; the resolve below clears any old one
       } else {
         summary.asked += 1;
-        // eslint-disable-next-line no-await-in-loop
-        const filed = await deps.findings.upsertFinding(buildFinding(out.state, out.verdict, out.driverName))
-          .catch(() => null);
-        if (filed?.id) keep.push(filed.id);
 
         // AND TELL SOMEBODY — only where the sources genuinely contradict each
         // other, or the load's own addresses are unusable. A load that is merely
         // unreadable is a finding to look at when convenient; a board claiming
         // work the truck's position says did not happen is somebody's afternoon.
         const notice = buildNotice(out, out.driverName);
-        if (notice) {
+        // An address problem is said once per load, ever; a disagreement at
+        // most once a day.
+        const isAddress = notice?.subjectType === 'load_address';
+        let recentlySaid = false;
+        let review = null;
+        if (notice && !isAddress) {
           // The REAL key prefix. This read `load:<id>`, which no notice key has
           // ever started with — they start with the category — so the guard
           // never matched and only the per-day key kept repeats down. The
           // trailing colon stops order 12 matching order 123.
           const prefix = `${noticeKeyFor(LOAD_CATEGORY, notice.subjectType, notice.subjectId)}:`;
-          // An address problem is said once per load, ever; a disagreement at
-          // most once a day.
-          const isAddress = notice.subjectType === 'load_address';
           // Optional-chained: telling somebody is observational, and a caller
           // that supplies a partial dependency map must lose the notice rather
-          // than the pass. Without this a missing `notifications` throws a
-          // TypeError before `.catch` can attach and abandons the remaining
-          // orders mid-loop.
+          // than the pass.
           // eslint-disable-next-line no-await-in-loop
-          const recentlySaid = isAddress ? false : await Promise.resolve(
+          recentlySaid = await Promise.resolve(
             deps.notifications?.noticeSentWithin?.(prefix, REPEAT_AFTER_HOURS)
           ).catch(() => false);
+          // A SECOND OPINION before the chat hears it (`lib/loads/alarmReview.js`).
+          // It can only keep a notice out of the chat, and only on a confident
+          // "likely bad data"; the finding below is filed either way.
           if (!recentlySaid) {
             // eslint-disable-next-line no-await-in-loop
-            const sent = await Promise.resolve(deps.notify?.({
-              category: 'load_lifecycle',
-              ...notice,
-              discriminator: isAddress ? null : nowIso.slice(0, 10),
-            })).catch(() => ({ recorded: false }));
-            if (sent?.recorded) summary.announced += 1;
+            review = await Promise.resolve(deps.reviewAlarm?.(out, nowIso)).catch(() => null);
           }
+        }
+
+        const finding = buildFinding(out.state, out.verdict, out.driverName);
+        if (review?.review) finding.evidence.aiReview = review.review;
+        // eslint-disable-next-line no-await-in-loop
+        const filed = await deps.findings.upsertFinding(finding).catch(() => null);
+        if (filed?.id) keep.push(filed.id);
+
+        if (notice && !recentlySaid && review?.send === false) summary.heldByAi += 1;
+        if (notice && !recentlySaid && review?.send !== false) {
+          // eslint-disable-next-line no-await-in-loop
+          const sent = await Promise.resolve(deps.notify?.({
+            category: 'load_lifecycle',
+            ...notice,
+            lines: [...(notice.lines || []), review?.line].filter(Boolean),
+            discriminator: isAddress ? null : nowIso.slice(0, 10),
+          })).catch(() => ({ recorded: false }));
+          if (sent?.recorded) summary.announced += 1;
         }
       }
     }
