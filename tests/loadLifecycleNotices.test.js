@@ -74,6 +74,58 @@ test('a truck that just arrived at the shipper under a "loaded" board is being l
   assert.equal(calls.notified.length, 0);
 });
 
+test('a truck that LEFT and came back starts a new loading window (review, PR #259)', async () => {
+  // First visit four hours ago, but this stay began ten minutes ago: the
+  // at_pickup phase started again when it returned.
+  const { deps, calls } = harness({
+    orders: [{ ...ORDER, status: 'in_transit' }],
+    position: { ...SHIPPER, speedMph: 0, at: at(5) },
+    stored: {
+      orderId: 'ORD-1', phase: 'at_pickup', phaseSince: at(10), wasAtPickup: true, firstAtPickupAt: at(240),
+    },
+  });
+  const summary = await watcher.runLoadLifecycleCheck({ now: NOW, deps });
+  assert.equal(summary.conflicts, 0);
+  assert.equal(calls.notified.length, 0);
+});
+
+test('a truck just ARRIVING (another phase before) is being loaded, not late', async () => {
+  const { deps, calls } = harness({
+    orders: [{ ...ORDER, status: 'in_transit' }],
+    position: { ...SHIPPER, speedMph: 0, at: at(5) },
+    stored: { orderId: 'ORD-1', phase: 'heading_to_pickup', phaseSince: at(600), firstAtPickupAt: at(900) },
+  });
+  await watcher.runLoadLifecycleCheck({ now: NOW, deps });
+  assert.equal(calls.notified.length, 0);
+});
+
+test('NO DRIVER NAME when the unit is on two active groups (review, PR #259)', async () => {
+  // groupsByUnit keeps the first group; naming its driver would pin the load on
+  // somebody who may not be carrying it.
+  const { deps, calls } = harness({
+    orders: [{ ...ORDER, status: 'delivered' }],
+    position: { ...SHIPPER, speedMph: 0, at: at(5) },
+    groups: [
+      { id: 7, group_name: 'WENZE UNIT # 310 FIRST DRIVER (COMPANY DRIVER)' },
+      { id: 8, group_name: 'WENZE UNIT # 310 SECOND DRIVER' },
+    ],
+  });
+  await watcher.runLoadLifecycleCheck({ now: NOW, deps });
+  assert.match(calls.notified[0].title, /^Unit 310:/);
+  assert.doesNotMatch(calls.notified[0].title, /DRIVER/);
+});
+
+test('NO DRIVER NAME when the unit has no single holder', async () => {
+  const { deps, calls } = harness({
+    orders: [{ ...ORDER, status: 'delivered' }],
+    position: { ...SHIPPER, speedMph: 0, at: at(5) },
+    groups: [{ id: 7, group_name: 'WENZE UNIT # 310 TEST DRIVER (COMPANY DRIVER)' }],
+    holders: [{ personId: 11, unitNumber: '310' }, { personId: 12, unitNumber: '310' }],
+  });
+  await watcher.runLoadLifecycleCheck({ now: NOW, deps });
+  assert.match(calls.notified[0].title, /^Unit 310:/);
+});
+
 test('the same pickup and delivery address is said ONCE, as an address problem', async () => {
   const { deps, calls } = harness({
     orders: [{ ...ORDER, deliveryLat: SHIPPER.lat, deliveryLng: SHIPPER.lng, status: 'delivered' }],

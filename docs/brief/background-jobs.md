@@ -223,7 +223,8 @@ caller:
   without making it somebody's question.
 
   **"Loaded while still at the shipper" waits three hours** (`loadingGraceMinutes`,
-  measured from `first_at_pickup_at`). Dispatch marks a load loaded at
+  measured from when the CURRENT stay at the pickup began — the `at_pickup`
+  phase start, not `first_at_pickup_at`, which keeps the first visit forever). Dispatch marks a load loaded at
   check-in and loading takes hours, so before that it is the signal
   `loading_at_the_shipper`, not a disagreement. **A load whose pickup and
   delivery are the same place in Datatruck** (within the 3-mile stop circle) is

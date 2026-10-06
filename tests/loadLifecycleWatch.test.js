@@ -249,10 +249,11 @@ test('a disagreement is ALWAYS a question, however fresh', async () => {
   const { deps, calls } = harness({
     orders: [{ ...ORDER, status: 'in_transit' }],
     position: { ...SHIPPER, speedMph: 0, at: at(5) },
-    // The phase is two minutes old; the truck has stood at the shipper four
-    // hours, which is longer than a load takes.
+    // Four hours at the shipper: longer than a load takes, far short of the
+    // twelve that makes an unreadable load "stuck" — a disagreement is asked
+    // about well before that.
     stored: {
-      orderId: 'ORD-1', phase: 'at_pickup', phaseSince: at(2), wasAtPickup: true, firstAtPickupAt: at(240),
+      orderId: 'ORD-1', phase: 'at_pickup', phaseSince: at(240), wasAtPickup: true, firstAtPickupAt: at(240),
     },
   });
   const summary = await watcher.runLoadLifecycleCheck({ now: NOW, deps });

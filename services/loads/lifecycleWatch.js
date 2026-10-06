@@ -89,7 +89,9 @@ async function onlyHolderOf(deps, unit) {
 }
 
 /** One load, one verdict, one row written. */
-async function checkOneLoad(order, { fleets, groupsByUnit, nowIso, deps }) {
+async function checkOneLoad(order, {
+  fleets, groupsByUnit, ambiguousUnits = new Set(), nowIso, deps,
+}) {
   const load = deps.loads.extractLoadFromOrder(order);
   if (!load || !load.orderId) return null;
 
@@ -128,9 +130,13 @@ async function checkOneLoad(order, { fleets, groupsByUnit, nowIso, deps }) {
         phase: remembered.phase,
         wasAtPickup: remembered.wasAtPickup,
         wasAtDelivery: remembered.wasAtDelivery,
-        // When the truck was first witnessed at the shipper — what tells a
-        // truck being loaded from one that has stood there for hours.
-        atPickupSince: remembered.firstAtPickupAt || null,
+        // When THIS stay at the shipper began — what tells a truck being
+        // loaded from one that has stood there for hours. The phase start,
+        // not `first_at_pickup_at`: that is the first visit ever and is kept
+        // forever, so a truck that left and came back would read as having
+        // stood there since its first visit. Leaving changes the phase, and
+        // returning starts a new `phase_since`.
+        atPickupSince: remembered.phase === PHASES.AT_PICKUP ? (remembered.phaseSince || null) : null,
       }
       : {},
   });
@@ -166,7 +172,14 @@ async function checkOneLoad(order, { fleets, groupsByUnit, nowIso, deps }) {
 
   return {
     state, verdict, remembered,
-    driverName: group ? (extractDriverNameFromGroupTitle(group.group_name) || null) : null,
+    // A NAME ONLY WHEN THE UNIT IS UNAMBIGUOUS. `groupsByUnit` keeps the first
+    // of several groups sharing a number, which is fine for a position lookup
+    // and wrong for saying WHO: naming that group's driver would pin the
+    // disagreement on somebody who may not be carrying this load. The same
+    // rule the person attribution above follows.
+    driverName: group && holder.person && !ambiguousUnits.has(String(unit))
+      ? (extractDriverNameFromGroupTitle(group.group_name) || null)
+      : null,
     phaseChanged: remembered ? remembered.phase !== verdict.phase : true,
   };
 }
@@ -204,9 +217,11 @@ async function runLoadLifecycleCheck({ now = Date.now(), deps = defaultDeps() } 
     // Unit → group, so a load can name the driver carrying it. Built ONCE per
     // pass and matched locally: a per-load lookup would be one query per order.
     const groupsByUnit = new Map();
+    const ambiguousUnits = new Set();
     const groups = await deps.groups.getDriverGroupsByActiveFilter('active').catch(() => []);
     for (const g of groups) {
       const unit = extractUnitFromGroupName(g.group_name);
+      if (unit && groupsByUnit.has(String(unit))) ambiguousUnits.add(String(unit));
       // First one wins. A unit on two active groups is a real condition in this
       // fleet — `identity.duplicate_unit` already files it for a person — and
       // picking the later row here would make a load's driver depend on the
@@ -217,7 +232,9 @@ async function runLoadLifecycleCheck({ now = Date.now(), deps = defaultDeps() } 
     const keep = [];
     for (const order of orders) {
       // eslint-disable-next-line no-await-in-loop
-      const out = await checkOneLoad(order, { fleets, groupsByUnit, nowIso, deps }).catch((err) => {
+      const out = await checkOneLoad(order, {
+        fleets, groupsByUnit, ambiguousUnits, nowIso, deps,
+      }).catch((err) => {
         console.warn('[LOADS] could not read one order:', err.message);
         return null;
       });
