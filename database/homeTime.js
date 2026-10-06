@@ -67,6 +67,8 @@ module.exports = {
   closeHomeStay: roadHistory.closeHomeStay,
   listCyclesForEfficiency: roadHistory.listCyclesForEfficiency,
   listUnpostedRoadBonuses: roadHistory.listUnpostedRoadBonuses,
+  listRoadBonusesAwaitingDecision: roadHistory.listRoadBonusesAwaitingDecision,
+  setRoadBonusDecision: roadHistory.setRoadBonusDecision,
   claimRoadBonusPost: roadHistory.claimRoadBonusPost,
   unclaimRoadBonusPost: roadHistory.unclaimRoadBonusPost,
   listRoadHistory: roadHistory.listRoadHistory,

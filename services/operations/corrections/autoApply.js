@@ -157,6 +157,10 @@ function payloadFor(finding) {
       ? { groupId: change.groupId, personId: change.personId, telegramUserId: change.telegramUserId }
       : null;
   }
+  if (finding.checkKey === 'home_time.road_bonus_review') {
+    const id = change.roadHistoryId || finding.evidence?.roadHistoryId;
+    return id ? { roadHistoryId: id } : null;
+  }
   if (finding.checkKey === 'identity.non_driver_typed_as_driver') {
     return change.groupId || finding.evidence?.groupId
       ? { groupId: change.groupId || finding.evidence.groupId, toType: 'company' }

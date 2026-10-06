@@ -40,6 +40,7 @@ const { abandonExhaustedInternalAlerts } = require('./alertActions');
 const { ensurePerson, syncUnit } = require('./identityActions');
 const { linkBoardRowToPerson } = require('./boardActions');
 const { setGroupType } = require('./groupActions');
+const { releaseRoadBonus } = require('./roadBonusActions');
 const { linkTelegramIdentity } = require('./telegramActions');
 const { carryRoadClock } = require('./homeTimeActions');
 const { markReturnedToRoad } = require('./returnToRoadActions');
@@ -312,6 +313,7 @@ const ACTIONS = new Map([
   [abandonExhaustedInternalAlerts.key, abandonExhaustedInternalAlerts],
   [linkBoardRowToPerson.key, linkBoardRowToPerson],
   [setGroupType.key, setGroupType],
+  [releaseRoadBonus.key, releaseRoadBonus],
   [linkTelegramIdentity.key, linkTelegramIdentity],
   [ensurePerson.key, ensurePerson],
   [syncUnit.key, syncUnit],
@@ -334,6 +336,7 @@ const CHECK_TO_ACTION = new Map([
   ['home_time.clock_reset_on_group_change', carryRoadClock.key],
   ['home_time.returned_to_road', markReturnedToRoad.key],
   ['identity.non_driver_typed_as_driver', setGroupType.key],
+  ['home_time.road_bonus_review', releaseRoadBonus.key],
   ['identity.telegram_link', linkTelegramIdentity.key],
   ['identity.telegram_member_unnamed', linkTelegramIdentity.key],
   ['board.person_link', linkBoardRowToPerson.key],

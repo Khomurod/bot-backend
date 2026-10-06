@@ -57,6 +57,37 @@ were written after something went wrong.
   down; `available: false` rather than a 5xx when the summary itself fails.
   `tests/healthOperationsBlock.test.js`.
 
+### The road bonus is decided after the home stay (owner's rule, 2026-10-06)
+
+The extra-week bonus is **recorded** when the driver gets home and **decided**
+only when they go back on the road (`lib/homeTime/roadBonusDecision.js`,
+applied by `roadBonusNotifierService` every 10 minutes):
+
+1. **Still home** → `bonus_decision = 'waiting_home_stay'`; nothing is posted.
+2. **Home longer than `home_allowance_days` (4)** → `forfeited`: no bonus at
+   all, and one 🚫 note in the Road Bonus group says why. Whole days, the same
+   count `home_days` and the efficiency report use.
+3. **Trip longer than six weeks** → `needs_review`: nothing is posted until a
+   person approves `home_time.road_bonus_review` (Needs Attention, or Yes in
+   Telegram). Approving applies `home_time.release_road_bonus`; dismissing pays
+   nothing. Production showed a 117-day, $1,200 trip from a road clock nobody
+   reset.
+4. Otherwise `released`, and the 🚚 summary is posted.
+
+Rule 2 beats rule 3. A home stay that closed without a measured length goes to a
+person. A NULL decision is a leg from before this existed that was already
+posted; one that was NOT yet posted was moved to `waiting_home_stay` by
+migration 0064. **Editing a leg's days or amount re-opens its decision** until
+its summary is posted (`updateRoadHistory`), so a corrected clock is judged
+again. **A decided leg is never re-checked for driver type**: its bonus was
+computed with the type at the time, and the chat may have been reassigned
+during the home stay.
+
+**The baseline must never stamp `bonus_posted_at`.** It used to carry a
+"one-time" backfill that, because the baseline runs on every boot, marked every
+unposted leg as posted on every restart. Removed with migration 0064 — a leg
+now waits days for its decision, and a deploy would have lost it.
+
 ### The home-time cycle invariant
 
 **A change of state must open or close a cycle.** `driver_road_history` is the

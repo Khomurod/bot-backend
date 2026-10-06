@@ -22,7 +22,7 @@ const { query } = require('../pool');
 async function insertRoadHistory({
   groupId, driverName, unitNumber, roadStartedAt, homeArrivedAt,
   daysOnRoad, exceededWeeks, bonusUsd, bonusPostedAt = null,
-  openedBy = null, openedEvidence = null,
+  openedBy = null, openedEvidence = null, bonusDecision = null,
 }) {
   const res = await query(
     // person_id is the group's OPEN association at write time (migration 0026):
@@ -31,14 +31,14 @@ async function insertRoadHistory({
     `INSERT INTO driver_road_history
        (group_id, driver_name, unit_number, road_started_at, home_arrived_at,
         days_on_road, exceeded_weeks, bonus_usd, bonus_posted_at, person_id,
-        opened_by, opened_evidence)
+        opened_by, opened_evidence, bonus_decision)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9,
              (SELECT person_id FROM driver_person_groups WHERE group_id = $1 AND ended_at IS NULL LIMIT 1),
-             $10, $11)
+             $10, $11, $12)
      RETURNING *`,
     [groupId, driverName || null, unitNumber || null, roadStartedAt, homeArrivedAt,
       daysOnRoad, exceededWeeks, bonusUsd, bonusPostedAt,
-      openedBy || null, openedEvidence || null]
+      openedBy || null, openedEvidence || null, bonusDecision || null]
   );
   return res.rows[0];
 }
@@ -156,6 +156,11 @@ async function listUnpostedRoadBonuses({ limit = 100 } = {}) {
      JOIN groups g ON g.id = h.group_id
      LEFT JOIN driver_profiles dp ON dp.group_id = h.group_id
      WHERE h.bonus_usd > 0 AND h.bonus_posted_at IS NULL
+       -- Only a DECIDED leg: released (the summary) or forfeited (one note
+       -- saying why there is no bonus). A leg still waiting on the home stay or
+       -- held for a person is never posted; a NULL decision is a leg from
+       -- before decisions existed, posted or claimed at its transition.
+       AND h.bonus_decision IN ('released', 'forfeited')
      ORDER BY h.home_arrived_at ASC
      LIMIT $1`,
     [limit]
@@ -173,9 +178,48 @@ async function claimRoadBonusPost(id) {
   const res = await query(
     `UPDATE driver_road_history
        SET bonus_posted_at = NOW()
-     WHERE id = $1 AND bonus_posted_at IS NULL
+     WHERE id = $1 AND bonus_posted_at IS NULL AND bonus_decision IN ('released', 'forfeited')
      RETURNING *`,
     [id]
+  );
+  return res.rows[0] || null;
+}
+
+/**
+ * Legs whose home stay has ended and whose bonus is still waiting on it — the
+ * ones the poller can now decide.
+ */
+async function listRoadBonusesAwaitingDecision({ limit = 100 } = {}) {
+  const res = await query(
+    `SELECT h.*, g.group_name
+       FROM driver_road_history h
+       JOIN groups g ON g.id = h.group_id
+      WHERE h.bonus_decision = 'waiting_home_stay'
+        AND h.bonus_posted_at IS NULL
+        AND h.return_to_road_at IS NOT NULL
+      ORDER BY h.id ASC
+      LIMIT $1`,
+    [limit]
+  );
+  return res.rows;
+}
+
+/**
+ * Move a leg's bonus decision, only from the state the caller read.
+ *
+ * Guarded on `from`, so two passes deciding the same leg cannot both win, and
+ * a person who already approved a held leg is never overwritten by a pass that
+ * read it a moment earlier. Returns the row when THIS caller moved it.
+ */
+async function setRoadBonusDecision(id, { from, to, reason = null }) {
+  const res = await query(
+    `UPDATE driver_road_history
+        SET bonus_decision = $3,
+            bonus_decision_reason = $4,
+            bonus_decided_at = NOW()
+      WHERE id = $1 AND bonus_decision = $2 AND bonus_posted_at IS NULL
+      RETURNING *`,
+    [id, from, to, reason]
   );
   return res.rows[0] || null;
 }
@@ -231,10 +275,21 @@ async function getRoadHistoryById(id) {
 async function updateRoadHistory(id, {
   roadStartedAt, homeArrivedAt, daysOnRoad, exceededWeeks, bonusUsd,
 }) {
+  // AN EDIT RE-OPENS THE BONUS DECISION. The days and the amount are what the
+  // decision was made from, so a leg released at 35 days and corrected to 117
+  // must not be paid without the review the longer trip requires — nor a held
+  // 117-day leg stay held once its clock is fixed. A leg whose summary already
+  // went out is history and keeps its decision.
   const res = await query(
     `UPDATE driver_road_history
        SET road_started_at = $2, home_arrived_at = $3,
-           days_on_road = $4, exceeded_weeks = $5, bonus_usd = $6
+           days_on_road = $4, exceeded_weeks = $5, bonus_usd = $6::numeric,
+           bonus_decision = CASE WHEN bonus_posted_at IS NULL AND $6::numeric > 0
+                                 THEN 'waiting_home_stay' ELSE bonus_decision END,
+           bonus_decision_reason = CASE WHEN bonus_posted_at IS NULL AND $6::numeric > 0
+                                        THEN NULL ELSE bonus_decision_reason END,
+           bonus_decided_at = CASE WHEN bonus_posted_at IS NULL AND $6::numeric > 0
+                                   THEN NULL ELSE bonus_decided_at END
      WHERE id = $1 RETURNING *`,
     [id, roadStartedAt, homeArrivedAt, daysOnRoad, exceededWeeks, bonusUsd]
   );
@@ -253,6 +308,8 @@ module.exports = {
   closeHomeStay,
   listCyclesForEfficiency,
   listUnpostedRoadBonuses,
+  listRoadBonusesAwaitingDecision,
+  setRoadBonusDecision,
   claimRoadBonusPost,
   unclaimRoadBonusPost,
   listRoadHistory,

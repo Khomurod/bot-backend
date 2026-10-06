@@ -92,6 +92,20 @@ async function loadSnapshot(db = defaultDb) {
       console.warn('[SNAPSHOT] could not read engineering requests:', err.message);
       return null;
     });
+  // ROAD BONUSES HELD FOR A PERSON. Null on failure, for the same reason as
+  // above: `checks/roadBonus.js` throws on it, so an outage never resolves a
+  // held bonus off Needs Attention.
+  const roadBonusReviews = await db.query(
+    `SELECT id, group_id, driver_name, unit_number, days_on_road, exceeded_weeks,
+            home_days, bonus_usd, road_started_at, home_arrived_at, bonus_decision_reason
+       FROM driver_road_history
+      WHERE bonus_decision = 'needs_review' AND bonus_posted_at IS NULL
+      ORDER BY id
+      LIMIT 500`
+  ).then((r) => r.rows).catch((err) => {
+    console.warn('[SNAPSHOT] could not read held road bonuses:', err.message);
+    return null;
+  });
 
   return {
     now: new Date(),
@@ -109,6 +123,7 @@ async function loadSnapshot(db = defaultDb) {
     },
     boardRows,
     engineeringRequests,
+    roadBonusReviews,
     ...layer,
   };
 }

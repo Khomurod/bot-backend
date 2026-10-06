@@ -144,12 +144,28 @@ test('company driver home after over-allowance posts NOTHING to the employee gro
   assert.equal(sends.filter((s) => s.chatId === EMPLOYEE_GROUP_ID).length, 0);
   assert.ok(!sends.some((s) => /is home!/.test(s.text || '')), 'no "is home!" message anywhere');
 
-  // The single extra-week bonus summary is still delegated to the road bonus
-  // notifier, for the configured Extra Week / Road Bonus group — unchanged.
-  assert.equal(roadBonusPosts.length, 1);
-  assert.equal(roadBonusPosts[0].historyRow.bonusUsd, 200);
-  assert.equal(roadBonusPosts[0].historyRow.driver_type, 'company_driver');
-  assert.equal(roadBonusPosts[0].opts.allowanceWeeks, 4);
+  // AND NO BONUS SUMMARY YET (owner's rule, 2026-10-06): the bonus is decided
+  // after the home stay — home longer than the allowance forfeits it — so the
+  // leg is born waiting, and the road-bonus poller decides and posts it once
+  // the driver is back on the road.
+  assert.equal(roadBonusPosts.length, 0, 'nothing is posted at the moment the driver gets home');
+  assert.equal(inserts[0].bonusDecision, 'waiting_home_stay');
+});
+
+test('a silent import records the leg already claimed and never waiting for a decision', async () => {
+  const { service, telegram, inserts } = loadService({
+    profile: { first_name: 'Company', last_name: 'Driver', unit_number: '2614', driver_type: 'company_driver' },
+    currentStatus: { state: 'road', state_since: '2026-01-01T00:00:00Z' },
+  });
+  await service.applyStateTransition(
+    telegram,
+    { id: 8, telegram_group_id: '-1008', group_type: 'driver', group_name: 'WENZE UNIT # 2614 COMPANY DRIVER (COMPANY DRIVER)' },
+    { newState: 'home', eventAt: '2026-02-12T00:00:00Z', announce: false, statusText: 'import' }
+  );
+  assert.equal(inserts.length, 1);
+  assert.equal(inserts[0].bonusUsd, 200);
+  assert.equal(inserts[0].bonusDecision, null);
+  assert.ok(inserts[0].bonusPostedAt, 'born claimed, so it is never posted');
 });
 
 test('company driver home WITHIN allowance posts nothing', async () => {

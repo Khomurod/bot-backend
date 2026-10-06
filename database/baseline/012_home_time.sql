@@ -90,13 +90,14 @@ ALTER TABLE driver_road_history
 ALTER TABLE driver_road_history
   ADD COLUMN IF NOT EXISTS linked_request_id INTEGER NULL;
 
--- Backfill: mark every EXISTING completed leg as already-posted so switching to
--- the road→home summary flow does not re-announce historical trips. Only legs
--- completed AFTER this migration (bonus_posted_at left NULL by default) will be
--- posted once. Runs once — subsequent rows are inserted with NULL and posted.
-UPDATE driver_road_history
-   SET bonus_posted_at = COALESCE(recorded_at, NOW())
- WHERE bonus_posted_at IS NULL;
+-- A one-time backfill stood here: "mark every existing completed leg as
+-- already posted". Its comment said it ran once; it did not. The baseline is
+-- re-applied verbatim on EVERY boot, so every restart stamped every
+-- not-yet-posted leg as posted — silently, whenever Telegram had been down at
+-- the transition or the bonus group was not yet configured. Since 2026-10-06 a
+-- leg waits days for its home stay before its bonus is decided (migration
+-- 0064), and a deploy in between would have lost every one of them. Removed:
+-- the historical rows it was written for were stamped long ago.
 
 CREATE INDEX IF NOT EXISTS idx_driver_road_history_group
   ON driver_road_history(group_id, home_arrived_at DESC);
