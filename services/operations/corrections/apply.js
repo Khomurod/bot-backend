@@ -75,7 +75,8 @@ async function applyCorrection({
     // subject and was refused by `operational_corrections_subject_not_blank`
     // at the very end of its own transaction.
     const subjectId = String(
-      payload.cycleId ?? payload.groupId ?? payload.rowKey ?? finding?.subjectId ?? ''
+      payload.cycleId ?? payload.groupId ?? payload.rowKey ?? payload.roadHistoryId
+        ?? finding?.subjectId ?? ''
     );
     const inserted = await client.query(
       `INSERT INTO operational_corrections

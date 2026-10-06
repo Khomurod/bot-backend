@@ -1,9 +1,17 @@
 /**
  * Road Bonus Notifier service.
  *
- * Posts the extra-week bonus as a SINGLE SUMMARY when a driver's road leg ends —
- * i.e. when their status transitions road → home — NOT week-by-week while they
- * are still out. While a driver stays on the road nothing is posted; the extra
+ * DECIDED AFTER THE HOME STAY (owner's rule, 2026-10-06). A leg's bonus is
+ * recorded when the driver gets home and decided only when they go back on the
+ * road: home longer than the allowance → no bonus; a trip longer than six weeks
+ * → held for a person (Needs Attention / Telegram) before anything is posted;
+ * otherwise released. `lib/homeTime/roadBonusDecision.js` is the rule; this
+ * pass applies it to every leg whose home stay has ended, then posts what was
+ * released — and, for a forfeited leg, ONE short note saying why, so whoever
+ * pays bonuses is not left wondering where it went.
+ *
+ * Posts the extra-week bonus as a SINGLE SUMMARY per completed leg, NOT
+ * week-by-week while the driver is still out. While a driver stays on the road nothing is posted; the extra
  * weeks are simply accumulated. The moment they come home, one message goes to
  * the configured "Extra Week / Road Bonus" group stating how many FULL extra
  * weeks (beyond the road allowance) they completed and the total bonus owed.
@@ -15,12 +23,9 @@
  * driver_road_history and carries a bonus_posted_at stamp. postCompletedRoadLeg
  * atomically claims a leg (stamps bonus_posted_at only if still NULL) before
  * sending, so the same completed leg is never announced twice — across restarts,
- * repeated syncs or repeated status updates. The leg summary is posted:
- *   1. immediately at the road → home transition (homeTimeService calls
- *      postCompletedRoadLeg), and
- *   2. as a safety net by this poller, which sweeps any qualifying legs still
- *      un-posted (e.g. Telegram was down at the transition, or the group ID was
- *      only configured afterwards).
+ * repeated syncs or repeated status updates. ONLY THIS POLLER posts: the
+ * transition records the leg as waiting, and a decided leg that cannot be sent
+ * (Telegram down, no group configured yet) is retried on the next pass.
  *
  * Destination is admin-configured (Settings → Telegram Groups). With no
  * configured group we do NOT fall back to any old hardcoded default — we skip
@@ -35,6 +40,7 @@ const {
   homeTimePolicyApplies, DEFAULT_ROAD_ALLOWANCE_WEEKS, DAYS_PER_WEEK,
 } = require('./homeTimeConstants');
 const { inferDriverType } = require('../lib/drivers/driverProfileParse');
+const { decideRoadBonus, DECISIONS } = require('../lib/homeTime/roadBonusDecision');
 const { withRunRecord, noteHeartbeat } = require('./operations/runLedger');
 
 // Safety-net sweep cadence. The primary post happens at the transition; this
@@ -72,15 +78,21 @@ function driverTypeFromRow(row) {
  */
 function buildRoadLegSummary({
   driverName, unitNumber, exceededWeeks, allowanceWeeks, daysOnRoad, bonusUsd,
+  homeDays = null, forfeitedReason = null,
 }) {
   const who = `${escapeHtml(driverName)}${unitNumber ? ` (Unit ${escapeHtml(unitNumber)})` : ''}`;
   const weeksOnRoad = Math.floor(Number(daysOnRoad) / DAYS_PER_WEEK);
   const extra = Number(exceededWeeks) || 0;
   const extraLabel = extra === 1 ? 'extra week' : 'extra weeks';
   const bonus = Number(bonusUsd) || 0;
-  return `🏠🚚 <b>${who} is home.</b>\n`
-    + `Completed <b>${weeksOnRoad} week(s)</b> on the road (${daysOnRoad} days) — `
-    + `<b>${extra} ${extraLabel}</b> beyond the ${allowanceWeeks}-week allowance.\n`
+  const trip = `Completed <b>${weeksOnRoad} week(s)</b> on the road (${daysOnRoad} days) — `
+    + `<b>${extra} ${extraLabel}</b> beyond the ${allowanceWeeks}-week allowance.`;
+  if (forfeitedReason) {
+    return `🚫 <b>${who} — no road bonus.</b>\n${trip}\n`
+      + `The $${bonus.toFixed(0)} is not paid: ${escapeHtml(forfeitedReason)}.`;
+  }
+  const home = homeDays == null ? '' : `\nHome ${homeDays} day(s), within the allowance.`;
+  return `🚚 <b>${who} — road bonus.</b>\n${trip}${home}\n`
     + `Needs a <b>total bonus of $${bonus.toFixed(0)}</b> for the extra week(s) on the road.`;
 }
 
@@ -121,6 +133,10 @@ async function postCompletedRoadLeg(telegram, historyRow, { allowanceWeeks } = {
     allowanceWeeks: allowanceWeeks == null ? DEFAULT_ROAD_ALLOWANCE_WEEKS : allowanceWeeks,
     daysOnRoad: claimed.days_on_road,
     bonusUsd: claimed.bonus_usd,
+    homeDays: claimed.home_days ?? null,
+    forfeitedReason: claimed.bonus_decision === DECISIONS.FORFEITED
+      ? (claimed.bonus_decision_reason || 'the home stay was longer than the allowance')
+      : null,
   });
 
   try {
@@ -158,6 +174,28 @@ async function runRoadBonusCheck(telegram) {
   }
   const allowanceWeeks = Number(settings.road_allowance_weeks);
 
+  // FIRST, DECIDE every leg whose home stay has now ended. Guarded on the state
+  // read, so a second pass, or a person approving a held leg in the meantime,
+  // is never overwritten.
+  const decided = { released: 0, needsReview: 0, forfeited: 0 };
+  const waiting = await ht.listRoadBonusesAwaitingDecision();
+  for (const leg of waiting) {
+    const verdict = decideRoadBonus(leg, { homeAllowanceDays: settings.home_allowance_days });
+    if (!verdict || verdict.decision === DECISIONS.WAITING) continue;
+    // eslint-disable-next-line no-await-in-loop
+    const moved = await ht.setRoadBonusDecision(leg.id, {
+      from: DECISIONS.WAITING, to: verdict.decision, reason: verdict.reason,
+    }).catch((err) => {
+      console.error(`[ROAD-BONUS] Could not decide leg #${leg.id}:`, err.message);
+      return null;
+    });
+    if (!moved) continue;
+    if (verdict.decision === DECISIONS.RELEASED) decided.released += 1;
+    else if (verdict.decision === DECISIONS.REVIEW) decided.needsReview += 1;
+    else if (verdict.decision === DECISIONS.FORFEITED) decided.forfeited += 1;
+    console.log(`[ROAD-BONUS] Leg #${leg.id}: ${verdict.decision}${verdict.reason ? ` — ${verdict.reason}` : ''}`);
+  }
+
   const rows = await ht.listUnpostedRoadBonuses();
   let notificationsSent = 0;
   let errors = 0;
@@ -172,7 +210,7 @@ async function runRoadBonusCheck(telegram) {
     }
   }
   return {
-    enabled: true, legs: rows.length, notificationsSent, errors,
+    enabled: true, legs: rows.length, notificationsSent, errors, decided,
     // EVERY LEG FAILING is the pass not having run. One failed post among ten
     // is a leg to look at; ten out of ten is Telegram or the database refusing,
     // and `errors` — plural, and a NUMBER here — reaches the ledger through

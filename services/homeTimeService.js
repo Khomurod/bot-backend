@@ -27,7 +27,6 @@ const {
   parseDriverStatus, computeRoadBonus, wholeDaysBetween,
 } = require('./homeTimeConstants');
 const { inferDriverType } = require('../lib/drivers/driverProfileParse');
-const roadBonus = require('./roadBonusNotifierService');
 const { noticeDriverIsHome, noticeDriverBackOnRoad } = require('./homeTime/managerNotices');
 
 /**
@@ -184,7 +183,7 @@ async function applyStateTransition(
     if (current.state === 'road' && newState === 'home') {
       // Road trip just finished — close it and compute the bonus.
       const { driverName, unitNumber, driverType } = await resolveDriverLabel(group);
-      const { daysOnRoad, exceededWeeks, bonusUsd, overLimit } = computeRoadBonus(
+      const { daysOnRoad, exceededWeeks, bonusUsd } = computeRoadBonus(
         current.state_since,
         eventAt,
         {
@@ -228,25 +227,13 @@ async function applyStateTransition(
         // quarter fires stale bonuses into a live group an hour later. One
         // statement has no such window.
         bonusPostedAt: announce ? null : new Date().toISOString(),
+        // NOT POSTED NOW. The bonus is decided after the home stay — home
+        // longer than the allowance forfeits it, and a trip over six weeks is
+        // held for a person (owner's rule, 2026-10-06) — so the road-bonus
+        // poller decides and posts it once the driver is back on the road.
+        // A silent import's leg is born claimed above and never decided.
+        bonusDecision: bonusUsd > 0 && announce ? 'waiting_home_stay' : null,
       });
-      // When a COMPANY driver went over the road allowance, post ONE extra-week
-      // bonus summary to the configured Extra Week / Road Bonus group (the total
-      // extra weeks + total bonus for this completed leg). This replaces the old
-      // week-by-week posting: nothing is posted while the driver is still out.
-      // Idempotent + restart-safe via the leg's bonus_posted_at claim; the
-      // roadBonusNotifierService poller re-posts if this send fails. `overLimit`
-      // is gated on company_driver, so owner-operators never trigger a post.
-      if (overLimit && announce) {
-        try {
-          await roadBonus.postCompletedRoadLeg(
-            telegram,
-            { ...historyRow, driver_type: driverType, group_name: group.group_name },
-            { allowanceWeeks: settings.road_allowance_weeks }
-          );
-        } catch (err) {
-          console.error('[HOME-TIME] Road bonus summary post failed (poller will retry):', err.message);
-        }
-      }
       console.log(`[HOME-TIME] ${driverName} (${driverType}) home after ${daysOnRoad}d (${exceededWeeks} extra wk, $${bonusUsd} recorded)`);
       // The managers are told the driver IS HOME — a different event from the
       // earlier "wants to go home", and keyed on the cycle this arrival opened

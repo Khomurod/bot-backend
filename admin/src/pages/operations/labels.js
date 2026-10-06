@@ -57,6 +57,7 @@ const CHECK_LABELS = {
   'identity.bot_left_active_group': 'Bot removed from a group still marked active',
   'identity.silent_active_group': 'Active group with no messages for months',
   'identity.non_driver_typed_as_driver': 'Admin chat typed as a driver group',
+  'home_time.road_bonus_review': 'Road bonus held — trip longer than six weeks',
   'identity.group_without_person': 'Driver group with no permanent identity yet',
   'identity.person_on_two_active_groups': 'One person on two active groups',
   'identity.unit_contested': 'Profile claims a truck recorded to someone else',

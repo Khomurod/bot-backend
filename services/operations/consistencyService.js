@@ -26,6 +26,7 @@ const board = require('./checks/board');
 const boardLink = require('./checks/boardLink');
 const telegramIdentity = require('./checks/telegramIdentity');
 const engineering = require('./checks/engineering');
+const roadBonus = require('./checks/roadBonus');
 const { runAutoCorrections } = require('./corrections/autoApply');
 const { withRunRecord } = require('./runLedger');
 const { loadSnapshot } = require('./snapshot/loaders');
@@ -43,6 +44,7 @@ const CHECK_MODULES = [
   { name: 'boardLink', keys: boardLink.CHECK_KEYS, run: boardLink.runBoardLinkChecks },
   { name: 'telegramIdentity', keys: telegramIdentity.CHECK_KEYS, run: telegramIdentity.runTelegramIdentityChecks },
   { name: 'engineering', keys: engineering.CHECK_KEYS, run: engineering.runEngineeringChecks },
+  { name: 'roadBonus', keys: roadBonus.CHECK_KEYS, run: roadBonus.runRoadBonusChecks },
 ];
 
 let serviceTimer = null;
