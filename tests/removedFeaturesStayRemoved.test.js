@@ -205,3 +205,18 @@ test('the whole index.js module graph loads with no application env', () => {
     );
   }
 });
+
+test('the 🏠🎉 "<driver> is home!" employee-group post stays removed', () => {
+  // Removed at the owner's request, 2026-10-06 (docs/ARCHIVED_FEATURES.md).
+  // Only that one message: the trip, its bonus, the road-bonus summary and the
+  // managers' "Driver Is Home" notice all remain.
+  const self = path.join(__dirname, 'removedFeaturesStayRemoved.test.js');
+  const offenders = sourceFiles()
+    .filter((file) => !file.startsWith(path.join(ROOT, 'tests')) && file !== self)
+    .filter((file) => {
+      const text = fs.readFileSync(file, 'utf8');
+      return /postHomecomingRecognition|keeping us rolling|is home!<\/b>/.test(text);
+    })
+    .map((file) => path.relative(ROOT, file));
+  assert.deepEqual(offenders, []);
+});

@@ -13,8 +13,9 @@
  *     to the configured Extra Week / Road Bonus group when a COMPANY driver came
  *     home over the allowance (via roadBonusNotifierService.postCompletedRoadLeg,
  *     idempotent + restart-safe; a background poller re-posts if the send fails)
- *   - post a recognition-only (no dollar amounts) message to the EMPLOYEE group
- *     for the same case — for morale visibility, not accounting.
+ *
+ * The 🏠🎉 "<driver> is home!" recognition post to the EMPLOYEE group was
+ * removed at the owner's request (2026-10-06) — see docs/ARCHIVED_FEATURES.md.
  *
  * No timers or scheduler here: the settings row is seeded by schema.sql, so
  * there is no startup step either.
@@ -22,10 +23,8 @@
 const { DateTime } = require('luxon');
 const db = require('../database/db');
 const ht = require('../database/homeTime');
-const config = require('../config/config');
-const { safeSend } = require('./telegramHtml');
 const {
-  parseDriverStatus, computeRoadBonus, wholeDaysBetween, DAYS_PER_WEEK,
+  parseDriverStatus, computeRoadBonus, wholeDaysBetween,
 } = require('./homeTimeConstants');
 const { inferDriverType } = require('../lib/drivers/driverProfileParse');
 const roadBonus = require('./roadBonusNotifierService');
@@ -44,13 +43,6 @@ async function tellManagers(what, run) {
     console.warn(`[HOME-TIME] manager notice (${what}) failed:`, err.message);
     return null;
   }
-}
-
-function escapeHtml(text) {
-  return String(text || '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
 }
 
 /** Timestamp the status message was sent (Telegram seconds → ISO), or now. */
@@ -78,33 +70,6 @@ async function resolveDriverLabel(group) {
       unitNumber: null,
       driverType: inferDriverType(group.group_name || ''),
     };
-  }
-}
-
-/**
- * Recognition-only homecoming post to the EMPLOYEE group. No dollar amounts —
- * this is morale visibility, not accounting. Only sent when a driver came home
- * after exceeding the road allowance. Non-fatal on failure.
- */
-async function postHomecomingRecognition(telegram, {
-  driverName, unitNumber, daysOnRoad,
-}) {
-  const employeeGroupId = config.employeeGroupId;
-  if (!employeeGroupId) return;
-  const who = `${escapeHtml(driverName)}${unitNumber ? ` (Unit ${escapeHtml(unitNumber)})` : ''}`;
-  const weeksOnRoad = Math.floor(Number(daysOnRoad) / DAYS_PER_WEEK);
-  const weekLabel = weeksOnRoad === 1 ? 'week' : 'weeks';
-  const text = `🏠🎉 <b>${who} is home!</b>\n`
-    + `Off the road after <b>${weeksOnRoad} ${weekLabel}</b> (${daysOnRoad} days) of keeping us rolling.\n`
-    + 'Thank you for the dedication out there — welcome back! 👏';
-  try {
-    await safeSend(() => telegram.sendMessage(employeeGroupId, text, {
-      parse_mode: 'HTML',
-      disable_web_page_preview: true,
-    }));
-  } catch (err) {
-    // Non-fatal: the trip is already saved and visible in the admin panel.
-    console.error('[HOME-TIME] Failed to post homecoming recognition:', err.message);
   }
 }
 
@@ -142,8 +107,8 @@ async function handleDriverGroupStatus(telegram, group, message) {
 /**
  * Apply a home/road state change (from the deterministic status parser OR the AI
  * intent classifier) to a driver group: run the home/road state machine, record a
- * completed road leg and its bonus on road→home, and post the extra-week summary +
- * homecoming recognition when a company driver came home over the allowance.
+ * completed road leg and its bonus on road→home, and post the extra-week summary
+ * when a company driver came home over the allowance.
  *
  * Shared by handleDriverGroupStatus (exact "Status:" line) and the AI-detected
  * status path (non-exact phrasing like "uyda" / "домой приехал"). Never throws.
@@ -281,8 +246,6 @@ async function applyStateTransition(
         } catch (err) {
           console.error('[HOME-TIME] Road bonus summary post failed (poller will retry):', err.message);
         }
-        // Recognition-only morale post to the EMPLOYEE group (no dollar amounts).
-        await postHomecomingRecognition(telegram, { driverName, unitNumber, daysOnRoad });
       }
       console.log(`[HOME-TIME] ${driverName} (${driverType}) home after ${daysOnRoad}d (${exceededWeeks} extra wk, $${bonusUsd} recorded)`);
       // The managers are told the driver IS HOME — a different event from the

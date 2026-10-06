@@ -173,10 +173,11 @@ not `facebookCrypto` — the poller holds none of this app's secrets.
 
 ### Other relationships worth knowing before you change something
 
-- **Home time → road bonus → employee recognition.** A single road→home
-  transition writes `driver_road_history`, may post a road-bonus summary to the
-  bonus group, and posts a recognition-only (no dollar amounts) message to the
-  employee group. Changing the state machine touches all three.
+- **Home time → road bonus.** A single road→home transition writes
+  `driver_road_history` and may post a road-bonus summary to the bonus group.
+  Changing the state machine touches both. (The 🏠🎉 "is home!" recognition post
+  to the employee group was removed on 2026-10-06 — see
+  `docs/ARCHIVED_FEATURES.md`.)
 - **Live GPS is shared infrastructure, but there are TWO paths — a change to one
   does not fix the other.**
   - **Per-driver lookups go through `liveLocationResolver`** (Samsara → Factor →

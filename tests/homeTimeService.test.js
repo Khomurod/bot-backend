@@ -3,7 +3,6 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 
 const EMPLOYEE_GROUP_ID = -1009999;
-const BONUS_GROUP_ID = -12345;
 
 function loadService({ profile, currentStatus, settings, telegramOverrides = {} }) {
   const servicePath = path.resolve(__dirname, '../services/homeTimeService.js');
@@ -111,7 +110,11 @@ test('owner operator road trip is recorded but posts nothing anywhere', async ()
   assert.equal(roadBonusPosts.length, 0);
 });
 
-test('company driver home after over-allowance posts recognition to EMPLOYEE group with no dollar amount', async () => {
+test('company driver home after over-allowance posts NOTHING to the employee group — the "is home!" message is retired', async () => {
+  // The owner asked for the 🏠🎉 "<driver> is home! Off the road after N weeks…
+  // welcome back!" post to the EMPLOYEE group to be removed entirely
+  // (2026-10-06). The trip, its bonus and the separate road-bonus summary are
+  // untouched — only that one message is gone.
   const {
     service, telegram, inserts, sends, roadBonusPosts,
   } = loadService({
@@ -137,16 +140,12 @@ test('company driver home after over-allowance posts recognition to EMPLOYEE gro
   assert.equal(inserts.length, 1);
   assert.equal(inserts[0].bonusUsd, 200);
 
-  // Exactly one post — recognition, to the EMPLOYEE group, not the bonus group.
-  assert.equal(sends.length, 1);
-  assert.equal(sends[0].chatId, EMPLOYEE_GROUP_ID);
-  assert.notEqual(sends[0].chatId, BONUS_GROUP_ID);
-  // No dollar amounts in the recognition message.
-  assert.doesNotMatch(sends[0].text, /\$/);
-  assert.match(sends[0].text, /6 weeks/); // 42 days on road
+  // Nothing at all is sent to the employee group.
+  assert.equal(sends.filter((s) => s.chatId === EMPLOYEE_GROUP_ID).length, 0);
+  assert.ok(!sends.some((s) => /is home!/.test(s.text || '')), 'no "is home!" message anywhere');
 
-  // The single extra-week bonus summary is delegated to the road bonus notifier,
-  // for the configured Extra Week / Road Bonus group.
+  // The single extra-week bonus summary is still delegated to the road bonus
+  // notifier, for the configured Extra Week / Road Bonus group — unchanged.
   assert.equal(roadBonusPosts.length, 1);
   assert.equal(roadBonusPosts[0].historyRow.bonusUsd, 200);
   assert.equal(roadBonusPosts[0].historyRow.driver_type, 'company_driver');

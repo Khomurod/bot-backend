@@ -10,6 +10,29 @@ git so they can be recovered.
 
 ---
 
+## The "is home!" post to the employee group
+
+Removed 2026-10-06 at the owner's request. When a company driver came home after
+more than the road allowance (4 weeks), `services/homeTimeService.js`
+`postHomecomingRecognition` posted to the EMPLOYEE group:
+
+> 🏠🎉 **DRIVER NAME (Unit 325) is home!** Off the road after **16 weeks**
+> (117 days) of keeping us rolling. Thank you for the dedication out there —
+> welcome back! 👏
+
+Once Home In was detected automatically (driver messages and the Dispatcher
+Board), it fired far more often, and a stale road clock could put a misleading
+number of weeks into a company-wide chat.
+
+**Only that message was removed.** Unchanged: the trip row and its bonus in
+`driver_road_history`, the road-bonus summary to the Extra Week / Road Bonus
+group (`roadBonusNotifierService`), the managers' "Driver Is Home" notice, and
+everything else sent to the employee group (birthdays). Guarded by
+`tests/removedFeaturesStayRemoved.test.js` and `tests/homeTimeService.test.js`.
+Recoverable from git (the commit removing `postHomecomingRecognition`).
+
+---
+
 ## Two modules left behind by other removals
 
 Not features — leftovers, removed 2026-09 after a sweep for modules with no
