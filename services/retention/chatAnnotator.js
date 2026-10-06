@@ -10,9 +10,9 @@
  * messages were not recorded. Now they are (migration 0065), and the
  * retention watch needs the answers without anybody opening a report.
  *
- * BOUNDED: at most `PER_PASS` messages per pass, newest window first, every
- * 15 minutes. A backlog drains over several passes rather than one long burst
- * of model calls.
+ * BOUNDED: at most `PER_PASS` messages per pass, oldest first, every 15
+ * minutes. A backlog drains over several passes rather than one long burst of
+ * model calls, and in order, so nothing is overtaken until it expires.
  *
  * SWITCHED OFF IS SAID AS SUCH. With capture off this reports `blocked`, not a
  * healthy pass that found nothing — the difference /api/health exists to tell.
@@ -55,7 +55,10 @@ async function runChatAnnotationPass({ deps = defaultDeps() } = {}) {
        LEFT JOIN chat_message_annotations a ON a.chat_log_id = cl.id
       WHERE cl.created_at >= NOW() - ($1 || ' hours')::interval
         AND a.chat_log_id IS NULL
-      ORDER BY cl.created_at DESC
+      -- OLDEST FIRST. Newest-first starved a backlog: with more than a pass's
+      -- worth arriving, the overflow stayed behind each new batch until it fell
+      -- out of the 72-hour window unread.
+      ORDER BY cl.created_at ASC
       LIMIT $2`,
     [String(HOURS_BACK), PER_PASS]
   );

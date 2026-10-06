@@ -8,18 +8,25 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { captureDriverMessage, senderNameOf, MAX_TEXT } = require('../services/retention/chatCapture');
+const {
+  captureDriverMessage, senderNameOf, MAX_TEXT, forgetStandings,
+} = require('../services/retention/chatCapture');
 const { runChatAnnotationPass } = require('../services/retention/chatAnnotator');
 
 const GROUP = { id: 7, group_type: 'driver' };
 const FROM = { id: 501, first_name: 'Test', last_name: 'Driver', is_bot: false };
 
-function deps({ enabled = true, failWrite = false } = {}) {
+function deps({ enabled = true, failWrite = false, standing = { source: 'group', driverGroupCount: 1 } } = {}) {
+  forgetStandings();
   const written = [];
   return {
     written,
     deps: {
       settings: { async getChatCaptureSettings() { return { enabled }; } },
+      standing: async () => {
+        if (standing instanceof Error) throw standing;
+        return standing;
+      },
       logs: {
         async logChatMessage(...args) {
           if (failWrite) throw new Error('db down');
@@ -55,6 +62,26 @@ test('only a PERSON in a DRIVER group, and only text', async () => {
   assert.equal((await captureDriverMessage({ group: { id: 1, group_type: 'company' }, message: { text: 'x' }, from: FROM }, d)).reason, 'not_a_driver_group');
   assert.equal((await captureDriverMessage({ group: GROUP, message: { text: 'x' }, from: { ...FROM, is_bot: true } }, d)).reason, 'not_a_person');
   assert.equal((await captureDriverMessage({ group: GROUP, message: { photo: [{}] }, from: FROM }, d)).reason, 'no_text');
+  assert.equal(written.length, 0);
+});
+
+test('A DISPATCHER IS NOT THE DRIVER — staff messages are never recorded (review, #261)', async () => {
+  for (const standing of [
+    { source: 'dispatcher', driverGroupCount: 1 },
+    { source: 'admin', driverGroupCount: 0 },
+    { source: 'group', driverGroupCount: 3 },
+  ]) {
+    const { deps: d, written } = deps({ standing });
+    const out = await captureDriverMessage({ group: GROUP, message: { text: 'this is unacceptable' }, from: FROM }, d);
+    assert.equal(out.reason, 'staff', JSON.stringify(standing));
+    assert.equal(written.length, 0);
+  }
+});
+
+test('a standing that cannot be read is treated as staff — misattribution is worse than a gap', async () => {
+  const { deps: d, written } = deps({ standing: new Error('db down') });
+  const out = await captureDriverMessage({ group: GROUP, message: { text: 'x' }, from: FROM }, d);
+  assert.equal(out.reason, 'staff');
   assert.equal(written.length, 0);
 });
 
@@ -121,4 +148,17 @@ test('the message handler records driver messages', () => {
   // eslint-disable-next-line global-require
   const src = require('node:fs').readFileSync(require.resolve('../bot/handlers/groupCaptureHandlers.js'), 'utf8');
   assert.match(src, /captureDriverMessage\(\{ group, message: ctx\.message, from: ctx\.from \}\)/);
+});
+
+test('the annotator drains the OLDEST first, so a backlog is never overtaken (review, #261)', async () => {
+  let sql = '';
+  const out = await runChatAnnotationPass({
+    deps: {
+      settings: { async getChatCaptureSettings() { return { enabled: true }; } },
+      db: { async query(text) { sql = text; return { rows: [] }; } },
+      annotate: async () => 0,
+    },
+  });
+  assert.deepEqual(out, { found: 0, annotated: 0 });
+  assert.match(sql, /ORDER BY cl\.created_at ASC/);
 });

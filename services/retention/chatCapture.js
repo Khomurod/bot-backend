@@ -13,19 +13,57 @@
  * bot's message, not another kind of chat, not media. Clipped to 2,000
  * characters. `chat_logs` keeps 30 days (the scheduler's retention pass).
  *
+ * NOT STAFF. A dispatcher or manager writes in every driver's chat, and the
+ * retention signals add a chat's messages up by group — so a dispatcher's
+ * "this is unacceptable" would read as the DRIVER complaining, and their
+ * daily check-ins would hide a driver who has gone quiet. A sender is staff
+ * by the same rule that keeps a dispatcher from being linked to a driver's
+ * identity (`lib/identity/telegramResolution.js isStaff`): the bot met them as
+ * a dispatcher or admin, or they are in three or more active driver groups.
+ * A standing that cannot be read is treated as staff — a message not recorded
+ * costs a signal; one recorded against the wrong person invents one.
+ *
  * NEVER THROWS, NEVER BLOCKS. This runs inside the message handler that also
  * drives Home Time and the fuel monitor; a recording that fails costs the
  * recording and nothing else.
  */
+const { isStaff } = require('../../lib/identity/telegramResolution');
+
 const MAX_TEXT = 2000;
+/** How long one sender's standing is remembered. Ten minutes: cheap, and fresh enough. */
+const STANDING_MS = 10 * 60 * 1000;
+const standingCache = new Map();
 
 function defaultDeps() {
   /* eslint-disable global-require */
   return {
     settings: require('../../database/chatCaptureSettings'),
+    standing: require('../../database/chatCaptureSettings').readSenderStanding,
     logs: require('../../database/chatLogs'),
   };
   /* eslint-enable global-require */
+}
+
+/** Is this sender somebody who works here? Fails closed: unknown is staff. */
+async function senderIsStaff(telegramUserId, deps, now = Date.now()) {
+  if (telegramUserId == null) return true;
+  const key = String(telegramUserId);
+  const hit = standingCache.get(key);
+  if (hit && now - hit.at < STANDING_MS) return hit.staff;
+  let staff;
+  try {
+    staff = isStaff(await deps.standing(telegramUserId));
+  } catch (_) {
+    return true; // not cached — the next message may read it
+  }
+  if (standingCache.size > 2000) standingCache.clear();
+  standingCache.set(key, { at: now, staff });
+  return staff;
+}
+
+/** For tests. */
+function forgetStandings() {
+  standingCache.clear();
 }
 
 /** The name a message is filed under. Pure. */
@@ -48,6 +86,7 @@ async function captureDriverMessage({ group, message, from }, deps = defaultDeps
 
     const settings = await deps.settings.getChatCaptureSettings();
     if (!settings.enabled) return { recorded: false, reason: 'capture_off' };
+    if (await senderIsStaff(from.id, deps)) return { recorded: false, reason: 'staff' };
 
     await deps.logs.logChatMessage(
       group.id,
@@ -63,4 +102,6 @@ async function captureDriverMessage({ group, message, from }, deps = defaultDeps
   }
 }
 
-module.exports = { MAX_TEXT, senderNameOf, captureDriverMessage };
+module.exports = {
+  MAX_TEXT, senderNameOf, senderIsStaff, captureDriverMessage, forgetStandings,
+};

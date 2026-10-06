@@ -89,8 +89,15 @@ cannot be read records nothing.
   sends in a **driver** group, clipped to 2,000 characters. Not bots, not other
   chats, not media. It runs detached in the group message handler and never
   throws into it.
+- **Never a member of staff.** The chat signals add a group's messages up, so
+  a dispatcher's words would be scored as the driver's — a complaint the
+  driver never made, or chatter hiding a driver gone quiet. A sender is staff
+  by `lib/identity/telegramResolution.js isStaff` (met as a dispatcher or
+  admin, or in three or more active driver groups), and a standing that cannot
+  be read counts as staff.
 - `services/retention/chatAnnotator.js` (every 15 min, `chat_annotation` in the
-  run ledger) classifies at most 120 recorded messages per pass with the
+  run ledger) classifies at most 120 recorded messages per pass, OLDEST FIRST
+  so a backlog drains instead of being overtaken, with the
   existing `aiAnnotationService` — intent, sentiment, language — into
   `chat_message_annotations`, which the retention watch reads. It reports
   `blocked` while capture is off, and a FAILED pass when messages wait and none

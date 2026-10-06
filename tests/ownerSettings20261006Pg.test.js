@@ -67,3 +67,23 @@ test('re-applying every migration changes nothing', { skip: skipWithoutPg() }, a
   const n = await h.query('SELECT COUNT(*)::int AS n FROM driver_chat_capture_settings');
   assert.equal(n.rows[0].n, 1);
 });
+
+test('a sender\'s standing: how the bot met them, and how many driver groups they are in', { skip: skipWithoutPg() }, async (t) => {
+  const h = await setup(t);
+  const { chatCaptureSettings: store } = h.loadDataLayer(['chatCaptureSettings']);
+  for (let i = 1; i <= 3; i += 1) {
+    // eslint-disable-next-line no-await-in-loop
+    await h.query(
+      `INSERT INTO groups (id, telegram_group_id, group_name, group_type, active)
+       VALUES ($1, $2, $3, 'driver', TRUE)`,
+      [100 + i, -9100 - i, `WENZE UNIT # ${i} DRIVER ${i}`]
+    );
+    // eslint-disable-next-line no-await-in-loop
+    await h.query(
+      'INSERT INTO group_members (group_id, telegram_user_id, first_name) VALUES ($1, 777, $2)',
+      [100 + i, 'Dispatch']
+    );
+  }
+  assert.deepEqual(await store.readSenderStanding(777), { source: null, driverGroupCount: 3 });
+  assert.deepEqual(await store.readSenderStanding(888), { source: null, driverGroupCount: 0 });
+});
