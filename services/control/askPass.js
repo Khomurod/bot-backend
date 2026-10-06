@@ -39,6 +39,8 @@ const { questionFor, offeredActionsFor, replyHintFor } = require('../../lib/cont
 const { sourcesFor, MIN_CONFIDENCE } = require('../operations/corrections/decisionSeam');
 const { takeDecision } = require('../decisions/journal');
 const { memoryApplies, actsFromMemory } = require('../../lib/control/fingerprint');
+const { orderForAsking, whyAsking } = require('../../lib/control/priority');
+const defaultDigest = require('../../database/controlDigest');
 
 /** How many open findings to consider per pass before the cap is applied. */
 const SCAN_LIMIT = 100;
@@ -50,6 +52,7 @@ function defaultDeps() {
     settings: defaultSettings,
     knowledge: defaultKnowledge,
     decisions: defaultDecisions,
+    digest: defaultDigest,
     notify: defaultSend.notify,
     actionForCheck,
     payloadFor,
@@ -197,12 +200,10 @@ async function runAskPass(_options = {}, deps = defaultDeps()) {
   const holds = await Promise.resolve(deps.decisions?.currentHolds?.())
     .catch(() => new Map()) || new Map();
   const open = await deps.findings.listFindings({ status: 'open', limit: SCAN_LIMIT });
-  // OLDEST FIRST. A question that has waited three days matters more than one
-  // filed four minutes ago, and taking the newest would leave the oldest
-  // permanently at the back of a capped queue.
-  const candidates = [...open].sort(
-    (a, b) => new Date(a.firstSeenAt || 0) - new Date(b.firstSeenAt || 0)
-  );
+  // MOST IMPORTANT FIRST, then oldest (`lib/control/priority.js`): money,
+  // then serious, then warning. With one or two questions a day, strictly
+  // oldest-first spent the day's budget on whatever had waited longest.
+  const candidates = orderForAsking(open);
 
   // ── WHAT HAVE YOU ALREADY ANSWERED? ───────────────────────────────────────
   //
@@ -237,8 +238,26 @@ async function runAskPass(_options = {}, deps = defaultDeps()) {
     };
   }
 
+  // THE DAILY BUDGET (owner, 2026-10-06: "one or two a day"). Counted from what
+  // actually reached the chat in the last 24 hours, so restarts and fifteen-
+  // minute passes cannot add up to more. A count that failed is a spent
+  // budget: one question too few is the cheap mistake.
+  const perDay = Number.isFinite(Number(settings.maxQuestionsPerDay))
+    ? Number(settings.maxQuestionsPerDay) : 2;
+  const askedToday = await Promise.resolve(deps.digest?.countQuestionsAskedSince?.(24))
+    .then((n) => Number(n) || 0)
+    .catch(() => Number.MAX_SAFE_INTEGER);
+  const budget = Math.max(0, perDay - askedToday);
+  if (budget === 0) {
+    return {
+      asked: 0, considered: candidates.length, skipped,
+      reason: 'daily_limit', askedToday: Math.min(askedToday, perDay),
+    };
+  }
+
   for (const finding of unanswered) {
     if (asked + outstanding >= settings.maxQuestionsPerPass) break;
+    if (asked >= budget) break;
 
     const action = deps.actionForCheck(finding.checkKey);
     const mode = modeOf(checkSettings.get?.(finding.checkKey));
@@ -295,7 +314,11 @@ async function runAskPass(_options = {}, deps = defaultDeps()) {
     const sent = await deps.notify({
       category: 'needs_attention',
       title: wording.ask,
-      lines: [...wording.lines, replyHintFor(offeredActions)],
+      lines: [
+        ...wording.lines,
+        whyAsking(finding, { held: Boolean(heldDecision) }),
+        replyHintFor(offeredActions),
+      ],
       action: `Ref Q-${finding.id}`,
       subjectType: 'control_question',
       subjectId: String(finding.id),

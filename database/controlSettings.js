@@ -17,6 +17,9 @@
  *                             channel gets muted.
  *   `clarify_limit`           how many times Wenze may come back with "why?"
  *                             before it stops asking and takes the default.
+ *   `max_questions_per_day`   the owner's "one or two a day" (2026-10-06): the
+ *                             most important first, the rest on Needs Attention.
+ *                             0 asks nothing.
  */
 const { query } = require('./pool');
 
@@ -26,6 +29,7 @@ const DEFAULTS = Object.freeze({
   maxQuestionsPerPass: 5,
   repeatAfterHours: 72,
   clarifyLimit: 1,
+  maxQuestionsPerDay: 2,
 });
 
 let cache = null;
@@ -49,6 +53,8 @@ function mapRow(row) {
     maxQuestionsPerPass: Number(row.max_questions_per_pass) || DEFAULTS.maxQuestionsPerPass,
     repeatAfterHours: Number(row.repeat_after_hours) || DEFAULTS.repeatAfterHours,
     clarifyLimit: Number(row.clarify_limit ?? DEFAULTS.clarifyLimit),
+    // `??`, not `||`: zero is a real answer here — "ask me nothing".
+    maxQuestionsPerDay: Number(row.max_questions_per_day ?? DEFAULTS.maxQuestionsPerDay),
     updatedAt: row.updated_at || null,
     updatedBy: row.updated_by || null,
   };
@@ -88,6 +94,9 @@ async function updateControlSettings(patch = {}, { updatedBy = null } = {}) {
   }
   if (patch.repeatAfterHours !== undefined) {
     push('repeat_after_hours', clampInt(patch.repeatAfterHours, 1, 720, DEFAULTS.repeatAfterHours));
+  }
+  if (patch.maxQuestionsPerDay !== undefined) {
+    push('max_questions_per_day', clampInt(patch.maxQuestionsPerDay, 0, 20, DEFAULTS.maxQuestionsPerDay));
   }
   if (patch.clarifyLimit !== undefined) {
     push('clarify_limit', clampInt(patch.clarifyLimit, 0, 3, DEFAULTS.clarifyLimit));

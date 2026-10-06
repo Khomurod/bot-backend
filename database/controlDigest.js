@@ -54,4 +54,25 @@ async function listWaitingQuestions({ limit = 3, chatId = null } = {}) {
   }
 }
 
-module.exports = { listWaitingQuestions };
+/**
+ * How many questions were ASKED in the last `hours` — first questions only,
+ * not a "why?" follow-up, whatever happened to them since. The daily budget
+ * counts what reached the chat, answered or not.
+ *
+ * @returns {Promise<number>} throws on failure; the caller treats that as
+ *   "budget spent", never as zero.
+ */
+async function countQuestionsAskedSince(hours = 24) {
+  const res = await query(
+    `SELECT COUNT(*)::int AS n
+       FROM operational_notifications
+      WHERE question_json IS NOT NULL
+        AND parent_notice_id IS NULL
+        AND state IN ('delivered', 'pending')
+        AND created_at > NOW() - ($1 || ' hours')::interval`,
+    [String(hours)]
+  );
+  return res.rows[0]?.n || 0;
+}
+
+module.exports = { listWaitingQuestions, countQuestionsAskedSince };

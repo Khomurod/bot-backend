@@ -107,6 +107,7 @@ test('THE CAP HOLDS, and the oldest are asked first', async () => {
     settings: {
       getControlSettings: async () => ({
         enabled: true, maxQuestionsPerPass: 3, repeatAfterHours: 72, clarifyLimit: 1,
+        maxQuestionsPerDay: 10,
       }),
     },
   });
@@ -384,4 +385,66 @@ test('a mode map that could not be read is reported, not silently skipped past',
 test('a pass that read its settings carries no error', async () => {
   const got = await runAskPass({}, makeDeps());
   assert.strictEqual(got.error, undefined);
+});
+
+// ── one or two a day, the most important first (owner, 2026-10-06) ─────────
+
+test('AT MOST the daily budget, counted from what already went out today', async () => {
+  const many = Array.from({ length: 6 }, (_, i) => finding({ id: 300 + i }));
+  const deps = makeDeps({ findings: { listFindings: async () => many } });
+  deps.digest = { countQuestionsAskedSince: async () => 1 };
+  const got = await runAskPass({}, deps);
+  assert.strictEqual(got.asked, 1, 'two a day, one already asked');
+});
+
+test('a spent budget asks nothing and says why', async () => {
+  const deps = makeDeps();
+  deps.digest = { countQuestionsAskedSince: async () => 2 };
+  const got = await runAskPass({}, deps);
+  assert.strictEqual(got.asked, 0);
+  assert.strictEqual(got.reason, 'daily_limit');
+});
+
+test('a count that FAILED is a spent budget, never an empty one', async () => {
+  const deps = makeDeps();
+  deps.digest = { countQuestionsAskedSince: async () => { throw new Error('db down'); } };
+  const got = await runAskPass({}, deps);
+  assert.strictEqual(got.asked, 0);
+  assert.strictEqual(got.reason, 'daily_limit');
+});
+
+test('serious is asked before an older warning', async () => {
+  const old = new Date(Date.now() - 9 * 86400_000).toISOString();
+  const fresh = new Date().toISOString();
+  const list = [
+    finding({ id: 401, severity: 'warning', firstSeenAt: old }),
+    finding({ id: 402, severity: 'serious', firstSeenAt: fresh }),
+  ];
+  const deps = makeDeps({ findings: { listFindings: async () => list } });
+  deps.digest = { countQuestionsAskedSince: async () => 0 };
+  await runAskPass({}, deps);
+  assert.deepStrictEqual(deps.calls.notified.map((n) => n.findingId), [402, 401]);
+});
+
+test('MONEY FIRST, then serious, then the oldest (the pure order)', () => {
+  // eslint-disable-next-line global-require
+  const { orderForAsking, whyAsking } = require('../lib/control/priority');
+  const old = '2026-09-01T00:00:00Z';
+  const fresh = '2026-10-06T00:00:00Z';
+  const ordered = orderForAsking([
+    { id: 1, severity: 'warning', firstSeenAt: old },
+    { id: 2, severity: 'serious', firstSeenAt: fresh },
+    { id: 3, severity: 'warning', firstSeenAt: fresh, checkKey: 'home_time.road_bonus_review' },
+    { id: 4, severity: 'info', firstSeenAt: old },
+  ]);
+  assert.deepStrictEqual(ordered.map((f) => f.id), [3, 2, 1, 4]);
+  assert.match(whyAsking({ evidence: { reason: '43 days on the road' } }), /^Why I'm asking: 43 days/);
+  assert.match(whyAsking({ tier: 'approval' }), /a person decides/);
+});
+
+test('every question says WHY it is being asked', async () => {
+  const deps = makeDeps();
+  deps.digest = { countQuestionsAskedSince: async () => 0 };
+  await runAskPass({}, deps);
+  assert.ok(deps.calls.notified[0].lines.some((l) => /^Why I'm asking: /.test(l)));
 });
