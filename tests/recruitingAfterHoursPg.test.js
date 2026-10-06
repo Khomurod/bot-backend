@@ -38,7 +38,9 @@ test('the settings row exists after the migration, with the feature OFF', async 
   const { recruitingHours } = loadHours(h);
   const settings = await recruitingHours.getRecruitingHours();
   assert.equal(settings.aiAfterHoursEnabled, false, 'a migration must never switch a feature on');
-  assert.deepEqual(settings.windows, [], 'and with no hours, the office reads as always open');
+  // Migration 0066 records the owner's hours (2026-10-06): Monday–Friday
+  // 07:00–17:00 Central. The 0035 default was an empty list — always open.
+  assert.deepEqual(settings.windows, [{ label: 'Office', days: [1, 2, 3, 4, 5], start: '07:00', end: '17:00' }]);
   assert.equal(settings.quietStartLocal, '21:00', 'TIME comes back trimmed to HH:MM');
 });
 

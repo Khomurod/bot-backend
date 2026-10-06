@@ -398,6 +398,14 @@ taken.
 
 Visible on `/api/health` → `operations.safety`.
 
+## Driver message annotation (every 15 minutes, first pass 3 minutes after boot)
+
+`services/retention/chatAnnotator.js`, run ledger key `chat_annotation`.
+Classifies driver-group messages recorded since the owner switched capture on
+(2026-10-06) — at most 120 per pass, from the last 72 hours — so the retention
+watch's chat signals have something to read. `blocked` while capture is off.
+See `docs/architecture/driver-retention.md`.
+
 ## Retention watch (every 4 hours, first pass 15 minutes after boot)
 
 `services/retention/watch.js`. Scores every active driver from facts other

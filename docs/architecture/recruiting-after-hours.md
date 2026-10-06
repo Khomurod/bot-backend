@@ -12,6 +12,14 @@ is taught), [`operational-notifications.md`](operational-notifications.md)
 
 ---
 
+## The owner's settings (2026-10-06)
+
+Working hours are **Monday–Friday, 07:00–17:00 Central** (migration 0066).
+**Wenze does not converse with candidates yet** — `ai_after_hours_enabled`
+stays FALSE: for now a lead gets only the automatic SMS, and the conversation
+is switched on once a knowledge base exists. So `recruiting_after_hours` reads
+blocked ("switched off") on purpose; that is a decision, not a fault.
+
 ## Whether it can answer at all, before anybody texts
 
 Five independent preconditions, and every one of them is somebody's DECISION

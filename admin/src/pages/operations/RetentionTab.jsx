@@ -117,7 +117,19 @@ export default function RetentionTab({ flash }) {
   if (loading) return <div className="card"><p className="muted">Loading…</p></div>;
   if (!data) return null;
 
-  const { assessments = [], summary = {} } = data;
+  const { assessments = [], summary = {}, capture = null } = data;
+
+  const toggleCapture = async () => {
+    setBusy(true);
+    try {
+      await api.setDriverChatCapture(!capture.enabled);
+      await load();
+    } catch (err) {
+      flash?.("error", err.message || "Could not change it");
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
     <div className="card">
@@ -127,6 +139,20 @@ export default function RetentionTab({ flash }) {
         here is a judgement about how somebody does their job, and no action on this page
         changes anybody's employment.
       </p>
+
+      {capture && (
+        <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13, margin: "8px 0" }}>
+          <input
+            type="checkbox"
+            checked={capture.enabled === true}
+            disabled={busy}
+            onChange={toggleCapture}
+            aria-label="Record what drivers write in their groups"
+          />
+          Record what drivers write in their groups, so Wenze can notice complaints and
+          drivers saying they are leaving. Kept 30 days.
+        </label>
+      )}
 
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", margin: "12px 0" }}>
         <Tile label="Urgent" value={summary.urgent} colour={LEVEL.urgent.colour} />

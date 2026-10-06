@@ -17,6 +17,15 @@ export async function getRetention({ level = null, limit = 50 } = {}) {
   return res.json();
 }
 
+/** Record what drivers write in their groups, or stop. The owner's switch. */
+export async function setDriverChatCapture(enabled) {
+  const res = await fetch(`${API_BASE}/operations/retention/capture`, {
+    method: 'PUT', headers: getHeaders(), body: JSON.stringify({ enabled }),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
 /** "We know, we are on it." Pass false to undo. Never buys silence for good. */
 export async function acknowledgeRetention(id, acknowledged = true) {
   const res = await fetch(`${API_BASE}/operations/retention/${id}/acknowledge`, {

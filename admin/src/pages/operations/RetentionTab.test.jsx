@@ -17,6 +17,7 @@ import * as api from "../../api";
 vi.mock("../../api", () => ({
   getRetention: vi.fn(),
   acknowledgeRetention: vi.fn(),
+  setDriverChatCapture: vi.fn(),
 }));
 
 const URGENT = {
@@ -36,6 +37,7 @@ async function open(over = {}) {
   api.getRetention.mockResolvedValue({
     assessments: over.assessments ?? [URGENT],
     summary: over.summary ?? { urgent: 1, watch: 2, acknowledged: 0 },
+    ...(over.capture ? { capture: over.capture } : {}),
   });
   render(<RetentionTab flash={flash} />);
   await waitFor(() => expect(screen.getByText(/Drivers who may be about to leave/)).toBeInTheDocument());
@@ -99,4 +101,13 @@ test("a failed load flashes rather than rendering a reassuring empty page", asyn
   render(<RetentionTab flash={flash} />);
   await waitFor(() => expect(flash).toHaveBeenCalledWith("error", "service unavailable"));
   expect(screen.queryByText(/Nobody is flagged/)).toBeNull();
+});
+
+test("the owner's switch for recording driver messages is shown and works", async () => {
+  api.setDriverChatCapture.mockResolvedValue({ capture: { enabled: false } });
+  await open({ capture: { enabled: true } });
+  const box = screen.getByLabelText(/Record what drivers write/);
+  expect(box).toBeChecked();
+  fireEvent.click(box);
+  await waitFor(() => expect(api.setDriverChatCapture).toHaveBeenCalledWith(false));
 });

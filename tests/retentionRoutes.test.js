@@ -13,6 +13,7 @@ const express = require('express');
 
 const ROUTE = path.resolve(__dirname, '../server/routes/operations/retentionRoutes.js');
 const STORE = path.resolve(__dirname, '../database/retentionAssessments.js');
+const CAPTURE = path.resolve(__dirname, '../database/chatCaptureSettings.js');
 
 const ROW = {
   id: 3, personId: 11, groupId: 7, driverName: 'Sam Rivera',
@@ -24,7 +25,13 @@ const ROW = {
 
 function loadApp({ rows = [ROW], acknowledged = ROW } = {}) {
   delete require.cache[require.resolve(ROUTE)];
-  const saw = { listed: [], acked: [] };
+  const saw = { listed: [], acked: [], capture: [] };
+  require.cache[CAPTURE] = {
+    exports: {
+      async getChatCaptureSettings() { return { enabled: true }; },
+      async setChatCaptureEnabled(enabled, opts) { saw.capture.push({ enabled, ...opts }); return { enabled }; },
+    },
+  };
 
   require.cache[STORE] = {
     exports: {
@@ -106,9 +113,23 @@ test('THERE IS NO ENDPOINT THAT RECORDS AN OPINION OF A DRIVER', () => {
   assert.deepEqual(routes.sort(), [
     'GET /retention',
     'POST /retention/:id/acknowledge',
-  ], 'two endpoints: read the list, and say you know about one');
+    // The owner's privacy switch for recording driver messages — a setting
+    // about the company's behaviour, with no field about any driver.
+    'PUT /retention/capture',
+  ].sort(), 'read the list, say you know about one, and the recording switch');
 
   for (const word of ['note', 'rating', 'score:', 'dismiss', 'terminate', 'flagBy']) {
     assert.ok(!src.includes(`req.body?.${word}`), `no field for "${word}"`);
   }
+});
+
+test('the recording switch: true/false only, attributed to who flipped it', async () => {
+  const { app, saw } = loadApp();
+  const bad = await call(app, 'PUT', '/api/operations/retention/capture', { enabled: 'yes' });
+  assert.equal(bad.status, 400);
+  const ok = await call(app, 'PUT', '/api/operations/retention/capture', { enabled: false });
+  assert.equal(ok.status, 200);
+  assert.deepEqual(saw.capture, [{ enabled: false, updatedBy: 'boss' }]);
+  const list = await call(app, 'GET', '/api/operations/retention');
+  assert.deepEqual(list.body.capture, { enabled: true }, 'the list says whether it is listening');
 });
