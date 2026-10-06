@@ -15,6 +15,7 @@
 const express = require('express');
 
 const store = require('../../../database/retentionAssessments');
+const captureSettings = require('../../../database/chatCaptureSettings');
 const { sendFailure } = require('../../middleware/failureResponse');
 
 function createRetentionRouter({ authMiddleware }) {
@@ -22,17 +23,39 @@ function createRetentionRouter({ authMiddleware }) {
 
   router.get('/retention', authMiddleware, async (req, res) => {
     try {
-      const [assessments, summary] = await Promise.all([
+      const [assessments, summary, capture] = await Promise.all([
         store.listAssessments({
           level: req.query.level || null,
           limit: Number(req.query.limit) || 50,
         }),
         store.summariseRetention(),
+        captureSettings.getChatCaptureSettings(),
       ]);
-      res.json({ assessments, summary });
+      res.json({ assessments, summary, capture });
     } catch (err) {
       sendFailure(res, err, {
         message: 'Failed to load the retention list', logPrefix: '[RETENTION]',
+      });
+    }
+  });
+
+  /**
+   * Whether driver-group messages are recorded. The owner's privacy decision
+   * (on since 2026-10-06), kept a switch so turning it off is a click, not a
+   * deploy. Recording stops at once; what was recorded ages out in 30 days.
+   */
+  router.put('/retention/capture', authMiddleware, async (req, res) => {
+    try {
+      if (typeof req.body?.enabled !== 'boolean') {
+        return res.status(400).json({ error: '`enabled` must be true or false.' });
+      }
+      const capture = await captureSettings.setChatCaptureEnabled(req.body.enabled, {
+        updatedBy: req.admin?.username || 'an administrator',
+      });
+      return res.json({ capture });
+    } catch (err) {
+      return sendFailure(res, err, {
+        message: 'Failed to change driver message recording', logPrefix: '[RETENTION]',
       });
     }
   });

@@ -21,6 +21,7 @@ const { processHomeTimeMessage } = require('../../services/homeTimeRequestServic
 const { messageMentionsManagers } = require('../../services/homeTimeRequestConstants');
 const { applyAutoReaction } = require('../../services/autoReactionService');
 const { ensurePersonForGroup } = require('../../services/identity/personResolver');
+const { captureDriverMessage } = require('../../services/retention/chatCapture');
 
 /**
  * Persist a single Telegram user object (from any update field) into `drivers`,
@@ -267,13 +268,13 @@ function registerGroupCaptureHandlers(bot) {
           });
         }
 
-        // General message logging is intentionally disabled: we no longer
-        // persist every group message to chat_logs. Load details are no longer
-        // scraped from Telegram messages/attachments either — /status and /load
-        // now source the active load from the Datatruck OpenAPI (see
-        // services/datatruckLoadService.js). Pinned-message snapshots are still
-        // captured above so the pinned load context remains available as a
-        // fallback when Datatruck is unconfigured or has no matching order.
+        // Driver-group messages are recorded to chat_logs ONLY while the owner's
+        // switch says so (driver_chat_capture_settings, migration 0065) — and
+        // only for driver groups, only text a person wrote. Everything else in
+        // every other chat is still not persisted. Load details are not scraped
+        // from Telegram either — /status and /load source the active load from
+        // the Datatruck OpenAPI (services/datatruckLoadService.js); pinned
+        // snapshots above remain the fallback.
 
         // Bot-visibility diagnostic + home-time tracker for driver groups.
         // Recording "we saw a message" proves the bot can read this group
@@ -283,6 +284,8 @@ function registerGroupCaptureHandlers(bot) {
             ? new Date(ctx.message.date * 1000).toISOString()
             : new Date().toISOString();
           db.recordGroupMessageSeen(group.id, seenAtIso).catch(() => {});
+          // Detached and never throws: recording is not what this handler is for.
+          captureDriverMessage({ group, message: ctx.message, from: ctx.from }).catch(() => {});
           // Watch for "Status: Home / Ready / Rolling" (deterministic state
           // machine). Returns transition metadata for the conversational flow.
           // Never throws.

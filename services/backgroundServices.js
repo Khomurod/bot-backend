@@ -100,6 +100,7 @@ const {
   startRetentionWatch,
   stopRetentionWatch,
 } = require('./retention/watch');
+const { startChatAnnotator, stopChatAnnotator } = require('./retention/chatAnnotator');
 const {
   startSelfHealingWatch,
   stopSelfHealingWatch,
@@ -203,6 +204,10 @@ function startBackgroundServices({ telegram }) {
   // driver said in their own words, and says so while somebody can still act.
   // Operations chat only, never the driver's; no employment decision, ever.
   startRetentionWatch();
+  // Classifies the driver messages recorded since the owner switched capture
+  // on (2026-10-06): saying they are leaving, complaints, sentiment. Bounded
+  // per pass; reports `blocked` while capture is off.
+  startChatAnnotator();
   // Notices when a part of Wenze breaks, and when it puts itself right. It adds
   // no recovery — every recovery it reports already ran silently. A blip that
   // self-corrects produces NO message; only a real outage and its recovery do.
@@ -271,6 +276,7 @@ function stopBackgroundServices() {
   try { stopFuelRiskWatch(); } catch (err) { console.error('[SHUTDOWN] stopFuelRiskWatch failed:', err.message); }
   try { stopSafetyCoach(); } catch (err) { console.error('[SHUTDOWN] stopSafetyCoach failed:', err.message); }
   try { stopRetentionWatch(); } catch (err) { console.error('[SHUTDOWN] stopRetentionWatch failed:', err.message); }
+  try { stopChatAnnotator(); } catch (err) { console.error('[SHUTDOWN] stopChatAnnotator failed:', err.message); }
   try { stopSelfHealingWatch(); } catch (err) { console.error('[SHUTDOWN] stopSelfHealingWatch failed:', err.message); }
   try { stopLearningPass(); } catch (err) { console.error('[SHUTDOWN] stopLearningPass failed:', err.message); }
   try { stopRouteControlService(); } catch (err) { console.error('[SHUTDOWN] stopRouteControlService failed:', err.message); }

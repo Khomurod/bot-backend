@@ -76,6 +76,33 @@ a month and has written none is a different fact entirely, and it is the only
 one worth a signal. The baseline needs at least five messages before silence
 means anything.
 
+### Hearing what drivers write (on since 2026-10-06)
+
+The four chat signals read `chat_logs`, which nothing wrote to for a long time,
+so they answered a reassuring zero. **The owner decided on 2026-10-06 that Wenze
+may read driver messages.** `driver_chat_capture_settings` (migration 0065)
+holds that decision as a switch — Operations → Retention, one checkbox — so
+turning it off is a click, not a deploy, and it **fails closed**: a switch that
+cannot be read records nothing.
+
+- `services/retention/chatCapture.js` records the text or caption a **person**
+  sends in a **driver** group, clipped to 2,000 characters. Not bots, not other
+  chats, not media. It runs detached in the group message handler and never
+  throws into it.
+- **Never a member of staff.** The chat signals add a group's messages up, so
+  a dispatcher's words would be scored as the driver's — a complaint the
+  driver never made, or chatter hiding a driver gone quiet. A sender is staff
+  by `lib/identity/telegramResolution.js isStaff` (met as a dispatcher or
+  admin, or in three or more active driver groups), and a standing that cannot
+  be read counts as staff.
+- `services/retention/chatAnnotator.js` (every 15 min, `chat_annotation` in the
+  run ledger) classifies at most 120 recorded messages per pass, OLDEST FIRST
+  so a backlog drains instead of being overtaken, with the
+  existing `aiAnnotationService` — intent, sentiment, language — into
+  `chat_message_annotations`, which the retention watch reads. It reports
+  `blocked` while capture is off, and a FAILED pass when messages wait and none
+  could be annotated. The message text goes to the configured AI providers.
+
 ### The 30-day ceiling is not a choice
 
 `chat_logs` is pruned hourly at 30 days (`services/schedulerService.js`), so

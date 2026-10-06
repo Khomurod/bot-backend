@@ -156,6 +156,14 @@ crashes mid-read never reaches its failure handler, so counting on the way out
 lets a poisoned row be retried forever. A claim abandoned by a crash is released
 by a sweep after 15 minutes with its attempt already spent.
 
+### AI reading is on (owner's decision, 2026-10-06)
+
+`finance_settings.ai_reading_enabled` is TRUE (migration 0066): photos and
+scans are read by the configured AI providers instead of going straight to
+`needs_review`. Their content — including money codes and amounts — goes to
+those providers. Totals in every report still come from SQL, never from a
+model, and a reading that is not confident is still `needs_review`.
+
 ### `failed` and `needs_review` are different answers
 
 | Status | What happened | Retried? |
