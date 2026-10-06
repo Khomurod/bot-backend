@@ -39,6 +39,12 @@ test('only the declared shape passes', () => {
   assert.notEqual(validateReview('', { verdict: 'delete_load', confidence: 90, why: 'x' }), true);
   assert.notEqual(validateReview('', { verdict: 'unsure', confidence: 120, why: 'x' }), true);
   assert.notEqual(validateReview('', { verdict: 'unsure', confidence: 50, why: ' ' }), true);
+  // Coercible is not a number (review, #262): these must fail open, not hold.
+  for (const confidence of [[90], '90', null, true]) {
+    assert.notEqual(validateReview('', { verdict: 'likely_bad_data', confidence, why: 'x' }), true,
+      JSON.stringify(confidence));
+    assert.equal(decideFromReview({ verdict: 'likely_bad_data', confidence, why: 'x' }).send, true);
+  }
 });
 
 test('ONLY a confident "likely bad data" holds a notice back', () => {
@@ -119,11 +125,12 @@ test('a review that throws costs nothing: the alarm goes out', async () => {
   assert.equal(calls.notified.length, 1);
 });
 
-test('an alarm already said today is not reviewed again', async () => {
-  const { deps } = conflicted(null);
-  let reviewed = 0;
-  deps.reviewAlarm = async () => { reviewed += 1; return null; };
+test('an alarm already said today is not SENT again — and its finding KEEPS the review (review, #262)', async () => {
+  const review = { send: true, line: "Wenze's read: x", review: { verdict: 'real_problem', confidence: 90, why: 'x' } };
+  const { deps, calls } = conflicted(review);
   deps.notifications.noticeSentWithin = async () => true;
   await watcher.runLoadLifecycleCheck({ now: NOW, deps });
-  assert.equal(reviewed, 0);
+  assert.equal(calls.notified.length, 0);
+  assert.deepEqual(calls.findings[0].evidence.aiReview, review.review,
+    'the finding is replaced whole every pass, so the review must be supplied every pass');
 });

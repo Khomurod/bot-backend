@@ -277,10 +277,15 @@ async function runLoadLifecycleCheck({ now = Date.now(), deps = defaultDeps() } 
           // A SECOND OPINION before the chat hears it (`lib/loads/alarmReview.js`).
           // It can only keep a notice out of the chat, and only on a confident
           // "likely bad data"; the finding below is filed either way.
-          if (!recentlySaid) {
-            // eslint-disable-next-line no-await-in-loop
-            review = await Promise.resolve(deps.reviewAlarm?.(out, nowIso)).catch(() => null);
-          }
+          //
+          // Asked EVEN WHEN the notice was already said today: the finding is
+          // re-upserted every pass and its evidence replaced whole, so the
+          // review has to be supplied again or it vanishes from Needs
+          // Attention ten minutes after it was written. The answer is
+          // remembered per load, per disagreement, per day, so this costs no
+          // second model call.
+          // eslint-disable-next-line no-await-in-loop
+          review = await Promise.resolve(deps.reviewAlarm?.(out, nowIso)).catch(() => null);
         }
 
         const finding = buildFinding(out.state, out.verdict, out.driverName);

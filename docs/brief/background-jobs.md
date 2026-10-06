@@ -245,7 +245,10 @@ caller:
   coordinate. A confident (≥ 80) "likely bad data" keeps it out of the chat
   (`heldByAi` in the pass summary); anything else sends it with one added
   sentence, "Wenze's read: …". The finding is filed either way, with the
-  review in its evidence, and AI being unavailable changes nothing.
+  review in its evidence — supplied again on every pass (from the per-day
+  memory, so no second model call), because the finding's evidence is
+  replaced whole. AI being unavailable changes nothing, and a malformed
+  answer (a confidence that is not a plain number, say) sends the notice.
 
 **WHO the load belongs to is attached only when it is certain.** A load carries
 a unit NUMBER, and a number is not a truck: Company 310, Owner-Operator 310 and
