@@ -89,6 +89,11 @@ be read at leisure; in a chat it buries the fact.
 Unit numbers and chat ids survive untouched — a sanitiser that redacts
 `-1001234567890` is worse than none.
 
+**The flip side: never put a CODE in a notice.** An underscored identifier of
+32+ characters is indistinguishable from a token, so it is blanked. Load
+disagreement codes did exactly that and reached the chat as `[redacted]`
+(production, 2026-10). A caller writes sentences; codes go in `evidence`.
+
 ## The outbox
 
 `operational_notifications`, the same shape three earlier queues earned:
@@ -220,6 +225,11 @@ for someone browsing a list ("Home stay never closed"); a notice arrives after
 the fact and must name the fix in the past tense ("Closed a home stay that was
 left open"). `tests/operationsNotices.test.js` fails when a registered action has
 no description, so a new correction cannot ship announcing itself as a key.
+
+**Who it was about is a name, not a row id.** A `group` subject is written as
+"Unit 310 — NAME" from the group title, a `person` subject as the person's
+display name; any other subject, or a lookup that fails, keeps the old
+"<type> <id>" wording rather than losing the notice. It said "group 59835".
 
 
 ## With no destination configured, the absence is LOUD

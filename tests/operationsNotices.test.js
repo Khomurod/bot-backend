@@ -138,3 +138,32 @@ test('an undelivered notice is counted as skipped, not as sent', async () => {
   const { deps } = harness({ delivered: false });
   assert.deepEqual(await announceCorrections([ONE], deps), { sent: 0, skipped: 1 });
 });
+
+// ── who it was about, in words (production, 2026-10: "group 59835") ─────────
+
+test('a correction about a driver group names the driver, not the row id', async () => {
+  const { deps, sent } = harness();
+  deps.groups = {
+    async getGroupByIdAnyType(id) {
+      assert.equal(String(id), '310');
+      return { id: 310, group_name: 'WENZE UNIT # 2908 TEST DRIVER (COMPANY DRIVER)' };
+    },
+  };
+  await announceCorrections([ONE], deps);
+  assert.equal(sent[0].lines[0], 'Unit 2908 — TEST DRIVER');
+});
+
+test('a correction about a person names the person', async () => {
+  const { deps, sent } = harness();
+  deps.people = { async getPersonById() { return { id: 4, displayName: 'TEST PERSON' }; } };
+  await announceCorrections([{ ...ONE, subjectType: 'person', subjectId: '4' }], deps);
+  assert.equal(sent[0].lines[0], 'TEST PERSON');
+});
+
+test('a lookup that fails still announces, with the old wording', async () => {
+  const { deps, sent } = harness();
+  deps.groups = { async getGroupByIdAnyType() { throw new Error('db down'); } };
+  const out = await announceCorrections([ONE], deps);
+  assert.equal(out.sent, 1);
+  assert.equal(sent[0].lines[0], 'group 310');
+});
