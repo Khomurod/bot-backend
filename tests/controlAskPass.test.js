@@ -14,6 +14,7 @@ const assert = require('node:assert');
 const { runAskPass, isAskableFinding, askRoundFor, questionKeyFor } = require('../services/control/askPass');
 const { fingerprintFor } = require('../lib/control/fingerprint');
 const { noticeKeyFor } = require('../lib/notifications/compose');
+const { whyAsking: whyFor, WHY_BY_CHECK } = require('../lib/control/priority');
 
 function finding(over = {}) {
   return {
@@ -447,7 +448,19 @@ test('MONEY FIRST, then serious, then the oldest (the pure order)', () => {
   ]);
   assert.deepStrictEqual(ordered.map((f) => f.id), [3, 2, 1, 4]);
   assert.match(whyAsking({ evidence: { reason: '43 days on the road' } }), /^Why I'm asking: 43 days/);
-  assert.match(whyAsking({ tier: 'approval' }), /a person decides/);
+  assert.match(whyAsking({ tier: 'approval' }), /a person has to decide/);
+});
+
+test('each kind of question gives its OWN reason, never the generic "pay or records"', () => {
+  // Production, 2026-10-07: every approval question gave the same reason,
+  // including ones that touch neither pay nor anything a driver would see.
+  const asked = Object.keys(WHY_BY_CHECK).map((checkKey) => whyFor({ checkKey, tier: 'approval' }));
+  assert.strictEqual(new Set(asked).size, asked.length, 'two kinds of question share a reason');
+  for (const why of asked) assert.doesNotMatch(why, /pay or records/);
+  // The finding's own reason still wins over the per-kind one.
+  assert.match(whyFor({
+    checkKey: 'identity.stale_unit_assignment', evidence: { reason: 'board says 310' },
+  }), /board says 310/);
 });
 
 test('every question says WHY it is being asked', async () => {

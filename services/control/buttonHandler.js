@@ -1,7 +1,8 @@
 'use strict';
 
 /**
- * A tap on a Yes / No / Later button under one of Wenze's questions.
+ * A tap on a button under one of Wenze's questions — Yes / No / Later, or a
+ * choice question's own answers (Working / Not working / Later).
  *
  * THE SAME GATES AS A TYPED REPLY, adapted to what a tap is:
  *
@@ -76,8 +77,8 @@ async function handleControlButton(tap, deps) {
     const settings = await deps.settings.getControlSettings();
     if (settings.enabled === false) return { handled: true, outcome: 'ignored_disabled', toast: '' };
 
-    const word = wordFor(button.action);
     const offered = notice.question.offeredActions || [];
+    const word = wordFor(button.action, offered);
     if (!word || !offered.some((o) => o && o.key === button.action)) {
       return { handled: true, outcome: 'refused', toast: 'That is not one of the answers to this question.' };
     }

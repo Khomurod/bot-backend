@@ -23,27 +23,46 @@ test('EVERY check with a registered action has wording', () => {
   assert.deepStrictEqual(missing, [], `no question wording for: ${missing.join(', ')}`);
 });
 
+/**
+ * A question may be a function of its finding (it names the driver), so each
+ * rule is checked against the question as it would actually be rendered —
+ * once with full evidence and once with none.
+ */
+const FULL = {
+  evidence: {
+    driverName: 'TEST DRIVER', unitNumber: '7777', groupName: 'WENZE UNIT # 7777 TEST DRIVER',
+    groupActive: true, profileStatus: 'inactive', groupId: 5,
+  },
+  proposedChange: { groupId: 5, to: 'active' },
+};
+function renderedAsks() {
+  return Object.keys(QUESTIONS).flatMap((key) => [
+    [key, questionFor({ checkKey: key, ...FULL }).ask],
+    [`${key} (bare)`, questionFor({ checkKey: key }).ask],
+  ]);
+}
+
 test('every question is a question', () => {
-  for (const [key, entry] of Object.entries(QUESTIONS)) {
-    assert.ok(entry.ask.trim().endsWith('?'), `${key} does not end in a question mark`);
-    assert.ok(entry.ask.length < 160, `${key} is too long for a phone`);
+  for (const [key, ask] of renderedAsks()) {
+    assert.ok(ask.trim().endsWith('?'), `${key} does not end in a question mark`);
+    assert.ok(ask.length < 160, `${key} is too long for a phone`);
   }
 });
 
 test('no question names an id, a chat or an action key', () => {
-  for (const [key, entry] of Object.entries(QUESTIONS)) {
-    assert.ok(!/\b(chat_id|chatId|person_id|personId|group_id)\b/.test(entry.ask), key);
+  for (const [key, ask] of renderedAsks()) {
+    assert.ok(!/\b(chat_id|chatId|person_id|personId|group_id)\b/.test(ask), key);
     // An action key looks like `identity.sync_unit`. If one appeared in the
     // visible text, a reply could quote it and the text would be naming the
     // operation — which is exactly what `offeredActions` exists to prevent.
-    assert.ok(!/[a-z_]+\.[a-z_]{4,}/.test(entry.ask), `${key} looks like it names an action key`);
-    assert.ok(!/\d{6,}/.test(entry.ask), `${key} contains something id-shaped`);
+    assert.ok(!/[a-z_]+\.[a-z_]{4,}/.test(ask), `${key} looks like it names an action key`);
+    assert.ok(!/\d{6,}/.test(ask), `${key} contains something id-shaped`);
   }
 });
 
 test('a question body survives the notice sanitiser unchanged', () => {
-  for (const [key, entry] of Object.entries(QUESTIONS)) {
-    assert.strictEqual(sanitise(entry.ask), entry.ask, key);
+  for (const [key, ask] of renderedAsks()) {
+    assert.strictEqual(sanitise(ask), ask, key);
   }
 });
 

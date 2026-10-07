@@ -26,12 +26,20 @@
 const defaultApply = require('../operations/corrections/apply');
 const defaultFindings = require('../../database/operationalFindings');
 const { payloadFor } = require('../operations/corrections/autoApply');
-const { actionForCheck } = require('../operations/corrections/actions');
+const { actionForCheck, choiceActionFor } = require('../operations/corrections/actions');
 const { sourcesFor, MIN_CONFIDENCE } = require('../operations/corrections/decisionSeam');
 const { takeDecision } = require('../decisions/journal');
 
 /** A dismissal with no reason is a decision nobody can review later. */
 const DEFAULT_DISMISS_REASON = 'The owner said no in the notification group.';
+
+/**
+ * When the change could not be made because the records moved. HONEST about
+ * what is known: production, 2026-10-07, this said "Somebody fixed it first"
+ * after an action refused for its own reasons with nobody else involved.
+ */
+const STALE_MESSAGE = 'Nothing changed — the records no longer match what I asked about, '
+  + 'so I left them alone. It stays on Needs Attention.';
 
 function defaultDeps() {
   return {
@@ -41,12 +49,40 @@ function defaultDeps() {
     takeDecision,
     payloadFor,
     actionForCheck,
+    choiceActionFor,
   };
 }
 
-function isOffered(question, actionKey) {
+function offeredEntry(question, actionKey) {
   const offered = Array.isArray(question?.offeredActions) ? question.offeredActions : [];
-  return offered.some((o) => o && o.key === actionKey);
+  return offered.find((o) => o && o.key === actionKey) || null;
+}
+
+function isOffered(question, actionKey) {
+  return Boolean(offeredEntry(question, actionKey));
+}
+
+/**
+ * What a chosen answer does: the action and its arguments.
+ *
+ * A CHOICE CARRIES A VALUE ("working" → active) that the QUESTION wrote, never
+ * the reply — the reply only picked which offered entry. The value goes to the
+ * action registered for that check's choices, which validates it again.
+ */
+function resolveChange(deps, finding, actionKey, chosen) {
+  if (chosen && chosen.value != null) {
+    const choice = deps.choiceActionFor?.(finding.checkKey);
+    if (!choice) return { refused: 'There is nothing for me to change on that one.' };
+    const payload = choice.payload(finding, chosen.value);
+    if (!payload) return { refused: 'I no longer have what I would need to make that change.' };
+    return { action: choice.action, payload };
+  }
+  if (actionKey !== 'approve') return { refused: 'That is not one of the answers to this question.' };
+  const action = deps.actionForCheck(finding.checkKey);
+  if (!action) return { refused: 'There is nothing for me to change on that one.' };
+  const payload = deps.payloadFor(finding);
+  if (!payload) return { refused: 'I no longer have what I would need to make that change.' };
+  return { action, payload };
 }
 
 /**
@@ -66,8 +102,9 @@ async function executeOffered({
   question, finding, intent, telegramUserId,
 }, deps = defaultDeps()) {
   const actionKey = intent?.action || null;
+  const chosen = offeredEntry(question, actionKey);
 
-  if (!actionKey || !isOffered(question, actionKey)) {
+  if (!actionKey || !chosen) {
     return { outcome: 'refused', message: 'That is not one of the answers to this question.' };
   }
 
@@ -82,7 +119,7 @@ async function executeOffered({
   }
 
   if (actionKey === 'dismiss') {
-    const reason = intent.reason || DEFAULT_DISMISS_REASON;
+    const reason = intent.reason || chosen.reason || DEFAULT_DISMISS_REASON;
     const dismissed = await deps.findings.dismissFinding(finding.id, {
       dismissedBy: `telegram:${telegramUserId}`,
       reason,
@@ -93,15 +130,10 @@ async function executeOffered({
     return { outcome: 'dismissed', message: 'Closed. I will not raise it again.' };
   }
 
-  // ── approve ───────────────────────────────────────────────────────────────
-  const action = deps.actionForCheck(finding.checkKey);
-  if (!action) {
-    return { outcome: 'refused', message: 'There is nothing for me to change on that one.' };
-  }
-  const payload = deps.payloadFor(finding);
-  if (!payload) {
-    return { outcome: 'refused', message: 'I no longer have what I would need to make that change.' };
-  }
+  // ── approve, or another offered answer ────────────────────────────────────
+  const change = resolveChange(deps, finding, actionKey, chosen);
+  if (change.refused) return { outcome: 'refused', message: change.refused };
+  const { action, payload } = change;
 
   // THE JOURNAL FIRST, THE CHANGE SECOND. A decision records what was decided
   // and on what evidence, and it must exist whether or not the change then
@@ -124,6 +156,7 @@ async function executeOffered({
       title: finding.title,
       severity: finding.severity,
       approvedVia: 'telegram',
+      ...(chosen.value != null ? { chosenValue: chosen.value } : {}),
     },
   });
 
@@ -141,7 +174,7 @@ async function executeOffered({
     await decision?.acted?.(action.key, correction?.id ?? null);
     return {
       outcome: 'applied',
-      message: 'Done.',
+      message: chosen.value != null && chosen.label ? `Done — recorded as ${chosen.label}.` : 'Done.',
       correctionId: correction?.id ?? null,
       decisionId: decision?.id ?? null,
     };
@@ -149,7 +182,7 @@ async function executeOffered({
     if (err instanceof deps.StaleCorrectionError || err?.name === 'StaleCorrectionError') {
       return {
         outcome: 'no_op',
-        message: 'Somebody fixed it first — nothing left to change.',
+        message: err.plain || STALE_MESSAGE,
         decisionId: decision?.id ?? null,
       };
     }
@@ -161,4 +194,6 @@ async function executeOffered({
   }
 }
 
-module.exports = { DEFAULT_DISMISS_REASON, isOffered, executeOffered, defaultDeps };
+module.exports = {
+  DEFAULT_DISMISS_REASON, STALE_MESSAGE, isOffered, executeOffered, defaultDeps,
+};

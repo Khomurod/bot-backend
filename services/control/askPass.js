@@ -285,7 +285,7 @@ async function runAskPass(_options = {}, deps = defaultDeps()) {
       .catch(() => true); // A read that failed must not become a second question.
     if (recently) { skipped.recentlyAsked += 1; continue; }
 
-    const offeredActions = offeredActionsFor({ hasAction: true });
+    const offeredActions = offeredActionsFor({ hasAction: true, choices: wording.choices });
 
     // THE SUGGESTION IS JOURNALLED BEFORE IT IS ASKED. This is what finally
     // writes `suggest` rows: the pass is saying "I would do this", and that is
@@ -336,6 +336,9 @@ async function runAskPass(_options = {}, deps = defaultDeps()) {
         decisionId: decision?.id ?? null,
         offeredActions,
         parentNoticeId: null,
+        // THE QUESTION AS ASKED. The reply path shows it to the AI reader and
+        // restates it when a reply is unclear (`answerQuestion.js`).
+        prompt: { ask: wording.ask, lines: wording.lines },
       },
     }).catch(() => null);
 

@@ -54,6 +54,11 @@ test('status disagreement is auto-correctable only when the BOT observed the sta
   assert.equal(found.find((f) => f.subjectId === 1).tier, 'auto', 'Telegram told us — hard evidence');
   assert.equal(found.find((f) => f.subjectId === 2).tier, 'approval', 'an LLM decided — a human confirms');
   assert.equal(found.find((f) => f.subjectId === 3).tier, 'approval');
+  // ...and a different CHECK, answered by a different action: only the bot's
+  // observation can be copied; an AI or admin judgement is a person's call.
+  assert.deepEqual(found.map((f) => f.checkKey), [
+    'identity.status_disagreement', 'identity.status_needs_decision', 'identity.status_needs_decision',
+  ]);
   assert.deepEqual(found[0].proposedChange, {
     table: 'driver_profiles', groupId: 1, field: 'status', from: 'inactive', to: 'active',
   });

@@ -128,8 +128,9 @@ function payloadFor(finding) {
       homeDays: change.homeDays?.to ?? null,
     };
   }
-  if (finding.checkKey === 'identity.status_disagreement') {
-    return { groupId: change.groupId, toStatus: change.to };
+  if (finding.checkKey === 'identity.status_disagreement'
+      || finding.checkKey === 'identity.status_needs_decision') {
+    return change.groupId && change.to ? { groupId: change.groupId, toStatus: change.to } : null;
   }
   if (finding.checkKey === 'identity.group_without_person') {
     return change.groupId ? { groupId: change.groupId } : null;
