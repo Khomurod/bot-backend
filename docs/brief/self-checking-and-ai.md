@@ -105,7 +105,10 @@ feature it belongs to.
   `identity.sync_profile_status` re-confirms `groups.status_source` is still
   `'bot'`, **holding that row `FOR UPDATE`** — it is the evidence, and reading it
   unlocked would let someone take ownership in the window before the commit and
-  be overruled anyway.
+  be overruled anyway. A status set by an AI reading or an admin is a different
+  check, `identity.status_needs_decision`, answered by a person through
+  `identity.set_driver_status`, which writes both records and marks the status
+  `manual`.
 - **Closing a cycle also resolves `linked_request_id`**, the same ±3-day lookup
   the live `closeHomeStayOnReturn` path does, and for the same reason:
   `homeTimeEfficiencyService.classifyCycle` reads `linked_request_status`, so a

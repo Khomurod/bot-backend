@@ -66,7 +66,7 @@ async function answerQuestion({
   // involved. `remember` is carried across because "don't ask me again" is
   // read by the deterministic rules even when the rest of the sentence is not.
   if (intent.intent === 'unclear') {
-    const fromAi = await deps.readReplyWithAi(text, { offered });
+    const fromAi = await deps.readReplyWithAi(text, { offered, question: promptOf(notice) });
     intent = { ...fromAi, remember: intent.remember || fromAi.remember };
   }
 
@@ -126,9 +126,17 @@ async function answerQuestion({
 
   if (intent.intent === 'unclear' || !intent.action) {
     await deps.replies.finaliseReply(claim.id, { outcome: 'clarified', intent });
+    // ASK THE QUESTION AGAIN, NOT "YES OR NO". Production, 2026-10-07: the
+    // owner replied "I don't know which driver" and was told to reply yes or
+    // no — the same question, minus the part they said was missing. The
+    // re-ask names who it is about and lists the answers it will take.
+    const prompt = promptOf(notice);
+    const restated = notice.question?.prompt?.ask ? prompt.ask : null;
     return askAgain(deps, { reply, notice, settings, offered }, {
-      message: 'I did not follow that. Reply yes, no (and why), or later.',
-      exhausted: 'I still did not follow that, so I am leaving it open for you.',
+      message: restated
+        ? `Sorry, I did not follow. ${restated}`
+        : 'I did not follow that. Reply yes, no (and why), or later.',
+      exhausted: 'I still did not follow that, so I am leaving it open for you. It stays on Needs Attention.',
     });
   }
 
@@ -241,6 +249,9 @@ async function askAgain(deps, { reply, notice, settings, offered }, { message, e
       // through the yes/no/later parser, which does not recognise "he is a team
       // driver" as anything, and the reason the owner just typed is thrown away.
       pending,
+      // THE QUESTION AS ASKED, carried down the chain so a reply to the
+      // follow-up is read against the same question the first one was.
+      prompt: notice.question?.prompt || null,
     },
     parentNoticeId: rootOf(notice),
     clarifyRound: round + 1,
@@ -254,6 +265,20 @@ async function askAgain(deps, { reply, notice, settings, offered }, { message, e
   return {
     handled: true, outcome: 'clarified', clarified: Boolean(sent?.recorded), message,
   };
+}
+
+/**
+ * The question as the owner saw it: `{ask, lines}`. Stored on every question
+ * asked since 2026-10-07; an older notice falls back to its own text, tags
+ * stripped, which is the same words with less structure.
+ */
+function promptOf(notice) {
+  const p = notice?.question?.prompt;
+  if (p && p.ask) {
+    return { ask: String(p.ask), lines: Array.isArray(p.lines) ? p.lines.map(String) : [] };
+  }
+  const body = String(notice?.body || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  return body ? { ask: body.slice(0, 600), lines: [] } : null;
 }
 
 /** The question that started this chain — itself, when it is the start. */
@@ -270,4 +295,6 @@ async function say(deps, reply, message) {
 }
 
 
-module.exports = { answerQuestion, askAgain, rootOf, say };
+module.exports = {
+  answerQuestion, askAgain, rootOf, say, promptOf,
+};

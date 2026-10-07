@@ -51,6 +51,7 @@ const CHECK_LABELS = {
   'home_time.road_clock_past_allowance': 'On the road past the allowance',
   'home_time.ghost_home_status': 'Tracked driver whose group is gone',
   'identity.status_disagreement': 'Group and profile disagree on status',
+  'identity.status_needs_decision': 'Is this driver working? A person decides',
   'identity.duplicate_unit': 'One unit on several active drivers',
   'identity.same_person_two_groups': 'One person on two active groups',
   'identity.unit_number_mismatch': 'Profile unit differs from the group title',

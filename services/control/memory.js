@@ -31,6 +31,10 @@ const { fingerprintFor, isRememberable } = require('../../lib/control/fingerprin
 
 /** Which outcomes are worth remembering, given what the reply chose. */
 function shouldRemember({ outcome, intent }) {
+  // THE MEMORY'S VOCABULARY IS approve / dismiss / snooze (a CHECK on the
+  // table). Choosing the OTHER answer to a choice question is neither a yes to
+  // the proposal nor a no to the question, so it is not stored as either.
+  if (intent?.action === 'alternative') return false;
   if (outcome === 'dismissed') return true;
   if (outcome === 'applied' && intent?.remember === true) return true;
   return false;

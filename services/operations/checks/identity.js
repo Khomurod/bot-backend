@@ -19,6 +19,23 @@ const SILENT_DAYS = 60;
 /** Chats that are administrative, not drivers, however they are typed. */
 const NON_DRIVER_TITLE = /\b(admin|feedback|leads|test|hr\s+personnel|automatic\s+updating)\b/i;
 
+/**
+ * A chat whose title reads as an office or utility room and carries no unit
+ * number. A real driver group always names its truck.
+ */
+function looksAdministrative(name) {
+  const title = name || '';
+  return NON_DRIVER_TITLE.test(title) && !extractUnitFromGroupName(title);
+}
+
+/** Why a status disagreement needs asking, by who set the chat's status. */
+const STATUS_REASON = Object.freeze({
+  bot: 'the bot saw the chat change, but the profile was never updated to match',
+  ai: 'the chat\'s status came from an AI reading, and nothing the bot saw confirms it',
+  manual: 'someone set the chat\'s status by hand, and the profile was never updated to match',
+  unknown: 'nothing I can see settles which of the two is right',
+});
+
 function daysBetween(now, value) {
   if (!value) return null;
   const then = value instanceof Date ? value : new Date(value);
@@ -41,16 +58,33 @@ function activeDriverGroups(groups) {
  * `syncGroupFromDriverProfile` only ever writes profile→group, and only when the
  * caller passed `status`.
  *
- * The tier turns on WHO decided the group's state. `status_source = 'bot'` means
- * Telegram itself told us the bot was added or kicked — hard evidence, and the
- * profile is simply stale, so that is safely auto-correctable. An 'ai' or
- * 'manual' source is a judgement, so a human confirms it.
+ * WHO decided the group's state picks the CHECK, not just the tier, because the
+ * two are answered by different actions:
+ *
+ *   `identity.status_disagreement`   `status_source = 'bot'` — Telegram itself
+ *                                    told us the bot was added or kicked. Hard
+ *                                    evidence; the profile is simply stale, so
+ *                                    `identity.sync_profile_status` copies it.
+ *   `identity.status_needs_decision` an 'ai' or 'manual' source — a judgement.
+ *                                    Nothing observed it, so the sync refuses,
+ *                                    and a person chooses Working or Not
+ *                                    working through `identity.set_driver_status`.
+ *
+ * One check key with both shapes is what made the owner's "Yes" in the control
+ * channel come back as "Somebody fixed it first": the approval-tier finding was
+ * wired to an action that can only ever carry a bot-observed state.
+ *
+ * A chat whose title reads as an admin room is NOT asked about here. "Is Wenze
+ * Facebook Leads working?" is a question nobody can answer; the right question
+ * is whether it is a driver group at all, and
+ * `identity.non_driver_typed_as_driver` asks exactly that.
  */
 function checkStatusDisagreement({ groups, profiles }) {
   const byGroup = profilesByGroup(profiles);
   const findings = [];
   for (const group of groups) {
     if (group.group_type !== 'driver') continue;
+    if (looksAdministrative(group.group_name)) continue;
     const profile = byGroup.get(group.id);
     if (!profile || !profile.status) continue;
 
@@ -60,7 +94,7 @@ function checkStatusDisagreement({ groups, profiles }) {
 
     const botObserved = group.status_source === 'bot';
     findings.push({
-      checkKey: 'identity.status_disagreement',
+      checkKey: botObserved ? 'identity.status_disagreement' : 'identity.status_needs_decision',
       subjectType: 'group',
       subjectId: group.id,
       title: `${group.group_name || `Group ${group.id}`}: group says ${groupSaysActive ? 'active' : 'inactive'}, profile says ${profile.status}`,
@@ -74,6 +108,11 @@ function checkStatusDisagreement({ groups, profiles }) {
         profileStatus: profile.status,
         statusSource: group.status_source,
         statusUpdatedAt: group.status_updated_at,
+        // For the question: who the driver is and which truck, so the owner is
+        // asked about a person rather than a chat title.
+        driverName: [profile.first_name, profile.last_name].filter(Boolean).join(' ') || null,
+        unitNumber: profile.unit_number || extractUnitFromGroupName(group.group_name || '') || null,
+        reason: STATUS_REASON[group.status_source] || STATUS_REASON.unknown,
       },
       proposedChange: {
         table: 'driver_profiles',
@@ -274,12 +313,11 @@ function checkSilentActiveGroups({ groups, now }) {
  * Title-shaped evidence only, so it proposes nothing and stays a warning.
  */
 function checkNonDriverChatsTypedAsDriver({ groups }) {
-  return activeDriverGroups(groups)
-    .filter((g) => {
-      const name = g.group_name || '';
-      // A real driver group carries a unit number; these do not.
-      return NON_DRIVER_TITLE.test(name) && !extractUnitFromGroupName(name);
-    })
+  // ACTIVE OR NOT. An inactive admin room typed as a driver still has a
+  // driver profile, still disagrees with it, and is skipped by the status
+  // question above precisely so that THIS question is the one asked.
+  return groups
+    .filter((g) => g.group_type === 'driver' && looksAdministrative(g.group_name))
     .map((g) => ({
       checkKey: 'identity.non_driver_typed_as_driver',
       subjectType: 'group',
@@ -292,7 +330,8 @@ function checkNonDriverChatsTypedAsDriver({ groups }) {
         groupId: g.id,
         groupName: g.group_name,
         groupType: g.group_type,
-        reason: 'No unit number in the title, and the title reads as an admin or utility chat.',
+        groupActive: g.active === true,
+        reason: 'its name has no truck number and reads like an office or admin chat, so it may not be a driver at all',
       },
     }));
 }
@@ -308,6 +347,7 @@ const CHECKS = [
 
 const CHECK_KEYS = [
   'identity.status_disagreement',
+  'identity.status_needs_decision',
   'identity.duplicate_unit',
   'identity.unit_title_mismatch',
   'identity.bot_not_member',
@@ -330,4 +370,5 @@ module.exports = {
   checkBotNotInActiveGroup,
   checkSilentActiveGroups,
   checkNonDriverChatsTypedAsDriver,
+  looksAdministrative,
 };

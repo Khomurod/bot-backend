@@ -90,7 +90,9 @@ test('the correction is attributed to the PERSON, not the system', async () => {
   assert.strictEqual(deps.calls.applied[0].admin.telegramUserId, '2117922421');
 });
 
-test('somebody fixing it first is a success, not an error', async () => {
+test('a stale correction is a stand-down, and says so honestly — never "somebody fixed it"', async () => {
+  // Production, 2026-10-07: the action refused for its own reasons, nobody
+  // else had touched anything, and the owner was told "Somebody fixed it first".
   const deps = makeDeps({
     applyCorrection: async () => { throw new FakeStale('moved'); },
   });
@@ -98,7 +100,23 @@ test('somebody fixing it first is a success, not an error', async () => {
     question: QUESTION, finding: FINDING, intent: { action: 'approve' }, telegramUserId: '1',
   }, deps);
   assert.strictEqual(got.outcome, 'no_op');
-  assert.match(got.message, /fixed it first/i);
+  assert.doesNotMatch(got.message, /somebody|fixed it first/i);
+  assert.match(got.message, /Nothing changed/);
+  assert.match(got.message, /Needs Attention/);
+});
+
+test('an action that says WHY it stood down in plain words is quoted', async () => {
+  const deps = makeDeps({
+    applyCorrection: async () => {
+      const err = new FakeStale('Group 9 already reads "active" everywhere.');
+      err.plain = 'Nothing to change — it already shows working everywhere.';
+      throw err;
+    },
+  });
+  const got = await executeOffered({
+    question: QUESTION, finding: FINDING, intent: { action: 'approve' }, telegramUserId: '1',
+  }, deps);
+  assert.strictEqual(got.message, 'Nothing to change — it already shows working everywhere.');
 });
 
 test('a real failure is reported as a failure and the finding stays open', async () => {

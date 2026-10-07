@@ -40,6 +40,7 @@ const { abandonExhaustedInternalAlerts } = require('./alertActions');
 const { ensurePerson, syncUnit } = require('./identityActions');
 const { linkBoardRowToPerson } = require('./boardActions');
 const { setGroupType } = require('./groupActions');
+const { setDriverStatus, choiceActionFor } = require('./statusActions');
 const { releaseRoadBonus } = require('./roadBonusActions');
 const { linkTelegramIdentity } = require('./telegramActions');
 const { carryRoadClock } = require('./homeTimeActions');
@@ -313,6 +314,7 @@ const ACTIONS = new Map([
   [abandonExhaustedInternalAlerts.key, abandonExhaustedInternalAlerts],
   [linkBoardRowToPerson.key, linkBoardRowToPerson],
   [setGroupType.key, setGroupType],
+  [setDriverStatus.key, setDriverStatus],
   [releaseRoadBonus.key, releaseRoadBonus],
   [linkTelegramIdentity.key, linkTelegramIdentity],
   [ensurePerson.key, ensurePerson],
@@ -330,6 +332,7 @@ const ACTIONS = new Map([
 const CHECK_TO_ACTION = new Map([
   ['home_time.closable_open_cycle', closeHomeTimeCycle.key],
   ['identity.status_disagreement', syncProfileStatus.key],
+  ['identity.status_needs_decision', setDriverStatus.key],
   ['home_time.exhausted_internal_alerts', abandonExhaustedInternalAlerts.key],
   ['identity.group_without_person', ensurePerson.key],
   ['identity.stale_unit_assignment', syncUnit.key],
@@ -359,6 +362,7 @@ module.exports = {
   CHECK_TO_ACTION,
   getAction,
   actionForCheck,
+  choiceActionFor,
   resolveLinkedRequest,
   closeHomeTimeCycle,
   syncProfileStatus,

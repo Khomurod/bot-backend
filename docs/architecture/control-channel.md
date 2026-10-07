@@ -306,6 +306,57 @@ open) followed by a tap on the stale Yes would have applied the correction. The 
 `bot.action` before the survey handler's `callback_query` catch-all, and
 `tests/controlHandlerRegistration.test.js` asserts the order.
 
+## Choice questions — answered with the value, not yes/no
+
+Production, 2026-10-07 (Q-51/Q-52): "A driver's profile and their chat disagree
+about whether they are active. Use what the bot observed?" — asked about a chat
+the AI had marked, naming nobody, and once about "Wenze Facebook Leads", which
+is not a driver at all. The owner answered "Yes" and was told "Somebody fixed it
+first"; answered "Driver is active" and was told to reply yes or no. Six fixes:
+
+1. **Not a driver chat → a different question.** A chat whose title reads as an
+   admin room with no truck number (`looksAdministrative`) is never asked a
+   status question. `identity.non_driver_typed_as_driver` — now for inactive
+   chats too — asks "Is "<chat>" a driver's chat?" with **🚚 Driver chat /
+   🏢 Not a driver / ⏰ Later**. "Not a driver" retypes it (the fix); "Driver
+   chat" closes the question with that reason, no "why?" follow-up.
+2. **The question names the driver and the buttons are the answers.** "Is TEST
+   DRIVER (Unit 7777) working for us right now?" with **✅ Working / 🚫 Not
+   working / ⏰ Later**. An entry in `lib/control/askable.js` may declare
+   `choices`: each is an offered key (`approve` for the value the finding
+   proposes, `alternative` — button code `b` — for the other, or `dismiss`),
+   a `label`, a `button`, the `value` it sets, the vocabulary its words are read
+   with, and whether it is what "yes" or "no" means. There is no bare "no (say
+   why)" on a choice question: to "is he working?" a "no" IS the answer.
+3. **The choice is carried out, whoever set the status.** The status check is
+   two checks now: `identity.status_disagreement` (the bot observed it —
+   `sync_profile_status` copies it, auto tier, unchanged) and
+   `identity.status_needs_decision` (an AI reading or an admin set it — a
+   person decides, approval tier). Either question's Working / Not working goes
+   to `identity.set_driver_status` (`corrections/statusActions.js`): approval
+   tier, sets `groups.active` AND `driver_profiles.status`, marks the group
+   `status_source = 'manual'` so the AI classifier leaves it alone, revertible.
+   The VALUE comes from the question's own offered entry, never from the reply.
+   Migration 0068 moved the AI/admin rows already filed (and their remembered
+   answers) to the new key; `fingerprint.js` hashes the new key as the old one,
+   so an earlier "no" still matches. A stand-down no longer says "Somebody
+   fixed it first" — it says nothing changed and why, in the action's own plain
+   words when it gives them (`err.plain`). Choosing `alternative` is not
+   remembered: the memory's vocabulary is approve / dismiss / snooze.
+4. **The AI reader sees the question.** Every question stores
+   `question_json.prompt = {ask, lines}`; `aiIntent.buildUserText` shows it,
+   fenced, above the choices. An older notice falls back to its own text.
+5. **A reason per kind of question.** `WHY_BY_CHECK` in `lib/control/priority.js`
+   replaced "it changes a driver's pay or records" on every approval question.
+6. **Unclear → the question again.** "I don't know which driver" is unclear,
+   never "no", and the follow-up restates the question ("Sorry, I did not
+   follow. Is TEST DRIVER (Unit 7777) working for us right now?") with the same
+   buttons, carrying `prompt` down the chain.
+
+A tap on a choice is read as its LABEL through the same parser
+(`wordFor(action, offered)`); `tests/controlChoiceQuestions.test.js` asserts
+every choice button reads back as itself.
+
 ## Attribution
 
 `initiatorFor` in `services/operations/corrections/apply.js` learned a third

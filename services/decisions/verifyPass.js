@@ -129,6 +129,21 @@ const SUBJECTS = Object.freeze({
     },
   },
 
+  'identity.set_driver_status': {
+    impact: 'employment',
+    autoRevert: false,
+    table: 'groups',
+    async read(client, subjectId) {
+      const res = await client.query(
+        `SELECT g.active AS "groupActive", g.status_source AS "statusSource",
+                p.status AS "profileStatus"
+           FROM groups g LEFT JOIN driver_profiles p ON p.group_id = g.id
+          WHERE g.id = $1`,
+        [Number(subjectId)]
+      );
+      return res.rows[0] || null;
+    },
+  },
   'identity.set_group_type': {
     impact: 'operational',
     autoRevert: false,
