@@ -69,6 +69,9 @@ test('1. ...it is asked whether it is a driver chat instead — even when inacti
   assert.deepStrictEqual(kb, ['🚚 Driver chat', '🏢 Not a driver', '⏰ Later']);
   // "Not a driver" is the fix; "Driver chat" closes the question with a reason.
   assert.strictEqual(parseIntent('not a driver', { offered }).action, 'approve');
+  for (const t of ["it isn't a driver's chat", 'it is not a driver group', 'это не водитель']) {
+    assert.strictEqual(parseIntent(t, { offered }).action, 'approve', t);
+  }
   const keep = parseIntent('yes', { offered });
   assert.strictEqual(keep.action, 'dismiss');
   assert.match(keep.reason, /driver's chat/);
@@ -132,6 +135,12 @@ test('2. the owner\'s own words for a status pick the right answer', () => {
   assert.strictEqual(value('he quit last week'), 'inactive');
   assert.strictEqual(value('уволился'), 'inactive');
   assert.strictEqual(value('not working'), 'inactive');
+  // A NEGATED positive word is the negative answer, never the positive one
+  // (Codex, PR #264): "not active" contains "active".
+  for (const t of ['the driver is not active', 'not driving', 'not on the road', "he isn't working",
+    'no longer active', 'he is not currently working', 'не активен', 'он не водит']) {
+    assert.strictEqual(value(t), 'inactive', t);
+  }
   // Not knowing is not "no".
   assert.strictEqual(parseIntent("I don't know which driver this is", { offered }).intent, 'unclear');
   assert.strictEqual(parseIntent('не знаю кто это', { offered }).intent, 'unclear');
