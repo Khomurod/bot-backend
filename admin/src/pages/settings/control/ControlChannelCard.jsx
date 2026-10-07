@@ -154,6 +154,16 @@ export default function ControlChannelCard({ flash }) {
           />
         </label>
         <label style={{ flex: "1 1 180px" }}>
+          <div>Most questions a day</div>
+          <input
+            type="number" min={0} max={20} disabled={busy}
+            defaultValue={settings.maxQuestionsPerDay ?? 2}
+            onBlur={(e) => save({ maxQuestionsPerDay: Number(e.target.value) })}
+            style={{ width: "100%" }}
+            aria-label="Most questions a day"
+          />
+        </label>
+        <label style={{ flex: "1 1 180px" }}>
           <div>Hours before asking again</div>
           <input
             type="number" min={1} max={720} disabled={busy}

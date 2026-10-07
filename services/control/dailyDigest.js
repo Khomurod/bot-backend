@@ -32,10 +32,16 @@ const { resolveDestination } = require('../../lib/notifications/categories');
 const defaultSend = require('../notifications/send');
 const { digestDayFor, composeDigest, MAX_WAITING_NAMED } = require('../../lib/control/digest');
 const { serviceLabel } = require('../../lib/operations/backgroundServiceCatalog');
+const {
+  candidatesForToday, buildPrioritiesPrompt, validatePriorities,
+  fallbackPriorities, prioritiesFromPicks,
+} = require('../../lib/control/priorities');
 
 const CATEGORY = 'needs_attention';
 const SUBJECT_TYPE = 'control_digest';
 const SUBJECT_ID = 'daily';
+/** The AI responsibility that words "most important today". */
+const PRIORITIES_CAPABILITY = 'daily_priorities';
 
 function defaultDeps() {
   return {
@@ -47,7 +53,34 @@ function defaultDeps() {
     systemHealth: defaultSystemHealth,
     notificationSettings: defaultNotificationSettings,
     notify: defaultSend.notify,
+    // Lazy: the router pulls in the whole AI stack, which a test of this
+    // module's plumbing has no use for.
+    runCapability: (...args) => require('../ai/router').runCapability(...args), // eslint-disable-line global-require
   };
+}
+
+/**
+ * "Most important today": the first three open findings by rule, or the three
+ * an AI picks from the first eight and says plainly. Never throws; a summary
+ * with no priorities line is a summary, one that failed to send is not.
+ *
+ * @returns {Promise<string[]|null>}
+ */
+async function todaysPriorities(open, now, deps) {
+  if (!Array.isArray(open)) return null;
+  const candidates = candidatesForToday(open);
+  if (!candidates.length) return [];
+  try {
+    const { parsed } = await deps.runCapability({
+      capability: PRIORITIES_CAPABILITY,
+      userText: buildPrioritiesPrompt(candidates, now),
+      expects: 'json',
+      validate: validatePriorities(candidates),
+    });
+    return prioritiesFromPicks(candidates, parsed);
+  } catch (_) {
+    return fallbackPriorities(candidates);
+  }
 }
 
 /** The notice key `notify` writes for one day's summary. */
@@ -86,12 +119,14 @@ async function runDailyDigest({ now = new Date() } = {}, deps = defaultDeps()) {
   if (!chatId) return { sent: false, day, reason: 'no_destination' };
 
   const since = new Date(new Date(now).getTime() - 24 * 3600_000).toISOString();
-  const [waiting, changes, findings, health] = await Promise.all([
+  const [waiting, changes, findings, health, open] = await Promise.all([
     deps.digest.listWaitingQuestions({ limit: MAX_WAITING_NAMED, chatId }).catch(() => null),
     deps.corrections.summariseCorrections({ sinceIso: since }).catch(() => null),
     deps.findings.summariseFindings().catch(() => null),
     deps.systemHealth.summariseHealthStates().catch(() => null),
+    Promise.resolve(deps.findings.listFindings?.({ status: 'open', limit: 100 })).catch(() => null),
   ]);
+  const priorities = await todaysPriorities(open, now, deps).catch(() => null);
 
   const body = composeDigest({
     waiting: waiting ? waiting.oldest : null,
@@ -100,6 +135,7 @@ async function runDailyDigest({ now = new Date() } = {}, deps = defaultDeps()) {
     findings,
     systemsDown: health ? (health.down || []).map(serviceLabel) : null,
     systemsWaiting: health ? (health.waiting || []).map(serviceLabel) : null,
+    priorities,
     now,
   });
 
@@ -122,5 +158,6 @@ async function runDailyDigest({ now = new Date() } = {}, deps = defaultDeps()) {
 }
 
 module.exports = {
-  SUBJECT_TYPE, SUBJECT_ID, digestKeyFor, runDailyDigest, defaultDeps,
+  SUBJECT_TYPE, SUBJECT_ID, PRIORITIES_CAPABILITY, digestKeyFor, runDailyDigest, defaultDeps,
+  todaysPriorities,
 };

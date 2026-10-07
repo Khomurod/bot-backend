@@ -76,7 +76,9 @@ true.
 Safety coaching notes to a driver (the fixed sentence is a good sentence, and a
 model reaching for a consequence is refused), the one-line summary on a
 self-healing or learning notice, home-time replies to drivers, the fuel reminder
-wording, insight-card narration
+wording, insight-card narration, the morning summary's "most important today"
+(`daily_priorities` — it chooses among problems the rules ranked and cannot add
+one)
 (the card and its severity stand without it), drafted reports (a person edits and
 sends), broadcast translation (a person sends), birthday and banter messages.
 Each has a fixed sentence to fall back on, except reports and translation, which

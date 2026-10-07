@@ -108,3 +108,46 @@ test('no destination chat means no titles at all', { skip: skipWithoutPg() }, as
   const { controlDigest } = h.loadDataLayer(['controlDigest']);
   assert.equal(await controlDigest.listWaitingQuestions({ limit: 3 }), null);
 });
+
+test('the daily budget counts first questions that reached the chat in the last day', { skip: skipWithoutPg() }, async (t) => {
+  const h = await createPgHarness(t, { extraDdl: ALL_MIGRATIONS });
+  const { controlDigest } = h.loadDataLayer(['controlDigest']);
+  const f1 = await finding(h, 21);
+  const today = await question(h, f1, { daysAgo: 0 });
+  await question(h, f1, { daysAgo: 0, parentId: today }); // a "why?" is not another question
+  await question(h, f1, { daysAgo: 0, answered: true }); // answered still counts — it was asked
+  await question(h, f1, { daysAgo: 3 }); // three days ago is not today
+  await question(h, f1, { daysAgo: 0, state: 'abandoned' }); // never reached the chat
+  assert.equal(await controlDigest.countQuestionsAskedSince(24), 2);
+});
+
+test('the daily limit is a setting, default 2, and 0 is a real answer', { skip: skipWithoutPg() }, async (t) => {
+  const h = await createPgHarness(t, { extraDdl: ALL_MIGRATIONS });
+  const { controlSettings } = h.loadDataLayer(['controlSettings']);
+  assert.equal((await controlSettings.getControlSettings({ force: true })).maxQuestionsPerDay, 2);
+  const zero = await controlSettings.updateControlSettings({ maxQuestionsPerDay: 0 });
+  assert.equal(zero.maxQuestionsPerDay, 0);
+  await assert.rejects(
+    () => h.query('UPDATE control_settings SET max_questions_per_day = 99 WHERE id = 1'),
+    /violates check constraint/
+  );
+});
+
+test('findings in QUESTION order: money, serious, then oldest — before the limit (review, #263)', { skip: skipWithoutPg() }, async (t) => {
+  const h = await createPgHarness(t, { extraDdl: ALL_MIGRATIONS });
+  const { operationalFindings } = h.loadDataLayer(['operationalFindings']);
+  const add = (checkKey, subjectId, severity, daysOld) => h.query(
+    `INSERT INTO operational_findings (check_key, subject_type, subject_id, title, severity, first_seen_at, last_seen_at)
+     VALUES ($1, 'x', $2, $2, $3, NOW() - ($4 || ' days')::interval, NOW())`,
+    [checkKey, subjectId, severity, String(daysOld)]
+  );
+  await add('identity.stale_unit_assignment', 'new-warning', 'warning', 1);
+  await add('identity.stale_unit_assignment', 'old-warning', 'warning', 9);
+  await add('identity.stale_unit_assignment', 'serious', 'serious', 1);
+  await add('home_time.road_bonus_review', 'bonus', 'warning', 20);
+  const page = await operationalFindings.listFindings({ status: 'open', limit: 2, order: 'ask' });
+  assert.deepEqual(page.map((f) => f.subjectId), ['bonus', 'serious'],
+    'the held bonus is on the first page however long ago it was first seen');
+  const all = await operationalFindings.listFindings({ status: 'open', limit: 10, order: 'ask' });
+  assert.deepEqual(all.map((f) => f.subjectId), ['bonus', 'serious', 'old-warning', 'new-warning']);
+});
