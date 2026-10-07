@@ -413,6 +413,14 @@ test('a count that FAILED is a spent budget, never an empty one', async () => {
   assert.strictEqual(got.reason, 'daily_limit');
 });
 
+test('the database is asked for findings IN QUESTION ORDER, before its limit (review, #263)', async () => {
+  const seen = [];
+  const deps = makeDeps({ findings: { listFindings: async (q) => { seen.push(q); return [finding()]; } } });
+  deps.digest = { countQuestionsAskedSince: async () => 0 };
+  await runAskPass({}, deps);
+  assert.equal(seen[0].order, 'ask');
+});
+
 test('serious is asked before an older warning', async () => {
   const old = new Date(Date.now() - 9 * 86400_000).toISOString();
   const fresh = new Date().toISOString();

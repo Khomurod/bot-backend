@@ -20,6 +20,7 @@
  *   `resolveStaleReports` shape is copied here on purpose.
  */
 const { query } = require('./pool');
+const { MONEY_CHECKS } = require('../lib/control/priority');
 
 const SEVERITIES = ['info', 'warning', 'serious'];
 const TIERS = ['auto', 'approval', 'warning'];
@@ -118,8 +119,20 @@ async function resolveClearedFindings(checkKeys, keepIds = [], client = null) {
 
 async function listFindings({
   status = 'open', severity = null, checkKey = null, tier = null,
-  includeSnoozed = false, limit = 200,
+  includeSnoozed = false, limit = 200, order = 'recent',
 } = {}) {
+  // `order: 'ask'` is the question order (`lib/control/priority.js`): money
+  // first, then serious, then warning, each OLDEST first. It is applied HERE,
+  // before the LIMIT — ordering a page that was cut by "most recently seen"
+  // could leave the held bonus that matters most outside the page entirely.
+  const orderBy = order === 'ask'
+    ? `CASE WHEN check_key = ANY($7::text[]) THEN 0 ELSE 1 END,
+       CASE severity WHEN 'serious' THEN 0 WHEN 'warning' THEN 1 ELSE 2 END,
+       first_seen_at ASC`
+    : `CASE severity WHEN 'serious' THEN 0 WHEN 'warning' THEN 1 ELSE 2 END,
+       last_seen_at DESC`;
+  const params = [status, severity, checkKey, tier, includeSnoozed, limit];
+  if (order === 'ask') params.push([...MONEY_CHECKS]);
   const res = await query(
     `SELECT * FROM operational_findings
       WHERE ($1::text IS NULL OR status = $1)
@@ -127,10 +140,9 @@ async function listFindings({
         AND ($3::text IS NULL OR check_key = $3)
         AND ($4::text IS NULL OR tier = $4)
         AND ($5::boolean OR snoozed_until IS NULL OR snoozed_until <= NOW())
-      ORDER BY CASE severity WHEN 'serious' THEN 0 WHEN 'warning' THEN 1 ELSE 2 END,
-               last_seen_at DESC
+      ORDER BY ${orderBy}
       LIMIT $6`,
-    [status, severity, checkKey, tier, includeSnoozed, limit]
+    params
   );
   return res.rows.map(mapFinding);
 }

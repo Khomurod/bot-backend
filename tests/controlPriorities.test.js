@@ -35,9 +35,13 @@ test('the prompt lists only what was given, numbered', () => {
   assert.match(p, /2\. \[warning\] Problem 2/);
 });
 
-test('a pick must name a given item, once; at most three', () => {
+test('a pick must name a given item, once; exactly three when there are three to give', () => {
   const v = validatePriorities([f(1), f(2), f(3), f(4)]);
-  assert.equal(v(null, { picks: [{ item: 2, line: 'a' }, { item: 1, line: 'b' }] }), true);
+  assert.equal(v(null, { picks: [{ item: 2, line: 'a' }, { item: 1, line: 'b' }, { item: 4, line: 'c' }] }), true);
+  // Short is incomplete (review, #263): it falls back to the rules' three.
+  assert.notEqual(v(null, { picks: [{ item: 2, line: 'a' }, { item: 1, line: 'b' }] }), true);
+  assert.equal(validatePriorities([f(1), f(2)])(null, { picks: [{ item: 2, line: 'a' }, { item: 1, line: 'b' }] }), true,
+    'with only two to give, two is complete');
   assert.notEqual(v(null, { picks: [{ item: 9, line: 'invented' }] }), true);
   assert.notEqual(v(null, { picks: [{ item: 1, line: 'a' }, { item: 1, line: 'a' }] }), true);
   assert.notEqual(v(null, { picks: [1, 2, 3, 4].map((n) => ({ item: n, line: 'x' })) }), true);
@@ -49,7 +53,10 @@ test('without AI, or with a refused answer: the first three by rule', () => {
   assert.deepEqual(fallbackPriorities(c), ['Problem 1', 'Problem 2', 'Problem 3']);
   assert.deepEqual(prioritiesFromPicks(c, { picks: [{ item: 7, line: 'x' }] }), fallbackPriorities(c));
   assert.deepEqual(prioritiesFromPicks(c, { picks: [{ item: 2, line: 'Pay Unit 310 or not.' }] }),
-    ['Pay Unit 310 or not.']);
+    fallbackPriorities(c), 'one pick out of three is incomplete');
+  assert.deepEqual(prioritiesFromPicks(c, {
+    picks: [{ item: 2, line: 'Pay Unit 310 or not.' }, { item: 1, line: 'b' }, { item: 3, line: 'c' }],
+  }), ['Pay Unit 310 or not.', 'b', 'c']);
 });
 
 function digestDeps(extra = {}) {
@@ -73,7 +80,9 @@ function digestDeps(extra = {}) {
 
 test('the summary OPENS with today\'s most important, worded by AI', async () => {
   const deps = digestDeps({
-    runCapability: async () => ({ parsed: { picks: [{ item: 1, line: 'Truck 310 needs a driver today.' }] } }),
+    runCapability: async () => ({
+      parsed: { picks: [{ item: 1, line: 'Truck 310 needs a driver today.' }, { item: 2, line: 'Problem 1, soon.' }] },
+    }),
   });
   await runDailyDigest({ now: MORNING }, deps);
   const { lines } = deps.calls.notified[0];

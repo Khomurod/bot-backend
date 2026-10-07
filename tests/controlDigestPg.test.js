@@ -132,3 +132,22 @@ test('the daily limit is a setting, default 2, and 0 is a real answer', { skip: 
     /violates check constraint/
   );
 });
+
+test('findings in QUESTION order: money, serious, then oldest — before the limit (review, #263)', { skip: skipWithoutPg() }, async (t) => {
+  const h = await createPgHarness(t, { extraDdl: ALL_MIGRATIONS });
+  const { operationalFindings } = h.loadDataLayer(['operationalFindings']);
+  const add = (checkKey, subjectId, severity, daysOld) => h.query(
+    `INSERT INTO operational_findings (check_key, subject_type, subject_id, title, severity, first_seen_at, last_seen_at)
+     VALUES ($1, 'x', $2, $2, $3, NOW() - ($4 || ' days')::interval, NOW())`,
+    [checkKey, subjectId, severity, String(daysOld)]
+  );
+  await add('identity.stale_unit_assignment', 'new-warning', 'warning', 1);
+  await add('identity.stale_unit_assignment', 'old-warning', 'warning', 9);
+  await add('identity.stale_unit_assignment', 'serious', 'serious', 1);
+  await add('home_time.road_bonus_review', 'bonus', 'warning', 20);
+  const page = await operationalFindings.listFindings({ status: 'open', limit: 2, order: 'ask' });
+  assert.deepEqual(page.map((f) => f.subjectId), ['bonus', 'serious'],
+    'the held bonus is on the first page however long ago it was first seen');
+  const all = await operationalFindings.listFindings({ status: 'open', limit: 10, order: 'ask' });
+  assert.deepEqual(all.map((f) => f.subjectId), ['bonus', 'serious', 'old-warning', 'new-warning']);
+});

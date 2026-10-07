@@ -199,7 +199,9 @@ async function runAskPass(_options = {}, deps = defaultDeps()) {
   // against one query.
   const holds = await Promise.resolve(deps.decisions?.currentHolds?.())
     .catch(() => new Map()) || new Map();
-  const open = await deps.findings.listFindings({ status: 'open', limit: SCAN_LIMIT });
+  // ORDERED BEFORE THE LIMIT. With 400+ open findings, sorting the first page
+  // of "most recently seen" would let an older held bonus never be considered.
+  const open = await deps.findings.listFindings({ status: 'open', limit: SCAN_LIMIT, order: 'ask' });
   // MOST IMPORTANT FIRST, then oldest (`lib/control/priority.js`): money,
   // then serious, then warning. With one or two questions a day, strictly
   // oldest-first spent the day's budget on whatever had waited longest.

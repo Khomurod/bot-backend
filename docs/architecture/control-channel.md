@@ -226,7 +226,10 @@ with the group muted:
 - `max_questions_per_pass` (default 5), **most important first**
   (`lib/control/priority.js`): money (a held road bonus) before anything,
   then serious, then warning, each oldest first. Strictly oldest-first spent
-  the day's budget on whatever had waited longest;
+  the day's budget on whatever had waited longest. The order is applied in
+  SQL before the scan limit (`listFindings({ order: 'ask' })`) — with 400+
+  open findings, sorting a page cut by "most recently seen" could leave the
+  held bonus off it;
 - **every question says why it is asked** — "Why I'm asking: …", the
   finding's own reason when it has one, otherwise what its tier means;
 - `repeat_after_hours` (default 72) — the same question is not re-asked inside
@@ -353,8 +356,9 @@ group (`services/control/dailyDigest.js`, pure wording in
   from the first eight by rule (`lib/control/priorities.js`, the same order as
   the questions). An AI (`daily_priorities`) may pick among them and say each
   plainly; every pick must name an item it was given, by number, so it cannot
-  add a problem. Without AI, or on a refused answer, it is the first three by
-  rule under their own titles;
+  add a problem; and it must give exactly three (or all, when fewer are
+  open) — an incomplete answer is refused. Without AI, or on a refused
+  answer, it is the first three by rule under their own titles;
 - **the questions still waiting** — how many, and the three that have waited
   longest by name and age. This is the escalation: a question nobody answered
   slides up the chat and is, in practice, gone; the summary brings it back.
