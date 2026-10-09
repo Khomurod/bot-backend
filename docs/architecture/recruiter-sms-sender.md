@@ -271,7 +271,7 @@ onboarding by signing in never costs a recruiter their KPI attribution.
 October 2026, to save database transfer, the sync no longer reads every
 recruiter row on every pass (`database/ringcentral/recruiterRosters.js`). It
 keeps the rows, and each pass first asks the database for an md5 of exactly
-the seven columns it uses. A rotated refresh token changes that hash, so the
+the nine columns it reads. A rotated refresh token changes that hash, so the
 next pass always holds the current token, whoever rotated it: the sync itself,
 the lead sender, the daily job, or another instance mid-deploy. Do not swap the
 hash for a TTL or for invalidation hooks alone. A pass that refreshes with a

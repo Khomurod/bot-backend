@@ -8,7 +8,7 @@
  *                                     reads credentials, identity and errors)
  *   listRecruiterSmsExtensions        the leads worker's 15-minute check: id,
  *                                     name and extension — the same recruiters
- *   listRecruitersForCallSync         the 10-minute call sync: seven columns,
+ *   listRecruitersForCallSync         the 10-minute call sync: nine columns,
  *                                     re-read only when they change
  *
  * October 2026, when the hosted database's monthly transfer allowance was
@@ -40,9 +40,16 @@
  */
 const { query } = require('../pool');
 
-/** What the call sync reads from a recruiter row: its attribution and its credentials. */
+/**
+ * What the call sync reads from a recruiter row: its attribution, its
+ * credentials, and the two identity fields `resolveRecruiterRcAuth` copies into
+ * the auth it builds (`fromNumber`, `extensionId`). The sync does not use those
+ * two today. They are read anyway, so the auth object a pass builds is the same
+ * one a whole-row read built, and a later caller of it is not handed a silently
+ * empty value. They cost bytes only on the rare re-read.
+ */
 const CALL_SYNC_COLUMNS = [
-  'id', 'name', 'phone_number_normalized',
+  'id', 'name', 'phone_number', 'phone_number_normalized', 'rc_extension_id',
   'jwt_token_encrypted', 'client_id_encrypted', 'client_secret_encrypted', 'refresh_token_encrypted',
 ];
 const CALL_SYNC_SELECT = CALL_SYNC_COLUMNS.join(', ');

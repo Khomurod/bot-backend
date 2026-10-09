@@ -295,7 +295,7 @@ pass cost about 20 KB, and each 15-minute extension check from the leads worker
   it. The sync's own stamp updates the cached copy instead of throwing it away,
   which used to cost every pass a second read. A failed read is still kept only
   15 seconds, so a blip cannot read as "RingCentral is off".
-- **The sync reads seven recruiter columns, and only when they changed.** Each
+- **The sync reads nine recruiter columns, and only when they changed.** Each
   pass first asks for an md5 of exactly those columns, about 100 bytes. It
   re-reads the rows when the hash differs: a rotated refresh token, an admin
   save, another instance's write. It never relies on invalidation hooks alone,

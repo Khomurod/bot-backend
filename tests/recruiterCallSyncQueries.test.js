@@ -102,7 +102,7 @@ require.cache[OAUTH_SVC].exports = {
 };
 
 const SYNC_COLUMNS = [
-  'id', 'name', 'phone_number_normalized',
+  'id', 'name', 'phone_number', 'phone_number_normalized', 'rc_extension_id',
   'jwt_token_encrypted', 'client_id_encrypted', 'client_secret_encrypted', 'refresh_token_encrypted',
 ];
 

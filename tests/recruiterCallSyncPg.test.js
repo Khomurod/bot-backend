@@ -30,7 +30,7 @@ const { DEFAULT_TARGET_TALK_SECONDS, formatTalkLabel } = require('../database/ri
 
 const ALL_MIGRATIONS = allMigrationsSql();
 const SYNC_COLUMNS = [
-  'id', 'name', 'phone_number_normalized',
+  'id', 'name', 'phone_number', 'phone_number_normalized', 'rc_extension_id',
   'jwt_token_encrypted', 'client_id_encrypted', 'client_secret_encrypted', 'refresh_token_encrypted',
 ];
 
@@ -148,7 +148,7 @@ async function seedRecruiters(ringcentral) {
   return { jane, bob, cara, dan, eve };
 }
 
-test('the call-sync roster: the same recruiters in the same order, seven columns, re-read only when they change', { skip: skipWithoutPg() }, async (t) => {
+test('the call-sync roster: the same recruiters in the same order, nine columns, re-read only when they change', { skip: skipWithoutPg() }, async (t) => {
   const harness = await createPgHarness(t, { extraDdl: ALL_MIGRATIONS });
   const { ringcentral, statements } = loadRingcentral(harness);
   const { jane, bob, cara } = await seedRecruiters(ringcentral);
@@ -174,9 +174,15 @@ test('the call-sync roster: the same recruiters in the same order, seven columns
   assert.equal(auth(next.rows, cara.id).refreshToken, 'refresh-2', 'and it is the new token the pass would use');
 
   await ringcentral.markRecruiterAuthError(cara.id, 'needs sign-in');
+  next = await read();
+  assert.equal(next.count, 1, 'a column the roster does not carry costs no re-read');
+
+  // The extension id IS carried (resolveRecruiterRcAuth copies it into the
+  // auth), so a change to it is re-read like any other.
   await ringcentral.updateRecruiterRcIdentity(bob.id, { extensionId: '102' });
   next = await read();
-  assert.equal(next.count, 1, 'columns the sync never reads do not cost a re-read');
+  assert.equal(next.count, 2, 'a carried identity field is re-read when it changes');
+  assert.equal(auth(next.rows, bob.id).extensionId, '102');
 
   await harness.query('UPDATE recruiters SET jwt_token_encrypted = $1 WHERE id = $2', [encryptText('bob-jwt'), bob.id]);
   next = await read();
