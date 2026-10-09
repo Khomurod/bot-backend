@@ -82,7 +82,8 @@ enough to benefit, and never let their absence block or delay work:
   (command, pass/fail counts). Do not claim a test passed unless it was run.
 - Do not merge without reviewing the final diff.
   **Repository-specific caution:** a push here opens and merges nothing by
-  itself — `.github/workflows/` holds only `ci.yml`, so the agent opens the PR
+  itself — `.github/workflows/` holds `ci.yml` and the manual-only
+  `copy-database.yml`, so the agent opens the PR
   and the repository owner merges it (29 minutes to 8 hours later, on PRs
   #161–#163). The push is still the point of no return, because **`main`
   auto-deploys to Render** and the owner may merge at any moment without asking
