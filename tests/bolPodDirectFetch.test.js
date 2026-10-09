@@ -59,11 +59,15 @@ test('Input.fromBuffer is the deliberate fallback shape', () => {
 
 function loadService({ sendDocument, fetchImpl, apiToken = 'dt-token' } = {}) {
   const servicePath = path.resolve(__dirname, '../services/datatruckDocumentService.js');
+  // The send itself lives here since the service was split; it holds the bot
+  // and the send helpers, so it is re-loaded against this test's stand-ins too.
+  const senderPath = path.resolve(__dirname, '../services/datatruckDocumentSender.js');
   const configPath = path.resolve(__dirname, '../config/config.js');
   const botPath = path.resolve(__dirname, '../bot/bot.js');
   const htmlPath = path.resolve(__dirname, '../services/telegramHtml.js');
 
   delete require.cache[servicePath];
+  delete require.cache[senderPath];
   // NOTE: telegraf is deliberately NOT stubbed — the point is the real Input.
   require.cache[configPath] = {
     exports: {
@@ -93,6 +97,7 @@ function loadService({ sendDocument, fetchImpl, apiToken = 'dt-token' } = {}) {
     restore() {
       global.fetch = previousFetch;
       delete require.cache[servicePath];
+      delete require.cache[senderPath];
       delete require.cache[configPath];
       delete require.cache[botPath];
       delete require.cache[htmlPath];

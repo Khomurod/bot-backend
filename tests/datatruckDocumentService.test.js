@@ -29,8 +29,12 @@ function loadService({
   const docsDbPath = path.resolve(__dirname, '../database/datatruckDocuments.js');
   const directoryPath = path.resolve(__dirname, '../services/driverGroupDirectoryService.js');
   const settingsPath = path.resolve(__dirname, '../database/bolPodForwardingSettings.js');
+  // Split out of the service: it holds the bot and the send helpers, so it is
+  // re-loaded against each test's stand-ins as well.
+  const senderPath = path.resolve(__dirname, '../services/datatruckDocumentSender.js');
 
   delete require.cache[servicePath];
+  delete require.cache[senderPath];
 
   const calls = {
     sent: [], backfill: [], upserts: [], claimed: [],
@@ -71,6 +75,8 @@ function loadService({
   let rowSeq = 0;
   const docsDbMock = {
     async ensureActivationTime() { return new Date('2026-06-01T00:00:00Z'); },
+    // Nothing on record unless a test says otherwise.
+    async getDeliveryStates() { calls.stateReads = (calls.stateReads || 0) + 1; return new Map(); },
     async recordBackfillSuppressed(meta) { calls.backfill.push(meta); return true; },
     async upsertDelivery(meta) {
       rowSeq += 1;
@@ -180,6 +186,47 @@ test('driver_group mode: forwards a new BOL by driver name (truck number ignored
   assert.ok(driverSent);
   assert.equal(driverSent.info.telegramGroupId, '-1002614');
   assert.equal(driverSent.info.matchedBy, 'name');
+});
+
+// ─── documents dealt with on an earlier pass ─────────────────────────────────
+
+const ONE_BOL = [orderWith([
+  { file_type: 'bill_of_lading', file_link: '2026/6/15/uuid/bol_scan.pdf', uploaded_at: '2026-06-15T10:00:00Z', uploaded_by: 'Jane' },
+])];
+const recorded = (state) => async (signatures) => new Map(signatures.map((sig) => [sig, { id: 9, ...state }]));
+
+test('A DOCUMENT ALREADY SENT is skipped from one narrow read — no upsert, no claim, no send', async () => {
+  // October 2026: a scan re-read a week of documents (~430) and wrote and read
+  // back a full delivery row for each, every pass — about 100 MB a day.
+  const { service, calls } = loadService({
+    directory: [driverGroup],
+    datatruck: { async fetchOrdersByDeliveryWindow() { return ONE_BOL; } },
+    docsDb: {
+      getDeliveryStates: recorded({
+        status: 'sent', central_status: 'skipped_not_applicable', attempt_count: 1, central_attempt_count: 0,
+      }),
+    },
+  });
+  const summary = await service.runOnce({ referenceMs: Date.parse('2026-06-20T00:00:00Z') });
+  assert.equal(summary.alreadySettled, 1);
+  assert.deepEqual([calls.upserts.length, calls.claimed.length, calls.sent.length], [0, 0, 0]);
+});
+
+test('a document still RETRYABLE is routed again on its existing row, without re-reading it', async () => {
+  const { service, calls } = loadService({
+    directory: [driverGroup],
+    datatruck: { async fetchOrdersByDeliveryWindow() { return ONE_BOL; } },
+    docsDb: {
+      getDeliveryStates: recorded({
+        status: 'failed', central_status: 'skipped_not_applicable', attempt_count: 2, central_attempt_count: 0,
+      }),
+    },
+  });
+  const summary = await service.runOnce({ referenceMs: Date.parse('2026-06-20T00:00:00Z') });
+  assert.equal(summary.alreadySettled, 0);
+  assert.equal(calls.upserts.length, 0, 'the row the scan read is used as it is');
+  assert.deepEqual(calls.claimed, [{ id: 9, dest: 'driver' }]);
+  assert.equal(calls.sent.length, 1);
 });
 
 test('routes BOL to the uploader driver group by uploader name', async () => {

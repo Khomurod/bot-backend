@@ -273,7 +273,46 @@ function guessFileExtension(fileLink) {
   return '.pdf';
 }
 
+/**
+ * Statuses a destination never leaves: nothing the routing does can act on a
+ * document in one of these again. The routing acts on a destination in only two
+ * ways: claimDestination takes `pending`, or a `failed` / `skipped_no_group` /
+ * stale `processing` row still under its cap; skipIfUnacted relabels `pending`
+ * and `processing`.
+ */
+const SETTLED_DESTINATION_STATUSES = new Set([
+  'sent', 'suppressed_backfill',
+  'skipped_not_applicable', 'skipped_same_group', 'skipped_unclear', 'skipped_duplicate',
+]);
+
+function destinationSettled(status, attempts, maxAttempts) {
+  if (status == null || SETTLED_DESTINATION_STATUSES.has(status)) return true;
+  // A failed or no-group destination is retried until its attempts are spent.
+  // `pending` and `processing` never settle here: the relabel still applies to
+  // them at any attempt count.
+  return (status === 'failed' || status === 'skipped_no_group')
+    && Number(attempts || 0) >= maxAttempts;
+}
+
+/**
+ * Is there nothing left to do for this document? A row from
+ * `datatruck_document_deliveries` as read at the start of a scan, or null.
+ *
+ * A scan re-reads every BOL/POD in a 7-day window — about 430 of them — and
+ * almost all are long since sent. Asking this first, from ONE narrow read for
+ * the whole window, is what lets the scan skip them instead of writing and
+ * reading back a full delivery row per document per pass (October 2026: ~100 MB
+ * a day of database transfer). A document without a row is never settled.
+ */
+function isDeliverySettled(state, maxAttempts) {
+  if (!state) return false;
+  if (state.status === 'suppressed_backfill') return true;
+  return destinationSettled(state.status, state.attempt_count, maxAttempts)
+    && destinationSettled(state.central_status, state.central_attempt_count, maxAttempts);
+}
+
 module.exports = {
+  isDeliverySettled,
   BOL_FILE_TYPE,
   POD_FILE_TYPE,
   TRACKED_DOCUMENT_LABELS,

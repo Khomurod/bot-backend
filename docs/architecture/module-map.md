@@ -124,7 +124,7 @@ organization should converge toward.
 |---|---|
 | Feedback surveys (multilingual) | `bot/anonymousFeedbackHandlers.js`, questions/options/responses in `database/db.js`, `services/translationService.js`, admin `pages/communications/SurveysTab.jsx` |
 | Broadcasts & scheduled messages | `services/schedulerService.js`, `scheduledMessageUtils.js`, `broadcastTargetService.js`, `broadcastTemplateService.js`, `bot/creatorMessageManager.js`, admin `pages/communications/{SendMessageTab,ScheduledTab,EditByLinkTab}.jsx` (+ `communications/broadcast/*`) |
-| BOL/POD document delivery (idempotent) | `services/datatruckDocumentService.js`, `datatruckDocumentHelpers.js`, `database/datatruckDocuments.js` (`datatruck_document_deliveries`) |
+| BOL/POD document delivery (idempotent) | `services/datatruckDocumentService.js` (which document goes where), `datatruckDocumentSender.js` (how one file reaches a group — Telegram fetches the URL; the bytes are relayed only as a fallback), `datatruckDocumentHelpers.js`, `database/datatruckDocuments.js` (`datatruck_document_deliveries`) |
 | Fuel-stop reminders | `services/fuelStopAlertService.js`, `server/routes/fuelMonitorRoutes.js`, `fuel_stop_alerts` + `fuel_monitor_inbox`, admin `FuelMonitorPage.jsx` |
 | Home-time tracking | `services/homeTimeService.js`, `homeTimeRequestService.js`, `homeTimeImportService.js`, `homeTimeConstants.js`, `bot/homeTimeRequestHandlers.js`, `server/routes/homeTimeRoutes.js`, `database/homeTime.js`, admin `HomeTimePage.jsx` |
 | Birthdays (driver + employee) | `services/birthdayService.js`, `employeeBirthdayWishService.js`, `employeeBirthdayMessage.js`, `utils/birthdaySort.js`, `birthdays.csv`, `scripts/import-birthdays.js`, admin `CompanyBirthdaysPage.jsx` |

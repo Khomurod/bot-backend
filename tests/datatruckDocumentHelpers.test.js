@@ -218,3 +218,26 @@ test('BOL and POD captions and filenames are well-formed and HTML-escaped', () =
   assert.equal(guessFileExtension('https://x/scan.PNG?token=1'), '.png');
   assert.equal(guessFileExtension('https://x/nofileext'), '.pdf');
 });
+
+test('isDeliverySettled: only a document nothing can act on again is settled', () => {
+  const { isDeliverySettled } = require('../services/datatruckDocumentHelpers');
+  const MAX = 6;
+  const row = (status, central_status, attempt_count = 0, central_attempt_count = 0) => ({
+    status, central_status, attempt_count, central_attempt_count,
+  });
+  assert.equal(isDeliverySettled(null, MAX), false, 'no row yet is new work');
+  assert.equal(isDeliverySettled(row('sent', 'sent'), MAX), true);
+  assert.equal(isDeliverySettled(row('sent', 'skipped_not_applicable'), MAX), true);
+  assert.equal(isDeliverySettled(row('suppressed_backfill', 'pending'), MAX), true, 'backfill is never acted on');
+  assert.equal(isDeliverySettled(row('skipped_unclear', 'pending'), MAX), false, 'central review still to go');
+  assert.equal(isDeliverySettled(row('pending', 'skipped_not_applicable'), MAX), false);
+  assert.equal(isDeliverySettled(row('failed', 'skipped_not_applicable', 2), MAX), false, 'a retry is still due');
+  assert.equal(isDeliverySettled(row('failed', 'skipped_not_applicable', 6), MAX), true, 'attempts spent');
+  assert.equal(isDeliverySettled(row('skipped_no_group', 'sent', 0), MAX), false, 'the group may appear later');
+  assert.equal(isDeliverySettled(row('sent', 'processing', 1, 1), MAX), false, 'a stale claim is reclaimable');
+  // Out of attempts, a claim can no longer take these — but a delivery-mode
+  // change still relabels them (skipIfUnacted), exactly as before the skip.
+  assert.equal(isDeliverySettled(row('processing', 'skipped_not_applicable', 6), MAX), false);
+  assert.equal(isDeliverySettled(row('pending', 'skipped_not_applicable', 6), MAX), false);
+  assert.equal(isDeliverySettled(row('skipped_no_group', 'skipped_not_applicable', 6), MAX), true);
+});

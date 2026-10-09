@@ -107,6 +107,22 @@ mode), `skipped_same_group` (central == driver group), `skipped_unclear`,
 
 - Stable per-document `signature` (`dt-doc|<orderId>|<fileType>|<uploadedAt>|<seq>`)
   with a UNIQUE constraint; terminal statuses are never re-sent.
+- **A scan reads where every document stands ONCE, and skips the settled ones.**
+  Each pass covers a week of documents, about 430, and nearly all were dealt
+  with on an earlier pass. Each one used to cost an upsert and a full-row read
+  back on every pass: about 100 MB a day of database transfer (October 2026).
+  - Now `getDeliveryStates` reads only the deciding columns for the whole
+    window, in one statement.
+  - `isDeliverySettled` (`services/datatruckDocumentHelpers.js`) skips any
+    document no routing step could act on again: sent or skipped on both
+    sides, suppressed as backfill, or out of attempts.
+  - A retryable document is routed on the row already read, not upserted and
+    read back again.
+  - `skipped_no_group` is never settled before its cap: the driver's group may
+    appear later.
+  - `pending` and `processing` are never settled, at any attempt count. A
+    delivery-mode change still relabels them, exactly as before the skip
+    existed.
 - Each destination retried independently under an attempt cap + stale window.
 - The DataTruck source is outbound-only (documents are never re-ingested from
   Telegram), so there is no forwarding loop. Bot-sent messages are also recorded
