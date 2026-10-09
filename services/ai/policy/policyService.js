@@ -42,6 +42,17 @@ function nextCheckDueAt(checkDays, now = new Date()) {
 }
 
 /**
+ * A check that reached none of its sources read nothing: `runPolicyCheck`
+ * counts per-source failures in `errors` and still returns, so the ledger
+ * alone would call it done and the next try would wait days for the next
+ * check day. One source failing among several is a check that did its job.
+ */
+function everySourceFailed(summary) {
+  const sources = Number(summary?.sources) || 0;
+  return sources > 0 && Number(summary?.errors) >= sources;
+}
+
+/**
  * One wake of the terms-watcher timer, deciding whether a check is due.
  *
  * THE WAKE IS NOT THE CHECK. The wake timer never sleeps longer than an hour,
@@ -51,8 +62,8 @@ function nextCheckDueAt(checkDays, now = new Date()) {
  * checks (as before), then the next check is the first configured slot after
  * the last one that finished. The schedule is re-read on every wake, so an
  * operator changing the check days is honoured from the last run. A check that
- * threw, ended in error or was blocked is not remembered, so the next wake
- * tries again — as every wake used to.
+ * threw, ended in error, was blocked, or reached none of its sources is not
+ * remembered, so the next wake tries again — as every wake used to.
  *
  * @param {{ store?, runCheck?, heartbeat?, recordRun?, now?: () => Date }} [deps]
  */
@@ -85,13 +96,14 @@ function createPolicyCheckTick({
     running = true;
     try {
       const summary = await recordRun('ai_policy_watcher', () => runCheck());
-      if (ranToCompletion(summary)) lastCheckAt = at;
+      // When it ENDED, so a check that ran across 09:00 has covered that slot.
+      if (ranToCompletion(summary) && !everySourceFailed(summary)) lastCheckAt = now();
     } catch (err) {
       console.error('[POLICY] check failed:', err.message);
     } finally {
       running = false;
     }
-    return { dueAtMs: nextCheckDueAt(settings.checkDays, lastCheckAt || at) };
+    return { dueAtMs: nextCheckDueAt(settings.checkDays, lastCheckAt || now()) };
   };
 }
 

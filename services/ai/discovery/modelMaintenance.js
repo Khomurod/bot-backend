@@ -234,7 +234,7 @@ let requester = null;
  * maintenance on EVERY wake — every provider's model listing fetched and
  * written, about 24 times a day instead of once. Now the first wake after boot
  * runs (a restart after downtime catches up, as before), then the next run is
- * the first 06:00 UTC after the last one that did its job. A run that threw,
+ * the first 06:00 UTC after the last one that did its job finished. A run that threw,
  * ended in error (it verified nothing) or was blocked on configuration is not
  * remembered, so the next wake tries again — as every wake used to.
  *
@@ -246,14 +246,15 @@ function createMaintenanceTick({ run, now = Date.now }) {
   return async function maintenanceTick() {
     const dueAt = lastRunAt == null ? -Infinity : nextMaintenanceDueAt(new Date(lastRunAt));
     if (now() >= dueAt) {
-      const startedAt = now();
       const ok = await Promise.resolve()
         .then(run)
         .then(ranToCompletion, (err) => {
           console.error('[AI MODELS] maintenance failed:', err.message);
           return false;
         });
-      if (ok) lastRunAt = startedAt;
+      // When it ENDED: a pass that ran across 06:00 has covered that slot, and
+      // stamping its start would hand the timer a due time already past.
+      if (ok) lastRunAt = now();
     }
     return { dueAtMs: lastRunAt == null ? null : nextMaintenanceDueAt(new Date(lastRunAt)) };
   };

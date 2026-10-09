@@ -111,3 +111,42 @@ test('TERMS WATCHER: switched off, it checks nothing and says so', async () => {
   await tick(); c.advance(HOUR); await tick();
   assert.deepEqual([calls.checks, calls.heartbeats], [0, 2]);
 });
+
+test('MODEL MAINTENANCE: a pass that runs across 06:00 is not run again the moment it ends', async () => {
+  const c = clock('2026-10-22T05:59:00Z');
+  let runs = 0;
+  const tick = createMaintenanceTick({
+    run: async () => { runs += 1; c.advance(2 * 60 * 1000); return { refreshed: 1 }; }, // ends 06:01
+    now: c.now,
+  });
+  const due = await tick();
+  assert.equal(new Date(due.dueAtMs).toISOString(), '2026-10-23T06:00:00.000Z',
+    'the next slot is after the pass ENDED, not after it began');
+  c.advance(60 * 1000); await tick();
+  assert.equal(runs, 1);
+});
+
+test('TERMS WATCHER: a check in which EVERY source failed is retried at the next wake', async () => {
+  const c = clock('2026-10-21T10:00:00Z');
+  const { tick, calls } = policyDeps(c, { results: [{ sources: 6, errors: 6 }, { sources: 6, errors: 1 }] });
+  await tick();
+  c.advance(HOUR); await tick();
+  assert.equal(calls.checks, 2, 'nothing was read, so it is tried again an hour later');
+  c.advance(HOUR); await tick();
+  assert.equal(calls.checks, 2, 'one source failing among six is a check that did its job');
+});
+
+test('TERMS WATCHER: a check that runs across 09:00 is not run again the moment it ends', async () => {
+  const c = clock('2026-10-22T08:59:00Z'); // Thursday, a check day
+  const calls = { checks: 0 };
+  const tick = createPolicyCheckTick({
+    store: { async getWatcherSettings() { return { enabled: true, checkDays: 'mon,thu' }; } },
+    runCheck: async () => ({ sources: 6, errors: 0 }),
+    recordRun: async (_key, pass) => { calls.checks += 1; c.advance(2 * 60 * 1000); return pass(); },
+    heartbeat: async () => {},
+    now: c.at,
+  });
+  await tick();
+  c.advance(60 * 1000); await tick();
+  assert.equal(calls.checks, 1);
+});
