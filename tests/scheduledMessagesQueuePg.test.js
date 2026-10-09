@@ -10,7 +10,7 @@
  * with a fake pool would happily "pass" while production returned a 500, so it
  * is exercised against the real schema here.
  *
- * Requires TEST_DATABASE_URL (CI provides a Postgres 16 service container).
+ * Requires TEST_DATABASE_URL (CI provides a Postgres 16 container).
  */
 'use strict';
 

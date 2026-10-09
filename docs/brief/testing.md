@@ -55,7 +55,7 @@ npm run build:schema:check                        # schema.sql is in sync with b
   characters in comments.
 - **CI** (`.github/workflows/ci.yml`) runs three jobs: static checks + admin
   build, the Node unit suite with **no application env at all**, and the
-  PostgreSQL integration suite against a real Postgres 16 service container.
+  PostgreSQL integration suite against a real Postgres 16 container.
   **Both test jobs fail on ANY skip.** CI also asserts FleetView stays archived.
   The static job additionally runs `lint:undef` and `lint:imports` — the two
   checks a green build does not perform.
