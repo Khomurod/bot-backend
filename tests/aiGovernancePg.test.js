@@ -416,3 +416,17 @@ test('THE ROUTER READS MODEL IDS, never the listing — ids only, enabled provid
   assert.deepEqual(ids.get('groq'), ['llama-3.1-8b-instant', 'openai/gpt-oss-20b'],
     'an entry with no id is not a model');
 });
+
+test('/api/health reads a provider\'s listing SIZE, never the listing', { skip: skipWithoutPg() }, async (t) => {
+  const harness = await harnessWith(t);
+  const { aiProviders } = load(harness);
+  await aiProviders.upsertProvider('groq', { label: 'Groq', enabled: true, apiKey: 'gsk_test_1234' });
+  await aiProviders.saveDiscoveredModels('groq', { models: [{ id: 'a', chat: true }, { id: 'b', chat: true }] });
+
+  const rows = await aiProviders.summariseProvidersForHealth();
+  const groq = rows.find((p) => p.providerKey === 'groq');
+  assert.equal(groq.discoveredCount, 2);
+  assert.equal(groq.enabled, true);
+  assert.ok(rows.every((p) => !('apiKey' in p) && !('discoveredModels' in p)), 'no key, no listing');
+  assert.ok(rows.every((p) => Number.isInteger(p.discoveredCount)), 'a provider never refreshed counts 0');
+});

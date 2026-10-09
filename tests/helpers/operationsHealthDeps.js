@@ -123,10 +123,11 @@ function summaryDeps(overrides = {}) {
       },
     },
     aiProviders: {
-      async listProvidersForAdmin() {
+      // The listing's SIZE only: /api/health never reads the listing itself.
+      async summariseProvidersForHealth() {
         return [
-          { providerKey: 'gemini', enabled: true, modelChain: ['gemini-2.5-flash'], discoveredModels: [{ id: 'a' }, { id: 'b' }], modelsRefreshedAt: '2026-09-10T06:00:00.000Z', modelsRefreshError: null },
-          { providerKey: 'groq', enabled: true, modelChain: ['x'], discoveredModels: [], modelsRefreshedAt: null, modelsRefreshError: `401 Unauthorized: ${'the provider said many words '.repeat(20)}` },
+          { providerKey: 'gemini', enabled: true, modelChain: ['gemini-2.5-flash'], discoveredCount: 2, modelsRefreshedAt: '2026-09-10T06:00:00.000Z', modelsRefreshError: null },
+          { providerKey: 'groq', enabled: true, modelChain: ['x'], discoveredCount: 0, modelsRefreshedAt: null, modelsRefreshError: `401 Unauthorized: ${'the provider said many words '.repeat(20)}` },
         ];
       },
     },

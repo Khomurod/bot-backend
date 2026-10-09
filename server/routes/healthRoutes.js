@@ -198,8 +198,14 @@ function createHealthRoutes({
   // What the system is doing about its own records — counts only (see
   // services/operations/healthSummary.js). Injected for the same reason the
   // queue counter is, cached briefly, and never part of `healthy`.
+  //
+  // FIFTEEN MINUTES, NOT ONE. Render's own health check polls this path, and a
+  // build is ~46 statements; at a minute it was rebuilt up to 1,440 times a
+  // day (October 2026, with the database's transfer allowance nearly spent).
+  // Counts this coarse are as true fifteen minutes later, and a restart
+  // starts the cache empty, so a deploy is still read fresh.
   let operationsHealthCache = { checkedAt: 0, operations: null };
-  const OPERATIONS_HEALTH_TTL_MS = 60 * 1000;
+  const OPERATIONS_HEALTH_TTL_MS = 15 * 60 * 1000;
 
   async function getOperationsBlock() {
     if (typeof getOperationsHealth !== 'function') return undefined;
@@ -222,7 +228,8 @@ function createHealthRoutes({
     return { sha, short: sha ? sha.slice(0, 7) : null };
   }
 
-  async function runHealthCheck() {
+  /** `withOperations: false` for a HEAD request, whose body nobody receives. */
+  async function runHealthCheck({ withOperations = true } = {}) {
     let dbOk = false;
     try {
       dbOk = await db.ping();
@@ -237,7 +244,7 @@ function createHealthRoutes({
     // missing block reads as a decision rather than an outage.
     const economy = typeof getEconomyState === 'function' ? getEconomyState() : null;
     const economyOn = economy?.active === true;
-    const operations = dbOk && !economyOn ? await getOperationsBlock() : undefined;
+    const operations = dbOk && !economyOn && withOperations ? await getOperationsBlock() : undefined;
     return {
       healthy: dbOk,
       status: dbOk ? 'ok' : 'degraded',
@@ -257,7 +264,7 @@ function createHealthRoutes({
   }
 
   async function healthHandler(req, res) {
-    const body = await runHealthCheck();
+    const body = await runHealthCheck({ withOperations: req.method !== 'HEAD' });
     res.setHeader('Cache-Control', 'no-store');
     res.status(body.healthy ? 200 : 503);
     if (req.method === 'HEAD') {

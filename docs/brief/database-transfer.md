@@ -158,6 +158,13 @@ If the read of what each load witnessed fails, the pass ends there. Nothing is
 written and no finding is resolved, because phases worked out without that
 memory would forget an arrival.
 
+**The health endpoint's `operations` block** is built at most once every 15
+minutes (it was once a minute), and never for a HEAD request, whose body nobody
+receives. Render's own health check polls `/api/health`, so a one-minute cache
+meant up to 1,440 builds a day of ~46 statements each. The block reads each AI
+provider's model-listing SIZE (`summariseProvidersForHealth`), not the listing,
+which was about 43 KB for OpenRouter's (`tests/healthOperationsCost.test.js`).
+
 **A filed finding returns its id only** (`upsertFinding`). Every caller wanted
 the id for its keep-list. The load watch and the consistency sweep re-file
 hundreds of findings every few minutes, and `RETURNING *` echoed each one back
