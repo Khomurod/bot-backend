@@ -56,7 +56,9 @@ test('a recurring condition updates one row and keeps its first_seen_at', { skip
   await harness.query(
     "UPDATE operational_findings SET first_seen_at = '2026-06-01T00:00:00Z' WHERE id = $1", [first.id]
   );
-  const second = await store.upsertFinding({ ...BASE, title: 'Unit 001 is on 3 active driver groups' });
+  const refiled = await store.upsertFinding({ ...BASE, title: 'Unit 001 is on 3 active driver groups' });
+  assert.deepEqual(Object.keys(refiled), ['id'], 'the id alone comes back — the finding is not echoed whole');
+  const second = await store.getFindingById(refiled.id);
 
   assert.equal(second.id, first.id, 'one row, not two');
   assert.equal(second.title, 'Unit 001 is on 3 active driver groups', 'refreshed');
@@ -75,7 +77,7 @@ test('a resolved finding re-opens when the condition returns', { skip: skipWitho
   await store.resolveClearedFindings([BASE.checkKey], []);
   assert.equal((await store.getFindingById(filed.id)).status, 'resolved');
 
-  const again = await store.upsertFinding(BASE);
+  const again = await store.getFindingById((await store.upsertFinding(BASE)).id);
   assert.equal(again.status, 'open');
   assert.equal(again.resolvedAt, null);
 });
@@ -84,10 +86,10 @@ test("a human's dismissal outranks the sweep", { skip: skipWithoutPg() }, async 
   const harness = await harnessWithFindings(t);
   const store = loadStore(harness);
 
-  const filed = await store.upsertFinding(BASE);
+  const filed = await store.getFindingById((await store.upsertFinding(BASE)).id);
   await store.dismissFinding(filed.id, { dismissedBy: 'admin', reason: 'Unit 001 is a placeholder; known.' });
 
-  const after = await store.upsertFinding(BASE);
+  const after = await store.getFindingById((await store.upsertFinding(BASE)).id);
   assert.equal(after.status, 'dismissed', 'the sweep must not overrule the one person who looked');
   assert.equal(after.dismissReason, 'Unit 001 is a placeholder; known.');
   assert.ok(new Date(after.lastSeenAt) >= new Date(filed.lastSeenAt), 'but the record stays honest');

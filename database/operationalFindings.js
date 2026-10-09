@@ -54,6 +54,11 @@ function mapFinding(row) {
  *
  * The UPDATE deliberately leaves `first_seen_at` alone — "this has been true
  * since June" is the most useful thing a recurring finding knows.
+ *
+ * RETURNS `{ id }` ONLY — every caller wants the id for its keep-list and
+ * nothing else. October 2026: `RETURNING *` echoed each finding back whole,
+ * evidence included, and the sweeps re-file hundreds of them every few
+ * minutes; read a finding with `getFindingById` when you need it.
  */
 async function upsertFinding(finding, client = null) {
   const run = client ? client.query.bind(client) : query;
@@ -81,13 +86,13 @@ async function upsertFinding(finding, client = null) {
                          THEN 'open' ELSE operational_findings.status END,
            resolved_at = CASE WHEN operational_findings.status = 'resolved'
                               THEN NULL ELSE operational_findings.resolved_at END
-     RETURNING *`,
+     RETURNING id`,
     [checkKey, subjectType, String(subjectId), title, severity, tier,
       JSON.stringify(evidence ?? {}),
       proposedChange == null ? null : JSON.stringify(proposedChange),
       confidence]
   );
-  return mapFinding(res.rows[0]);
+  return res.rows[0] ? { id: res.rows[0].id } : null;
 }
 
 /**

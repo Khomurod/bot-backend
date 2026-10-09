@@ -141,6 +141,29 @@ skips the settled ones (`docs/architecture/bol-pod-forwarding.md`). Before, it
 upserted and read back a full row for each of ~430 documents on every pass,
 about 100 MB a day.
 
+**Load control**, also paused in economy mode, was the largest consumer
+measured: about 110 MB a day. It now costs one read of each table per pass,
+whatever the number of loads (`tests/loadPassQueries.test.js`):
+- the active driver groups, as id and title only;
+- the holders of every unit on the board, in one `= ANY` read;
+- where every load stood before, only the columns the pass uses.
+
+A pass reads back nothing it writes. Before, every ten minutes and for each of
+~205 loads, it read `SELECT *` from two tables and echoed its write back whole.
+Which load and who it belongs to after a write is worked out in
+`identityAfterWrite` (`database/loadLifecycle.js`), with the same COALESCEs as
+the SQL. A PostgreSQL test pins the two together.
+
+If the read of what each load witnessed fails, the pass ends there. Nothing is
+written and no finding is resolved, because phases worked out without that
+memory would forget an arrival.
+
+**A filed finding returns its id only** (`upsertFinding`). Every caller wanted
+the id for its keep-list. The load watch and the consistency sweep re-file
+hundreds of findings every few minutes, and `RETURNING *` echoed each one back
+whole, evidence included. Read a finding with `getFindingById` when you need
+it.
+
 **The polls that nearly always find nothing:**
 - the scheduler asks for ids only;
 - the dispatch-ETA claim looks first with a one-column query, because it

@@ -26,6 +26,25 @@ test('one pass reads each source exactly once, however many loads there are', as
   assert.equal(summary.checked, 40);
   assert.equal(calls.fleets, 1, 'one fleet fetch for forty loads');
   assert.equal(calls.orders, 1);
+  // And one read of each table — October 2026, these were per load.
+  assert.deepEqual([calls.groupReads, calls.holderReads, calls.stateReads], [1, 1, 1]);
+});
+
+test('A FAILED READ OF WHAT WAS WITNESSED ends the pass before anything is written or resolved', async () => {
+  // Without the remembered arrivals every phase would be worked out from
+  // scratch, and a load that left the shipper would read as never loaded.
+  const { deps, calls } = harness({ orders: [ORDER], position: { ...SHIPPER, speedMph: 0, at: at(5) } });
+  deps.store.getLoadStates = async () => { throw new Error('connection reset'); };
+  const summary = await watcher.runLoadLifecycleCheck({ now: NOW, deps });
+  assert.equal(summary.error, 'connection reset');
+  assert.deepEqual([calls.written.length, calls.resolved.length, calls.retireCalls.length], [0, 0, 0]);
+});
+
+test('each load\'s write carries the row the pass read for it, so nothing is read back', async () => {
+  const stored = { orderId: 'ORD-1', phase: 'at_pickup', phaseSince: at(30), wasAtPickup: true, loadIdentifier: 'L1' };
+  const { deps, calls } = harness({ orders: [ORDER], position: { ...SHIPPER, speedMph: 0, at: at(5) }, stored });
+  await watcher.runLoadLifecycleCheck({ now: NOW, deps });
+  assert.equal(calls.written[0].before, stored);
 });
 
 test('an empty board costs nothing and still tidies up', async () => {
@@ -96,10 +115,20 @@ test('a lookup that fails stamps nobody, and does not stop the load being tracke
   const { deps, calls } = harness({
     orders: [ORDER], position: { ...SHIPPER, speedMph: 0, at: at(5) },
   });
-  deps.people.getOpenHoldersForUnit = async () => { throw new Error('connection refused'); };
+  deps.people.getOpenPeopleForUnits = async () => { throw new Error('connection refused'); };
   await watcher.runLoadLifecycleCheck({ now: NOW, deps });
   assert.equal(calls.written[0].personId, null);
+  assert.equal(calls.written[0].clearPerson, false, 'a read that failed must never wipe a stored person');
   assert.equal(calls.written[0].unitNumber, '310');
+});
+
+test('a unit that NOBODY single holds clears a person stamped earlier — the read succeeded', async () => {
+  const { deps, calls } = harness({
+    orders: [ORDER], position: { ...SHIPPER, speedMph: 0, at: at(5) },
+    holders: [],
+  });
+  await watcher.runLoadLifecycleCheck({ now: NOW, deps });
+  assert.equal(calls.written[0].clearPerson, true);
 });
 
 test('a unit on two active groups takes the first, deterministically', async () => {
@@ -211,7 +240,7 @@ test('a provider outage is counted, not thrown', async () => {
 
 test('a database that is down returns a summary with the reason', async () => {
   const { deps } = harness({ orders: [ORDER] });
-  deps.groups.getDriverGroupsByActiveFilter = async () => { throw new Error('connection refused'); };
+  deps.groups.listActiveDriverGroupNames = async () => { throw new Error('connection refused'); };
   const summary = await watcher.runLoadLifecycleCheck({ now: NOW, deps });
   assert.equal(summary.checked, 1, 'a load with no matched group is still a load');
 });

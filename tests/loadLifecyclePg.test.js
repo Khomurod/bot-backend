@@ -31,12 +31,13 @@ test('a first sighting creates the row with its phase and its clock',
   { skip: skipWithoutPg() }, async (t) => {
     const harness = await seed(t);
     const db = load(harness);
-    const row = await db.recordLoadObservation('ORD-1', {
+    await db.recordLoadObservation('ORD-1', {
       loadIdentifier: 'L1', groupId: 7, unitNumber: '310',
       phase: 'at_pickup', confidence: 'high', atPickup: true,
       ...SHIPPER, speedMph: 0, seenAt: '2026-09-20T12:00:00Z',
       boardStatus: 'dispatched', signals: ['gps_fresh', 'at_pickup'],
     });
+    const row = await db.getLoadState('ORD-1');
     assert.equal(row.phase, 'at_pickup');
     assert.equal(row.wasAtPickup, true);
     assert.ok(row.firstAtPickupAt);
@@ -50,9 +51,10 @@ test('a WITNESSED arrival survives every later pass that cannot see it',
     await db.recordLoadObservation('ORD-1', { phase: 'at_pickup', atPickup: true, ...SHIPPER });
     // Two hundred miles later the truck is nowhere near the shipper. Without the
     // OR, this pass would erase the only evidence that it ever loaded.
-    const after = await db.recordLoadObservation('ORD-1', {
+    await db.recordLoadObservation('ORD-1', {
       phase: 'in_transit', atPickup: false, lat: 40.0, lng: -85.0, speedMph: 62,
     });
+    const after = await db.getLoadState('ORD-1');
     assert.equal(after.wasAtPickup, true, 'a departure is not evidence the arrival was imagined');
     assert.equal(after.phase, 'in_transit');
   });
@@ -61,12 +63,14 @@ test('the first arrival time is kept, not overwritten by a later one',
   { skip: skipWithoutPg() }, async (t) => {
     const harness = await seed(t);
     const db = load(harness);
-    const first = await db.recordLoadObservation('ORD-1', {
+    await db.recordLoadObservation('ORD-1', {
       phase: 'at_pickup', atPickup: true, checkedAt: '2026-09-20T08:00:00Z',
     });
-    const second = await db.recordLoadObservation('ORD-1', {
+    const first = await db.getLoadState('ORD-1');
+    await db.recordLoadObservation('ORD-1', {
       phase: 'at_pickup', atPickup: true, checkedAt: '2026-09-20T14:00:00Z',
     });
+    const second = await db.getLoadState('ORD-1');
     assert.equal(
       new Date(second.firstAtPickupAt).toISOString(),
       new Date(first.firstAtPickupAt).toISOString(),
@@ -78,18 +82,21 @@ test('the phase clock moves only when the phase actually changes',
   { skip: skipWithoutPg() }, async (t) => {
     const harness = await seed(t);
     const db = load(harness);
-    const a = await db.recordLoadObservation('ORD-1', {
+    await db.recordLoadObservation('ORD-1', {
       phase: 'at_delivery', atDelivery: true, checkedAt: '2026-09-20T08:00:00Z',
     });
-    const b = await db.recordLoadObservation('ORD-1', {
+    const a = await db.getLoadState('ORD-1');
+    await db.recordLoadObservation('ORD-1', {
       phase: 'at_delivery', atDelivery: true, checkedAt: '2026-09-20T12:00:00Z',
     });
+    const b = await db.getLoadState('ORD-1');
     assert.equal(new Date(b.phaseSince).toISOString(), new Date(a.phaseSince).toISOString(),
       '"four hours at the receiver" is the question this answers');
 
-    const c = await db.recordLoadObservation('ORD-1', {
+    await db.recordLoadObservation('ORD-1', {
       phase: 'delivered', checkedAt: '2026-09-20T13:00:00Z',
     });
+    const c = await db.getLoadState('ORD-1');
     assert.notEqual(new Date(c.phaseSince).toISOString(), new Date(a.phaseSince).toISOString());
   });
 
@@ -177,22 +184,77 @@ test('a null person is KEPT by default and REMOVED when the caller says to',
     });
 
     // A pass that could not read the holders. The driver must survive it.
-    const kept = await db.recordLoadObservation('ORD-9', {
+    await db.recordLoadObservation('ORD-9', {
       groupId: 7, personId: null, unitNumber: '310', phase: 'in_transit',
     });
+    const kept = await db.getLoadState('ORD-9');
     assert.equal(kept.personId, personId, 'silence means keep');
 
     // A pass that read them and found two. That is an answer.
-    const cleared = await db.recordLoadObservation('ORD-9', {
+    await db.recordLoadObservation('ORD-9', {
       groupId: 7, personId: null, clearPerson: true, unitNumber: '310', phase: 'in_transit',
     });
+    const cleared = await db.getLoadState('ORD-9');
     assert.equal(cleared.personId, null, 'a wrong driver has to be removable');
 
     // And clearing is not a one-way door: a unit that becomes unambiguous again
     // re-attaches, with the flag still set, because the flag says "trust my
     // answer" rather than "erase".
-    const back = await db.recordLoadObservation('ORD-9', {
+    await db.recordLoadObservation('ORD-9', {
       groupId: 7, personId, clearPerson: true, unitNumber: '310', phase: 'in_transit',
     });
+    const back = await db.getLoadState('ORD-9');
     assert.equal(back.personId, personId);
   });
+
+// ── one read per pass, nothing read back ─────────────────────────────────────
+// October 2026: a pass read `SELECT *` per load and echoed each write back
+// whole — part of ~110 MB a day of database transfer.
+
+test('getLoadStates: one read for the board, only the columns a pass uses', { skip: skipWithoutPg() }, async (t) => {
+  const harness = await seed(t);
+  const db = load(harness);
+  await db.recordLoadObservation('ORD-1', { loadIdentifier: 'L1', groupId: 7, unitNumber: '310', phase: 'at_pickup', atPickup: true });
+  await db.recordLoadObservation('ORD-2', { phase: 'in_transit' });
+
+  const states = await db.getLoadStates(['ORD-1', 'ORD-2', 'ORD-NEVER', 'ORD-1', null]);
+  assert.deepEqual([...states.keys()].sort(), ['ORD-1', 'ORD-2'], 'a load never seen is simply absent');
+  assert.deepEqual(Object.keys(states.get('ORD-1')).sort(), [
+    'groupId', 'loadIdentifier', 'orderId', 'personId', 'phase', 'phaseSince',
+    'unitNumber', 'wasAtDelivery', 'wasAtPickup',
+  ]);
+  assert.equal(states.get('ORD-1').wasAtPickup, true);
+  assert.equal(states.get('ORD-1').loadIdentifier, 'L1');
+  assert.deepEqual(await db.getLoadStates([]), new Map(), 'no loads, no query');
+});
+
+test('WHAT THE WRITE RETURNS IS WHAT THE ROW HOLDS — worked out, never read back', { skip: skipWithoutPg() }, async (t) => {
+  const harness = await seed(t);
+  const db = load(harness);
+  const person = (await harness.query(
+    "INSERT INTO driver_people (display_name, normalized_key) VALUES ('A DRIVER', 'adriver') RETURNING id"
+  )).rows[0].id;
+  const identityOf = async (orderId) => {
+    const r = (await harness.query(
+      'SELECT order_id, load_identifier, group_id, person_id, unit_number, phase, confidence FROM load_lifecycle WHERE order_id = $1',
+      [orderId]
+    )).rows[0];
+    return {
+      orderId: r.order_id, loadIdentifier: r.load_identifier, groupId: r.group_id, personId: r.person_id,
+      unitNumber: r.unit_number, phase: r.phase, confidence: r.confidence,
+    };
+  };
+  const step = async (written) => {
+    const before = (await db.getLoadStates(['ORD-1'])).get('ORD-1') || null;
+    const returned = await db.recordLoadObservation('ORD-1', written, before);
+    assert.deepEqual(returned, await identityOf('ORD-1'), JSON.stringify(written));
+  };
+  // A first sighting, with everything known.
+  await step({ loadIdentifier: 'L1', groupId: 7, personId: person, unitNumber: '310', phase: 'at_pickup', confidence: 'high' });
+  // A pass that could read nothing about who: every stored value is kept.
+  await step({ phase: 'in_transit', confidence: 'medium' });
+  // A read that SUCCEEDED and found no single holder removes the person.
+  await step({ unitNumber: '310', clearPerson: true, phase: 'in_transit' });
+  // And a later pass that knows them again puts them back.
+  await step({ personId: person, phase: 'at_delivery', confidence: 'high' });
+});

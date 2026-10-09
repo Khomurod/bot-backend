@@ -70,32 +70,38 @@ function positionFor(fleets, unit, driverName, deps) {
 }
 
 /**
- * The one person recorded in a unit number, or nobody — and WHICH KIND of
- * nobody.
+ * Who holds each unit on the board — ONE read for the whole pass, never one
+ * per load (October 2026: per-load reads here were part of ~110 MB a day of
+ * database transfer).
  *
- * `person` is a `driver_units` row (whose `personId` is the human) only when
- * the number is unambiguous. Two holders means two fleets, or a handover
- * nobody closed; either way it is not this watch's to resolve.
+ * A unit maps to a person only when EXACTLY ONE open assignment holds the
+ * number; `getOpenPeopleForUnits` leaves the others out. Two holders means two
+ * fleets, or a handover nobody closed; either way it is not this watch's to
+ * resolve.
  *
- * `known` is the half that matters for a load already carrying a person.
- * "I read the holders and there is no single one" and "I could not read them"
- * are different answers: the first is grounds to REMOVE a person already
- * stamped on the load, the second is grounds to touch nothing. A read that
- * errored must never wipe a correct attribution.
+ * `null` — the read FAILED — is a different answer from "nobody", and the
+ * difference matters for a load already carrying a person. "I read the
+ * holders and there is no single one" is grounds to REMOVE a person already
+ * stamped on the load; "I could not read them" is grounds to touch nothing. A
+ * read that errored must never wipe a correct attribution.
  */
-async function onlyHolderOf(deps, unit) {
-  const holders = await deps.people.getOpenHoldersForUnit(String(unit)).catch(() => null);
-  if (!Array.isArray(holders)) return { person: null, known: false };
-  return { person: holders.length === 1 ? holders[0] : null, known: true };
+async function readHolders(deps, loads) {
+  const units = loads.map((l) => l.unitNumber).filter(Boolean).map((u) => String(u).trim());
+  return Promise.resolve(deps.people.getOpenPeopleForUnits(units)).catch(() => null);
 }
 
-/** One load, one verdict, one row written. */
-async function checkOneLoad(order, {
-  fleets, groupsByUnit, ambiguousUnits = new Set(), nowIso, deps,
-}) {
-  const load = deps.loads.extractLoadFromOrder(order);
-  if (!load || !load.orderId) return null;
+/** One load's holder, from the pass's single read: `{ personId, known }`. */
+function holderOf(holders, unit) {
+  // No unit at all is itself a certain answer: there is nobody to attach.
+  if (!unit) return { personId: null, known: true };
+  if (!holders) return { personId: null, known: false };
+  return { personId: holders.get(String(unit).trim()) ?? null, known: true };
+}
 
+/** One load, one verdict, one row written — from what the pass read once. */
+async function checkOneLoad(load, {
+  fleets, groupsByUnit, ambiguousUnits = new Set(), holders = null, states = new Map(), nowIso, deps,
+}) {
   const unit = load.unitNumber || null;
   const group = unit ? groupsByUnit.get(String(unit)) : null;
   // The PERSON, not the chat. A driver who changes truck or group keeps their
@@ -115,12 +121,9 @@ async function checkOneLoad(order, {
   // otherwise. A load with no person is a load somebody can still read; a load
   // with the wrong person is a wrong answer nothing downstream can detect.
   // The contradiction itself is `identity.unit_open_twice`'s to report.
-  const holder = unit
-    ? await onlyHolderOf(deps, unit)
-    // No unit at all is itself a certain answer: there is nobody to attach.
-    : { person: null, known: true };
+  const holder = holderOf(holders, unit);
   const position = positionFor(fleets, unit, group?.group_name || null, deps);
-  const remembered = await deps.store.getLoadState(load.orderId);
+  const remembered = states.get(String(load.orderId)) || null;
 
   const verdict = derivePhase({
     nowIso,
@@ -145,15 +148,14 @@ async function checkOneLoad(order, {
   const state = await deps.store.recordLoadObservation(load.orderId, {
     loadIdentifier: load.loadIdentifier,
     groupId: group?.id || null,
-    // `personId`, NOT `id`: a driver_units ROW's `id` is the assignment, not
-    // the human.
-    personId: holder.person?.personId ?? null,
+    // The HUMAN, never a driver_units row id (that is the assignment).
+    personId: holder.personId,
     // AND REMOVE ONE ALREADY THERE. The store's upsert keeps the stored person
     // when it is handed null, which is right for a read that failed and wrong
     // for a unit now known to be ambiguous: loads stamped by the old bare-unit
     // lookup would keep a wrong human forever, in the column every later
     // feature joins on. Only a read that SUCCEEDED may clear it.
-    clearPerson: holder.known && !holder.person,
+    clearPerson: holder.known && holder.personId == null,
     unitNumber: unit,
     phase: verdict.phase,
     confidence: verdict.confidence,
@@ -169,7 +171,7 @@ async function checkOneLoad(order, {
     signals: verdict.signals,
     conflicts: verdict.conflicts,
     checkedAt: nowIso,
-  });
+  }, remembered);
 
   return {
     state, verdict, remembered,
@@ -178,7 +180,7 @@ async function checkOneLoad(order, {
     // and wrong for saying WHO: naming that group's driver would pin the
     // disagreement on somebody who may not be carrying this load. The same
     // rule the person attribution above follows.
-    driverName: group && holder.person && !ambiguousUnits.has(String(unit))
+    driverName: group && holder.personId != null && !ambiguousUnits.has(String(unit))
       ? (extractDriverNameFromGroupTitle(group.group_name) || null)
       : null,
     phaseChanged: remembered ? remembered.phase !== verdict.phase : true,
@@ -219,7 +221,7 @@ async function runLoadLifecycleCheck({ now = Date.now(), deps = defaultDeps() } 
     // pass and matched locally: a per-load lookup would be one query per order.
     const groupsByUnit = new Map();
     const ambiguousUnits = new Set();
-    const groups = await deps.groups.getDriverGroupsByActiveFilter('active').catch(() => []);
+    const groups = await deps.groups.listActiveDriverGroupNames().catch(() => []);
     for (const g of groups) {
       const unit = extractUnitFromGroupName(g.group_name);
       if (unit && groupsByUnit.has(String(unit))) ambiguousUnits.add(String(unit));
@@ -230,13 +232,30 @@ async function runLoadLifecycleCheck({ now = Date.now(), deps = defaultDeps() } 
       if (unit && !groupsByUnit.has(String(unit))) groupsByUnit.set(String(unit), g);
     }
 
-    const keep = [];
+    // Each order read into a load ONCE: the reads below ask about every load
+    // at the same time, and the retirement further down keys on the same ids.
+    const loads = [];
     for (const order of orders) {
-      // eslint-disable-next-line no-await-in-loop
-      const out = await checkOneLoad(order, {
-        fleets, groupsByUnit, ambiguousUnits, nowIso, deps,
-      }).catch((err) => {
+      try {
+        const load = deps.loads.extractLoadFromOrder(order);
+        if (load && load.orderId) loads.push(load);
+      } catch (err) {
         console.warn('[LOADS] could not read one order:', err.message);
+      }
+    }
+    const holders = await readHolders(deps, loads);
+    // NOT caught. Without what was witnessed before, a pass would rewrite
+    // every phase from scratch, so a failed read ends the pass here, before
+    // anything is written or any finding is resolved.
+    const states = await deps.store.getLoadStates(loads.map((l) => l.orderId));
+
+    const keep = [];
+    for (const load of loads) {
+      // eslint-disable-next-line no-await-in-loop
+      const out = await checkOneLoad(load, {
+        fleets, groupsByUnit, ambiguousUnits, holders, states, nowIso, deps,
+      }).catch((err) => {
+        console.warn('[LOADS] could not check one load:', err.message);
         return null;
       });
       if (!out) continue;
@@ -317,12 +336,10 @@ async function runLoadLifecycleCheck({ now = Date.now(), deps = defaultDeps() } 
     // whatever was booked since. Optional-chained so a partial dependency map
     // costs the retirement and never the pass.
     if (!orderResult?.error) {
-      // The SAME extraction `checkOneLoad` keys its rows by, so "seen" means
-      // exactly what "recorded" means — a different reading of the order id
-      // here would retire every load the board is still returning.
-      const seen = orders.map((o) => {
-        try { return deps.loads.extractLoadFromOrder(o)?.orderId ?? null; } catch (_) { return null; }
-      }).filter((id) => id != null).map(String);
+      // The SAME extraction the rows are keyed by, so "seen" means exactly
+      // what "recorded" means — a different reading of the order id here
+      // would retire every load the board is still returning.
+      const seen = loads.map((l) => String(l.orderId));
       const retired = await Promise.resolve(deps.store.retireMissingLoads?.(seen)).catch(() => null);
       summary.retired = retired?.retired || 0;
     }
