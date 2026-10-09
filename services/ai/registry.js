@@ -6,11 +6,17 @@
  * could ever take effect without a restart. Everything routed through here
  * picks up a change within the cache window instead.
  *
- * A 30-second cache, the same as every other settings module in this
- * repository. The router reads this on every call and hitting Postgres for a
- * config row each time would be silly; thirty seconds is also short enough that
- * an operator who disables a provider sees it take effect while they are still
- * looking at the page.
+ * A TEN-MINUTE cache. It was thirty seconds, like the other settings modules,
+ * until the database's monthly transfer allowance ran short (October 2026): the
+ * router reads this on every call, and every read was the whole provider row.
+ * Nothing is lost by the longer window, because nothing that changes a provider
+ * waits for it — every admin save calls `invalidateRegistry()`, and so does the
+ * router itself the moment it puts a provider on cooldown, so a failing
+ * provider is not asked again on the strength of a stale roster.
+ *
+ * THE MODEL LISTING IS CACHED SEPARATELY, for twelve hours: the ids a provider
+ * last listed change only when a refresh or a Connect writes them, and both
+ * call `invalidateRegistry()` when they do.
  *
  * WHEN THE DATABASE IS UNREACHABLE this answers "AI is off" rather than
  * throwing. Every consumer has a deterministic path or an explicit failure it
@@ -20,16 +26,53 @@
 const aiSettings = require('../../database/aiSettings');
 const aiProviders = require('../../database/aiProviders');
 
-const CACHE_TTL_MS = 30_000;
+const CACHE_TTL_MS = 10 * 60 * 1000;
+const LISTING_TTL_MS = 12 * 60 * 60 * 1000;
+// An unreachable database is remembered as "AI is off" for only this long —
+// the old thirty seconds — so one blip cannot switch AI off for ten minutes.
+const FAILED_READ_TTL_MS = 30 * 1000;
 let cache = null;
 let cacheExpiresAt = 0;
+let listing = null;
+let listingExpiresAt = 0;
 /** Rotated per call in round-robin mode; process-local by design. */
 let rotation = 0;
 
 function invalidateRegistry() {
   cache = null;
   cacheExpiresAt = 0;
+  listing = null;
+  listingExpiresAt = 0;
   aiSettings.invalidateCache();
+}
+
+/**
+ * The router's next read sees the provider rows as they are now. For the
+ * router's own writes — a cooldown — which change nothing else it caches.
+ */
+function invalidateProviders() {
+  cache = null;
+  cacheExpiresAt = 0;
+}
+
+/**
+ * provider key → the model ids it last listed, or null when the data module
+ * has no listing reader (the tests' stand-ins). A failed read is "unknown" —
+ * the router then filters nothing — and is retried at the roster's pace rather
+ * than held for twelve hours.
+ */
+async function getModelListing(now) {
+  if (listing && now < listingExpiresAt) return listing;
+  if (typeof aiProviders.getDiscoveredModelIdsForRouter !== 'function') return null;
+  try {
+    listing = await aiProviders.getDiscoveredModelIdsForRouter();
+    listingExpiresAt = now + LISTING_TTL_MS;
+  } catch (err) {
+    console.warn('[AI ROUTER] Model listing unavailable, filtering nothing:', err.message);
+    listing = new Map();
+    listingExpiresAt = now + CACHE_TTL_MS;
+  }
+  return listing;
 }
 
 /**
@@ -40,10 +83,14 @@ async function getRoster({ force = false } = {}) {
   const now = Date.now();
   if (!force && cache && now < cacheExpiresAt) return cache;
   try {
-    const [settings, providers] = await Promise.all([
+    const [settings, rows, listed] = await Promise.all([
       aiSettings.getAiSettings(),
       aiProviders.getProvidersForRouter(),
+      getModelListing(now),
     ]);
+    const providers = listed
+      ? rows.map((p) => ({ ...p, discoveredModelIds: listed.get(p.providerKey) || [] }))
+      : rows;
     cache = {
       settings,
       providers,
@@ -52,11 +99,12 @@ async function getRoster({ force = false } = {}) {
       // same in the logs.
       available: settings.enabled === true && providers.some((p) => Boolean(p.apiKey)),
     };
+    cacheExpiresAt = now + CACHE_TTL_MS;
   } catch (err) {
     console.warn('[AI ROUTER] Roster unavailable, treating AI as off:', err.message);
     cache = { settings: aiSettings.DEFAULTS, providers: [], available: false };
+    cacheExpiresAt = now + FAILED_READ_TTL_MS;
   }
-  cacheExpiresAt = now + CACHE_TTL_MS;
   return cache;
 }
 
@@ -71,7 +119,7 @@ async function getRoster({ force = false } = {}) {
  * nothing said. The master switch has the same problem in reverse: turning AI
  * off in the admin left those gates reading "configured".
  *
- * Answers from the 30-second roster cache, so a gate on a hot path costs a map
+ * Answers from the roster cache, so a gate on a hot path costs a map
  * lookup rather than a query, and an operator's change takes effect while they
  * are still looking at the page.
  *
@@ -91,5 +139,6 @@ function nextRotation() {
 }
 
 module.exports = {
-  CACHE_TTL_MS, getRoster, invalidateRegistry, nextRotation, isAiAvailable,
+  CACHE_TTL_MS, LISTING_TTL_MS, FAILED_READ_TTL_MS,
+  getRoster, invalidateRegistry, invalidateProviders, nextRotation, isAiAvailable,
 };

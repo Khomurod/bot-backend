@@ -25,6 +25,7 @@
  * renders as "waiting on somebody", not as a failure.
  */
 const { withRunRecord } = require('../operations/runLedger');
+const { economyInterval } = require('../operations/economy');
 const { stripUrls } = require('../../lib/security/redactUrls');
 const { parseBoardPayload, summariseBoardPayload } = require('../../lib/board/parse');
 
@@ -179,7 +180,10 @@ async function tick(deps) {
   } finally {
     tickRunning = false;
     if (!serviceStopped) {
-      serviceTimer = setTimeout(() => tick(deps), intervalMs);
+      // Economy mode reads the Board every four hours instead of stopping, on
+      // a failed read too: the Sunday raise review refuses a Board older than
+      // six hours (services/raise/boardRoster.js), so stopping would stop it.
+      serviceTimer = setTimeout(() => tick(deps), economyInterval(SERVICE_KEY, intervalMs));
       serviceTimer.unref?.();
     }
   }

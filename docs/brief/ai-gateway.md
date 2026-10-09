@@ -223,7 +223,8 @@ stay in §4a. The provider terms watcher is
   provider error instead of a clean "AI is not configured". A destructured
   constant cannot be made dynamic — a getter on `module.exports` is snapshotted
   by the import — so each gate moved to `registry.isAiAvailable()`, answered from
-  the 30-second roster cache. `tests/consumerAiGates.test.js` strips comments and
+  the roster cache (ten minutes since October 2026; every admin save and every
+  cooldown the router writes clears it). `tests/consumerAiGates.test.js` strips comments and
   greps those seven files, because a new gate would pass every other test: the
   env var is set in production.
 - **The hand-coded "try Groq, then Gemini" second legs are gone**, in five files.

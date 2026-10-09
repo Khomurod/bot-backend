@@ -34,6 +34,7 @@
 
 const { decideBoardPresence, describeBoardPresence, ACTION } = require('../../lib/homeTime/boardPresence');
 const { withRunRecord } = require('../operations/runLedger');
+const { economyInterval } = require('../operations/economy');
 const { classifyErrorKind, describeErrorKind } = require('../../lib/operations/errorKind');
 
 const CHECK_DISAGREES = 'home_time.board_disagrees_with_state';
@@ -263,7 +264,8 @@ async function tick() {
   } finally {
     tickRunning = false;
     if (!serviceStopped) {
-      serviceTimer = setTimeout(tick, POLL_MS);
+      // Economy mode: every four hours, following the Board read it depends on.
+      serviceTimer = setTimeout(tick, economyInterval('home_time_board_presence', POLL_MS));
       serviceTimer.unref?.();
     }
   }

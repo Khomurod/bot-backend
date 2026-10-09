@@ -18,7 +18,11 @@
  */
 const aiSettings = require('../../database/aiSettings');
 
-const CACHE_TTL_MS = 30 * 1000;
+// Ten minutes: every per-capability switch an administrator changes goes
+// through `invalidateCapabilityCache()` (server/routes/settings/aiRoutes.js and
+// the registration pass), so the window only bounds how often an unchanged
+// table is re-read — which, at thirty seconds, was every AI call.
+const CACHE_TTL_MS = 10 * 60 * 1000;
 let cache = { at: 0, byKey: new Map() };
 
 function invalidateCapabilityCache() {

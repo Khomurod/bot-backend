@@ -136,6 +136,10 @@ app.use(createHealthRoutes({
   // Counts only: open findings, the last background correction pass, identity
   // coverage, home-stay integrity, model-listing freshness.
   getOperationsHealth: require('../services/operations/healthSummary').getOperationsHealth,
+  // While economy mode is on the operations block is not built at all — it is
+  // the most expensive read in the application and the cron pinger asks for it
+  // around 150 times a day (services/operations/economy.js).
+  getEconomyState: require('../services/operations/economy').currentEconomy,
 }));
 app.use(createSystemRoutes({ authMiddleware }));
 
