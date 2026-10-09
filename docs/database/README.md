@@ -125,9 +125,17 @@ To use it:
    only read) and `NEW_DATABASE_URL` (the target).
 3. Stop every writer.
 4. Run **Actions → Copy database → Run workflow** with `confirm` = `COPY`.
-5. On success, point `DATABASE_URL` at the new address in **both** Render
-   services (the main service and the Samsara poller) and start them again.
-6. Delete both secrets.
+5. In the new database, zero this month's row of the transfer meter. The row
+   is the old server's traffic, which the new host does not count, and the
+   main service adopts it on boot (§7b, `docs/brief/database-transfer.md`):
+
+   ```sql
+   UPDATE database_transfer_usage SET bytes_estimated = 0, queries = 0, rows_read = 0
+    WHERE month_key = to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM');
+   ```
+6. Point `DATABASE_URL` at the new address in **both** Render services (the
+   main service and the Samsara poller) and start them again.
+7. Delete both secrets.
 
 A target that switches row security on for every new table, as a Supabase
 project can, is reported but not refused. Row security does not restrict a

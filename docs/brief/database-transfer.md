@@ -117,6 +117,34 @@ row's only writer. In both, a read already out when a save clears the cache
 still answers its own caller but is not kept, so a save can never be undone
 for the length of the TTL by a read that raced it.
 
+## The move to the company's project (9 October 2026)
+
+The personal Supabase organisation had spent its allowance, and Supabase will
+not transfer a project out of an organisation in its grace period. So the
+database was **copied** instead: the manual **Copy database** workflow
+(`docs/database/README.md`) put it in a free project in the company's
+organisation, in the same region. The check matched every row of all 141
+tables, every sequence position and the structure. Both services, the main one
+and the Samsara poller, were then pointed at the copy, and from that moment the
+old project received no writes. It is kept, unused, as a fallback for a couple
+of weeks.
+
+What the move changed:
+
+- **The allowance started again from zero.** Economy mode is not set on the new
+  project, so every feature runs. Check *Usage → Egress* after a full day; if
+  it runs above ~150 MB a day, set `ECONOMY_MODE_UNTIL`.
+- **This meter's month came across with the data.** `database_transfer_usage`
+  is a table like any other, so October's row in the new project started at the
+  old project's estimate, 6.4 GB, more than the whole allowance. The main
+  service adopts that row on boot, and every flush adds to it. Until the row is
+  zeroed and the service restarted, the banner keeps warning about the old
+  project's month. The move's runbook includes that step.
+- **Row security is on for every table.** The new project switches it on for
+  each table it is given, including the 62 the old one left off. It does not
+  restrict the applications, which connect as the tables' owner, and a table a
+  later migration creates is treated the same way.
+
 ## What one driver message costs
 
 October 2026, measured: about **5.7 KB and ten statements per message**, at
