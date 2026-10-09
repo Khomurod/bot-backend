@@ -1,0 +1,70 @@
+name: Copy database
+
+# Copies the application's database into another, EMPTY PostgreSQL database.
+# scripts/copy-database.sh does the work and says exactly what is copied;
+# docs/database/README.md says when and how to use it. Written for the October
+# 2026 move off a hosted project whose monthly transfer allowance was spent.
+#
+# It never runs by itself: start it from the Actions tab, or the API, with
+# `confirm` set to COPY. It reads two repository secrets that should exist only
+# while a move is under way. Delete both afterwards.
+#
+#   OLD_DATABASE_URL  the source. Only read.
+#   NEW_DATABASE_URL  the target. Written only while it holds no table.
+#
+# This repository is public, and so is this log. The script prints no row, no
+# row count, no size and no part of either address.
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: Type COPY to copy OLD_DATABASE_URL into the empty NEW_DATABASE_URL
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: copy-database
+  cancel-in-progress: false
+
+jobs:
+  copy:
+    name: Copy OLD_DATABASE_URL into NEW_DATABASE_URL
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Refuse without confirmation
+        env:
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          if [ "$CONFIRM" != COPY ]; then
+            echo "::error::Type COPY in the confirm box to run the copy."
+            exit 1
+          fi
+
+      # The client tools must be at least the servers' major version (17); the
+      # runner ships 16. They come from PostgreSQL's own apt repository, not a
+      # container image: Docker Hub refuses anonymous pulls from busy runners.
+      - name: Install the PostgreSQL 17 client
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+            https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-17
+          echo /usr/lib/postgresql/17/bin >> "$GITHUB_PATH"
+
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Copy and verify
+        env:
+          OLD_DATABASE_URL: ${{ secrets.OLD_DATABASE_URL }}
+          NEW_DATABASE_URL: ${{ secrets.NEW_DATABASE_URL }}
+        run: bash scripts/copy-database.sh

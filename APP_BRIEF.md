@@ -229,6 +229,7 @@ by a number on every stage does not belong in the file everything else fits in.
 | Whose number texts a lead, WHICH message they send, and the RingCentral/TCR prerequisites | `docs/architecture/recruiter-sms-sender.md` |
 | Samsara settings (the shared `samsara_settings` row, the shared-secret envelope for its API key) and missing-video recovery | `docs/architecture/samsara-settings-and-video-recovery.md` |
 | Database: authoritative schema + migration rules | `database/baseline/`, `database/migrations/`, `docs/database/` |
+| Moving the database to another server | `docs/database/README.md` → the manual `Copy database` workflow (`scripts/copy-database.sh`) |
 | What was removed and why | `docs/ARCHIVED_FEATURES.md`, `docs/architecture/retired-*.md`, `docs/architecture/samsara-separation.md` |
 | Clearing a removed feature's leftover tables and roles | Settings → Retired Leftovers; `database/retiredLeftovers.js` |
 | Deployment checks | `docs/deployment/pre-deploy-checklist.md`, `render.yaml` |

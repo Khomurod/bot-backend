@@ -65,6 +65,74 @@ Update `table-metadata.json` when you **add** a table (give it a purpose +
 owning service) or **retire** one (set `status` to `legacy`/`retired` and add a
 note).
 
+## Moving the database to another server
+
+The manual **Copy database** workflow (`.github/workflows/copy-database.yml`,
+running `scripts/copy-database.sh`) copies the database into a new, EMPTY one.
+It was written for the October 2026 move from a personal Supabase project,
+whose monthly transfer allowance was spent, to the company's.
+
+**It runs on GitHub, not in a cloud agent's container.** Those containers reach
+the internet only through an HTTPS proxy, and a PostgreSQL connection is not
+HTTPS. A GitHub runner connects directly, over IPv4. That is why it needs
+Supabase's **Session pooler** address: the direct `db.<ref>.supabase.co` address
+is IPv6 only, and the transaction pooler (port 6543) cannot hold one session for
+the whole dump. The script switches 6543 to 5432 on its own, and refuses a
+direct address.
+
+What it copies is the whole `public` schema:
+
+- every table and its rows;
+- the sequences and where they stand;
+- indexes, constraints and the view;
+- row security and its policies;
+- the extensions installed into `public` (`btree_gist`).
+
+That is all of the application's state. The production database had no auth
+users, no storage objects and no scheduled jobs, and every other schema there
+belongs to Supabase. Grants are not copied, because a Supabase target applies
+its own defaults to new tables. Ownership is not copied either: everything ends
+up owned by the user the copy connects as, which is the user the applications
+connect as.
+
+What it guarantees:
+
+- **The target must be empty.** If `public` holds any table, view or sequence,
+  nothing is written. A run can therefore never overwrite a live database, even
+  with the two secrets swapped.
+- **The copy is exact, or nothing is kept.** The check is a snapshot: a hash
+  of every row of every table, every sequence's position, and the structure
+  (tables, indexes, constraints, sequences, views, policies).
+  - It is taken of the source before and after the source is read. If the two
+    differ, something wrote to the source meanwhile — an update that changes no
+    count included — and the copy stops before writing anything.
+  - It is taken of the target inside the restore's single transaction, which
+    commits only if it equals the source's. A failed write or a failed check
+    leaves the target empty, so the run can simply be repeated.
+
+  The rows are hashed where they are, so only hashes cross the network. Stop
+  every writer first: the main service and the Samsara poller.
+- **The log shows nothing private.** The repository and its Actions logs are
+  public, so the log carries no rows, no row counts and no sizes. No part of
+  either address appears either: the server's name and network addresses are
+  masked too, because a connection error quotes them. Errors are terse,
+  because a failing `COPY` would otherwise quote its row.
+
+To use it:
+
+1. Create the new, empty project.
+2. Store the two addresses as Actions secrets: `OLD_DATABASE_URL` (the source,
+   only read) and `NEW_DATABASE_URL` (the target).
+3. Stop every writer.
+4. Run **Actions → Copy database → Run workflow** with `confirm` = `COPY`.
+5. On success, point `DATABASE_URL` at the new address in **both** Render
+   services (the main service and the Samsara poller) and start them again.
+6. Delete both secrets.
+
+A target that switches row security on for every new table, as a Supabase
+project can, is reported but not refused. Row security does not restrict a
+table's owner, and the applications connect as the owner.
+
 ## Lifecycle status legend
 
 | Badge | Meaning |
