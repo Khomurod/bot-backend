@@ -171,7 +171,7 @@ feature it belongs to.
   `tests/measuredCapsMigrationPg.test.js`.
 - **The result is readable from `/api/health` with no database and no admin
   session** — the `operations` block (`services/operations/healthSummary.js`,
-  60-second cache): the last sweep and the last background correction pass
+  15-minute cache, never built for a HEAD request): the last sweep and the last background correction pass
   (applied / stale / failed, and each capped check with `wanted` and `cap`), open findings by severity, identity
   coverage (`groupsWithoutPerson`, `openUnits`, unstamped rows), Home Time
   (`groupsWithDuplicateOpenStays`, `openStayIndex` present/absent) and each AI

@@ -108,7 +108,9 @@ listings, whose ids are read separately and cached 12 hours; the
 per-capability switches are cached 10 minutes. Every admin save still clears
 those caches at once, the router clears the roster itself when it puts a
 provider on cooldown, and a success clears that provider's cached failure count
-just as `recordSuccess` does in the table.
+just as `recordSuccess` does in the table. The effective ELD settings
+(`getEldConfig`, on the location resolver's hot path) are cached 5 minutes
+instead of 30 seconds, and a save clears them at once.
 
 ## What one driver message costs
 
@@ -140,6 +142,48 @@ reads where every document in its window stands in ONE narrow statement and
 skips the settled ones (`docs/architecture/bol-pod-forwarding.md`). Before, it
 upserted and read back a full row for each of ~430 documents on every pass,
 about 100 MB a day.
+
+**Load control**, also paused in economy mode, was the largest consumer
+measured: about 110 MB a day. It now costs one read of each table per pass,
+whatever the number of loads (`tests/loadPassQueries.test.js`):
+- the active driver groups, as id and title only;
+- the holders of every unit on the board, in one `= ANY` read;
+- where every load stood before, only the columns the pass uses.
+
+A pass reads back nothing it writes. Before, every ten minutes and for each of
+~205 loads, it read `SELECT *` from two tables and echoed its write back whole.
+Which load and who it belongs to after a write is worked out in
+`identityAfterWrite` (`database/loadLifecycle.js`), with the same COALESCEs as
+the SQL. A PostgreSQL test pins the two together.
+
+If the read of what each load witnessed fails, the pass ends there. Nothing is
+written and no finding is resolved, because phases worked out without that
+memory would forget an arrival.
+
+**The health endpoint's `operations` block** is built at most once every 15
+minutes (it was once a minute), and never for a HEAD request, whose body nobody
+receives. Render's own health check polls `/api/health`, so a one-minute cache
+meant up to 1,440 builds a day of ~46 statements each. The block reads each AI
+provider's model-listing SIZE (`summariseProvidersForHealth`), not the listing,
+which was about 43 KB for OpenRouter's (`tests/healthOperationsCost.test.js`).
+
+**The consistency sweep reads only the chat members who could be a driver**
+(`services/operations/snapshot/loaders.js`). Nearly every row of
+`group_members` is staff: dispatchers and managers sit in every driver chat.
+The sweep read all 7,471 rows every 15 minutes, about 48 MB a day. It now reads
+only the memberships of active driver chats held by accounts in fewer than
+`STAFF_GROUP_COUNT` of them. Those are the only accounts the staff rule cannot
+already exclude. All of such an account's memberships are read, so its chat
+count is unchanged. Of `bot_users`, it reads only the sources the staff rule
+looks at. `tests/telegramMembersNarrowing.test.js` proves the identity checks
+file exactly the same findings from that as from the whole table.
+`tests/telegramMembersSnapshotPg.test.js` holds the SQL to the same model.
+
+**A filed finding returns its id only** (`upsertFinding`). Every caller wanted
+the id for its keep-list. The load watch and the consistency sweep re-file
+hundreds of findings every few minutes, and `RETURNING *` echoed each one back
+whole, evidence included. Read a finding with `getFindingById` when you need
+it.
 
 **The polls that nearly always find nothing:**
 - the scheduler asks for ids only;

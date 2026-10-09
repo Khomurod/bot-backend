@@ -16,23 +16,36 @@ function harness({
 } = {}) {
   const calls = {
     fleets: 0, orders: 0, findings: [], written: [], resolved: [], pruned: 0, windows: [], notified: [],
-    retireCalls: [],
+    retireCalls: [], stateReads: 0, holderReads: 0, groupReads: 0,
   };
   const deps = {
     store: {
-      async getLoadState() { return stored; },
+      // ONE read for the whole pass; `stored` stands for every load on it.
+      async getLoadStates(orderIds) {
+        calls.stateReads += 1;
+        return new Map(stored ? orderIds.map((id) => [String(id), stored]) : []);
+      },
       async retireMissingLoads(seen) { calls.retireCalls.push(seen); return { retired: 0, delivered: 0 }; },
-      async recordLoadObservation(orderId, patch) {
-        calls.written.push({ orderId, ...patch });
+      async recordLoadObservation(orderId, patch, before) {
+        calls.written.push({ orderId, ...patch, before });
         return { orderId, ...patch };
       },
       async pruneFinishedLoads() { calls.pruned += 1; return 0; },
     },
-    groups: { async getDriverGroupsByActiveFilter() { return groups; } },
+    groups: { async listActiveDriverGroupNames() { calls.groupReads += 1; return groups; } },
     people: {
-      async getOpenHoldersForUnit() {
+      // The real rule: a unit maps to a person only when EXACTLY ONE holds it.
+      async getOpenPeopleForUnits(units) {
+        calls.holderReads += 1;
         if (holders instanceof Error) throw holders;
-        return holders;
+        const count = new Map();
+        for (const h of holders) count.set(String(h.unitNumber), (count.get(String(h.unitNumber)) || 0) + 1);
+        const map = new Map();
+        for (const h of holders) {
+          const unit = String(h.unitNumber);
+          if (units.includes(unit) && count.get(unit) === 1) map.set(unit, h.personId);
+        }
+        return map;
       },
     },
     findings: {

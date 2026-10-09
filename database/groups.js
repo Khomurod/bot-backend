@@ -93,6 +93,18 @@ async function getAllGroups() {
   return res.rows;
 }
 
+/**
+ * The active driver groups as id and title only — what a pass that matches a
+ * unit number to its group needs, without every column of every group (load
+ * control reads this every ten minutes).
+ */
+async function listActiveDriverGroupNames() {
+  const res = await query(
+    "SELECT id, group_name FROM groups WHERE group_type = 'driver' AND active = TRUE ORDER BY id"
+  );
+  return res.rows;
+}
+
 /** Admin manage list: all | active | inactive driver groups. */
 async function getDriverGroupsByActiveFilter(filter) {
   const f = filter === 'all' || filter === 'inactive' ? filter : 'active';
@@ -330,6 +342,7 @@ module.exports = {
   getDriverGroupsForStatusAi,
   getAllGroups,
   getDriverGroupsByActiveFilter,
+  listActiveDriverGroupNames,
   getDriverGroupsWithDriverType,
   getGroupsByIdsForAdmin,
   getDriverGroupsByLanguagesAndActiveFilter,

@@ -50,6 +50,66 @@ async function getLoadState(orderId) {
   return mapRow(res.rows[0]);
 }
 
+/** The columns a pass needs about a load it saw before: who it is, and what was witnessed. */
+const PASS_STATE_COLUMNS = `order_id, load_identifier, group_id, person_id, unit_number,
+  phase, phase_since, was_at_pickup, was_at_delivery`;
+
+function mapPassState(row) {
+  return {
+    orderId: row.order_id,
+    loadIdentifier: row.load_identifier,
+    groupId: row.group_id,
+    personId: row.person_id,
+    unitNumber: row.unit_number,
+    phase: row.phase,
+    phaseSince: row.phase_since,
+    wasAtPickup: row.was_at_pickup === true,
+    wasAtDelivery: row.was_at_delivery === true,
+  };
+}
+
+/**
+ * Where every load on the board stood before this pass — ONE read for all of
+ * them, and only the columns the pass uses.
+ *
+ * October 2026: a pass read `SELECT *` here once per load and echoed every
+ * write back whole — ~205 loads every ten minutes, part of ~110 MB a day of
+ * database transfer while the monthly allowance was nearly spent.
+ *
+ * @returns {Promise<Map<string, object>>} order id → state; a load never seen is absent.
+ */
+async function getLoadStates(orderIds) {
+  const ids = [...new Set((orderIds || []).filter((id) => id != null).map(String))];
+  if (!ids.length) return new Map();
+  const res = await query(
+    `SELECT ${PASS_STATE_COLUMNS} FROM load_lifecycle WHERE order_id = ANY($1::text[])`,
+    [ids]
+  );
+  return new Map(res.rows.map((row) => [String(row.order_id), mapPassState(row)]));
+}
+
+/**
+ * What the row says about WHICH load and WHO after `recordLoadObservation`,
+ * worked out instead of read back: the same COALESCEs as its SQL. `before` is
+ * the row as the pass read it (`getLoadStates`), or null for a load never seen.
+ * Only this process writes the table. Pinned against PostgreSQL by
+ * tests/loadLifecyclePg.test.js, so the two cannot drift apart unnoticed.
+ */
+function identityAfterWrite(orderId, before, written) {
+  const keep = (value, stored) => value ?? stored ?? null;
+  return {
+    orderId: String(orderId),
+    loadIdentifier: keep(written.loadIdentifier, before?.loadIdentifier),
+    groupId: keep(written.groupId, before?.groupId),
+    personId: written.clearPerson === true
+      ? (written.personId ?? null)
+      : keep(written.personId, before?.personId),
+    unitNumber: keep(written.unitNumber, before?.unitNumber),
+    phase: written.phase,
+    confidence: written.confidence ?? null,
+  };
+}
+
 /**
  * Write what this pass saw.
  *
@@ -66,16 +126,20 @@ async function getLoadState(orderId) {
  * `clearPerson` a load stamped with the wrong human by an earlier bare-unit
  * lookup would keep them forever in the column every later feature joins on.
  * The flag is deliberately explicit: silence still means keep.
+ *
+ * `before` is the row as this pass read it (`getLoadStates`), or null for a
+ * load never seen. Returns which load and who, from `identityAfterWrite`.
  */
-async function recordLoadObservation(orderId, {
-  loadIdentifier = null, groupId = null, personId = null, clearPerson = false,
-  unitNumber = null,
-  phase, confidence = null, atPickup = false, atDelivery = false,
-  lat = null, lng = null, speedMph = null, seenAt = null,
-  milesToPickup = null, milesToDelivery = null,
-  boardStatus = null, signals = [], conflicts = [], checkedAt = null,
-} = {}) {
-  const res = await query(
+async function recordLoadObservation(orderId, written = {}, before = null) {
+  const {
+    loadIdentifier = null, groupId = null, personId = null, clearPerson = false,
+    unitNumber = null,
+    phase, confidence = null, atPickup = false, atDelivery = false,
+    lat = null, lng = null, speedMph = null, seenAt = null,
+    milesToPickup = null, milesToDelivery = null,
+    boardStatus = null, signals = [], conflicts = [], checkedAt = null,
+  } = written;
+  await query(
     `INSERT INTO load_lifecycle
        (order_id, load_identifier, group_id, person_id, unit_number,
         phase, phase_since, confidence, was_at_pickup, was_at_delivery,
@@ -118,8 +182,7 @@ async function recordLoadObservation(orderId, {
        -- returned (a date moved, a fetch that briefly missed it) is live.
        retired_at = NULL,
        retired_reason = NULL,
-       updated_at = NOW()
-     RETURNING *`,
+       updated_at = NOW()`,
     [
       String(orderId), loadIdentifier, groupId, personId, unitNumber,
       phase, confidence, atPickup === true, atDelivery === true,
@@ -131,7 +194,8 @@ async function recordLoadObservation(orderId, {
       clearPerson === true,
     ]
   );
-  return mapRow(res.rows[0]);
+  // Nothing is read back: the row as it now stands is fully known here.
+  return identityAfterWrite(orderId, before, written);
 }
 
 /**
@@ -145,8 +209,7 @@ async function pruneFinishedLoads({ deliveredAfterDays = 7, staleAfterDays = 30 
   const res = await query(
     `DELETE FROM load_lifecycle
       WHERE (phase = 'delivered' AND updated_at < NOW() - ($1 || ' days')::interval)
-         OR updated_at < NOW() - ($2 || ' days')::interval
-      RETURNING order_id`,
+         OR updated_at < NOW() - ($2 || ' days')::interval`,
     [String(deliveredAfterDays), String(staleAfterDays)]
   );
   return res.rowCount;
@@ -218,6 +281,8 @@ async function summariseLoadPhases() {
 module.exports = {
   listTrackedLoads,
   getLoadState,
+  getLoadStates,
+  identityAfterWrite,
   recordLoadObservation,
   pruneFinishedLoads,
   retireMissingLoads,

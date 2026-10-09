@@ -172,7 +172,7 @@ test('a provider\'s listing error is published as a status and a kind — never 
   for (const body of bodies) {
     const s = await getOperationsHealth(summaryDeps({
       aiProviders: {
-        async listProvidersForAdmin() {
+        async summariseProvidersForHealth() {
           return [{ providerKey: 'gemini', enabled: true, modelChain: [], discoveredModels: [], modelsRefreshedAt: null, modelsRefreshError: body }];
         },
       },
@@ -205,7 +205,7 @@ test('a provider is named by its catalogue key only — a free-text provider_key
   const pasted = 'sk-or-v1-' + 'f'.repeat(64);
   const s = await getOperationsHealth(summaryDeps({
     aiProviders: {
-      async listProvidersForAdmin() {
+      async summariseProvidersForHealth() {
         return [
           { providerKey: pasted, catalogKey: null, enabled: false, modelChain: [], discoveredModels: [], modelsRefreshedAt: null, modelsRefreshError: null },
           { providerKey: 'gemini', catalogKey: null, enabled: true, modelChain: ['a'], discoveredModels: [], modelsRefreshedAt: null, modelsRefreshError: null },

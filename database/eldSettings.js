@@ -14,8 +14,14 @@ const { encryptText, decryptText } = require('../lib/security/facebookCrypto');
 const samsaraSettings = require('./samsaraSettings');
 
 // The location resolver runs on a hot path (per group, repeatedly). Cache the
-// decrypted effective config briefly so we don't hit the DB on every ping.
-const CACHE_TTL_MS = 30_000;
+// decrypted effective config so we don't hit the DB on every ping.
+//
+// FIVE MINUTES, as the Samsara settings it folds in. A save here clears it at
+// once (`updateEldSettings`), so the TTL only bounds how long a change made
+// from ANOTHER process takes to arrive. At 30 seconds the whole row was re-read
+// up to 2,880 times a day (October 2026, with the database's transfer
+// allowance nearly spent).
+const CACHE_TTL_MS = 5 * 60 * 1000;
 let cache = null;
 let cacheExpiresAt = 0;
 
@@ -275,6 +281,7 @@ module.exports = {
   getEldSettingsForAdmin,
   updateEldSettings,
   invalidateCache,
+  CACHE_TTL_MS,
   looksLikeDocsUrl,
   DEFAULT_DRIVEHOS_API_BASE,
 };

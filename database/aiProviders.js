@@ -87,6 +87,32 @@ async function listProvidersForAdmin() {
 }
 
 /**
+ * The providers as /api/health shows them: no key, and the SIZE of each model
+ * listing rather than the listing (about 43 KB for OpenRouter's). The
+ * operations block that reads this was rebuilt every minute while Render's
+ * health check polled — October 2026, when the database's transfer allowance
+ * was nearly spent.
+ */
+async function summariseProvidersForHealth() {
+  const res = await query(
+    `SELECT provider_key, catalog_key, enabled, model_chain,
+            CASE WHEN jsonb_typeof(discovered_models) = 'array'
+                 THEN jsonb_array_length(discovered_models) ELSE 0 END AS discovered_count,
+            models_refreshed_at, models_refresh_error
+       FROM ai_providers ORDER BY priority ASC, provider_key ASC`
+  );
+  return res.rows.map((row) => ({
+    providerKey: row.provider_key,
+    catalogKey: row.catalog_key ?? null,
+    enabled: row.enabled,
+    modelChain: row.model_chain || [],
+    discoveredCount: Number(row.discovered_count) || 0,
+    modelsRefreshedAt: row.models_refreshed_at ?? null,
+    modelsRefreshError: row.models_refresh_error ?? null,
+  }));
+}
+
+/**
  * The router's view — the ONLY place a key is decrypted.
  *
  * Kept separate from the admin mapper so that "returns a usable secret" is one
@@ -331,6 +357,7 @@ module.exports = {
   envKeyFor,
   mapProviderForAdmin,
   listProvidersForAdmin,
+  summariseProvidersForHealth,
   getProvidersForRouter,
   getDiscoveredModelIdsForRouter,
   getProviderSecretsByKey,
