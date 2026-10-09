@@ -108,7 +108,9 @@ listings, whose ids are read separately and cached 12 hours; the
 per-capability switches are cached 10 minutes. Every admin save still clears
 those caches at once, the router clears the roster itself when it puts a
 provider on cooldown, and a success clears that provider's cached failure count
-just as `recordSuccess` does in the table.
+just as `recordSuccess` does in the table. The effective ELD settings
+(`getEldConfig`, on the location resolver's hot path) are cached 5 minutes
+instead of 30 seconds, and a save clears them at once.
 
 ## What one driver message costs
 
