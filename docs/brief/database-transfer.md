@@ -135,6 +135,12 @@ there, each pinned by `tests/perMessageQueries.test.js`:
 - **The legacy home-time clarification lookup** runs only after the home-time
   candidate filter.
 
+**BOL/POD**, paused in economy mode, is cheap again before it resumes. A scan
+reads where every document in its window stands in ONE narrow statement and
+skips the settled ones (`docs/architecture/bol-pod-forwarding.md`). Before, it
+upserted and read back a full row for each of ~430 documents on every pass,
+about 100 MB a day.
+
 **The polls that nearly always find nothing:**
 - the scheduler asks for ids only;
 - the dispatch-ETA claim looks first with a one-column query, because it

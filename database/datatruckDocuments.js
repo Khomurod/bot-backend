@@ -63,6 +63,24 @@ async function recordBackfillSuppressed(meta) {
   return res.rows.length > 0;
 }
 
+/**
+ * Where each of these documents stands, for the whole scan window at once —
+ * only the columns the routing decides on, keyed by signature. Documents with
+ * no row yet are simply absent.
+ * @returns {Promise<Map<string, {id, status, central_status, attempt_count, central_attempt_count}>>}
+ */
+async function getDeliveryStates(signatures) {
+  const list = [...new Set((signatures || []).filter(Boolean).map(String))];
+  if (!list.length) return new Map();
+  const res = await query(
+    `SELECT id, signature, status, central_status, attempt_count, central_attempt_count
+       FROM datatruck_document_deliveries
+      WHERE signature = ANY($1::text[])`,
+    [list]
+  );
+  return new Map(res.rows.map((r) => [r.signature, r]));
+}
+
 /** Recent delivery rows for the admin/debug surface. */
 async function listRecentDeliveries(limit = 100) {
   const res = await query(
@@ -317,6 +335,7 @@ module.exports = {
   SERVICE_NAME,
   ensureActivationTime,
   recordBackfillSuppressed,
+  getDeliveryStates,
   listRecentDeliveries,
   // Per-destination helpers for admin-controlled routing.
   upsertDelivery,
