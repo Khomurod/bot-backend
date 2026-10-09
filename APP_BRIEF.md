@@ -177,7 +177,8 @@ unchanged, so a reference to "§7" still means the same section.
 | [§4c. The AI provider terms watcher](docs/brief/ai-terms-watcher.md) | You are touching the provider terms watcher: its schedule, its diffing, or what may pause a provider |
 | [§5. Permissions and access rules](docs/brief/permissions.md) | Auth, roles, permissions, or any route that is *not* behind the admin JWT |
 | [§6. Integrations and configuration](docs/brief/integrations.md) | Telegram, Datatruck, Samsara/ELD, Google Maps, Meta, RingCentral, Bitrix, the AI providers, or where a setting lives |
-| [§7. Automatic and background behavior](docs/brief/background-jobs.md) | Anything on a timer, the database transfer budget, browser polling, or an idempotency ledger |
+| [§7. Automatic and background behavior](docs/brief/background-jobs.md) | Anything on a timer, browser polling, or an idempotency ledger |
+| [§7b. The database transfer budget, and economy mode](docs/brief/database-transfer.md) | The transfer meter and its warnings, what spends the allowance, or a background job that is not running / running every 4 hours — it may be economy mode (`ECONOMY_MODE_UNTIL`) |
 | [§7a. The rules every background job obeys](docs/brief/background-job-rules.md) | Whether a worker actually ran, the shared fleet snapshot, data retention, and why nothing is heard until a notification destination is set |
 | [§8. Data model and cross-feature relationships](docs/brief/data-model.md) | Schema, migrations, `groups`, or what else a table change touches |
 | [§9a. Code-structure rules](docs/brief/code-structure.md) | The 500-line cap, `lint:undef` / `lint:imports`, the façade rule, one-way dependencies |

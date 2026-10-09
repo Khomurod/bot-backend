@@ -404,9 +404,12 @@ marks the stay closed.
   are not read from a plan. `recordAndPostRequest` replaced all of it: record,
   tell the managers, reply once, stop. Rows already in an `awaiting_*` status
   keep their status and their dates; the housekeeping sweep closes one whose
-  window has passed, and a driver who writes again is heard as making a fresh
-  request. Guarded by `tests/homeTimeSilentMode.test.js` and
-  `tests/homeTimeReminderService.test.js`.
+  window has passed, and a driver who writes about home time again is heard as
+  making a fresh request. Only a message that passes the home-time candidate
+  filter looks for such a row — ordinary chatter does not (October 2026: the
+  lookup ran on every message and production had none left). Guarded by
+  `tests/homeTimeSilentMode.test.js`, `tests/homeTimeReminderService.test.js`
+  and `tests/homeTimeRequestService.test.js`.
 
 ## Home In and Home Out are read, not typed
 

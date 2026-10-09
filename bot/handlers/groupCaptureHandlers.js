@@ -22,6 +22,10 @@ const { messageMentionsManagers } = require('../../services/homeTimeRequestConst
 const { applyAutoReaction } = require('../../services/autoReactionService');
 const { ensurePersonForGroup } = require('../../services/identity/personResolver');
 const { captureDriverMessage } = require('../../services/retention/chatCapture');
+const {
+  writeIsDue, forgetWrite, resetCaptureMemory, nameSignature,
+  SEEN_REFRESH_MS, BACKFILL_RETRY_MS, GROUP_SEEN_REFRESH_MS,
+} = require('./captureWriteMemo');
 
 /**
  * Persist a single Telegram user object (from any update field) into `drivers`,
@@ -35,14 +39,17 @@ const { captureDriverMessage } = require('../../services/retention/chatCapture')
  */
 async function captureTelegramUser(user) {
   if (!user || !user.id || user.is_bot) return;
+  const key = `driver:${user.id}`;
+  if (!writeIsDue(key, nameSignature(user), SEEN_REFRESH_MS)) return;
   try {
-    await db.upsertDriver(
+    await db.recordDriverSeen(
       user.id,
       user.username || null,
       user.first_name || null,
       user.last_name || null
     );
   } catch (err) {
+    forgetWrite(key);
     console.error('[BOT] Failed to capture user', user.id, err.message);
   }
 }
@@ -107,21 +114,25 @@ async function captureUsersFromUpdate(ctx, group = null) {
       chatId: chat.id,
       groupName: chat.title || null,
     }).catch(() => {});
-    if (from.username) {
+    const dispatchKey = `dispatch:${from.id}`;
+    if (from.username && writeIsDue(dispatchKey, from.username, BACKFILL_RETRY_MS)) {
       botUsers.backfillDispatchMemberUserId({
         telegramUserId: from.id,
         username: from.username,
-      }).catch(() => {});
+      }).catch(() => forgetWrite(dispatchKey));
+    }
+    if (from.username) {
       // Backfill the stable numeric id onto a driver profile that the admin
       // linked by @username only, the first time that username actually texts
       // in its own group. Scoped to this group, and only fills a NULL id, so it
       // can never mislabel the driver.
-      if (group?.id) {
+      const profileKey = `profile:${group?.id}:${from.id}`;
+      if (group?.id && writeIsDue(profileKey, from.username, BACKFILL_RETRY_MS)) {
         db.backfillDriverProfileTelegramUserId({
           groupId: group.id,
           telegramUserId: from.id,
           username: from.username,
-        }).catch(() => {});
+        }).catch(() => forgetWrite(profileKey));
       }
     }
   }
@@ -129,10 +140,14 @@ async function captureUsersFromUpdate(ctx, group = null) {
   if (group?.id) {
     await Promise.all(users
       .filter((u) => !u.is_bot && (!leftUser || u.id !== leftUser.id))
+      .filter((u) => writeIsDue(`member:${group.id}:${u.id}`, nameSignature(u), SEEN_REFRESH_MS))
       .map((u) => db.upsertGroupMember(group.id, u).catch((err) => {
+        forgetWrite(`member:${group.id}:${u.id}`);
         console.error('[BOT] Failed to record group member', u.id, err.message);
       })));
     if (leftUser) {
+      // Gone now; if they come back, the next message records them again.
+      forgetWrite(`member:${group.id}:${leftUser.id}`);
       await db.removeGroupMember(group.id, leftUser.id).catch((err) => {
         console.error('[BOT] Failed to remove group member', leftUser.id, err.message);
       });
@@ -283,7 +298,10 @@ function registerGroupCaptureHandlers(bot) {
           const seenAtIso = Number.isFinite(ctx.message.date)
             ? new Date(ctx.message.date * 1000).toISOString()
             : new Date().toISOString();
-          db.recordGroupMessageSeen(group.id, seenAtIso).catch(() => {});
+          const seenKey = `seen:${group.id}`;
+          if (writeIsDue(seenKey, 'seen', GROUP_SEEN_REFRESH_MS)) {
+            db.recordGroupMessageSeen(group.id, seenAtIso).catch(() => forgetWrite(seenKey));
+          }
           // Detached and never throws: recording is not what this handler is for.
           captureDriverMessage({ group, message: ctx.message, from: ctx.from }).catch(() => {});
           // Watch for "Status: Home / Ready / Rolling" (deterministic state
@@ -339,4 +357,5 @@ module.exports = {
   captureTelegramUser,
   captureUsersFromUpdate,
   registerGroupCaptureHandlers,
+  resetCaptureMemory,
 };

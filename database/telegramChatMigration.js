@@ -17,6 +17,7 @@
  * which matters because several notices fail on the same move at once.
  */
 const { pool } = require('./pool');
+const { forgetGroupRows } = require('./groupRowCache');
 const { insertAdminAudit } = require('./adminAudit');
 const {
   DESTINATION_SETTINGS, DESTINATION_MAPS, REQUEUE_WITHIN_HOURS, normaliseChatId, rewriteChatMap,
@@ -174,6 +175,8 @@ async function followChatMigration(oldId, newId, { reason = null } = {}) {
       }, client);
     }
     await client.query('COMMIT');
+    // The row moved to a new chat id; nothing cached under the old one may answer.
+    forgetGroupRows();
     return summary;
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});

@@ -69,6 +69,8 @@ async function recordBotUserInteraction({
  * username/first/last/language, updates last-seen group/chat, and bumps
  * last_interaction_at. Uses COALESCE(EXCLUDED…, existing) so identity changes
  * update the same row and never duplicate. Stores NO message text.
+ *
+ * @returns {Promise<boolean>} whether a row was written; the row is not read back.
  */
 async function recordBotUserSeen({
   telegramUserId,
@@ -81,7 +83,7 @@ async function recordBotUserSeen({
   chatId = null,
   groupName = null,
 }) {
-  if (telegramUserId == null) return null;
+  if (telegramUserId == null) return false;
   const res = await query(
     `INSERT INTO bot_users
        (telegram_user_id, username, first_name, last_name, language_code, is_bot,
@@ -98,8 +100,7 @@ async function recordBotUserSeen({
                    last_group_id = COALESCE(EXCLUDED.last_group_id, bot_users.last_group_id),
                    last_seen_chat_id = COALESCE(EXCLUDED.last_seen_chat_id, bot_users.last_seen_chat_id),
                    last_group_name = COALESCE(EXCLUDED.last_group_name, bot_users.last_group_name),
-                   last_interaction_at = NOW()
-     RETURNING *`,
+                   last_interaction_at = NOW()`,
     [
       Number(telegramUserId),
       username ? String(username).slice(0, 64) : null,
@@ -112,7 +113,9 @@ async function recordBotUserSeen({
       groupName ? String(groupName).slice(0, 256) : null,
     ]
   );
-  return res.rows[0] || null;
+  // Nothing is echoed back: this runs on every group message, and the row it
+  // used to return was read by nobody.
+  return (res.rowCount || 0) > 0;
 }
 
 // Accepted coarse filters for the admin Users tab.

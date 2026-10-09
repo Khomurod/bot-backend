@@ -6,6 +6,7 @@
  * Extracted verbatim from database/db.js; db.js re-exports these.
  */
 const { query } = require('./pool');
+const { forgetGroupRows } = require('./groupRowCache');
 const {
   normalizeProfileLanguage,
   normalizeProfileStatus,
@@ -91,6 +92,7 @@ async function syncGroupFromDriverProfile(profileRow, opts = {}) {
      RETURNING *`,
     values
   );
+  forgetGroupRows();
   return res.rows[0] || null;
 }
 

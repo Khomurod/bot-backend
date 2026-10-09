@@ -33,8 +33,16 @@ const { buildNormalizedDriverKey, buildDriverDisplayName } = require('../../lib/
 const { decidePersonForGroup, decideUnitSync } = require('../../lib/identity/personResolution');
 const { resolveDriverType, FLEET_TYPES } = require('../../lib/drivers/fleetType');
 
-/** A group is re-resolved at most this often from the message path. */
+/**
+ * A group is re-resolved at most this often from the message path — and inside
+ * that window it is not looked up either: the person found is remembered with
+ * the time. Re-reading the open link on every message (~10,000 a day, every one
+ * returning what the resolver had just established) was most of what this
+ * cache was meant to save; a FORCED resolve, which every correction and profile
+ * save uses, still reads and writes the table.
+ */
 const ENSURE_TTL_MS = 10 * 60 * 1000;
+/** group id → { at, personId } */
 const recentlyEnsured = new Map();
 
 function resetResolverCache() {
@@ -84,13 +92,19 @@ async function ensurePersonForGroup(group, { profile = null, force = false, clie
     return { personId: null, action: 'skipped' };
   }
   const last = recentlyEnsured.get(group.id);
-  if (!force && last && Date.now() - last < ENSURE_TTL_MS) {
-    return { personId: await people.getPersonIdForGroup(group.id), action: 'cached' };
+  if (!force && last && Date.now() - last.at < ENSURE_TTL_MS) {
+    return { personId: last.personId, action: 'cached' };
   }
-  recentlyEnsured.set(group.id, Date.now());
+  // Recorded before the work, as it always was, so a resolve that throws is
+  // not retried on every message; `personId` stays null until one is known.
+  const entry = { at: Date.now(), personId: null };
+  recentlyEnsured.set(group.id, entry);
 
   const open = await people.getOpenAssociationForGroup(group.id, outer);
-  if (open) return { personId: open.personId, action: 'keep' };
+  if (open) {
+    entry.personId = open.personId;
+    return { personId: open.personId, action: 'keep' };
+  }
 
   const prof = profile || await driverProfilesDb.getDriverProfileByGroupId(group.id);
   const fields = nameFields(prof, group);
@@ -132,6 +146,7 @@ async function ensurePersonForGroup(group, { profile = null, force = false, clie
   if (decision.action === 'link') {
     console.log(`[IDENTITY] Group ${group.id} linked to existing person ${personId} via ${decision.source}`);
   }
+  entry.personId = personId;
   return {
     personId, action: decision.action, ambiguous: decision.ambiguous === true, closedAssociations, stamped,
   };

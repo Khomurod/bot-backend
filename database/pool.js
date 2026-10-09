@@ -17,7 +17,15 @@ const pool = new Pool({
   // instance and most database providers' free tiers cap total connections.
   // Lowered to 5 to free memory headroom on the 512MB free Render instance.
   max: Number.parseInt(process.env.PG_POOL_MAX || '5', 10),
-  idleTimeoutMillis: Number.parseInt(process.env.PG_IDLE_TIMEOUT_MS || '30000', 10),
+  // Ten minutes, not thirty seconds. Every new connection through the hosted
+  // pooler is a TLS handshake plus authentication — kilobytes of metered
+  // egress before the first query — and a quiet minute between a driver's
+  // messages was enough to close the connection and pay for it again.
+  // TCP keepalive stops an idle connection being dropped silently by the
+  // network meanwhile; a dropped one still surfaces on `pool.on('error')`.
+  idleTimeoutMillis: Number.parseInt(process.env.PG_IDLE_TIMEOUT_MS || '600000', 10),
+  keepAlive: true,
+  keepAliveInitialDelayMillis: 60 * 1000,
   // Free-tier databases can be slow to open a fresh connection (cold start +
   // SSL handshake), so allow a generous window. Set 0 to wait indefinitely.
   connectionTimeoutMillis: Number.parseInt(process.env.PG_CONNECTION_TIMEOUT_MS || '30000', 10),

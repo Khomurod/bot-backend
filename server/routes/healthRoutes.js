@@ -54,7 +54,7 @@ function renderMetaCompliancePage(title, bodyHtml) {
 function createHealthRoutes({
   db, config, countExhaustedInternalAlerts = null, countFailedManagerNotices = null,
   summariseOperationalNotifications = null, summariseFinanceDocuments = null,
-  getOperationsHealth = null,
+  getOperationsHealth = null, getEconomyState = null,
 }) {
   const router = express.Router();
 
@@ -231,7 +231,13 @@ function createHealthRoutes({
     }
     const meta = await getMetaCredentialHealth();
     const queues = dbOk ? await getQueueHealth() : { homeTimeInternalAlerts: { available: false } };
-    const operations = dbOk ? await getOperationsBlock() : undefined;
+    // ECONOMY MODE: the operations block is skipped, not served stale. It is
+    // dozens of reads per build, and nothing it reports is being worked on
+    // while the passes that act on it are paused. Said in the body, so a
+    // missing block reads as a decision rather than an outage.
+    const economy = typeof getEconomyState === 'function' ? getEconomyState() : null;
+    const economyOn = economy?.active === true;
+    const operations = dbOk && !economyOn ? await getOperationsBlock() : undefined;
     return {
       healthy: dbOk,
       status: dbOk ? 'ok' : 'degraded',
@@ -240,6 +246,7 @@ function createHealthRoutes({
       meta,
       queues,
       ...(operations !== undefined ? { operations } : {}),
+      ...(economyOn ? { economy: { active: true, until: economy.until } } : {}),
       // Which commit is actually running. Render sets RENDER_GIT_COMMIT on every
       // deploy; without it the only evidence a merge was live was an uptime that
       // happened to line up with the merge time. Null when unset — a local run

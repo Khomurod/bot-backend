@@ -334,18 +334,37 @@ test('approver tag: an OUTDATED open request is auto-closed and a fresh request 
   assert.ok(sends.length >= 1, 'a new card/message was sent');
 });
 
-test('orchestrator: an OUTDATED open clarification is expired and the message is not fed to it', async () => {
+const LEGACY_CLARIFICATION = {
+  id: 42, status: 'awaiting_dates', home_from: null,
+  next_reminder_at: null, requested_at: `${PAST_FROM}T00:00:00Z`,
+};
+
+test('orchestrator: a driver writing about home again expires an OUTDATED open clarification, and is not fed to it', async () => {
   const { service, telegram, fulfills, inserts, expiries } = loadService({
-    clarification: {
-      id: 42, status: 'awaiting_dates', home_from: null,
-      next_reminder_at: null, requested_at: `${PAST_FROM}T00:00:00Z`,
-    },
+    clarification: LEGACY_CLARIFICATION,
+    gemini: { json: { intent: 'unrelated', confidence: 90 } },
+  });
+  await service.processHomeTimeMessage(telegram, GROUP, {
+    message_id: 5, text: 'can I go home next week?', from: { id: 900 },
+  }, { statusResult: null, mentionsApprover: false });
+  assert.deepEqual(expiries, [42]);
+  assert.equal(fulfills.length, 0);
+  assert.equal(inserts.length, 0);
+});
+
+test('orchestrator: ORDINARY CHATTER does not look for a legacy clarification at all', async () => {
+  // The lookup ran for every message in every driver chat — ~10,000 a day, each
+  // describing all 46 columns of home_time_requests — while production had no
+  // such row left (October 2026). The housekeeping sweep still closes one whose
+  // window has passed; a message that cannot be about home time no longer asks.
+  const { service, telegram, fulfills, inserts, expiries } = loadService({
+    clarification: LEGACY_CLARIFICATION,
     gemini: { json: { intent: 'unrelated', confidence: 90 } },
   });
   await service.processHomeTimeMessage(telegram, GROUP, {
     message_id: 5, text: 'ok thanks boss', from: { id: 900 },
   }, { statusResult: null, mentionsApprover: false });
-  assert.deepEqual(expiries, [42]);
+  assert.deepEqual(expiries, []);
   assert.equal(fulfills.length, 0);
   assert.equal(inserts.length, 0);
 });

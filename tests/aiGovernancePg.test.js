@@ -392,3 +392,27 @@ test('0024: a retirement is pending until it has been told, and the stamp is ide
   assert.equal(await aiModelEvents.markEventsNotified([a.id, b.id]), 1, 'already-stamped rows are not re-stamped');
   assert.deepEqual(await aiModelEvents.listUnnotifiedRetirements('groq'), []);
 });
+
+test('THE ROUTER READS MODEL IDS, never the listing — ids only, enabled providers only', { skip: skipWithoutPg() }, async (t) => {
+  // The listing is ~43 KB for OpenRouter and the router's roster is re-read
+  // whenever its cache expires; October 2026's transfer audit found it among
+  // the largest reads in the application.
+  const harness = await harnessWith(t);
+  const { aiProviders } = load(harness);
+  await aiProviders.upsertProvider('groq', { label: 'Groq', enabled: true, apiKey: 'gsk_test_1234' });
+  await aiProviders.saveDiscoveredModels('groq', {
+    models: [{ id: 'llama-3.1-8b-instant', chat: true }, { chat: true }, { id: 'openai/gpt-oss-20b' }],
+  });
+  await harness.query(`UPDATE ai_providers SET enabled = FALSE WHERE provider_key <> 'groq'`);
+
+  const [forRouter, ...rest] = await aiProviders.getProvidersForRouter();
+  assert.equal(rest.length, 0);
+  assert.equal(forRouter.providerKey, 'groq');
+  assert.equal(forRouter.apiKey, 'gsk_test_1234');
+  assert.equal('discoveredModelIds' in forRouter, false, 'the roster row no longer carries the listing');
+
+  const ids = await aiProviders.getDiscoveredModelIdsForRouter();
+  assert.deepEqual([...ids.keys()], ['groq']);
+  assert.deepEqual(ids.get('groq'), ['llama-3.1-8b-instant', 'openai/gpt-oss-20b'],
+    'an entry with no id is not a model');
+});

@@ -146,6 +146,13 @@ const { setModelRefusalListener } = require('./ai/router');
 const { onProfileSaved } = require('./identity/personResolver');
 const { startTelegramDestinationProbe, stopTelegramDestinationProbe } = require('./telegramDestinationProbe');
 const { setProfileSavedHook } = require('../database/driverProfiles');
+const {
+  launchUnlessPaused,
+  scheduleEconomyEnd,
+  cancelEconomyEnd,
+  notePausedServices,
+  describeEconomyAtBoot,
+} = require('./operations/economy');
 
 /**
  * Start everything.
@@ -158,6 +165,15 @@ const { setProfileSavedHook } = require('../database/driverProfiles');
  * the same thing with nothing to choose between them.
  */
 function startBackgroundServices({ telegram }) {
+  // ECONOMY MODE (services/operations/economy.js). While ECONOMY_MODE_UNTIL is a
+  // date in the future, a service whose every pass is on the owner's pause list
+  // is not started here at all — `launchUnlessPaused` holds it and starts it
+  // when the date passes. Services that share a timer with work that must keep
+  // running are started normally; their paused passes are refused inside
+  // `withRunRecord`. Unset, the wrapper is a plain call.
+  const economyLine = describeEconomyAtBoot();
+  if (economyLine) console.log(economyLine);
+
   // Which Telegram client each service posts through, decided here rather than
   // reached for. Dispatch ETA uses the main bot; Facebook leads use the leads
   // bot, which is a DIFFERENT token posting into a different group, and mixing
@@ -172,11 +188,11 @@ function startBackgroundServices({ telegram }) {
   startDispatchEtaScheduler();
   startBirthdayService();
   startEmployeeBirthdayWishService();
-  startGroupStatusAiService();
+  launchUnlessPaused(['group_status_ai'], () => startGroupStatusAiService());
   startMileageBonusService();
-  startDatatruckDocumentService();
+  launchUnlessPaused(['datatruck_documents'], () => startDatatruckDocumentService());
   startRaiseApprovalService();
-  startFuelStopAlertService(telegram);
+  launchUnlessPaused(['fuel_stop_alerts'], () => startFuelStopAlertService(telegram));
   startRecruiterCallSyncService();
   startRingCentralTokenRefreshService();
   startRoadBonusNotifierService(telegram);
@@ -190,32 +206,32 @@ function startBackgroundServices({ telegram }) {
   startBoardPresenceWatch(telegram);
   // Works out what each load is actually doing from where the truck is, because
   // a board status is a plan and is routinely days out of date.
-  startLoadLifecycleWatch();
+  launchUnlessPaused(['load_lifecycle'], () => startLoadLifecycleWatch());
   // Fuel RISK, beside the existing fuel-stop reminder: can the truck reach the
   // stop, did it go past, is the instruction from last trip. Reports to the
   // operations chat only while it is new — never to a driver.
-  startFuelRiskWatch();
+  launchUnlessPaused(['fuel_risk'], () => startFuelRiskWatch());
   // Reads safety events as a PATTERN rather than one incident at a time, and
   // says one useful thing to a driver who has a habit. Whether to speak is
   // arithmetic; a model only words the sentence.
-  startSafetyCoach();
+  launchUnlessPaused(['safety_coach'], () => startSafetyCoach());
   // Reads what the COMPANY has done to a driver — a home window promised and
   // missed, a bonus earned and unpaid, weeks past the allowance — plus what the
   // driver said in their own words, and says so while somebody can still act.
   // Operations chat only, never the driver's; no employment decision, ever.
-  startRetentionWatch();
+  launchUnlessPaused(['retention_watch'], () => startRetentionWatch());
   // Classifies the driver messages recorded since the owner switched capture
   // on (2026-10-06): saying they are leaving, complaints, sentiment. Bounded
   // per pass; reports `blocked` while capture is off.
-  startChatAnnotator();
+  launchUnlessPaused(['chat_annotation'], () => startChatAnnotator());
   // Notices when a part of Wenze breaks, and when it puts itself right. It adds
   // no recovery — every recovery it reports already ran silently. A blip that
   // self-corrects produces NO message; only a real outage and its recovery do.
-  startSelfHealingWatch();
+  launchUnlessPaused(['self_healing'], () => startSelfHealingWatch());
   // Notices that Wenze has been corrected the same way three times and proposes
   // something about it. Proposes only: nothing here changes a rule, and a
   // suggestion sits at 'proposed' until an administrator agrees.
-  startLearningPass();
+  launchUnlessPaused(['learning_pass'], () => startLearningPass());
   // Put the AI responsibilities catalogue into the database, so Settings → AI
   // has something to show and an administrator has something to switch off.
   // Descriptive columns only — a capability switched off stays off.
@@ -223,7 +239,7 @@ function startBackgroundServices({ telegram }) {
     console.warn('[AI CAPABILITIES] registration pass failed:', err.message);
   });
   startRouteControlService(telegram);
-  startDuplicateUnitCheckService();
+  launchUnlessPaused(['duplicate_unit_scan'], () => startDuplicateUnitCheckService());
   // Runs beside the duplicate-unit scan, whose three report types it generalises;
   // that service keeps running until its checks are folded in.
   startConsistencyService();
@@ -245,18 +261,26 @@ function startBackgroundServices({ telegram }) {
   // A saved driver profile keeps the person layer current (unit change,
   // Telegram id). Registered here so database/ never depends upward.
   setProfileSavedHook(onProfileSaved);
-  startPolicyWatcher({ telegram: telegram || null });
+  launchUnlessPaused(['ai_policy_watcher'], () => startPolicyWatcher({ telegram: telegram || null }));
   // A Telegram group upgraded to a supergroup gets a new id and every send to
   // the old one fails. This asks about each configured destination and follows
   // a move before a notice has to fail on it.
   startTelegramDestinationProbe({ telegram: telegram || null });
   // Daily model refresh, plus a debounced look whenever the router is refused a
   // model. Its Telegram lines ride the policy watcher's outbox above.
-  startModelMaintenance({ setModelRefusalListener });
+  launchUnlessPaused(['ai_model_maintenance'], () => startModelMaintenance({ setModelRefusalListener }));
+
+  // Whatever was held starts when the date passes; until then the ledger says
+  // "paused until …" for each paused pass rather than going quiet.
+  scheduleEconomyEnd();
+  notePausedServices().catch((err) => {
+    console.warn('[ECONOMY] could not record the paused services:', err.message);
+  });
 }
 
 /** Stop everything, one at a time, never letting one failure stop the rest. */
 function stopBackgroundServices() {
+  try { cancelEconomyEnd(); } catch (err) { console.error('[SHUTDOWN] cancelEconomyEnd failed:', err.message); }
   try { stopScheduler(); } catch (err) { console.error('[SHUTDOWN] stopScheduler failed:', err.message); }
   try { stopDispatchEtaScheduler(); } catch (err) { console.error('[SHUTDOWN] stopDispatchEtaScheduler failed:', err.message); }
   try { stopBirthdayService(); } catch (err) { console.error('[SHUTDOWN] stopBirthdayService failed:', err.message); }

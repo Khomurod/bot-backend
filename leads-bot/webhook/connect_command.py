@@ -25,7 +25,7 @@ import logging
 
 import httpx
 
-from config import LEADS_INTERNAL_SHARED_SECRET, LOCAL_API_BASE_URL
+from config import LEADS_INTERNAL_SHARED_SECRET, LOCAL_API_BASE_URL, TELEGRAM_CHAT_ID
 
 from .telegram_client import (
     _delete_leads_bot_webhook,

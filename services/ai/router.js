@@ -33,7 +33,9 @@
  */
 const { classifyFailure, invalidResponse, retryAfterMs, FAILURE } = require('../../lib/ai/classify');
 const { cooldownFor, eligibleProviders } = require('../../lib/ai/cooldown');
-const { getRoster, nextRotation } = require('./registry');
+const {
+  getRoster, nextRotation, invalidateProviders, noteProviderSuccess,
+} = require('./registry');
 const { isCapabilityEnabled } = require('./capabilityGate');
 const aiProviders = require('../../database/aiProviders');
 const { recordAiCall } = require('../../database/aiCallLog');
@@ -357,6 +359,7 @@ async function runCapability({
         }
 
         await aiProviders.recordSuccess(provider.providerKey);
+        noteProviderSuccess(provider.providerKey);
         await recordAiCall({
           capabilityKey: capability, providerKey: provider.providerKey,
           model: result.model, outcome: 'ok', latencyMs: Date.now() - startedAt,
@@ -402,6 +405,9 @@ async function runCapability({
             await aiProviders.recordFailure(provider.providerKey, {
               message: err.message, cooldown,
             });
+            // The roster is cached for minutes; without this the next call
+            // would ask the provider just put on cooldown.
+            invalidateProviders();
           }
         }
         // A dead key or a spent quota is the same answer from every model this

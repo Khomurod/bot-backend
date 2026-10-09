@@ -76,64 +76,13 @@ and the alert queues all continue with the admin panel closed — the
 panel is a viewer, never the engine. (Nothing in `server/routes/**` calls a
 `start*Service`, and no route module holds an interval at all.)
 
-### The database transfer budget
+### The database transfer budget, and economy mode
 
-The hosted database (Supabase) has a **monthly data-transfer allowance**, and
-this deployment reached **4.222 GB of 5 GB** with nothing in the application
-aware of it. Exhausting it is not a graceful degradation: reads simply start
-failing, and before this work the app could not tell that apart from an outage.
-
-Three mechanisms now keep it in view and in check:
-
-- **A meter.** `database/pool.js` is the single query boundary, so every result
-  feeds `database/transferMeter.js`, which estimates the bytes read this month
-  (sampled result sizes plus a moving average of bytes-per-row — measuring every
-  row would double the work of every large query). `database/transferUsage.js`
-  persists it to `database_transfer_usage` (one row per UTC month, one UPSERT a
-  minute) so a Render restart does not reset the month.
-- **And WHAT is spending it.** A percentage tells somebody to worry; a table
-  name tells them where to look. `lib/database/queryLabel.js` reads the table
-  out of the statement itself — one regular expression, run on every query, and
-  it returns an **identifier or `other`, never a fragment of the SQL**, because
-  SQL text carries literals and literals carry driver names and money codes.
-
-  The capture shape alone was not enough, and the first version proved it: a
-  pattern is only SQL structure where SQL structure is allowed, so
-  `/* report from Alice_Smith */ SELECT * FROM groups` labelled itself
-  `alice_smith` — a well-formed identifier and a person's name, on a
-  diagnostics endpoint. Comments and quoted literals are blanked out **before**
-  the match, in one left-to-right pass (stripping comments first mangles a
-  literal containing `--`). Double quotes are left alone, because in PostgreSQL
-  those delimit an identifier and that is the thing being looked for.
-  The meter keeps per-table bytes, queries and rows, and `/api/system/
-  database-usage` returns the ten biggest as `breakdown`.
-
-  Two limits, each a way it could have gone wrong. **The label set is capped**
-  (80 by default) with an `other` bucket, so a diagnostic that runs on every
-  query for the life of a process cannot grow without bound — and the parts
-  still sum to the whole, so the answer gets coarser rather than wrong. And the
-  breakdown is **scoped to the process, not the month**: the monthly total is
-  persisted so a restart cannot lose it, while attribution answers "what is
-  spending it right now", and a share carried across a deploy would describe a
-  process that no longer exists. Restarting resets the breakdown and never the
-  total.
-- **Warnings at 80 / 90 / 95%.** Logged once per threshold per month by
-  `services/databaseUsageService.js`, and shown in the admin panel by
-  `DatabaseUsageBanner` (which reads in-memory counters — the meter performs no
-  query of its own) alongside the three tables reading the most. Both say
-  plainly that the number is this app's estimate, not the provider's invoice,
-  and the banner says the table list covers only this server's uptime. The
-  banner is the ONE component rendered outside `PageErrorBoundary`, so the
-  breakdown is read defensively: a malformed one costs the list and never the
-  warning. **Nothing throttles or blocks a query on this
-  budget**: enforcement belongs to the provider, and silently refusing reads
-  would turn a warning into an outage. No provider or billing setting is ever
-  changed by the app.
-- **Less traffic to begin with.** The brakes are the server-side TTL caches with
-  single-flight collapsing (Live Locations: 90s snapshot, 3 min order window),
-  the visible-only browser polling below, and bounded list queries (the
-  scheduled-messages queue returns every live row plus a capped tail of finished
-  history instead of the whole table on every poll).
+**Moved to [`database-transfer.md`](database-transfer.md)** (§7b): the meter,
+the 80/90/95% warnings, what spends the allowance, and **economy mode** — the
+dated switch that stands half the background work down while the allowance is
+nearly spent. A job that does not start, or runs every four hours instead of
+every five minutes, may be economy mode and not a fault: check there first.
 
 ### Browser polling (the admin panel)
 

@@ -25,6 +25,7 @@
  * renders as "waiting on somebody", not as a failure.
  */
 const { withRunRecord } = require('../operations/runLedger');
+const { economyInterval } = require('../operations/economy');
 const { stripUrls } = require('../../lib/security/redactUrls');
 const { parseBoardPayload, summariseBoardPayload } = require('../../lib/board/parse');
 
@@ -163,8 +164,11 @@ async function tick(deps) {
   if (tickRunning) return;
   tickRunning = true;
   let intervalMs = DEFAULT_INTERVAL_MS;
+  // A failure until the pass says otherwise: a throw is a failure too.
+  let failed = true;
   try {
     const summary = await withRunRecord('dispatch_board_poll', () => runBoardPoll({ deps }));
+    failed = Boolean(summary?.error);
     if (summary?.read != null) {
       // `skipped` only when there is one: a row the board carries and Wenze
       // cannot store is worth a line, and a zero every five minutes is not.
@@ -179,7 +183,11 @@ async function tick(deps) {
   } finally {
     tickRunning = false;
     if (!serviceStopped) {
-      serviceTimer = setTimeout(() => tick(deps), intervalMs);
+      // Economy mode reads the Board every four hours instead of stopping: the
+      // Sunday raise review refuses a Board older than six hours
+      // (services/raise/boardRoster.js). A FAILED read retries at the normal
+      // pace, because the review also refuses a Board whose last read failed.
+      serviceTimer = setTimeout(() => tick(deps), economyInterval(SERVICE_KEY, intervalMs, { failed }));
       serviceTimer.unref?.();
     }
   }

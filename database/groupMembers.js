@@ -24,7 +24,7 @@ async function upsertGroupMember(groupId, user) {
                    first_name = EXCLUDED.first_name,
                    last_name = EXCLUDED.last_name,
                    last_seen_at = NOW()
-     RETURNING *`,
+     RETURNING group_id, telegram_user_id`,
     [gid, telegramUserId, user?.username || null, user?.first_name || null, user?.last_name || null]
   );
   return res.rows[0] || null;

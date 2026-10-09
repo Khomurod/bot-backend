@@ -229,7 +229,7 @@ feature it belongs to.
   from a list that WAS read is genuinely off — default-deny is the engine's rule.
 - **The capability cache is cleared after the write, not before.** Clearing
   first leaves a window in which a concurrent call reloads the old value and
-  caches it for another 30 seconds; a failed save clears nothing at all.
+  caches it for another ten minutes; a failed save clears nothing at all.
 - **Every operational AI call now says which decision it served.** `capability`
   reached the router from two of about twenty-four call sites, and
   `callGeminiText` dropped the field entirely, so the activity history was a

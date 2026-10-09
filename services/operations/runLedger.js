@@ -22,9 +22,16 @@
  * that sentence. Those are not failures and must never be rendered as failures:
  * an unconfigured feature painted red is how a real outage gets lost among
  * things nobody ever switched on.
+ *
+ * ECONOMY MODE IS THE ONE EXCEPTION to "never changes the pass's behaviour": a
+ * pass that economy mode stands down (lib/operations/economyMode.js) is not run
+ * and nothing is written — not even the start line, because the point is to
+ * reach the database less. The boot note in services/operations/economy.js has
+ * already recorded it as `blocked` once.
  */
 const runs = require('../../database/backgroundRuns');
 const { getServiceEntry } = require('../../lib/operations/backgroundServiceCatalog');
+const { economyPauseReasonFor } = require('./economy');
 
 /**
  * Read a pass's own return value for what it is saying about itself.
@@ -54,6 +61,9 @@ function statusFromSummary(summary) {
  * @returns {Promise<*>} whatever the pass returned
  */
 async function withRunRecord(serviceKey, pass) {
+  const paused = economyPauseReasonFor(serviceKey);
+  if (paused) return { blocked: paused, economy: true };
+
   const entry = getServiceEntry(serviceKey);
   const expected = entry?.expectedIntervalSeconds ?? null;
   await runs.recordRunStart(serviceKey, { expectedIntervalSeconds: expected });

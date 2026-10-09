@@ -95,7 +95,7 @@ export default function SamsaraTab() {
     <div>
       <p style={{ color: "#94a3b8", marginTop: 0 }}>
         Samsara safety events are polled by a separate service that reads these settings from
-        the shared database. Changes here reach it within a minute — no redeploy.
+        the shared database. Changes here reach it within five minutes — no redeploy.
       </p>
       <Banner message={message} />
 

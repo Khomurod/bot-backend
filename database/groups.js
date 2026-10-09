@@ -5,8 +5,17 @@
  * existing `require('./db')` caller keeps working.
  */
 const { query } = require('./pool');
+const { cachedGroupRow, rememberGroupRow, forgetGroupRows } = require('./groupRowCache');
 
+/**
+ * Register a chat seen in a message, or refresh its name. Runs on EVERY group
+ * message, so a chat whose row was read in the last few minutes under the same
+ * name is answered from database/groupRowCache.js — the write would change
+ * nothing and the row it echoes is already known.
+ */
 async function upsertGroup(telegramGroupId, groupName) {
+  const cached = cachedGroupRow(telegramGroupId);
+  if (cached && cached.group_name === groupName) return cached;
   const res = await query(
     `INSERT INTO groups (telegram_group_id, group_name, active, status_source)
      VALUES ($1, $2, TRUE, 'bot')
@@ -16,6 +25,7 @@ async function upsertGroup(telegramGroupId, groupName) {
     [telegramGroupId, groupName]
   );
   console.log(`[DB] Group upserted: ${groupName} (${telegramGroupId})`);
+  if (res.rows[0]) rememberGroupRow(res.rows[0]);
   return res.rows[0];
 }
 
@@ -32,6 +42,7 @@ async function reactivateGroupOnBotJoin(telegramGroupId, groupName) {
      RETURNING *`,
     [telegramGroupId, groupName]
   );
+  forgetGroupRows();
   console.log(`[DB] Group reactivated on bot join: ${groupName} (${telegramGroupId})`);
   return res.rows[0];
 }
@@ -44,6 +55,7 @@ async function updateGroupOperationalStatus(groupId, active, source) {
      RETURNING *`,
     [!!active, source, groupId]
   );
+  forgetGroupRows();
   return res.rows[0];
 }
 
@@ -147,14 +159,20 @@ async function deactivateGroup(telegramGroupId) {
      WHERE telegram_group_id = $1`,
     [telegramGroupId]
   );
+  forgetGroupRows();
   console.log(`[DB] Group deactivated: ${telegramGroupId}`);
 }
 
 async function getGroupByTelegramId(telegramGroupId) {
+  // The message handler asks for the row the registration middleware has just
+  // read; database/groupRowCache.js answers that without a second trip.
+  const cached = cachedGroupRow(telegramGroupId);
+  if (cached) return cached;
   const res = await query(
     'SELECT * FROM groups WHERE telegram_group_id = $1',
     [telegramGroupId]
   );
+  if (res.rows[0]) rememberGroupRow(res.rows[0]);
   return res.rows[0];
 }
 
@@ -228,6 +246,7 @@ async function setGroupLanguage(groupId, language) {
     'UPDATE groups SET language = $1 WHERE id = $2 RETURNING *',
     [language, groupId]
   );
+  forgetGroupRows();
   return res.rows[0];
 }
 
@@ -236,6 +255,7 @@ async function setGroupBirthday(groupId, birthday) {
     'UPDATE groups SET driver_birthday = $1 WHERE id = $2 RETURNING *',
     [birthday || null, groupId]
   );
+  forgetGroupRows();
   return res.rows[0];
 }
 
@@ -248,6 +268,7 @@ async function updateGroupSamsaraId(groupId, samsaraId) {
      RETURNING *`,
     [normalized || null, groupId]
   );
+  forgetGroupRows();
   return res.rows[0];
 }
 

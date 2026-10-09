@@ -94,8 +94,16 @@ async function listProvidersForAdmin() {
  * future route could pass by accident.
  */
 async function getProvidersForRouter() {
+  // NAMED COLUMNS, NOT `*`. The row also carries `discovered_models` — the full
+  // listing a provider last returned, about 43 KB for OpenRouter's 469 models —
+  // and this runs whenever the router's cache expires. The router needs only
+  // the ids out of it, and those change only when a refresh writes them, so
+  // they are read separately (`getDiscoveredModelIdsForRouter`) and cached far
+  // longer by services/ai/registry.js.
   const res = await query(
-    'SELECT * FROM ai_providers WHERE enabled = TRUE ORDER BY priority ASC, provider_key ASC'
+    `SELECT provider_key, adapter, enabled, priority, is_free, base_url, model_chain, catalog_key,
+            api_key_encrypted, cooled_until, cooled_indefinitely, cooldown_reason, consecutive_failures
+       FROM ai_providers WHERE enabled = TRUE ORDER BY priority ASC, provider_key ASC`
   );
   return res.rows.map((row) => ({
     providerKey: row.provider_key,
@@ -106,15 +114,33 @@ async function getProvidersForRouter() {
     baseUrl: row.base_url,
     modelChain: Array.isArray(row.model_chain) ? row.model_chain : [],
     catalogKey: row.catalog_key ?? null,
-    // What the provider itself last said exists. The router uses it to drop a
-    // caller's preferred model that is no longer listed; empty means unknown.
-    discoveredModelIds: Array.isArray(row.discovered_models)
-      ? row.discovered_models.map((m) => m?.id).filter(Boolean) : [],
     apiKey: safeDecrypt(row.api_key_encrypted) || envKeyFor(row.provider_key),
     cooledUntil: row.cooled_indefinitely ? INDEFINITE : row.cooled_until,
     cooldownReason: row.cooldown_reason,
     consecutiveFailures: row.consecutive_failures,
   }));
+}
+
+/**
+ * The model ids each enabled provider last listed, keyed by provider — ids
+ * only, extracted in SQL so the listing itself never leaves the database.
+ *
+ * What the provider itself last said exists. The router uses it to drop a
+ * caller's preferred model that is no longer listed; empty means unknown.
+ */
+async function getDiscoveredModelIdsForRouter() {
+  const res = await query(
+    `SELECT provider_key,
+            ARRAY(
+              SELECT m->>'id'
+                FROM jsonb_array_elements(
+                       CASE WHEN jsonb_typeof(discovered_models) = 'array'
+                            THEN discovered_models ELSE '[]'::jsonb END) AS m
+               WHERE COALESCE(m->>'id', '') <> ''
+            ) AS ids
+       FROM ai_providers WHERE enabled = TRUE`
+  );
+  return new Map(res.rows.map((row) => [row.provider_key, Array.isArray(row.ids) ? row.ids : []]));
 }
 
 /**
@@ -306,6 +332,7 @@ module.exports = {
   mapProviderForAdmin,
   listProvidersForAdmin,
   getProvidersForRouter,
+  getDiscoveredModelIdsForRouter,
   getProviderSecretsByKey,
   upsertProvider,
   saveDiscoveredModels,

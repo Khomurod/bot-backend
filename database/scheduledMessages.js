@@ -42,9 +42,15 @@ async function createScheduledMessage(data) {
   return res.rows[0];
 }
 
+/**
+ * The ids of the messages due now, oldest first — ids ONLY. The scheduler asks
+ * every minute and nearly always gets nothing; `SELECT *` still described all
+ * twenty-two columns each time. The full row comes from `claimScheduledMessage`,
+ * the one step that needs it.
+ */
 async function getPendingScheduledMessages() {
   const res = await query(
-    `SELECT * FROM scheduled_messages
+    `SELECT id FROM scheduled_messages
      WHERE status = 'pending' AND scheduled_at <= NOW()
      ORDER BY scheduled_at ASC`
   );

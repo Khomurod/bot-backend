@@ -95,7 +95,9 @@ test('a driver group seen for the first time gets a person, and its history is s
   assert.equal(stamped.rows[0].person_id, personId, 'the leg written before the layer knew them is theirs');
 
   // Second sight within the TTL is a cache hit; forced, a keep. Neither creates.
-  assert.equal((await resolver.ensurePersonForGroup(group)).action, 'cached');
+  const cached = await resolver.ensurePersonForGroup(group);
+  assert.equal(cached.action, 'cached');
+  assert.equal(cached.personId, personId, 'the remembered person, without reading the link again');
   assert.equal((await resolver.ensurePersonForGroup(group, { force: true })).action, 'keep');
   const n = await harness.query('SELECT COUNT(*)::int AS n FROM driver_people');
   assert.equal(n.rows[0].n, 1);
