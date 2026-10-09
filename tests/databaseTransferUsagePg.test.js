@@ -10,7 +10,7 @@
  * Migration 0007 creates the table; it is applied here as extra DDL, so this
  * also proves that file is valid SQL against the real schema.
  *
- * Requires TEST_DATABASE_URL (CI provides a Postgres 16 service container).
+ * Requires TEST_DATABASE_URL (CI provides a Postgres 16 container).
  */
 'use strict';
 

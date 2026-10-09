@@ -5,7 +5,7 @@ name: CI
 #
 #   checks       static/structural gates + the admin production build
 #   test         the Node suite that needs no secrets and no database
-#   integration  the *Pg suites, against a real PostgreSQL service container
+#   integration  the *Pg suites, against a real PostgreSQL 16 container
 #
 # The integration job is a SEPARATE job rather than a silent skip. The *Pg tests
 # skip themselves when TEST_DATABASE_URL is unset, and a skipped test is not a
@@ -19,8 +19,8 @@ name: CI
 # SECRETS: none. The unit job runs with NO application configuration at all —
 # config validation happens at the app startup boundary, not at module import,
 # so services can be imported by tests without production secrets. The
-# integration job's database URL points only at the ephemeral postgres service
-# container created inside this runner, which is destroyed with the runner. No
+# integration job's database URL points only at the ephemeral postgres
+# container started inside this runner, which is destroyed with the runner. No
 # production connection string exists anywhere in this workflow.
 
 on:
@@ -140,29 +140,10 @@ jobs:
     name: PostgreSQL integration tests
     runs-on: ubuntu-latest
 
-    services:
-      postgres:
-        # UTF8 + a C locale template: database/schema.sql contains box-drawing
-        # characters in comments that a non-UTF8 cluster cannot store.
-        # The official image through Google's mirror of Docker Hub: Docker Hub
-        # itself refused this job's anonymous pull ("toomanyrequests") on
-        # 9 October 2026, failing the job before any test ran.
-        image: mirror.gcr.io/library/postgres:16
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: postgres
-          POSTGRES_INITDB_ARGS: '--encoding=UTF8 --locale=C'
-        ports: ['5432:5432']
-        options: >-
-          --health-cmd "pg_isready -U postgres"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-
     env:
-      # Ephemeral, runner-local database only — created by the service container
-      # above and destroyed with the runner. NOT a secret, and never production.
+      # Ephemeral, runner-local database only — created by the container the
+      # first step starts, and destroyed with the runner. NOT a secret, and
+      # never production.
       TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/postgres
       DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/postgres
       # The migration scripts fail fast at their startup boundary, so give them
@@ -173,6 +154,38 @@ jobs:
       FACEBOOK_TOKEN_ENCRYPTION_KEY: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
 
     steps:
+      # UTF8 + a C locale template: database/schema.sql contains box-drawing
+      # characters in comments that a non-UTF8 cluster cannot store.
+      #
+      # Started here, not as a service container, so that the pull can fall
+      # back. On 9 October 2026 Docker Hub refused this job's anonymous pull of
+      # postgres:16 ("toomanyrequests"), and the job failed before any test
+      # ran. The same official image is tried from Docker Hub, then from
+      # Google's and AWS's mirrors of it, whose caches promise no particular
+      # tag. Readiness is checked over TCP, because the image's first start
+      # runs a socket-only server that a socket check would mistake for ready.
+      - name: Start PostgreSQL 16
+        run: |
+          image=
+          for candidate in postgres:16 mirror.gcr.io/library/postgres:16 public.ecr.aws/docker/library/postgres:16; do
+            if docker pull --quiet "$candidate"; then image="$candidate"; break; fi
+          done
+          if [ -z "$image" ]; then
+            echo "::error::No registry served postgres:16."
+            exit 1
+          fi
+          docker run --detach --name postgres --publish 5432:5432 \
+            --env POSTGRES_USER=postgres --env POSTGRES_PASSWORD=postgres --env POSTGRES_DB=postgres \
+            --env POSTGRES_INITDB_ARGS='--encoding=UTF8 --locale=C' \
+            "$image"
+          for attempt in $(seq 1 30); do
+            if docker exec postgres pg_isready --username postgres --host 127.0.0.1 > /dev/null; then exit 0; fi
+            sleep 2
+          done
+          echo "::error::PostgreSQL did not become ready."
+          docker logs postgres
+          exit 1
+
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
