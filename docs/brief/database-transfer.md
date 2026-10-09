@@ -165,6 +165,18 @@ meant up to 1,440 builds a day of ~46 statements each. The block reads each AI
 provider's model-listing SIZE (`summariseProvidersForHealth`), not the listing,
 which was about 43 KB for OpenRouter's (`tests/healthOperationsCost.test.js`).
 
+**The consistency sweep reads only the chat members who could be a driver**
+(`services/operations/snapshot/loaders.js`). Nearly every row of
+`group_members` is staff: dispatchers and managers sit in every driver chat.
+The sweep read all 7,471 rows every 15 minutes, about 48 MB a day. It now reads
+only the memberships of active driver chats held by accounts in fewer than
+`STAFF_GROUP_COUNT` of them. Those are the only accounts the staff rule cannot
+already exclude. All of such an account's memberships are read, so its chat
+count is unchanged. Of `bot_users`, it reads only the sources the staff rule
+looks at. `tests/telegramMembersNarrowing.test.js` proves the identity checks
+file exactly the same findings from that as from the whole table.
+`tests/telegramMembersSnapshotPg.test.js` holds the SQL to the same model.
+
 **A filed finding returns its id only** (`upsertFinding`). Every caller wanted
 the id for its keep-list. The load watch and the consistency sweep re-file
 hundreds of findings every few minutes, and `RETURNING *` echoed each one back

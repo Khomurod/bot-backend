@@ -20,6 +20,7 @@
 const defaultDb = require('../../../database/pool');
 const engineeringStore = require('../../../database/engineeringRequests');
 const { getBoardRowsForSnapshot } = require('../../../database/dispatchBoard');
+const { STAFF_GROUP_COUNT } = require('../../../lib/identity/telegramResolution');
 
 /**
  * How many open engineering requests the sweep will look at.
@@ -29,6 +30,27 @@ const { getBoardRowsForSnapshot } = require('../../../database/dispatchBoard');
  * findings would not help with.
  */
 const REQUEST_CAP = 1000;
+
+/**
+ * The chat memberships the Telegram-identity checks can act on.
+ *
+ * NOT THE WHOLE TABLE. Nearly every row of `group_members` is staff:
+ * dispatchers and managers sit in every driver chat. In October 2026 that was
+ * 5,762 memberships across 125 active driver chats (7,471 rows in all), read
+ * every 15 minutes — about 48 MB a day of database transfer. An account in
+ * STAFF_GROUP_COUNT or more active driver chats is staff by the rule itself
+ * (`isStaff`), so none of its rows can ever be a candidate. EVERY membership of
+ * an account that is returned is returned, so the check's own count of an
+ * account's driver chats is exactly what it was over the whole table.
+ */
+const MEMBERS_WHO_COULD_BE_DRIVERS = `
+  SELECT group_id, telegram_user_id, username, first_name, last_name
+    FROM (SELECT gm.group_id, gm.telegram_user_id, gm.username, gm.first_name, gm.last_name,
+                 COUNT(*) OVER (PARTITION BY gm.telegram_user_id) AS driver_chats
+            FROM group_members gm
+            JOIN groups g ON g.id = gm.group_id
+           WHERE g.group_type = 'driver' AND g.active = TRUE) m
+   WHERE driver_chats < $1`;
 
 /** Everything the checks need, read once. */
 async function loadSnapshot(db = defaultDb) {
@@ -153,8 +175,12 @@ async function loadLayerSnapshot(db) {
     // which accounts are already spoken for. The last two are wrapped: a deploy
     // that has not applied 0049 costs the Telegram-identity checks and not the
     // whole sweep.
-    db.query('SELECT group_id, telegram_user_id, username, first_name, last_name FROM group_members'),
-    db.query('SELECT telegram_user_id, source FROM bot_users').catch(() => ({ rows: [] })),
+    db.query(MEMBERS_WHO_COULD_BE_DRIVERS, [STAFF_GROUP_COUNT]),
+    // Only the sources the staff rule reads: any other source decides exactly
+    // what no source does.
+    db.query(
+      `SELECT telegram_user_id, source FROM bot_users WHERE lower(source) IN ('dispatcher', 'admin')`
+    ).catch(() => ({ rows: [] })),
     db.query(
       'SELECT person_id, telegram_user_id, ended_at FROM driver_person_telegram_identities'
     ).catch(() => ({ rows: [] })),
