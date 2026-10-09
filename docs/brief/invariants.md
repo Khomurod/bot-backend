@@ -127,9 +127,13 @@ repository-wide working rules. The highest-consequence items:
     the rotation, which is exactly why the invalidation has to be explicit.
     `ringCentralTokenRefreshService` renews every stored login daily so a
     recruiter who goes a week without a lead does not expire from disuse.
+    The recruiter rows the call sync keeps between passes follow the same
+    rule: they are re-read whenever an md5 of the columns the pass uses
+    changes — never on a timer or invalidation hooks alone.
     Guarded by `tests/ringCentralOAuthService.test.js`,
-    `tests/ringCentralConnectService.test.js` and
-    `tests/ringCentralTokenRefresh.test.js`.
+    `tests/ringCentralConnectService.test.js`,
+    `tests/ringCentralTokenRefresh.test.js` and
+    `tests/recruiterCallSyncPg.test.js`.
 
 14. **A safety alert is never delayed for video, and a missing clip is
     recovered durably.** The alert goes out immediately, text-only when the

@@ -17,7 +17,11 @@
  * bitrix_user_id is what connects a Bitrix assignment back to one of these rows.
  *
  * The public leaderboard exposes names and KPI numbers only — never phone
- * numbers (APP_BRIEF §4), which is why toAdminRecruiter() masks secrets.
+ * numbers (APP_BRIEF §4), which is why toAdminRecruiter() masks secrets. It is
+ * answered from a cache (./leaderboardCache.js), so the three writes that
+ * change who is on it — create, update, delete — drop that cache.
+ *
+ * The lists background passes read on a timer live in ./recruiterRosters.js.
  *
  * Split out of database/ringcentral.js, which re-exports every symbol here.
  */
@@ -25,6 +29,7 @@ const { query } = require('../pool');
 const { encryptText } = require('../../lib/security/facebookCrypto');
 const { safeDecrypt, maskKey } = require('./secrets');
 const { getRcConfig } = require('./settings');
+const { invalidateLeaderboardCache } = require('./leaderboardCache');
 
 /**
  * Digits-only, last-10 form so "+1 (470) 480-4679" == "4704804679".
@@ -195,6 +200,7 @@ async function createRecruiter({
       rcExtensionNumber ? String(rcExtensionNumber) : null,
     ]
   );
+  invalidateLeaderboardCache();
   return toAdminRecruiter(res.rows[0]);
 }
 
@@ -225,11 +231,13 @@ async function updateRecruiter(id, payload = {}) {
   sets.push('updated_at = NOW()');
   values.push(id);
   const res = await query(`UPDATE recruiters SET ${sets.join(', ')} WHERE id = $${i} RETURNING *`, values);
+  invalidateLeaderboardCache();
   return res.rows[0] ? toAdminRecruiter(res.rows[0]) : null;
 }
 
 async function deleteRecruiter(id) {
   await query('DELETE FROM recruiters WHERE id = $1', [id]);
+  invalidateLeaderboardCache();
 }
 
 async function getRecruiterByNormalizedNumber(normalized) {
@@ -374,20 +382,6 @@ async function clearRecruiterOAuth(id) {
   return res.rows[0] ? toAdminRecruiter(res.rows[0]) : null;
 }
 
-/**
- * Active recruiters holding their own credentials — the rows the token-refresh
- * job and the per-extension inbound-SMS subscription both work from.
- */
-async function listRecruitersWithOwnCredentials() {
-  const res = await query(
-    `SELECT * FROM recruiters
-      WHERE active = TRUE
-        AND (refresh_token_encrypted IS NOT NULL OR jwt_token_encrypted IS NOT NULL)
-      ORDER BY name ASC`
-  );
-  return res.rows;
-}
-
 module.exports = {
   normalizePhone,
   normalizeBitrixUserId,
@@ -409,5 +403,4 @@ module.exports = {
   updateRecruiterRefreshToken,
   markRecruiterAuthError,
   clearRecruiterOAuth,
-  listRecruitersWithOwnCredentials,
 };

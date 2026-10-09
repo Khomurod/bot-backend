@@ -267,6 +267,17 @@ onboarding by signing in never costs a recruiter their KPI attribution.
   expires. Both writers of a new login call `clearRecruiterTokenCache()`: the
   connect flow and the admin "forget sign-in" route.
 
+**The same rotation governs the recruiter rows the call sync keeps.** Since
+October 2026, to save database transfer, the sync no longer reads every
+recruiter row on every pass (`database/ringcentral/recruiterRosters.js`). It
+keeps the rows, and each pass first asks the database for an md5 of exactly
+the seven columns it uses. A rotated refresh token changes that hash, so the
+next pass always holds the current token, whoever rotated it: the sync itself,
+the lead sender, the daily job, or another instance mid-deploy. Do not swap the
+hash for a TTL or for invalidation hooks alone. A pass that refreshes with a
+token someone else already spent gets `invalid_grant`, which flags a healthy
+recruiter as needing to sign in again.
+
 ## Replies come back on the same number
 
 `facebook_lead_sms_mirrors.recruiter_id` / `.from_number` record which of our
@@ -283,8 +294,10 @@ uses the shared number exactly as before.
 For an inbound SMS to a recruiter's number to reach Telegram at all, the
 subscription must watch that extension: `leads-bot/sms.py → inbound_sms_filters()`
 adds one `message-store/instant` filter per extension, read from
-`GET /api/internal/ringcentral/sms-extensions`. Watching another extension needs
-an **account-admin** subscriber.
+`GET /api/internal/ringcentral/sms-extensions`. That route reads only
+`id, name, rc_extension_id` (`listRecruiterSmsExtensions()`), the same
+recruiters as `listRecruitersWithOwnCredentials()` without their tokens.
+Watching another extension needs an **account-admin** subscriber.
 
 **`rc_extension_id` used to be NULL for anyone who did not sign in.** It was
 written by exactly one code path — the OAuth callback — so a recruiter onboarded
@@ -419,6 +432,8 @@ about the sending half.
 | Replies leaving from the right number | `tests/facebookLeadSmsReply.test.js` |
 | The whole lead event, in order | `tests/facebookLeadEventProcessor.test.js` |
 | Routes: admin, public connect, internal list | `tests/recruiterSenderRoutes.test.js` |
+| What a sync pass and the extension check read and write, statement by statement | `tests/recruiterCallSyncQueries.test.js` |
+| The sync's kept roster re-read after a rotation or another process's write, and the narrow lists, on real PostgreSQL | `tests/recruiterCallSyncPg.test.js` |
 | Migration 0008 on real PostgreSQL | `tests/recruiterSenderIdentityPg.test.js` |
 | The Bitrix diagnosis, and that the webhook secret never leaves | `tests/bitrixDiagnostics.test.js`, `tests/bitrixSettingsRoutes.test.js` |
 | Answers reaching the CRM, and the inert-assignee warning | `tests/bitrix24LeadMapper.test.js` |

@@ -17,6 +17,7 @@ const path = require('node:path');
 const { purgeDataLayer, POOL_PATH } = require('./helpers/purgeDataLayer');
 const express = require('express');
 const { DateTime } = require('luxon');
+const { summarizeCalls } = require('../database/ringcentral/kpiMath');
 
 const TZ = 'America/Chicago';
 
@@ -58,7 +59,11 @@ const CALLS = [
   { id: 'c5', recruiter_id: 2, direction: 'Outbound', duration_seconds: 200, call_time: at('2026-07-03', 9) },
 ];
 
-/** Emulates the LEFT JOIN + window filter the rollup SQL performs. */
+/**
+ * Emulates the per-recruiter totals the rollup SQL returns for a window
+ * ($1, $2) and thresholds ($3–$5), using the JavaScript rules the SQL mirrors.
+ * That the SQL itself agrees with them is tests/recruiterLeaderboardPg.test.js.
+ */
 function makeDbMock({ recruiters = RECRUITERS, calls = CALLS, settings = SETTINGS_ROW } = {}) {
   return {
     async query(sql, params = []) {
@@ -66,20 +71,28 @@ function makeDbMock({ recruiters = RECRUITERS, calls = CALLS, settings = SETTING
       if (/FROM recruiters r/i.test(sql)) {
         const start = new Date(params[0]).getTime();
         const end = new Date(params[1]).getTime();
-        const rows = [];
-        for (const r of recruiters) {
+        const thresholds = {
+          nonValuableMaxSeconds: Number(params[2]),
+          realConversationMinSeconds: Number(params[3]),
+          strongConversationMinSeconds: Number(params[4]),
+        };
+        const rows = recruiters.map((r) => {
           const matched = calls.filter((c) => {
             const t = new Date(c.call_time).getTime();
             return c.recruiter_id === r.id && t >= start && t < end;
           });
-          if (!matched.length) {
-            rows.push({ id: r.id, name: r.name, phone_number: r.phone_number, call_id: null, direction: null, duration_seconds: null });
-          } else {
-            for (const c of matched) {
-              rows.push({ id: r.id, name: r.name, phone_number: r.phone_number, call_id: c.id, direction: c.direction, duration_seconds: c.duration_seconds });
-            }
-          }
-        }
+          const totals = summarizeCalls(
+            matched.map((c) => ({ direction: c.direction, durationSeconds: c.duration_seconds })),
+            thresholds,
+          );
+          return {
+            id: r.id, name: r.name, phone_number: r.phone_number,
+            total_calls: totals.totalCalls, outbound: totals.outbound, inbound: totals.inbound,
+            real_conversations: totals.realConversations, strong_conversations: totals.strongConversations,
+            non_valuable_calls: totals.nonValuableCalls, non_valuable_seconds: totals.nonValuableSeconds,
+            total_talk_seconds: totals.totalTalkSeconds, valuable_talk_seconds: totals.valuableTalkSeconds,
+          };
+        });
         return { rows };
       }
       throw new Error(`Unexpected query in test: ${sql.slice(0, 80)}`);

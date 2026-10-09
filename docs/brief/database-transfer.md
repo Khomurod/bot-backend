@@ -268,3 +268,48 @@ returns only the twelve columns the sender reads. Idle it costs ~0.6 KB plus
 ~2.9 MB a day → ~0.4 MB. Nothing is sent at a different time; the one
 difference is that a settings save landing DURING a tick counts from the next
 tick. `tests/homeTimeTickQueries.test.js`, `tests/homeTimeHousekeepingPg.test.js`.
+
+## The recruiter leaderboard and the RingCentral sync
+
+October 2026, measured on PostgreSQL 16 at this deployment's row sizes:
+`/recruiters`, left open on a screen and polling every 60 seconds, cost about
+35 KB a poll by the end of a working day (460 calls). A 10-minute call-sync
+pass cost about 20 KB, and each 15-minute extension check from the leads worker
+6.5 KB.
+
+- **The board is totalled in SQL and kept between polls.** One row per
+  recruiter (`count(*) FILTER`, `sum`, about 0.7 KB) replaces one row per
+  call. The public answer is kept in the process
+  (`database/ringcentral/leaderboardCache.js`) until one of these happens:
+  - a call is written;
+  - a recruiter is created, changed or deleted;
+  - the KPI settings are saved;
+  - five minutes pass (the net for a write by another instance);
+  - for "today", midnight in the configured time zone.
+
+  A poll in between costs nothing. The JSON is byte-for-byte what the old
+  JavaScript produced (`tests/recruiterLeaderboardPg.test.js`). The admin
+  `/stats` page uses the same SQL but not the cache.
+- **The RingCentral settings row is kept until it changes.** The cache now
+  lasts up to 30 minutes instead of 15 seconds. Every save in the process clears
+  it. The sync's own stamp updates the cached copy instead of throwing it away,
+  which used to cost every pass a second read. A failed read is still kept only
+  15 seconds, so a blip cannot read as "RingCentral is off".
+- **The sync reads seven recruiter columns, and only when they changed.** Each
+  pass first asks for an md5 of exactly those columns, about 100 bytes. It
+  re-reads the rows when the hash differs: a rotated refresh token, an admin
+  save, another instance's write. It never relies on invalidation hooks alone,
+  because a pass holding a spent refresh token flags a healthy recruiter
+  (`docs/architecture/recruiter-sms-sender.md`).
+- **A call already written with the same values is not written again**
+  (`database/ringcentral/calls.js`). The ~33,000 upserts a day become the new
+  and changed calls. A failed write is forgotten. An unchanged call is still
+  re-written every six hours, as the net for a write this process did not make.
+- **The extension check reads `id, name, rc_extension_id`**, not every
+  encrypted token: 6.5 KB down to 0.25 KB, 96 times a day.
+
+A scheduled sync pass that finds nothing new now sends four statements: the
+roster hash, the sync stamp, and the run ledger's two. It used to send six plus
+one per call since midnight. Pinned by
+`tests/recruiterCallSyncQueries.test.js` and
+`tests/recruiterLeaderboardQueries.test.js`.

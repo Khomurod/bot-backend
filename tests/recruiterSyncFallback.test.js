@@ -20,7 +20,7 @@ const state = {
 require.cache[rcDbPath].exports = {
   ...realRcDb,
   getRcConfig: async () => state.cfg,
-  listRecruiters: async () => state.recruiters,
+  listRecruitersForCallSync: async () => state.recruiters,
   upsertCall: async (row) => { state.upserts.push(row); },
   markSyncResult: async (r) => { state.syncMark = r; },
 };

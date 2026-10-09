@@ -231,28 +231,16 @@ function createRecruiterRouter({ authMiddleware }) {
   //   GET /public-stats?date=YYYY-MM-DD       → one historical day
   //   GET /public-stats?start=…&end=…         → inclusive range (max 31 days)
   // Deliberately limited: names + KPI numbers only — no phone numbers, no
-  // credentials, no settings.
+  // credentials, no settings (the payload is shaped in
+  // database/ringcentral/kpiQueries.js). Answered from an in-process cache
+  // until a call is written, a recruiter or the KPI settings change, or five
+  // minutes pass — a screen polling every minute costs the database nothing
+  // in between.
   router.get('/public-stats', async (req, res) => {
     try {
       const parsed = parseStatsWindow(req.query, { maxRangeDays: PUBLIC_MAX_RANGE_DAYS });
       if (parsed.error) return res.status(400).json({ error: parsed.error });
-
-      const cfg = await rc.getRcConfig();
-      const stats = parsed.mode === 'range'
-        ? await rc.getRecruiterStatsRange(parsed.start, parsed.end, cfg)
-        : await rc.getRecruiterStats(parsed.date, cfg);
-
-      res.json({
-        dateMode: stats.dateMode,
-        date: stats.date,
-        startDate: stats.startDate,
-        endDate: stats.endDate,
-        rangeDays: stats.rangeDays,
-        timezone: stats.timezone,
-        targets: stats.targets,
-        thresholds: stats.thresholds,
-        recruiters: stats.recruiters.map(({ phoneNumber, ...rest }) => rest),
-      });
+      res.json(await rc.getPublicRecruiterStats(parsed));
     } catch (err) {
       console.error('[RECRUITER API] public stats failed:', err.message);
       res.status(500).json({ error: 'Failed to load recruiter stats' });

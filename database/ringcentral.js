@@ -7,21 +7,24 @@
  *
  *   ./ringcentral/kpiMath.js     PURE scoring arithmetic (no database at all)
  *   ./ringcentral/secrets.js     decrypt-safely / mask, shared by the two below
+ *   ./ringcentral/leaderboardCache.js  the public board's kept answer (a leaf)
  *   ./ringcentral/settings.js    the settings row + its cache (sole owner)
  *   ./ringcentral/recruiters.js  recruiter rows and per-recruiter credentials
- *   ./ringcentral/calls.js       raw call records (idempotent upsert)
- *   ./ringcentral/kpiQueries.js  reads windows of calls, scores via kpiMath
+ *   ./ringcentral/recruiterRosters.js  the narrow lists background passes read
+ *   ./ringcentral/calls.js       raw call records (upsert, unchanged ones skipped)
+ *   ./ringcentral/kpiQueries.js  totals windows of calls in SQL, scores via kpiMath
  *   ./ringcentral/connectSessions.js  the short-lived recruiter login links
  *
  * Nothing but re-exports belongs here — see CLAUDE.md → Module design. The keys
  * below are listed EXPLICITLY rather than spread: several sibling modules export
  * helpers to each other (getSettingsRow, toAdminRecruiter, rollupRecruiterKpis,
- * recruiterSecretSets) that were file-internal before the split and must not
- * become public API by accident.
+ * recruiterSecretSets, the leaderboard cache's read-through and invalidation)
+ * that are internal to this package and must not become public API by accident.
  */
 const kpiMath = require('./ringcentral/kpiMath');
 const settings = require('./ringcentral/settings');
 const recruiters = require('./ringcentral/recruiters');
+const rosters = require('./ringcentral/recruiterRosters');
 const calls = require('./ringcentral/calls');
 const kpiQueries = require('./ringcentral/kpiQueries');
 const connectSessions = require('./ringcentral/connectSessions');
@@ -56,7 +59,11 @@ module.exports = {
   deleteRecruiter: recruiters.deleteRecruiter,
   getRecruiterByNormalizedNumber: recruiters.getRecruiterByNormalizedNumber,
   getRecruiterByBitrixUserId: recruiters.getRecruiterByBitrixUserId,
-  listRecruitersWithOwnCredentials: recruiters.listRecruitersWithOwnCredentials,
+
+  // The narrow lists background passes read (see recruiterRosters.js)
+  listRecruitersWithOwnCredentials: rosters.listRecruitersWithOwnCredentials,
+  listRecruiterSmsExtensions: rosters.listRecruiterSmsExtensions,
+  listRecruitersForCallSync: rosters.listRecruitersForCallSync,
 
   // Per-recruiter RingCentral OAuth credentials
   storeRecruiterOAuthTokens: recruiters.storeRecruiterOAuthTokens,
@@ -78,4 +85,5 @@ module.exports = {
   upsertCall: calls.upsertCall,
   getRecruiterStats: kpiQueries.getRecruiterStats,
   getRecruiterStatsRange: kpiQueries.getRecruiterStatsRange,
+  getPublicRecruiterStats: kpiQueries.getPublicRecruiterStats,
 };

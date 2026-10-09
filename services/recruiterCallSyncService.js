@@ -25,6 +25,15 @@
  * Each poll re-fetches from the start of the current day (in the configured
  * timezone) so in-progress calls that finalize later are corrected. Upserts are
  * idempotent (dedup by RC record id).
+ *
+ * What a pass costs the database (October 2026, when its monthly transfer
+ * allowance was nearly spent): the settings come from their cache, the
+ * recruiter roster is re-read only when a hash of the columns the pass uses
+ * changes (database/ringcentral/recruiterRosters.js), and a call this process
+ * already wrote with the same values is not written again
+ * (database/ringcentral/calls.js). A pass that finds nothing new sends two
+ * statements plus the run ledger's two. `synced` still counts every call the
+ * pass saw; `written` counts the ones it actually sent.
  */
 const { DateTime } = require('luxon');
 const rc = require('../database/ringcentral');
@@ -110,17 +119,18 @@ function mapExtensionCalls(records, recruiter) {
 async function upsertRows(rows) {
   let synced = 0;
   let attributed = 0;
+  let written = 0;
   for (const row of rows) {
     if (!row.id || !row.callTime) continue;
-    await rc.upsertCall(row);
+    if ((await rc.upsertCall(row)) !== false) written += 1;
     synced += 1;
     if (row.recruiterId) attributed += 1;
   }
-  return { synced, attributed };
+  return { synced, attributed, written };
 }
 
 /**
- * Run one sync pass. Returns { synced, attributed, perRecruiter, errors }.
+ * Run one sync pass. Returns { synced, attributed, written, perRecruiter, errors }.
  * `full` widens the window to 7 days (manual backfill).
  */
 async function syncNow({ full = false } = {}) {
@@ -133,7 +143,7 @@ async function syncNow({ full = false } = {}) {
   const dateFrom = start.toUTC().toISO();
   const dateTo = now.toUTC().toISO();
 
-  const recruiters = await rc.listRecruiters({ includeInactive: false });
+  const recruiters = await rc.listRecruitersForCallSync();
   // Resolve each recruiter's auth ONCE — it decrypts up to three columns per
   // row — and partition on the result.
   const resolved = recruiters.map((recruiter) => ({
@@ -147,6 +157,7 @@ async function syncNow({ full = false } = {}) {
 
   let synced = 0;
   let attributed = 0;
+  let written = 0;
   const perRecruiter = [];
   const errors = [];
 
@@ -167,6 +178,7 @@ async function syncNow({ full = false } = {}) {
       const result = await upsertRows(rows);
       synced += result.synced;
       attributed += result.attributed;
+      written += result.written;
       perRecruiter.push({ id: recruiter.id, name: recruiter.name, synced: result.synced });
     } catch (err) {
       errors.push(`${recruiter.name}: ${err.message}`);
@@ -197,6 +209,7 @@ async function syncNow({ full = false } = {}) {
         const result = await upsertRows(rows.filter((row) => !coveredIds.has(row.recruiterId)));
         synced += result.synced;
         attributed += result.attributed;
+        written += result.written;
       } catch (err) {
         errors.push(`Shared-credential pass: ${err.message}`);
       }
@@ -212,7 +225,7 @@ async function syncNow({ full = false } = {}) {
 
   const errorSummary = errors.length ? errors.join(' | ') : null;
   await rc.markSyncResult({ error: errorSummary }).catch(() => {});
-  return { synced, attributed, perRecruiter, errors };
+  return { synced, attributed, written, perRecruiter, errors };
 }
 
 async function tick() {
@@ -222,7 +235,10 @@ async function tick() {
     const result = await withRunRecord('recruiter_call_sync', () => syncNow());
     if (result?.synced != null) {
       const errNote = result.errors?.length ? ` (${result.errors.length} error(s))` : '';
-      console.log(`[RC-SYNC] Synced ${result.synced} call(s), ${result.attributed} attributed${errNote}.`);
+      console.log(
+        `[RC-SYNC] Synced ${result.synced} call(s), ${result.attributed} attributed, `
+        + `${result.written} written (the rest unchanged)${errNote}.`
+      );
     }
   } catch (err) {
     console.warn('[RC-SYNC] tick failed:', err.message);

@@ -245,7 +245,7 @@ repository exceeds 500 lines (`npm run lint:filesize`, no baseline).
 | `database/homeTime.js` | `database/homeTime/{settings,driverState,roadHistory,requests}.js` |
 | `database/facebookLeads.js` | `database/facebookLeads/{connectSessions,pageConnections,webhookEvents,autoMessages,recruiterMessages,smsMirrors}.js` |
 | `database/raiseApproval.js` | `database/raiseApproval/{settings,teams,teamMembers,teamDrivers,rounds,otp}.js` |
-| `database/ringcentral.js` | `database/ringcentral/{kpiMath,secrets,settings,recruiters,calls,kpiQueries,connectSessions}.js` — **explicit key list**, so four internal helpers stay private |
+| `database/ringcentral.js` | `database/ringcentral/{kpiMath,secrets,leaderboardCache,settings,recruiters,recruiterRosters,calls,kpiQueries,connectSessions}.js` — **explicit key list**, so the package's internal helpers (and the leaderboard cache's read-through and invalidation) stay private |
 | `database/routeControl.js` | `database/routeControl/{assignments,screenshots,monitorState,driverMessages,monitorEvents}.js` |
 | `server/routes/settingsRoutes.js` | `server/routes/settings/{eld,ringcentral,messageGroup,gmaps,samsara,safetyEvent,bolPod,bitrix,retiredLeftovers}Routes.js` |
 | `server/routes/homeTimeRoutes.js` | `server/routes/homeTime/{rowShaping,tracker,import,settings,groupAccess}Routes.js` — registration ORDER is load-bearing |
