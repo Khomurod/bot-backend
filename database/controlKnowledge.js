@@ -21,8 +21,16 @@ const { query } = require('./pool');
 
 const MAX_TEXT = 1000;
 
-function mapRow(row) {
-  if (!row) return null;
+/**
+ * What APPLYING a memory needs, and no more: what it is about, what was
+ * answered, the condition it answered, who said it, and until when. Exactly
+ * the fields `memoryApplies`, `actsFromMemory` and the ask pass's dismissal
+ * read. `findMemoriesFor` selects these columns only.
+ */
+const APPLY_COLUMNS = `id, check_key, subject_type, subject_id, answer_action, answer_text,
+       evidence_fingerprint, confirmed_by, expires_at`;
+
+function mapForApplying(row) {
   return {
     id: Number(row.id),
     checkKey: row.check_key,
@@ -32,10 +40,17 @@ function mapRow(row) {
     answerText: row.answer_text || null,
     evidenceFingerprint: row.evidence_fingerprint,
     confirmedBy: row.confirmed_by || null,
+    expiresAt: row.expires_at || null,
+  };
+}
+
+function mapRow(row) {
+  if (!row) return null;
+  return {
+    ...mapForApplying(row),
     replyId: row.reply_id == null ? null : Number(row.reply_id),
     timesApplied: Number(row.times_applied || 0),
     lastAppliedAt: row.last_applied_at || null,
-    expiresAt: row.expires_at || null,
     revokedAt: row.revoked_at || null,
     revokedBy: row.revoked_by || null,
     createdAt: row.created_at,
@@ -112,17 +127,44 @@ async function findMemory({ checkKey, subjectType, subjectId }) {
   }
 }
 
-/** Every live memory for one check, for the ask pass's per-pass lookup. */
-async function listMemoriesForChecks(checkKeys = []) {
-  const keys = [...new Set((checkKeys || []).map(String).filter(Boolean))];
-  if (!keys.length) return [];
+/**
+ * What is remembered about each of these subjects — ONE statement for all of
+ * them, for the ask pass.
+ *
+ * THE SAME MATCH AS `findMemory`: the exact check, subject type and subject id,
+ * each compared as text, revoked rows excluded, expiry left to `memoryApplies`.
+ * At most one row per subject, because `control_knowledge_once` is UNIQUE on
+ * those three. The pass used to call `findMemory` once per candidate — up to a
+ * hundred statements a tick, each describing all sixteen columns to say
+ * "nothing remembered" (October 2026, database transfer allowance).
+ *
+ * BY SUBJECT, NOT BY CHECK. "Every live memory of these checks" would return
+ * every answer the owner has ever given about them, and grow with each one.
+ *
+ * Returns only what applying needs (`APPLY_COLUMNS`); the bookkeeping fields
+ * are not read. Fails soft like `findMemory`: not knowing anything means the
+ * pass asks, which is noisy and safe.
+ *
+ * @param {{checkKey, subjectType, subjectId}[]} subjects
+ */
+async function findMemoriesFor(subjects = []) {
+  const list = (subjects || []).filter(Boolean);
+  if (!list.length) return [];
   try {
     const res = await query(
-      `SELECT * FROM control_knowledge
-        WHERE check_key = ANY($1::text[]) AND revoked_at IS NULL`,
-      [keys]
+      `SELECT ${APPLY_COLUMNS}
+         FROM control_knowledge
+        WHERE revoked_at IS NULL
+          AND (check_key, subject_type, subject_id) IN (
+            SELECT s.check_key, s.subject_type, s.subject_id
+              FROM unnest($1::text[], $2::text[], $3::text[]) AS s(check_key, subject_type, subject_id))`,
+      [
+        list.map((s) => String(s.checkKey)),
+        list.map((s) => String(s.subjectType)),
+        list.map((s) => String(s.subjectId)),
+      ]
     );
-    return res.rows.map(mapRow);
+    return res.rows.map(mapForApplying);
   } catch (_) {
     return [];
   }
@@ -203,7 +245,7 @@ module.exports = {
   MAX_TEXT,
   rememberAnswer,
   findMemory,
-  listMemoriesForChecks,
+  findMemoriesFor,
   noteApplied,
   revokeMemory,
   listMemories,

@@ -227,9 +227,9 @@ with the group muted:
   (`lib/control/priority.js`): money (a held road bonus) before anything,
   then serious, then warning, each oldest first. Strictly oldest-first spent
   the day's budget on whatever had waited longest. The order is applied in
-  SQL before the scan limit (`listFindings({ order: 'ask' })`) — with 400+
-  open findings, sorting a page cut by "most recently seen" could leave the
-  held bonus off it;
+  SQL before the scan limit (`listAskCandidates`, the same order as
+  `listFindings({ order: 'ask' })`) — with 400+ open findings, sorting a page
+  cut by "most recently seen" could leave the held bonus off it;
 - **every question says why it is asked** — "Why I'm asking: …", the
   finding's own reason when it has one, otherwise what its tier means;
 - `repeat_after_hours` (default 72) — the same question is not re-asked inside

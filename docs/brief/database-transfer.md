@@ -194,3 +194,25 @@ it.
   describes all 18 columns even when it claims nothing;
 - the auto-reaction rules are cached 10 minutes, and every admin save clears
   that cache.
+
+## What the owner-questions pass costs
+
+The ask pass (`control_ask_pass`, every 15 minutes; stood down while economy
+mode is on) read roughly **300 KB a tick** whatever it then did — up to 200
+whole decision rows for the holds (~160 KB), a hundred whole findings
+(~100–150 KB), and one `control_knowledge` lookup **per finding** — and most
+ticks then stopped at the standing cap on unanswered questions or the daily
+limit, having used none of it. Now a tick **decides whether it may ask
+first**. One that may not sends the settings read, one or two counts and one
+look for candidates the owner already answered (normally none): **about
+1 KB**. The look stays because closing a settled finding never waits for the
+cap; such a tick reports `considered: null` rather than read every candidate
+to count it. A tick that can ask reads 13 of a finding's 20 columns
+(`listAskCandidates`; the admin's `listFindings` stays whole), the five a hold
+needs, and its memories in **one** statement by exact subject
+(`findMemoriesFor`, the match `findMemory` made per finding). Measured on a
+test seed of 400 open findings and 220 holds: 337 KB and 105–108 statements a
+tick before; after, 0.8–0.9 KB and 3–4 statements when it may not ask, and
+116 KB and 9 when it may — most of that the candidates' evidence and proposed
+change, which the questions are worded from. Pinned by
+`tests/askPassQueries.test.js` and `tests/askPassReadsPg.test.js`.
