@@ -130,7 +130,7 @@ async function checkAssignmentCompletion(assignment, { location, resolveError = 
     // done === null → another overlapping check already completed it: no
     // duplicate event, no double-processing.
     if (done) {
-      await rc.insertRouteMonitorEvent({
+      await rc.recordRouteMonitorEvent({
         assignmentId: assignment.id,
         eventType: 'destination_reached',
         result: 'completed',

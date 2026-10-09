@@ -7,6 +7,11 @@ const RAW_KEY = 'AIzaSyFakeSecretKey1234';
 /**
  * Load database/gmapsSettings with a mutable fake db, a reversible fake crypto,
  * and a controllable config, injected via require.cache.
+ *
+ * The fake answers a read with the columns it NAMED (a column it did not name
+ * comes back missing, as it would from PostgreSQL), counts the reads, and can
+ * hold one open: `reads.gate`, when set, is awaited after the row is captured,
+ * which is how a read that is still in flight during a save is staged.
  */
 function loadModule({ config = {} } = {}) {
   const modPath = path.resolve(__dirname, '../database/gmapsSettings.js');
@@ -16,6 +21,7 @@ function loadModule({ config = {} } = {}) {
   for (const p of [modPath, dbPath, cryptoPath, configPath]) delete require.cache[p];
 
   const store = { id: 1, updated_at: null };
+  const reads = { count: 0, gate: null };
   require.cache[dbPath] = {
     exports: {
       async query(sql, values = []) {
@@ -31,7 +37,17 @@ function loadModule({ config = {} } = {}) {
           }
           return { rows: [] };
         }
-        if (/SELECT \* FROM gmaps_settings/.test(sql)) return { rows: [{ ...store }] };
+        const select = sql.match(/^\s*SELECT ([\s\S]+?) FROM gmaps_settings\b/);
+        if (select) {
+          reads.count += 1;
+          const seen = { ...store };
+          if (reads.gate) await reads.gate;
+          const names = select[1].split(',').map((c) => c.trim());
+          const row = names[0] === '*'
+            ? seen
+            : Object.fromEntries(names.filter((n) => n in seen).map((n) => [n, seen[n]]));
+          return { rows: [row] };
+        }
         return { rows: [] };
       },
     },
@@ -45,8 +61,58 @@ function loadModule({ config = {} } = {}) {
   };
   require.cache[configPath] = { exports: { googleMapsApiKey: '', ...config } };
 
-  return { mod: require(modPath), store };
+  return { mod: require(modPath), store, reads };
 }
+
+/** Run `fn` with Date.now() pinned `minutes` after a fixed start. */
+async function atMinute(minutes, fn) {
+  const realNow = Date.now;
+  Date.now = () => Date.parse('2026-10-09T12:00:00Z') + minutes * 60_000;
+  try { return await fn(); } finally { Date.now = realNow; }
+}
+
+// ── The cache. Route Control reads these settings on every monitor tick (300 s
+// by default), so a 30-second cache never held anything between two ticks.
+
+test('the settings are read at most once per ten minutes, not once per monitor tick', async () => {
+  const { mod, reads } = loadModule();
+  await atMinute(0, () => mod.getGmapsConfig());
+  await atMinute(5, () => mod.getGmapsConfig()); // the next 300-second tick
+  await atMinute(9.9, () => mod.getGmapsConfig());
+  assert.equal(reads.count, 1, 'one read serves every tick inside ten minutes');
+  await atMinute(10.1, () => mod.getGmapsConfig());
+  assert.equal(reads.count, 2, 'and it does expire');
+});
+
+test('a save clears the cache at once — the next read sees it, well inside the ten minutes', async () => {
+  const { mod } = loadModule();
+  assert.equal((await mod.getGmapsConfig()).enabled, false);
+  await mod.updateGmapsSettings({ enabled: true, checkIntervalSeconds: 120 });
+  const cfg = await mod.getGmapsConfig();
+  assert.equal(cfg.enabled, true, 'the off-route switch takes effect on the next tick');
+  assert.equal(cfg.checkIntervalSeconds, 120, 'and so does the interval');
+});
+
+test('a read still in flight during a save never puts the old settings back in the cache', async () => {
+  const { mod, reads } = loadModule();
+  let release;
+  reads.gate = new Promise((resolve) => { release = resolve; });
+  const inFlight = mod.getGmapsConfig(); // began before the save: it saw the switch off
+  reads.gate = null;
+  await mod.updateGmapsSettings({ enabled: true });
+  release();
+  assert.equal((await inFlight).enabled, false, 'the slow read answers with what it saw');
+  assert.equal((await mod.getGmapsConfig()).enabled, true,
+    'but it must not overwrite the saved settings for the next ten minutes');
+});
+
+test('the admin view reads the row itself — it never shows a cached copy', async () => {
+  const { mod, store } = loadModule();
+  assert.equal((await mod.getGmapsConfig()).enabled, false); // cached: off
+  store.enabled = true; // changed by something other than this process's save
+  assert.equal((await mod.getGmapsSettingsForAdmin()).enabled, true, 'the page shows what is stored');
+  assert.equal((await mod.getGmapsConfig()).enabled, true, 'and the monitor picks it up from there');
+});
 
 test('saving the API key stores it encrypted, not in plaintext', async () => {
   const { mod, store } = loadModule();

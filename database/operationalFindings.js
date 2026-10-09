@@ -122,18 +122,27 @@ async function resolveClearedFindings(checkKeys, keepIds = [], client = null) {
   return res.rowCount || 0;
 }
 
+/**
+ * The question order (`lib/control/priority.js`): money first, then serious,
+ * then warning, each OLDEST first — as SQL, so it is applied BEFORE a LIMIT.
+ * Ordering a page that was cut by "most recently seen" could leave the held
+ * bonus that matters most outside the page entirely.
+ *
+ * @param {string} moneyParam  the placeholder bound to `[...MONEY_CHECKS]`
+ */
+function askOrderBy(moneyParam) {
+  return `CASE WHEN check_key = ANY(${moneyParam}::text[]) THEN 0 ELSE 1 END,
+       CASE severity WHEN 'serious' THEN 0 WHEN 'warning' THEN 1 ELSE 2 END,
+       first_seen_at ASC`;
+}
+
 async function listFindings({
   status = 'open', severity = null, checkKey = null, tier = null,
   includeSnoozed = false, limit = 200, order = 'recent',
 } = {}) {
-  // `order: 'ask'` is the question order (`lib/control/priority.js`): money
-  // first, then serious, then warning, each OLDEST first. It is applied HERE,
-  // before the LIMIT — ordering a page that was cut by "most recently seen"
-  // could leave the held bonus that matters most outside the page entirely.
+  // `order: 'ask'` is the question order — see `askOrderBy`.
   const orderBy = order === 'ask'
-    ? `CASE WHEN check_key = ANY($7::text[]) THEN 0 ELSE 1 END,
-       CASE severity WHEN 'serious' THEN 0 WHEN 'warning' THEN 1 ELSE 2 END,
-       first_seen_at ASC`
+    ? askOrderBy('$7')
     : `CASE severity WHEN 'serious' THEN 0 WHEN 'warning' THEN 1 ELSE 2 END,
        last_seen_at DESC`;
   const params = [status, severity, checkKey, tier, includeSnoozed, limit];
@@ -149,6 +158,53 @@ async function listFindings({
       LIMIT $6`,
     params
   );
+  return res.rows.map(mapFinding);
+}
+
+/**
+ * The columns the control ask pass reads from a finding, and no more: who it
+ * is about, how it ranks, what it says and proposes, and when it was seen.
+ * The dismissal, resolution and snooze columns and the row's own timestamps
+ * are left out, so they come back `undefined` rather than present and wrong.
+ */
+const ASK_COLUMNS = `id, check_key, subject_type, subject_id, title, severity, tier,
+       evidence_json, proposed_change_json, confidence, status, first_seen_at, last_seen_at`;
+
+/**
+ * The open, un-snoozed findings the ask pass considers, in question order —
+ * `listFindings({ status: 'open', order: 'ask' })` without the columns the pass
+ * never reads. That reader stays whole for the admin.
+ *
+ * `rememberedOnly` is for a tick that may not ask anything (questions still
+ * unanswered, or the day's budget spent). All such a tick still does is close
+ * findings the owner has already answered, so it asks only for the candidates
+ * with a live memory in `control_knowledge` — normally none — instead of
+ * reading every candidate to find that out. The limit is applied FIRST, so
+ * these are drawn from the same page the full read would consider.
+ *
+ * @returns {Promise<object[]>} mapped findings carrying only ASK_COLUMNS
+ */
+async function listAskCandidates({ limit = 100, rememberedOnly = false } = {}) {
+  const candidates = `SELECT ${ASK_COLUMNS}
+      FROM operational_findings
+     WHERE status = 'open'
+       AND (snoozed_until IS NULL OR snoozed_until <= NOW())
+     ORDER BY ${askOrderBy('$2')}
+     LIMIT $1`;
+  // Revoked memories do not count, exactly as `findMemory` excludes them;
+  // whether a live one still APPLIES is the ask pass's decision.
+  const text = rememberedOnly
+    ? `SELECT ${ASK_COLUMNS}
+         FROM (${candidates}) candidate
+        WHERE EXISTS (
+          SELECT 1 FROM control_knowledge k
+           WHERE k.revoked_at IS NULL
+             AND k.check_key = candidate.check_key
+             AND k.subject_type = candidate.subject_type
+             AND k.subject_id = candidate.subject_id)
+        ORDER BY ${askOrderBy('$2')}`
+    : candidates;
+  const res = await query(text, [limit, [...MONEY_CHECKS]]);
   return res.rows.map(mapFinding);
 }
 
@@ -230,6 +286,7 @@ module.exports = {
   upsertFinding,
   resolveClearedFindings,
   listFindings,
+  listAskCandidates,
   countFindings,
   getFindingById,
   summariseFindings,

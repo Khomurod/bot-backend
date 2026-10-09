@@ -63,7 +63,7 @@ test('the housekeeping sweep judges a window against TODAY in Central', async ()
   for (const p of [htPath, approvalPath, servicePath]) delete require.cache[p];
 
   require.cache[htPath] = {
-    exports: { async getHomeTimeSettings() { return { enabled: true }; } },
+    exports: { async getHomeTimeSweepSettings() { return { enabled: true }; } },
   };
   const sweeps = [];
   require.cache[approvalPath] = {

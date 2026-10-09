@@ -134,11 +134,13 @@ function createFacebookInternalRoutes({ db, internalSharedSecretGuard }) {
    * any recruiter's number still lands in the Telegram hub. It needs the
    * extension ids to build those filters, and only this app knows them.
    *
-   * Ids only — no numbers, no names, no credentials.
+   * Ids only — no numbers, no names, no credentials. And only id, name and
+   * extension are READ: this runs every 15 minutes, and the whole row carries
+   * every encrypted token.
    */
   router.get('/api/internal/ringcentral/sms-extensions', internalSharedSecretGuard, async (req, res) => {
     try {
-      const recruiters = await rc.listRecruitersWithOwnCredentials();
+      const recruiters = await rc.listRecruiterSmsExtensions();
       const extensions = recruiters
         .map((recruiter) => recruiter.rc_extension_id)
         .filter(Boolean)

@@ -173,14 +173,21 @@ async function listRecentDecisions({ checkKey = null, verdict = null, limit = 10
  * stopped moving is a decision nobody is making any more, and asking about it
  * would be quoting a stale reason at somebody.
  *
- * @returns {Promise<Map<string,object>>} keyed `check|subjectType|subjectId`
+ * FIVE COLUMNS, NOT THE ROW. The ask pass reads this every fifteen minutes and
+ * uses who a hold is about, its verdict and its reason — nothing else. It used
+ * to return all 21 columns of up to 200 rows, three of them JSON (October 2026,
+ * with the database transfer allowance nearly spent: about 160 KB a read).
+ *
+ * @returns {Promise<Map<string,{checkKey, subjectType, subjectId, verdict, reason}>>}
+ *   keyed `check|subjectType|subjectId`
  */
 async function currentHolds({ withinHours = 24, limit = 200 } = {}) {
   const out = new Map();
   try {
     const res = await query(
-      `SELECT * FROM (
-         SELECT DISTINCT ON (check_key, subject_type, subject_id) *
+      `SELECT check_key, subject_type, subject_id, verdict, reason FROM (
+         SELECT DISTINCT ON (check_key, subject_type, subject_id)
+                check_key, subject_type, subject_id, verdict, reason, last_decided_at
            FROM operational_decisions
           WHERE shadow = FALSE
             AND last_decided_at > NOW() - ($1 || ' hours')::interval
@@ -192,8 +199,14 @@ async function currentHolds({ withinHours = 24, limit = 200 } = {}) {
       [String(Math.max(1, Number(withinHours) || 24)), Math.max(1, Math.min(500, limit))]
     );
     for (const row of res.rows) {
-      const d = mapRow(row);
-      out.set(`${d.checkKey}|${d.subjectType}|${d.subjectId}`, d);
+      const hold = {
+        checkKey: row.check_key,
+        subjectType: row.subject_type,
+        subjectId: row.subject_id,
+        verdict: row.verdict,
+        reason: row.reason,
+      };
+      out.set(`${hold.checkKey}|${hold.subjectType}|${hold.subjectId}`, hold);
     }
     return out;
   } catch (_) {

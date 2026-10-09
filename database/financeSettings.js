@@ -22,9 +22,22 @@
  */
 const { query } = require('./db');
 
-const CACHE_TTL_MS = 30_000;
+/**
+ * TEN MINUTES. `isFinanceChat` asks on every message in every chat, so at 30
+ * seconds the row was re-read some 2,400 times a day (October 2026, with the
+ * database's transfer allowance nearly spent). The only writer is
+ * `updateFinanceSettings` below, which clears the cache at once, so an
+ * operator's change still takes effect on the next message.
+ */
+const CACHE_TTL_MS = 10 * 60 * 1000;
 let cache = null;
 let cacheExpiresAt = 0;
+/**
+ * Moves on every invalidation. A read that was already out when a save cleared
+ * the cache still answers its own caller, but may not put the pre-save row
+ * back for the whole TTL.
+ */
+let generation = 0;
 
 /** Postgres: the relation does not exist. The one honest "not set up yet". */
 const UNDEFINED_TABLE = '42P01';
@@ -41,6 +54,7 @@ class FinanceSettingsError extends Error {
 function invalidateCache() {
   cache = null;
   cacheExpiresAt = 0;
+  generation += 1;
 }
 
 async function getSettingsRow() {
@@ -98,9 +112,13 @@ function shape(row) {
 async function getFinanceSettings() {
   const now = Date.now();
   if (cache && now < cacheExpiresAt) return cache;
-  cache = shape(await getSettingsRow());
-  cacheExpiresAt = now + CACHE_TTL_MS;
-  return cache;
+  const startedIn = generation;
+  const fresh = shape(await getSettingsRow());
+  if (startedIn === generation) {
+    cache = fresh;
+    cacheExpiresAt = now + CACHE_TTL_MS;
+  }
+  return fresh;
 }
 
 /**
@@ -194,5 +212,6 @@ module.exports = {
   isFinanceChat,
   updateFinanceSettings,
   invalidateCache,
+  CACHE_TTL_MS,
   __shapeForTests: shape,
 };

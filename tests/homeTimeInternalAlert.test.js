@@ -97,7 +97,7 @@ function loadAlert({
       },
     },
   };
-  require.cache[htPath] = { exports: { async getHomeTimeSettings() { return settings; } } };
+  require.cache[htPath] = { exports: { async getHomeTimeSweepSettings() { return settings; } } };
   require.cache[htmlPath] = { exports: { safeSend: (fn) => fn() } };
 
   const sends = [];

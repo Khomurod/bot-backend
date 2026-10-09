@@ -17,16 +17,27 @@ function harness({
   providerErrors = [], failObservationFor = null,
 } = {}) {
   const calls = {
-    fleets: 0, orders: 0, findings: [], observations: [], resolved: [], ensured: [],
+    fleets: 0, orders: 0, findings: [], observations: [], verdicts: [], resolved: [], ensured: [],
     resolvedWith: [],
   };
   let stored = watchRow;
   const deps = {
     watch: {
       async listDriversAtHome() { return drivers; },
-      async clearStaleWatches() { return []; },
-      async ensureWatch(args) { calls.ensured.push(args); stored = stored || { groupId: args.groupId }; return stored; },
-      async getWatch() { return stored; },
+      async clearStaleWatches() { return 0; },
+      // The create IS the pass's one read of the watch, and returns what the
+      // real one does: the anchor, the last sighting and the running values.
+      async ensureWatch(args) {
+        calls.ensured.push(args);
+        stored = stored || { groupId: args.groupId };
+        return {
+          anchor: stored.anchor || null,
+          last: stored.last || null,
+          maxMilesFromAnchor: stored.maxMilesFromAnchor || 0,
+          movingSightings: stored.movingSightings || 0,
+        };
+      },
+      async recordVerdict(groupId, verdict) { calls.verdicts.push({ groupId, ...verdict }); return true; },
       async recordObservation(groupId, patch) {
         // One driver's write refused by the database: the case that used to
         // abandon every driver after it in the loop.
@@ -49,7 +60,11 @@ function harness({
           maxMilesFromAnchor: Math.max(stored?.maxMilesFromAnchor || 0, patch.milesFromAnchor || 0),
           movingSightings: (stored?.movingSightings || 0) + (isNewSighting ? 1 : 0),
         };
-        return stored;
+        // And hands back only what the real write echoes, so a pass that read
+        // anything else from it would fail here rather than in production.
+        return {
+          anchor: stored.anchor, maxMilesFromAnchor: stored.maxMilesFromAnchor, movingSightings: stored.movingSightings,
+        };
       },
     },
     findings: {

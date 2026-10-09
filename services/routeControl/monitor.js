@@ -14,6 +14,11 @@
  *      Completion is silent (no driver-group message) and atomic.
  *   2. OFF-ROUTE WARNINGS — need computed route geometry, so they stay gated on
  *      Settings → GMaps `enabled` and only run for tracking-active routes.
+ *
+ * The pass is metered by the database's transfer allowance, so it reads only
+ * the columns it uses (the polyline only when an off-route check or a repair
+ * needs it, then remembered — see routePolyline.js) and reads nothing back
+ * from its writes. tests/routeMonitorQueries.test.js holds it to that.
  */
 const rc = require('../../database/routeControl');
 const gmaps = require('../../database/gmapsSettings');
@@ -25,6 +30,7 @@ const { monitorSettingsFromConfig } = require('./monitorSettings');
 const { resolveAssignmentLocation } = require('./assignmentLocation');
 const { checkAssignmentCompletion, tallyBlockedReason } = require('./completionService');
 const { evaluateTrackingStart } = require('./trackingStartService');
+const { loadRoutePolyline, retainRoutePolylines } = require('./routePolyline');
 const { POLL_MS_MIN } = require('./constants');
 const { withRunRecord, noteHeartbeat } = require('../operations/runLedger');
 
@@ -38,8 +44,8 @@ let currentIntervalMs = POLL_MS_MIN;
 async function processPendingTracking(assignment, { location, now }) {
   const startVerdict = evaluateTrackingStart({ assignment, location, now });
   if (startVerdict.shouldStart) {
-    await rc.activateTracking(assignment.id);
-    await rc.insertRouteMonitorEvent({
+    await rc.activatePendingTracking(assignment.id);
+    await rc.recordRouteMonitorEvent({
       assignmentId: assignment.id,
       eventType: 'tracking_started',
       latitude: location?.latitude,
@@ -50,7 +56,7 @@ async function processPendingTracking(assignment, { location, now }) {
   }
   if ((assignment.tracking_hold_reason || null) !== (startVerdict.holdReason || null)) {
     await rc.setTrackingHoldReason(assignment.id, startVerdict.holdReason);
-    await rc.insertRouteMonitorEvent({
+    await rc.recordRouteMonitorEvent({
       assignmentId: assignment.id,
       eventType: `tracking_start_${startVerdict.holdReason || 'pending'}`,
       detail: startVerdict.reason,
@@ -61,6 +67,7 @@ async function processPendingTracking(assignment, { location, now }) {
 
 /** Handle the ACTIVE-tracking branch: evaluate deviation, persist, warn. */
 async function processDeviationCheck(assignment, { location, settings, now, telegram }) {
+  await loadRoutePolyline(assignment);
   const verdict = evaluateAssignment({ assignment, location, settings, now });
 
   await rc.updateRouteAssignmentMonitorState(assignment.id, {
@@ -72,7 +79,7 @@ async function processDeviationCheck(assignment, { location, settings, now, tele
     consecutiveOffRoute: verdict.consecutiveOffRoute,
     lastNotificationAt: verdict.shouldNotify ? nowIso(now) : null,
   });
-  await rc.insertRouteMonitorEvent({
+  await rc.recordRouteMonitorEvent({
     assignmentId: assignment.id,
     eventType: verdict.shouldNotify ? 'notification' : 'check',
     result: verdict.result,
@@ -110,11 +117,12 @@ async function runRouteMonitorCheck(telegram, { now = new Date() } = {}) {
 
   let assignments = [];
   try {
-    assignments = await rc.listActiveAssignmentsForMonitor();
+    assignments = await rc.listMonitorPassAssignments();
   } catch (err) {
     console.error('[ROUTE-CONTROL] Could not load active assignments:', err.message);
     return { enabled: offRouteMonitoringEnabled, checked: 0, notified: 0, activated: 0, completed: 0 };
   }
+  retainRoutePolylines(assignments.map((a) => a.id));
 
   const summary = {
     eligible: assignments.length, completed: 0, outside_radius: 0, missing_destination: 0,

@@ -143,15 +143,17 @@ async function setRouteAssignmentGeometry(id, {
   return res.rows[0] || null;
 }
 
-/** Persist repaired final-destination coordinates (from text parse / geocoding). */
+/**
+ * Persist repaired final-destination coordinates (from the polyline end, text
+ * parse or geocoding). Reads nothing back: the monitor already holds the row.
+ */
 async function setRouteAssignmentDestinationCoords(id, { lat, lng }) {
-  const res = await query(
+  await query(
     `UPDATE route_assignments
        SET destination_lat = $2, destination_lng = $3, updated_at = NOW()
-     WHERE id = $1 RETURNING *`,
+     WHERE id = $1`,
     [id, Number(lat), Number(lng)]
   );
-  return res.rows[0] || null;
 }
 
 /** Count a destination-repair attempt (bounded retries — never every tick). */
@@ -182,9 +184,12 @@ async function setRouteAssignmentStatus(id, status) {
  * ticks can never both complete the same route (the second UPDATE matches no row
  * and returns null). Records where/when/how far, and stamps completed_at.
  *
+ * Only the winner's id comes back: whether a row came back at all is the one
+ * thing the caller reads, and the whole row was ~8 KB of polyline and link.
+ *
  * @param {number} id
  * @param {{ latitude?:number, longitude?:number, distanceMeters?:number, reason?:string }} completionData
- * @returns {Promise<object|null>} the completed row, or null if it was not active
+ * @returns {Promise<{id:number}|null>} the completed route's id, or null if it was not active
  */
 async function completeRouteAssignment(id, {
   latitude = null, longitude = null, distanceMeters = null, reason = null,
@@ -202,7 +207,7 @@ async function completeRouteAssignment(id, {
            last_destination_distance_meters = COALESCE($4, last_destination_distance_meters),
            updated_at = NOW()
      WHERE id = $1 AND status = 'active'
-     RETURNING *`,
+     RETURNING id`,
     [
       id,
       latitude != null && Number.isFinite(Number(latitude)) ? Number(latitude) : null,

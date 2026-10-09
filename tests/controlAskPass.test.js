@@ -11,7 +11,9 @@
 const test = require('node:test');
 const assert = require('node:assert');
 
-const { runAskPass, isAskableFinding, askRoundFor, questionKeyFor } = require('../services/control/askPass');
+const {
+  runAskPass, isAskableFinding, askRoundFor, questionKeyFor, SCAN_LIMIT,
+} = require('../services/control/askPass');
 const { fingerprintFor } = require('../lib/control/fingerprint');
 const { noticeKeyFor } = require('../lib/notifications/compose');
 const { whyAsking: whyFor, WHY_BY_CHECK } = require('../lib/control/priority');
@@ -30,7 +32,7 @@ function makeDeps(over = {}) {
   const calls = { notified: [], decisions: [] };
   return {
     calls,
-    findings: { listFindings: async () => [finding()] },
+    findings: { listAskCandidates: async () => [finding()] },
     notices: { noticeSentWithin: async () => false, countUnansweredQuestions: async () => 0 },
     settings: {
       getControlSettings: async () => ({
@@ -76,13 +78,13 @@ test('a check already in autopilot is not asked about — it just does it', asyn
 });
 
 test('a warning-tier finding is never a question — there is nothing to approve', async () => {
-  const deps = makeDeps({ findings: { listFindings: async () => [finding({ tier: 'warning' })] } });
+  const deps = makeDeps({ findings: { listAskCandidates: async () => [finding({ tier: 'warning' })] } });
   assert.strictEqual((await runAskPass({}, deps)).asked, 0);
 });
 
 test('an approval-tier finding IS asked about, whatever the mode', async () => {
   const deps = makeDeps({
-    findings: { listFindings: async () => [finding({ tier: 'approval' })] },
+    findings: { listAskCandidates: async () => [finding({ tier: 'approval' })] },
     loadCheckSettings: async () => new Map(),
   });
   assert.strictEqual((await runAskPass({}, deps)).asked, 1);
@@ -90,7 +92,7 @@ test('an approval-tier finding IS asked about, whatever the mode', async () => {
 
 test('a check with no question wording never asks', async () => {
   const deps = makeDeps({
-    findings: { listFindings: async () => [finding({ checkKey: 'something.invented' })] },
+    findings: { listAskCandidates: async () => [finding({ checkKey: 'something.invented' })] },
     loadCheckSettings: async () => new Map([['something.invented', { mode: 'suggest' }]]),
   });
   const got = await runAskPass({}, deps);
@@ -104,7 +106,7 @@ test('THE CAP HOLDS, and the oldest are asked first', async () => {
     firstSeenAt: new Date(Date.now() - (i + 1) * 86400_000).toISOString(),
   }));
   const deps = makeDeps({
-    findings: { listFindings: async () => many },
+    findings: { listAskCandidates: async () => many },
     settings: {
       getControlSettings: async () => ({
         enabled: true, maxQuestionsPerPass: 3, repeatAfterHours: 72, clarifyLimit: 1,
@@ -192,7 +194,7 @@ test('THE STANDING CAP: nothing new is asked while the owner is still answering'
 test('the standing cap counts against the per-pass cap, not beside it', async () => {
   const many = Array.from({ length: 6 }, (_, i) => finding({ id: 200 + i }));
   const deps = makeDeps({
-    findings: { listFindings: async () => many },
+    findings: { listAskCandidates: async () => many },
     notices: { noticeSentWithin: async () => false, countUnansweredQuestions: async () => 3 },
   });
   // Three already out, five allowed: room for two more, not five.
@@ -228,10 +230,10 @@ function memoryDeps(over = {}) {
   };
   const deps = makeDeps({
     findings: {
-      listFindings: async () => [target],
+      listAskCandidates: async () => [target],
       dismissFinding: async (id, patch) => { closed.push({ id, ...patch }); return { id }; },
     },
-    knowledge: { findMemory: async () => memory, noteApplied: async () => memory },
+    knowledge: { findMemoriesFor: async () => [memory], noteApplied: async () => memory },
     ...over,
   });
   deps.calls.closed = closed;
@@ -265,12 +267,12 @@ test('THE STANDING CAP DOES NOT BLOCK A MEMORY — closing costs nobody anything
 test('a memory for a DIFFERENT situation does not stop the question', async () => {
   const deps = memoryDeps({
     knowledge: {
-      findMemory: async () => ({
+      findMemoriesFor: async () => [{
         id: 3, checkKey: 'board.truck_disagrees_with_profile',
         subjectType: 'group', subjectId: '49',
         answerAction: 'dismiss', answerText: 'old answer',
         evidenceFingerprint: 'a'.repeat(32), revokedAt: null, expiresAt: null,
-      }),
+      }],
       noteApplied: async () => null,
     },
   });
@@ -392,7 +394,7 @@ test('a pass that read its settings carries no error', async () => {
 
 test('AT MOST the daily budget, counted from what already went out today', async () => {
   const many = Array.from({ length: 6 }, (_, i) => finding({ id: 300 + i }));
-  const deps = makeDeps({ findings: { listFindings: async () => many } });
+  const deps = makeDeps({ findings: { listAskCandidates: async () => many } });
   deps.digest = { countQuestionsAskedSince: async () => 1 };
   const got = await runAskPass({}, deps);
   assert.strictEqual(got.asked, 1, 'two a day, one already asked');
@@ -415,11 +417,13 @@ test('a count that FAILED is a spent budget, never an empty one', async () => {
 });
 
 test('the database is asked for findings IN QUESTION ORDER, before its limit (review, #263)', async () => {
+  // `listAskCandidates` has one order, the question order, applied in SQL before
+  // its LIMIT — tests/askPassReadsPg.test.js runs it against a real database.
   const seen = [];
-  const deps = makeDeps({ findings: { listFindings: async (q) => { seen.push(q); return [finding()]; } } });
+  const deps = makeDeps({ findings: { listAskCandidates: async (q) => { seen.push(q); return [finding()]; } } });
   deps.digest = { countQuestionsAskedSince: async () => 0 };
   await runAskPass({}, deps);
-  assert.equal(seen[0].order, 'ask');
+  assert.deepEqual(seen, [{ limit: SCAN_LIMIT, rememberedOnly: false }]);
 });
 
 test('serious is asked before an older warning', async () => {
@@ -429,7 +433,7 @@ test('serious is asked before an older warning', async () => {
     finding({ id: 401, severity: 'warning', firstSeenAt: old }),
     finding({ id: 402, severity: 'serious', firstSeenAt: fresh }),
   ];
-  const deps = makeDeps({ findings: { listFindings: async () => list } });
+  const deps = makeDeps({ findings: { listAskCandidates: async () => list } });
   deps.digest = { countQuestionsAskedSince: async () => 0 };
   await runAskPass({}, deps);
   assert.deepStrictEqual(deps.calls.notified.map((n) => n.findingId), [402, 401]);

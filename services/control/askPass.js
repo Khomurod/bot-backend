@@ -121,6 +121,29 @@ function isAskableFinding(finding, { mode, hasAction, held = false }) {
   return false;
 }
 
+/** A subject as `findMemory` matched it: check, subject type and id, as text. */
+function subjectKey(x) {
+  return JSON.stringify([String(x.checkKey), String(x.subjectType), String(x.subjectId)]);
+}
+
+/**
+ * What the owner has already answered about these findings, in ONE read — it
+ * was one `findMemory` per candidate, up to a hundred statements a tick.
+ *
+ * OPTIONAL-CHAINED AND FAIL-OPEN. A dependency map without this read, or a
+ * query that failed, must cost the MEMORY, not the question. Asking something
+ * twice is a nuisance; closing a finding because a read half-worked is not.
+ *
+ * @returns {Promise<Map<string, object>>} keyed by `subjectKey`
+ */
+async function memoriesFor(findings, deps) {
+  const out = new Map();
+  if (!findings.length) return out;
+  const rows = await Promise.resolve(deps.knowledge?.findMemoriesFor?.(findings)).catch(() => null);
+  for (const memory of Array.isArray(rows) ? rows : []) out.set(subjectKey(memory), memory);
+  return out;
+}
+
 /**
  * Close a finding the owner has already answered, and say so on the memory.
  *
@@ -133,17 +156,14 @@ function isAskableFinding(finding, { mode, hasAction, held = false }) {
  * it — and the difference (a person decided this once, in a chat, on the 3rd)
  * is the thing anybody reviewing it needs.
  *
+ * @param {object|null} [remembered]  what the pass's one memory read found for
+ *   this finding (null: nothing). Omitted, it is read for this finding alone.
  * @returns {Promise<boolean>} true when the finding was closed from memory.
  */
-async function applyMemory(finding, deps) {
-  // OPTIONAL-CHAINED AND FAIL-OPEN. A dependency map without this read, or a
-  // query that failed, must cost the MEMORY, not the question. Asking something
-  // twice is a nuisance; closing a finding because a read half-worked is not.
-  const memory = await Promise.resolve(deps.knowledge?.findMemory?.({
-    checkKey: finding.checkKey,
-    subjectType: finding.subjectType,
-    subjectId: String(finding.subjectId),
-  })).catch(() => null);
+async function applyMemory(finding, deps, remembered) {
+  const memory = remembered !== undefined
+    ? remembered
+    : (await memoriesFor([finding], deps)).get(subjectKey(finding));
   if (!memory) return false;
   if (!actsFromMemory(memory.answerAction)) return false;
   if (!memoryApplies(finding, memory)) return false;
@@ -160,9 +180,47 @@ async function applyMemory(finding, deps) {
 }
 
 /**
+ * May this tick ask anything, and how many? Decided BEFORE anything about
+ * findings is read: most ticks end here, and a tick that cannot ask has no use
+ * for the candidates, the holds or the per-check modes.
+ *
+ * @returns {Promise<{stop: object|null, budget: number}>} `stop` is what the
+ *   summary says when nothing may be asked, null when `budget` questions may be.
+ */
+async function questionAllowance(settings, outstanding, deps) {
+  // THE STANDING CAP, and it is not the same as the per-pass cap. The per-pass
+  // cap limits ONE pass; this sweep runs every fifteen minutes, so without this
+  // the first day after a deploy would deliver hundreds of questions into a
+  // group that has answered none of them. While the owner is already carrying
+  // `max_questions_per_pass` unanswered questions, the pass asks nothing — the
+  // queue drains at the speed somebody actually answers it.
+  if (outstanding >= settings.maxQuestionsPerPass) {
+    return { stop: { reason: 'waiting_for_answers', outstanding }, budget: 0 };
+  }
+
+  // THE DAILY BUDGET (owner, 2026-10-06: "one or two a day"). Counted from what
+  // actually reached the chat in the last 24 hours, so restarts and fifteen-
+  // minute passes cannot add up to more. A count that failed is a spent
+  // budget: one question too few is the cheap mistake.
+  const perDay = Number.isFinite(Number(settings.maxQuestionsPerDay))
+    ? Number(settings.maxQuestionsPerDay) : 2;
+  const askedToday = await Promise.resolve(deps.digest?.countQuestionsAskedSince?.(24))
+    .then((n) => Number(n) || 0)
+    .catch(() => Number.MAX_SAFE_INTEGER);
+  const budget = Math.max(0, perDay - askedToday);
+  if (budget === 0) {
+    return { stop: { reason: 'daily_limit', askedToday: Math.min(askedToday, perDay) }, budget };
+  }
+  return { stop: null, budget };
+}
+
+/**
  * Ask what can be asked. Never throws.
  *
- * @returns {Promise<{asked:number, considered:number, skipped:object}>}
+ * @returns {Promise<{asked:number, considered:number|null, skipped:object}>}
+ *   `considered` is null when the pass could not ask (`waiting_for_answers`,
+ *   `daily_limit`): such a tick reads only the candidates already answered,
+ *   and does not read the rest just to count them.
  */
 async function runAskPass(_options = {}, deps = defaultDeps()) {
   const skipped = {
@@ -175,14 +233,45 @@ async function runAskPass(_options = {}, deps = defaultDeps()) {
     return { asked: 0, considered: 0, skipped, reason: 'disabled' };
   }
 
-  // THE STANDING CAP, and it is not the same as the per-pass cap. The per-pass
-  // cap limits ONE pass; this sweep runs every fifteen minutes, so without this
-  // the first day after a deploy would deliver hundreds of questions into a
-  // group that has answered none of them. While the owner is already carrying
-  // `max_questions_per_pass` unanswered questions, the pass asks nothing — the
-  // queue drains at the speed somebody actually answers it.
   const outstanding = await deps.notices.countUnansweredQuestions(settings.repeatAfterHours)
     .catch(() => Number.MAX_SAFE_INTEGER);
+  const { stop, budget } = await questionAllowance(settings, outstanding, deps);
+
+  // ORDERED BEFORE THE LIMIT, in SQL (`listAskCandidates`). With 400+ open
+  // findings, sorting the first page of "most recently seen" would let an
+  // older held bonus never be considered. A tick that cannot ask reads only
+  // the candidates on that same page that somebody has already answered.
+  const open = await deps.findings.listAskCandidates({
+    limit: SCAN_LIMIT, rememberedOnly: Boolean(stop),
+  });
+  // MOST IMPORTANT FIRST, then oldest (`lib/control/priority.js`): money,
+  // then serious, then warning. With one or two questions a day, strictly
+  // oldest-first spent the day's budget on whatever had waited longest.
+  const candidates = orderForAsking(open);
+
+  // ── WHAT HAVE YOU ALREADY ANSWERED? ───────────────────────────────────────
+  //
+  // A SEPARATE PASS, AND IT RUNS WHATEVER THE CAP SAYS. Closing a finding the
+  // owner has already answered costs them nothing — there is no message, no
+  // interruption, no budget to spend — so gating it on the question allowance
+  // would be gating the wrong thing. Folded into the ask loop it was exactly
+  // that: with five questions outstanding the pass returned early and every
+  // settled finding sat open in the admin until somebody replied to something
+  // unrelated.
+  //
+  // A memory only matches when the CONDITION is the one the owner looked at
+  // (`lib/control/fingerprint.js`), so "he is a team driver" settles the shared
+  // truck it was about and nothing else.
+  const memories = await memoriesFor(candidates, deps);
+  const unanswered = [];
+  for (const finding of candidates) {
+    const memory = memories.get(subjectKey(finding)) || null;
+    // eslint-disable-next-line no-await-in-loop
+    if (await applyMemory(finding, deps, memory)) skipped.remembered += 1;
+    else unanswered.push(finding);
+  }
+
+  if (stop) return { asked: 0, considered: null, skipped, ...stop };
 
   // A SETTINGS READ THAT FAILED CHANGES WHAT THIS PASS DECIDES, so it is not
   // swallowed. With an empty map every auto-tier finding reads as "not in
@@ -199,63 +288,6 @@ async function runAskPass(_options = {}, deps = defaultDeps()) {
   // against one query.
   const holds = await Promise.resolve(deps.decisions?.currentHolds?.())
     .catch(() => new Map()) || new Map();
-  // ORDERED BEFORE THE LIMIT. With 400+ open findings, sorting the first page
-  // of "most recently seen" would let an older held bonus never be considered.
-  const open = await deps.findings.listFindings({ status: 'open', limit: SCAN_LIMIT, order: 'ask' });
-  // MOST IMPORTANT FIRST, then oldest (`lib/control/priority.js`): money,
-  // then serious, then warning. With one or two questions a day, strictly
-  // oldest-first spent the day's budget on whatever had waited longest.
-  const candidates = orderForAsking(open);
-
-  // ── WHAT HAVE YOU ALREADY ANSWERED? ───────────────────────────────────────
-  //
-  // A SEPARATE PASS, AND IT RUNS BEFORE THE CAP IS CONSIDERED. Closing a
-  // finding the owner has already answered costs them nothing — there is no
-  // message, no interruption, no budget to spend — so gating it on the question
-  // allowance would be gating the wrong thing. Folded into the ask loop it was
-  // exactly that: with five questions outstanding the pass returned early and
-  // every settled finding sat open in the admin until somebody replied to
-  // something unrelated.
-  //
-  // A memory only matches when the CONDITION is the one the owner looked at
-  // (`lib/control/fingerprint.js`), so "he is a team driver" settles the shared
-  // truck it was about and nothing else.
-  const unanswered = [];
-  for (const finding of candidates) {
-    // eslint-disable-next-line no-await-in-loop
-    if (await applyMemory(finding, deps)) skipped.remembered += 1;
-    else unanswered.push(finding);
-  }
-
-  // THE STANDING CAP, and it is not the same as the per-pass cap. The per-pass
-  // cap limits ONE pass; this sweep runs every fifteen minutes, so without this
-  // the first day after a deploy would deliver hundreds of questions into a
-  // group that has answered none of them. While the owner is already carrying
-  // `max_questions_per_pass` unanswered questions, the pass asks nothing — the
-  // queue drains at the speed somebody actually answers it.
-  if (outstanding >= settings.maxQuestionsPerPass) {
-    return {
-      asked: 0, considered: candidates.length, skipped,
-      reason: 'waiting_for_answers', outstanding,
-    };
-  }
-
-  // THE DAILY BUDGET (owner, 2026-10-06: "one or two a day"). Counted from what
-  // actually reached the chat in the last 24 hours, so restarts and fifteen-
-  // minute passes cannot add up to more. A count that failed is a spent
-  // budget: one question too few is the cheap mistake.
-  const perDay = Number.isFinite(Number(settings.maxQuestionsPerDay))
-    ? Number(settings.maxQuestionsPerDay) : 2;
-  const askedToday = await Promise.resolve(deps.digest?.countQuestionsAskedSince?.(24))
-    .then((n) => Number(n) || 0)
-    .catch(() => Number.MAX_SAFE_INTEGER);
-  const budget = Math.max(0, perDay - askedToday);
-  if (budget === 0) {
-    return {
-      asked: 0, considered: candidates.length, skipped,
-      reason: 'daily_limit', askedToday: Math.min(askedToday, perDay),
-    };
-  }
 
   for (const finding of unanswered) {
     if (asked + outstanding >= settings.maxQuestionsPerPass) break;

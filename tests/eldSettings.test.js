@@ -54,3 +54,34 @@ test('the effective ELD config is read at most once per five minutes, and at onc
   await eld.getEldConfig();
   assert.equal(reads, 2, 'a save (which invalidates) is read at once');
 });
+
+test('a save during an ELD settings read is not undone by that read', async (t) => {
+  const path = require('node:path');
+  const modPath = path.resolve(__dirname, '../database/eldSettings.js');
+  const dbPath = path.resolve(__dirname, '../database/db.js');
+  const samsaraPath = path.resolve(__dirname, '../database/samsaraSettings.js');
+  let reads = 0;
+  let release;
+  delete require.cache[modPath];
+  require.cache[dbPath] = {
+    id: dbPath, filename: dbPath, loaded: true,
+    exports: {
+      query: async () => {
+        reads += 1;
+        if (reads === 1) await new Promise((r) => { release = r; });
+        return { rows: [{ samsara_enabled: reads !== 1 }] };
+      },
+    },
+  };
+  require.cache[samsaraPath] = { id: samsaraPath, filename: samsaraPath, loaded: true, exports: { getSamsaraConfig: async () => ({}) } };
+  t.after(() => { delete require.cache[modPath]; delete require.cache[dbPath]; delete require.cache[samsaraPath]; });
+  const eld = require(modPath);
+
+  const inFlight = eld.getEldConfig();
+  await new Promise((r) => setImmediate(r));
+  eld.invalidateCache(); // a save lands while the read is out
+  release();
+  await inFlight;
+  await eld.getEldConfig();
+  assert.equal(reads, 2, 'the read that raced the save is not kept for five minutes');
+});

@@ -87,6 +87,27 @@ test('a hold nobody is making any more falls out of the window', {
   assert.equal(wider.size, 1);
 });
 
+test('A HOLD IS READ AS WHO, WHAT AND WHY — the five columns the ask pass uses, not the row', {
+  skip: skipWithoutPg(),
+}, async (t) => {
+  // October 2026, database transfer allowance: this read returned all 21
+  // columns of up to 200 rows — three of them JSON — every fifteen minutes.
+  const { operationalDecisions } = await setup(t);
+  await operationalDecisions.recordDecision({
+    ...SUBJECT, verdict: 'hold', confidence: 62, mode: 'autopilot',
+    reason: 'confidence 62 below the floor of 75',
+    evidence: { padding: 'x'.repeat(2000) }, sources: [{ source: 'check:x', fresh: true }],
+  });
+  const holds = await operationalDecisions.currentHolds();
+  assert.deepEqual(holds.get('identity.stale_unit_assignment|group|49'), {
+    checkKey: 'identity.stale_unit_assignment',
+    subjectType: 'group',
+    subjectId: '49',
+    verdict: 'hold',
+    reason: 'confidence 62 below the floor of 75',
+  });
+});
+
 test('a shadow decision is not a hold anybody needs to answer', {
   skip: skipWithoutPg(),
 }, async (t) => {

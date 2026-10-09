@@ -110,7 +110,12 @@ those caches at once, the router clears the roster itself when it puts a
 provider on cooldown, and a success clears that provider's cached failure count
 just as `recordSuccess` does in the table. The effective ELD settings
 (`getEldConfig`, on the location resolver's hot path) are cached 5 minutes
-instead of 30 seconds, and a save clears them at once.
+instead of 30 seconds, and a save clears them at once. So are the Finance
+Monitor's settings (`isFinanceChat` asks on every message in every chat): 10
+minutes instead of 30 seconds, cleared at once by `updateFinanceSettings`, the
+row's only writer. In both, a read already out when a save clears the cache
+still answers its own caller but is not kept, so a save can never be undone
+for the length of the TTL by a read that raced it.
 
 ## What one driver message costs
 
@@ -191,3 +196,122 @@ it.
   describes all 18 columns even when it claims nothing;
 - the auto-reaction rules are cached 10 minutes, and every admin save clears
   that cache.
+
+## What the owner-questions pass costs
+
+The ask pass (`control_ask_pass`, every 15 minutes; stood down while economy
+mode is on) read roughly **300 KB a tick** whatever it then did — up to 200
+whole decision rows for the holds (~160 KB), a hundred whole findings
+(~100–150 KB), and one `control_knowledge` lookup **per finding** — and most
+ticks then stopped at the standing cap on unanswered questions or the daily
+limit, having used none of it. Now a tick **decides whether it may ask
+first**. One that may not sends the settings read, one or two counts and one
+look for candidates the owner already answered (normally none): **about
+1 KB**. The look stays because closing a settled finding never waits for the
+cap; such a tick reports `considered: null` rather than read every candidate
+to count it. A tick that can ask reads 13 of a finding's 20 columns
+(`listAskCandidates`; the admin's `listFindings` stays whole), the five a hold
+needs, and its memories in **one** statement by exact subject
+(`findMemoriesFor`, the match `findMemory` made per finding). Measured on a
+test seed of 400 open findings and 220 holds: 337 KB and 105–108 statements a
+tick before; after, 0.8–0.9 KB and 3–4 statements when it may not ask, and
+116 KB and 9 when it may — most of that the candidates' evidence and proposed
+change, which the questions are worded from. Pinned by
+`tests/askPassQueries.test.js` and `tests/askPassReadsPg.test.js`.
+
+**Route Control's monitor tick** runs every five minutes, economy mode or not.
+Measured against PostgreSQL it cost ~3.2 KB a tick with no route at all, plus
+~12.4 KB for every tracked route — ~0.9 MB a day idle and ~3.5 MB a day more
+per route. It re-read the GMaps settings whole on every tick (a 30-second cache
+never survives a 300-second tick), read every route whole, and echoed each
+write back with `RETURNING *`. Now an idle tick asks one one-column question;
+the pass names the columns it uses; the polyline is fetched only when an
+off-route check or a destination repair needs it, then remembered until it
+changes; writes read nothing back; and the settings are cached 10 minutes, a
+save clearing them. Measured the same way: ~0.5 KB a tick idle, ~1.7 KB with
+one tracked route, ~0.4 KB for each route after that (~130 KB, ~470 KB and
+~106 KB a day). The rules are in
+[`route-control.md`](../architecture/route-control.md), and
+`tests/routeMonitorQueries.test.js` holds the tick to them. Still read on a tick
+that has a route: the live-GPS resolver's ELD settings, which fold in the
+Samsara settings and are cached 5 minutes (see above).
+
+## The two home-time passes that never stand down
+
+Both keep running in economy mode, so both were made cheap instead (October
+2026; figures measured on a seeded local copy, old code against new).
+
+**The return-to-road watch** (every 12 minutes) received the whole 24-column
+watch row FOUR times for each driver at home — the create echoed it, a
+`SELECT *` read it, and both observation writes echoed it — every copy
+carrying a `last_signals` JSON the pass never reads back; the audit put it at
+~12 MB a day. Now the create IS the one read, returning the eight values the
+score uses; the sighting write echoes only the four it can change, still
+computed by the database, because the moving-sighting counter's guards have
+been wrong twice in ways only the real statement showed; the verdict write
+returns nothing. The at-home list stopped reading two columns nothing used,
+and the tidy-up counts what it drops. Eight drivers at home: 48 KB → 6.4 KB a
+pass (~0.8 MB a day), and it no longer grows with the stored signals. The
+correction still reads the whole row under its own lock; it runs only when a
+return is applied, so it was left alone. `tests/returnToRoadPassQueries.test.js`,
+`tests/homeTimeReturnWatchPg.test.js`.
+
+**The home-time housekeeping tick** (every 5 minutes) read the whole settings
+row twice, once per sweep; all 46 columns of every open request, to judge each
+on five dates — and legacy `pending` rows with no dates stay open, so that was
+every tick; and claimed staff alerts with an `UPDATE … RETURNING r.*`, which
+describes all 46 columns even when nothing is due — nearly always. Now the
+tick reads `enabled` and the staff chat ONCE and hands them to both sweeps
+(inside the run-ledger callback, so a failed read is still that run's error);
+the open requests come back as the six columns the closing rule reads; and the
+claim looks first with `SELECT 1 … LIMIT 1` under the SAME predicate, then
+returns only the twelve columns the sender reads. Idle it costs ~0.6 KB plus
+~70 B per open request, from ~4.6 KB plus ~535 B: with ten open requests,
+~2.9 MB a day → ~0.4 MB. Nothing is sent at a different time; the one
+difference is that a settings save landing DURING a tick counts from the next
+tick. `tests/homeTimeTickQueries.test.js`, `tests/homeTimeHousekeepingPg.test.js`.
+
+## The recruiter leaderboard and the RingCentral sync
+
+October 2026, measured on PostgreSQL 16 at this deployment's row sizes:
+`/recruiters`, left open on a screen and polling every 60 seconds, cost about
+35 KB a poll by the end of a working day (460 calls). A 10-minute call-sync
+pass cost about 20 KB, and each 15-minute extension check from the leads worker
+6.5 KB.
+
+- **The board is totalled in SQL and kept between polls.** One row per
+  recruiter (`count(*) FILTER`, `sum`, about 0.7 KB) replaces one row per
+  call. The public answer is kept in the process
+  (`database/ringcentral/leaderboardCache.js`) until one of these happens:
+  - a call is written;
+  - a recruiter is created, changed or deleted;
+  - the KPI settings are saved;
+  - five minutes pass (the net for a write by another instance);
+  - for "today", midnight in the configured time zone.
+
+  A poll in between costs nothing. The JSON is byte-for-byte what the old
+  JavaScript produced (`tests/recruiterLeaderboardPg.test.js`). The admin
+  `/stats` page uses the same SQL but not the cache.
+- **The RingCentral settings row is kept until it changes.** The cache now
+  lasts up to 30 minutes instead of 15 seconds. Every save in the process clears
+  it. The sync's own stamp updates the cached copy instead of throwing it away,
+  which used to cost every pass a second read. A failed read is still kept only
+  15 seconds, so a blip cannot read as "RingCentral is off".
+- **The sync reads nine recruiter columns, and only when they changed.** Each
+  pass first asks for an md5 of exactly those columns, about 100 bytes. It
+  re-reads the rows when the hash differs: a rotated refresh token, an admin
+  save, another instance's write. It never relies on invalidation hooks alone,
+  because a pass holding a spent refresh token flags a healthy recruiter
+  (`docs/architecture/recruiter-sms-sender.md`).
+- **A call already written with the same values is not written again**
+  (`database/ringcentral/calls.js`). The ~33,000 upserts a day become the new
+  and changed calls. A failed write is forgotten. An unchanged call is still
+  re-written every six hours, as the net for a write this process did not make.
+- **The extension check reads `id, name, rc_extension_id`**, not every
+  encrypted token: 6.5 KB down to 0.25 KB, 96 times a day.
+
+A scheduled sync pass that finds nothing new now sends four statements: the
+roster hash, the sync stamp, and the run ledger's two. It used to send six plus
+one per call since midnight. Pinned by
+`tests/recruiterCallSyncQueries.test.js` and
+`tests/recruiterLeaderboardQueries.test.js`.

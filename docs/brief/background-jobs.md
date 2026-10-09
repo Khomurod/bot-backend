@@ -97,7 +97,7 @@ return. A dashboard left open overnight therefore costs nothing.
 | Leads | 45s | new leads also arrive by Telegram, so the page is not the notification path |
 | Scheduled messages | 60s | was an ungated 30s `setInterval` that polled from background tabs forever |
 | Mileage bonuses | 8s | **only while a run is in progress** |
-| Recruiters leaderboard (public) | 60s | only in "today" mode |
+| Recruiters leaderboard (public) | 60s | only in "today" mode; the server keeps the answer until a call, a recruiter or the KPI settings change (5 min at most), so a poll in between costs no query |
 
 Do not add a bare `setInterval` that fetches — use the hook, or the next
 dashboard left open on a wall display becomes the largest line in the transfer

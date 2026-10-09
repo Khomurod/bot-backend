@@ -123,3 +123,7 @@ the same treatment home time got, and for the same reason.
   time per day, 150 outbound calls/day, and calls shorter than 30s do not count
   as valuable. The score weights talk time 70% / outbound 30%. Public leaderboard
   at `/recruiters` exposes names and KPI numbers only — **never phone numbers**.
+  Its totals are computed in SQL, and the answer is kept in the process until a
+  call is written, a recruiter or the KPI settings change, or five minutes
+  pass. A screen left polling costs the database nothing in between
+  (`docs/brief/database-transfer.md`).
