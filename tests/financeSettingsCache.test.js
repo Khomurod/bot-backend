@@ -39,3 +39,33 @@ test('the settings are read once per ten minutes, and at once after a save', asy
   await settings.getFinanceSettings();
   assert.equal(reads, 2, 'a save (which invalidates) is read at once');
 });
+
+test('A SAVE DURING A READ is not undone by that read — the old row is not kept for ten minutes', async (t) => {
+  // A read starts, an operator saves (which clears the cache), and the read
+  // finishes afterwards with the row as it was BEFORE the save. Kept, it would
+  // point the Finance Monitor at the old chat for the whole TTL.
+  let reads = 0;
+  let release;
+  delete require.cache[MOD];
+  require.cache[DB] = {
+    id: DB, filename: DB, loaded: true,
+    exports: {
+      query: async () => {
+        reads += 1;
+        if (reads === 1) await new Promise((r) => { release = r; });
+        return { rows: [{ id: 1, enabled: true, chat_id: reads === 1 ? '-100OLD' : '-100NEW' }] };
+      },
+    },
+  };
+  t.after(() => { delete require.cache[MOD]; delete require.cache[DB]; });
+  // eslint-disable-next-line global-require
+  const settings = require(MOD);
+
+  const inFlight = settings.getFinanceSettings();
+  await new Promise((r) => setImmediate(r));
+  settings.invalidateCache(); // the save lands while the read is still out
+  release();
+  assert.equal((await inFlight).chatId, '-100OLD', 'the slow read still answers its own caller');
+  assert.equal(await settings.isFinanceChat('-100NEW'), true, 'but the next read goes to the table');
+  assert.equal(reads, 2);
+});

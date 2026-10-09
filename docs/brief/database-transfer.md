@@ -113,7 +113,9 @@ just as `recordSuccess` does in the table. The effective ELD settings
 instead of 30 seconds, and a save clears them at once. So are the Finance
 Monitor's settings (`isFinanceChat` asks on every message in every chat): 10
 minutes instead of 30 seconds, cleared at once by `updateFinanceSettings`, the
-row's only writer.
+row's only writer. In both, a read already out when a save clears the cache
+still answers its own caller but is not kept, so a save can never be undone
+for the length of the TTL by a read that raced it.
 
 ## What one driver message costs
 

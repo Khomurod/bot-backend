@@ -24,10 +24,17 @@ const samsaraSettings = require('./samsaraSettings');
 const CACHE_TTL_MS = 5 * 60 * 1000;
 let cache = null;
 let cacheExpiresAt = 0;
+/**
+ * Moves on every invalidation. A read that was already out when a save cleared
+ * the cache still answers its own caller, but may not put the pre-save config
+ * back for the whole TTL.
+ */
+let generation = 0;
 
 function invalidateCache() {
   cache = null;
   cacheExpiresAt = 0;
+  generation += 1;
 }
 
 const DEFAULT_DRIVEHOS_API_BASE = 'https://api.drivehos.app';
@@ -87,6 +94,7 @@ async function getEldConfig() {
   const now = Date.now();
   if (cache && now < cacheExpiresAt) return cache;
 
+  const startedIn = generation;
   const row = await getSettingsRow();
 
   const envSamsaraKeys = Array.isArray(config.samsaraApiKeys) ? config.samsaraApiKeys : [];
@@ -132,8 +140,10 @@ async function getEldConfig() {
     leaderCompanyKey: safeDecrypt(row?.leader_company_key_encrypted) || config.leaderEldCompanyKey || '',
   };
 
-  cache = effective;
-  cacheExpiresAt = now + CACHE_TTL_MS;
+  if (startedIn === generation) {
+    cache = effective;
+    cacheExpiresAt = now + CACHE_TTL_MS;
+  }
   return effective;
 }
 

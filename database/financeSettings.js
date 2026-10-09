@@ -32,6 +32,12 @@ const { query } = require('./db');
 const CACHE_TTL_MS = 10 * 60 * 1000;
 let cache = null;
 let cacheExpiresAt = 0;
+/**
+ * Moves on every invalidation. A read that was already out when a save cleared
+ * the cache still answers its own caller, but may not put the pre-save row
+ * back for the whole TTL.
+ */
+let generation = 0;
 
 /** Postgres: the relation does not exist. The one honest "not set up yet". */
 const UNDEFINED_TABLE = '42P01';
@@ -48,6 +54,7 @@ class FinanceSettingsError extends Error {
 function invalidateCache() {
   cache = null;
   cacheExpiresAt = 0;
+  generation += 1;
 }
 
 async function getSettingsRow() {
@@ -105,9 +112,13 @@ function shape(row) {
 async function getFinanceSettings() {
   const now = Date.now();
   if (cache && now < cacheExpiresAt) return cache;
-  cache = shape(await getSettingsRow());
-  cacheExpiresAt = now + CACHE_TTL_MS;
-  return cache;
+  const startedIn = generation;
+  const fresh = shape(await getSettingsRow());
+  if (startedIn === generation) {
+    cache = fresh;
+    cacheExpiresAt = now + CACHE_TTL_MS;
+  }
+  return fresh;
 }
 
 /**
