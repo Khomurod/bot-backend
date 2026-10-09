@@ -29,7 +29,7 @@
 const { createDueTimeWakeTimer } = require('../../dueTimeWakeTimer');
 const { getCatalogEntry } = require('../../../lib/ai/providerCatalog');
 const { buildAlertBody } = require('../policy/alertMessage');
-const { withRunRecord } = require('../../operations/runLedger');
+const { withRunRecord, ranToCompletion } = require('../../operations/runLedger');
 
 /** 06:00 UTC — after most providers' overnight changes, before a working day. */
 const MAINTENANCE_HOUR_UTC = 6;
@@ -226,6 +226,40 @@ function createVerificationRequester({ verify, debounceMs = VERIFY_DEBOUNCE_MS }
 let timer = null;
 let requester = null;
 
+/**
+ * One wake of the maintenance timer, deciding whether the daily run is due.
+ *
+ * THE WAKE IS NOT THE RUN. The wake timer never sleeps longer than an hour (its
+ * cap keeps drift and config changes bounded), and this used to run the whole
+ * maintenance on EVERY wake — every provider's model listing fetched and
+ * written, about 24 times a day instead of once. Now the first wake after boot
+ * runs (a restart after downtime catches up, as before), then the next run is
+ * the first 06:00 UTC after the last one that did its job finished. A run that threw,
+ * ended in error (it verified nothing) or was blocked on configuration is not
+ * remembered, so the next wake tries again — as every wake used to.
+ *
+ * @param {{ run: () => Promise<object>, now?: () => number }} deps  `run`
+ *   returns the run's summary (`withRunRecord`'s result)
+ */
+function createMaintenanceTick({ run, now = Date.now }) {
+  let lastRunAt = null;
+  return async function maintenanceTick() {
+    const dueAt = lastRunAt == null ? -Infinity : nextMaintenanceDueAt(new Date(lastRunAt));
+    if (now() >= dueAt) {
+      const ok = await Promise.resolve()
+        .then(run)
+        .then(ranToCompletion, (err) => {
+          console.error('[AI MODELS] maintenance failed:', err.message);
+          return false;
+        });
+      // When it ENDED: a pass that ran across 06:00 has covered that slot, and
+      // stamping its start would hand the timer a due time already past.
+      if (ok) lastRunAt = now();
+    }
+    return { dueAtMs: lastRunAt == null ? null : nextMaintenanceDueAt(new Date(lastRunAt)) };
+  };
+}
+
 async function verifyByKey(providerKey, models = [], deps = defaultDeps()) {
   const provider = (await deps.aiProviders.listProvidersForAdmin()).find((p) => p.providerKey === providerKey);
   if (!provider || provider.enabled !== true || provider.apiKeySet !== true) return null;
@@ -236,11 +270,9 @@ function startModelMaintenance({ setModelRefusalListener = null } = {}) {
   if (timer) return;
   timer = createDueTimeWakeTimer({
     label: 'AI MODELS',
-    runTick: async () => {
-      await withRunRecord('ai_model_maintenance', () => runModelMaintenance({}))
-        .catch((err) => console.error('[AI MODELS] maintenance failed:', err.message));
-      return { dueAtMs: nextMaintenanceDueAt() };
-    },
+    runTick: createMaintenanceTick({
+      run: () => withRunRecord('ai_model_maintenance', () => runModelMaintenance({})),
+    }),
   });
   timer.start(FIRST_TICK_DELAY_MS);
   requester = createVerificationRequester({ verify: (key, models) => verifyByKey(key, models) });
@@ -257,6 +289,6 @@ function stopModelMaintenance() {
 
 module.exports = {
   runModelMaintenance, verifyProvider, notifyPendingRetirements, describeModelChange, nextMaintenanceDueAt,
-  createVerificationRequester, startModelMaintenance, stopModelMaintenance,
+  createVerificationRequester, createMaintenanceTick, startModelMaintenance, stopModelMaintenance,
   MAINTENANCE_HOUR_UTC, VERIFY_DEBOUNCE_MS,
 };

@@ -99,6 +99,7 @@ function createAiSettingsRouter({ authMiddleware }) {
       });
       return res.json(result);
     } catch (err) {
+      if (err?.statusCode === 400) return res.status(400).json({ error: err.message });
       return sendFailure(res, err, { message: 'Failed to connect the provider', logPrefix: '[AI SETTINGS]' });
     }
   });
@@ -130,6 +131,7 @@ function createAiSettingsRouter({ authMiddleware }) {
       if (/violates check constraint/i.test(err.message || '')) {
         return res.status(400).json({ error: `That provider is not valid: ${err.message}` });
       }
+      if (err?.statusCode === 400) return res.status(400).json({ error: err.message });
       return sendFailure(res, err, { message: 'Failed to save the provider', logPrefix: '[AI SETTINGS]' });
     }
   });

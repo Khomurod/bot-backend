@@ -30,6 +30,16 @@ stay in §4a. The provider terms watcher is
   spent free tier arrives as a 429 and 429 is in that set. A 400/404/422 is OUR
   request being wrong, so it moves on **without cooling anyone** — one stale
   model name must not disable a working provider.
+- **A provider's name or label is never a key.** Production once held a
+  disabled provider whose operator-typed name was a pasted OpenRouter key. A
+  name is shown in the admin and written to logs, while a key is encrypted and
+  never shown. So `upsertProvider`, the one write both the connect flow and
+  the settings routes go through, refuses a value that `looksLikeSecret`
+  (`lib/security/secretMasking.js`) recognises. That means a known key prefix
+  with a tail, or one unbroken 32+ character token. The refusal is a 400 in
+  plain words that never repeats the key, and it happens before any statement
+  is sent (`tests/aiProviderNameGuard.test.js`). An existing row with such a
+  name can still be deleted.
 - **`lib/ai/cooldown.js` is the circuit breaker, and it is a timestamp.** A
   rejected credential cools *indefinitely* — a sentinel, not a long timer, since
   no elapsed time makes an expired key work — and clears the moment an

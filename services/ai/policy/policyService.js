@@ -16,7 +16,7 @@ const { createDueTimeWakeTimer } = require('../../dueTimeWakeTimer');
 const policyStore = require('../../../database/aiPolicy');
 const { runPolicyCheck } = require('./policyWatcher');
 const { drainPolicyAlerts } = require('./alertSender');
-const { withRunRecord, noteHeartbeat } = require('../../operations/runLedger');
+const { withRunRecord, noteHeartbeat, ranToCompletion } = require('../../operations/runLedger');
 
 const DAY_NAMES = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 /** Run at 09:00 UTC on a check day — inside a working morning somewhere. */
@@ -25,7 +25,6 @@ const ALERT_POLL_MS = 60_000;
 
 let checkTimer = null;
 let alertTimer = null;
-let checkRunning = false;
 
 /** When is the next configured check day, from `now`? */
 function nextCheckDueAt(checkDays, now = new Date()) {
@@ -42,30 +41,78 @@ function nextCheckDueAt(checkDays, now = new Date()) {
   return now.getTime() + 24 * 60 * 60 * 1000;
 }
 
-async function checkTick() {
-  const settings = await policyStore.getWatcherSettings();
-  if (!settings.enabled) {
-    // Still schedule the next wake: an operator switching it on should not have
-    // to restart the process for it to start working. Recorded as `blocked` so
-    // "switched off" reads differently from "its timer died".
-    await noteHeartbeat('ai_policy_watcher', {
-      status: 'blocked', detail: 'the terms watcher is switched off in Settings',
-    }).catch(() => {});
-    return { dueAtMs: nextCheckDueAt(settings.checkDays) };
-  }
-  // No overlap. A slow check must not pile up behind itself and diff the same
-  // source twice from two different snapshots.
-  if (checkRunning) return { dueAtMs: nextCheckDueAt(settings.checkDays) };
-  checkRunning = true;
-  try {
-    await withRunRecord('ai_policy_watcher', () => runPolicyCheck());
-  } catch (err) {
-    console.error('[POLICY] check failed:', err.message);
-  } finally {
-    checkRunning = false;
-  }
-  return { dueAtMs: nextCheckDueAt(settings.checkDays) };
+/**
+ * A check that reached none of its sources read nothing: `runPolicyCheck`
+ * counts per-source failures in `errors` and still returns, so the ledger
+ * alone would call it done and the next try would wait days for the next
+ * check day. One source failing among several is a check that did its job.
+ */
+function everySourceFailed(summary) {
+  const sources = Number(summary?.sources) || 0;
+  return sources > 0 && Number(summary?.errors) >= sources;
 }
+
+/**
+ * One wake of the terms-watcher timer, deciding whether a check is due.
+ *
+ * THE WAKE IS NOT THE CHECK. The wake timer never sleeps longer than an hour,
+ * and this used to run the whole check — six outbound requests and the
+ * snapshot reads — on EVERY wake: about 24 times a day, on every day, instead
+ * of at 09:00 UTC on the configured check days. Now the first wake after boot
+ * checks (as before), then the next check is the first configured slot after
+ * the last one that finished. The schedule is re-read on every wake, so an
+ * operator changing the check days is honoured from the last run. A check that
+ * threw, ended in error, was blocked, or reached none of its sources is not
+ * remembered, so the next wake tries again — as every wake used to.
+ *
+ * @param {{ store?, runCheck?, heartbeat?, recordRun?, now?: () => Date }} [deps]
+ */
+function createPolicyCheckTick({
+  store = policyStore,
+  runCheck = runPolicyCheck,
+  heartbeat = noteHeartbeat,
+  recordRun = withRunRecord,
+  now = () => new Date(),
+} = {}) {
+  let lastCheckAt = null;
+  let running = false;
+  return async function checkTick() {
+    const settings = await store.getWatcherSettings();
+    const at = now();
+    if (!settings.enabled) {
+      // Still schedule the next wake: an operator switching it on should not
+      // have to restart the process for it to start working. Recorded as
+      // `blocked` so "switched off" reads differently from "its timer died".
+      await heartbeat('ai_policy_watcher', {
+        status: 'blocked', detail: 'the terms watcher is switched off in Settings',
+      }).catch(() => {});
+      return { dueAtMs: nextCheckDueAt(settings.checkDays, at) };
+    }
+    const dueAt = lastCheckAt == null ? -Infinity : nextCheckDueAt(settings.checkDays, lastCheckAt);
+    if (at.getTime() < dueAt) return { dueAtMs: dueAt };
+    // No overlap. A slow check must not pile up behind itself and diff the same
+    // source twice from two different snapshots.
+    if (running) return { dueAtMs: nextCheckDueAt(settings.checkDays, at) };
+    running = true;
+    try {
+      const summary = await recordRun('ai_policy_watcher', () => runCheck());
+      // When it ENDED, so a check that ran across 09:00 has covered that slot.
+      if (ranToCompletion(summary) && !everySourceFailed(summary)) lastCheckAt = now();
+    } catch (err) {
+      console.error('[POLICY] check failed:', err.message);
+    } finally {
+      running = false;
+    }
+    return { dueAtMs: nextCheckDueAt(settings.checkDays, lastCheckAt || now()) };
+  };
+}
+
+// The ledger calls spelled out with their key: tests/backgroundServiceCatalog
+// reads the source for exactly these to prove the watcher is observable.
+const checkTick = createPolicyCheckTick({
+  recordRun: (_key, pass) => withRunRecord('ai_policy_watcher', pass),
+  heartbeat: (_key, info) => noteHeartbeat('ai_policy_watcher', info),
+});
 
 function startPolicyWatcher({ telegram = null } = {}) {
   if (checkTimer) return;
@@ -90,6 +137,6 @@ function stopPolicyWatcher() {
 }
 
 module.exports = {
-  startPolicyWatcher, stopPolicyWatcher, nextCheckDueAt, checkTick,
+  startPolicyWatcher, stopPolicyWatcher, nextCheckDueAt, checkTick, createPolicyCheckTick,
   DAY_NAMES, CHECK_HOUR_UTC, ALERT_POLL_MS,
 };

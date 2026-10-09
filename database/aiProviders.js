@@ -26,7 +26,7 @@
  */
 const { query } = require('./pool');
 const { encryptText } = require('../lib/security/facebookCrypto');
-const { maskKey, createSafeDecrypt } = require('../lib/security/secretMasking');
+const { maskKey, createSafeDecrypt, looksLikeSecret } = require('../lib/security/secretMasking');
 const { INDEFINITE } = require('../lib/ai/cooldown');
 const { CATALOG, envKeyNameFor } = require('../lib/ai/providerCatalog');
 
@@ -84,6 +84,22 @@ async function listProvidersForAdmin() {
     'SELECT * FROM ai_providers ORDER BY priority ASC, provider_key ASC'
   );
   return res.rows.map(mapProviderForAdmin);
+}
+
+/**
+ * A provider's NAME and LABEL are shown in the admin and written to logs; its
+ * key is encrypted and never shown. Production once held a provider whose name
+ * was a pasted OpenRouter key, so a value that looks like a key is refused
+ * here — the one write every path to this table goes through (the connect
+ * flow and the settings routes alike) — before any statement is sent.
+ * A 400 for the route, in plain words.
+ */
+function refuseSecretAsName(field, value) {
+  if (value == null || !looksLikeSecret(value)) return;
+  const err = new Error(`That provider ${field} looks like an API key. `
+    + `Put the key in the API key field instead: the ${field} is shown in the admin and the logs.`);
+  err.statusCode = 400;
+  throw err;
 }
 
 /**
@@ -206,6 +222,8 @@ async function upsertProvider(providerKey, {
   label, adapter, enabled, priority, isFree, baseUrl, modelChain,
   apiKey, clearApiKey = false, notes, catalogKey, updatedBy = null,
 } = {}) {
+  refuseSecretAsName('name', providerKey);
+  refuseSecretAsName('label', label);
   const sets = ['label = COALESCE($2, ai_providers.label)'];
   const values = [providerKey, label ?? null];
   let i = 3;
