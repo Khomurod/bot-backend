@@ -3,8 +3,12 @@
 
 # §4c. The AI provider terms watcher
 
-Twice a week Wenze re-reads the terms of every AI provider it uses and notices
-when the deal changes. Split out of §4a when that document passed the 500-line
+Twice a week (09:00 UTC on the configured check days, `mon,thu` by default)
+Wenze re-reads the terms of every AI provider it uses and notices when the deal
+changes. Until October 2026 it re-read them on every hourly wake of its timer,
+every day: the wake now checks the schedule first, and only the first wake
+after boot and a check that did not finish run outside it
+(`services/ai/policy/policyService.js`, `tests/aiScheduledPasses.test.js`). Split out of §4a when that document passed the 500-line
 limit: the watcher is a self-contained feature with its own tables, its own
 schedule and its own hard rule — only a deterministic trigger may pause a
 provider, never a model's opinion.

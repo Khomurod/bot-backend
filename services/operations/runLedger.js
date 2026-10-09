@@ -56,6 +56,17 @@ function statusFromSummary(summary) {
 }
 
 /**
+ * Did this pass do its job? `ok` or `skipped` — not an `error`, and not
+ * `blocked` (waiting on configuration: once configured it should run soon,
+ * not at its next scheduled slot). For a timer deciding whether a pass that
+ * runs on a schedule has been done for this slot.
+ */
+function ranToCompletion(summary) {
+  const { status } = statusFromSummary(summary);
+  return status === 'ok' || status === 'skipped';
+}
+
+/**
  * @param {string} serviceKey  a key from `lib/operations/backgroundServiceCatalog`
  * @param {Function} pass      the work; its return value is the summary
  * @returns {Promise<*>} whatever the pass returned
@@ -97,4 +108,4 @@ async function noteHeartbeat(serviceKey, { status = 'ok', detail = null, summary
   });
 }
 
-module.exports = { withRunRecord, noteHeartbeat, statusFromSummary };
+module.exports = { withRunRecord, noteHeartbeat, statusFromSummary, ranToCompletion };
