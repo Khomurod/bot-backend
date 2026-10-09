@@ -132,16 +132,25 @@ async function claimDispatchEtaUpdateByGroupId(groupId) {
   return res.rows[0] || null;
 }
 
+/** The rows `claimDueDispatchEtaUpdates` may take — one predicate, two statements. */
+const DUE_ETA_PREDICATE = `enabled = TRUE
+         AND next_run_at IS NOT NULL
+         AND next_run_at <= NOW()
+         AND (processing = FALSE OR processing_started_at < NOW() - INTERVAL '10 minutes')`;
+
 async function claimDueDispatchEtaUpdates(limit = 20) {
   const safeLimit = Number.isInteger(limit) && limit > 0 ? limit : 20;
+  // A one-column look first. The claim below returns every column of every row
+  // it takes, and the database describes all eighteen even when it takes none —
+  // which, polled every ninety seconds with no schedule switched on (October
+  // 2026: 170 rows, none enabled), was every time.
+  const anyDue = await query(`SELECT 1 FROM dispatch_eta_updates WHERE ${DUE_ETA_PREDICATE} LIMIT 1`);
+  if (!anyDue.rows.length) return [];
   const res = await query(
     `WITH due AS (
        SELECT id
        FROM dispatch_eta_updates
-       WHERE enabled = TRUE
-         AND next_run_at IS NOT NULL
-         AND next_run_at <= NOW()
-         AND (processing = FALSE OR processing_started_at < NOW() - INTERVAL '10 minutes')
+       WHERE ${DUE_ETA_PREDICATE}
        ORDER BY next_run_at ASC
        LIMIT $1
        FOR UPDATE SKIP LOCKED

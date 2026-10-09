@@ -18,13 +18,17 @@ Admin panel (Settings → Samsara)
         │  GET, for the admin view and this app's own Samsara calls    │
   bot-backend                                        samsara-integration
                                                      src/samsaraSettings.js
-                                                     (30s cache; env fallback)
+                                                     (5 min cache; env fallback)
 ```
 
 The two services already share `DATABASE_URL` and nothing else. Adding an HTTP
 link between them purely to exchange settings would be a second channel to get
-out of step — this row is enough. A change lands in the poller within about a
-minute.
+out of step — this row is enough. A change lands in the poller within five
+minutes: the service caches the row that long since October 2026, when the
+database's transfer allowance ran short and the old 30-second cache was
+re-reading an unchanged row about 2,400 times a day. A read that FAILS is
+retried after 30 seconds, so a database blip never holds the environment
+fallback for the full five minutes.
 
 **Every value falls back to the environment, per value.** An empty column means
 "inherit the environment variable this service has always read". That is why the

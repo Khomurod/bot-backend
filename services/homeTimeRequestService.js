@@ -236,15 +236,21 @@ async function processHomeTimeMessage(telegram, group, message, { statusResult =
     const text = message?.text || message?.caption || '';
     if (message?.from?.is_bot || !text) return;
 
+    if (!isHomeTimeCandidate(text, { hasOpenClarification: false })) return;
+
     // A LEGACY OPEN CLARIFICATION NO LONGER SWALLOWS THE MESSAGE. Nothing
     // creates these any more; the rows still in `awaiting_*` are from before the
-    // loop was removed. Closing one on sight means a driver who writes again is
-    // heard as making a fresh request rather than answering a question Wenze has
-    // stopped asking. The row itself is kept, with its dates.
+    // loop was removed. Closing one when the driver writes about home time again
+    // means they are heard as making a fresh request rather than answering a
+    // question Wenze has stopped asking. The row itself is kept, with its dates.
+    //
+    // AFTER the candidate filter, not before it: before, this read ran for
+    // every message in every driver chat — ~10,000 a day, each returning the
+    // 46-column description of `home_time_requests` — and production has had
+    // no row left to find since October 2026. Ordinary chatter cannot reopen a
+    // question, so nothing is lost by asking only when a message could.
     const legacyOpen = await ht.getOpenClarificationForGroup(group.id);
     if (legacyOpen) await closeOutdatedRequest(telegram, legacyOpen).catch(() => {});
-
-    if (!isHomeTimeCandidate(text, { hasOpenClarification: false })) return;
 
     const profile = await db.getDriverProfileByGroupId(group.id).catch(() => null);
     const senderIsDriver = await senderIsDriverOf(group, message, profile);

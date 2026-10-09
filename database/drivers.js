@@ -5,18 +5,26 @@
  */
 const { query } = require('./pool');
 
-async function upsertDriver(telegramUserId, username, firstName, lastName) {
-  const res = await query(
-    `INSERT INTO drivers (telegram_user_id, username, first_name, last_name)
+const UPSERT_DRIVER_SQL = `INSERT INTO drivers (telegram_user_id, username, first_name, last_name)
      VALUES ($1, $2, $3, $4)
      ON CONFLICT (telegram_user_id)
      DO UPDATE SET username = EXCLUDED.username,
                    first_name = EXCLUDED.first_name,
-                   last_name = EXCLUDED.last_name
-     RETURNING *`,
-    [telegramUserId, username, firstName, lastName]
-  );
+                   last_name = EXCLUDED.last_name`;
+
+/** Register a user and hand back their row — for a caller that uses it (the survey flow). */
+async function upsertDriver(telegramUserId, username, firstName, lastName) {
+  const res = await query(`${UPSERT_DRIVER_SQL} RETURNING *`, [telegramUserId, username, firstName, lastName]);
   return res.rows[0];
+}
+
+/**
+ * The same write for the message path, which never reads the row back: no
+ * `RETURNING`, so the database answers with a status line instead of echoing
+ * the row on every message a person sends.
+ */
+async function recordDriverSeen(telegramUserId, username, firstName, lastName) {
+  await query(UPSERT_DRIVER_SQL, [telegramUserId, username, firstName, lastName]);
 }
 
 async function getDriverByTelegramId(telegramUserId) {
@@ -56,6 +64,7 @@ async function findDriverByName(name) {
 
 module.exports = {
   upsertDriver,
+  recordDriverSeen,
   getDriverByTelegramId,
   findDriverByName,
 };

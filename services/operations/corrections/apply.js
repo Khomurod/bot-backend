@@ -19,6 +19,9 @@
  */
 const defaultDb = require('../../../database/pool');
 const { insertAdminAudit } = require('../../../database/adminAudit');
+// A correction may change a `groups` row (status, type); the message path's
+// cached copy must not outlive the commit.
+const { forgetGroupRows } = require('../../../database/groupRowCache');
 const { getAction, StaleCorrectionError } = require('./actions');
 
 /**
@@ -129,6 +132,7 @@ async function applyCorrection({
     }
 
     await client.query('COMMIT');
+    forgetGroupRows();
     return correction;
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
@@ -197,6 +201,7 @@ async function revertCorrection({ correctionId, admin = null, reason = null, db 
     }
 
     await client.query('COMMIT');
+    forgetGroupRows();
     return updated.rows[0];
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});

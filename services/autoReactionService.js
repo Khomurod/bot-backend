@@ -13,7 +13,11 @@
 const autoReactionsDb = require('../database/autoReactions');
 const { matchReactionRule, buildReactionIndexes } = require('./autoReactionConstants');
 
-const CACHE_TTL_MS = 30 * 1000;
+// Ten minutes. Every rule an admin saves calls invalidateAutoReactionCache()
+// (server/routes/autoReactionsRoutes.js), so the window only bounds how often
+// an UNCHANGED rule list is re-read — at thirty seconds that was a reload in
+// nearly every half-minute of chat traffic, around 2,900 a day.
+const CACHE_TTL_MS = 10 * 60 * 1000;
 
 // Telegram service/system messages carry one of these fields instead of user
 // content; reacting to them is pointless and can error, so they are skipped.

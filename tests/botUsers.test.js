@@ -75,10 +75,14 @@ function makeFakeDb() {
 test('recordBotUserSeen inserts a new user with message_count = 1', async () => {
   const fake = makeFakeDb();
   const db = loadBotUsersWith(fake.query);
-  const row = await db.recordBotUserSeen({
+  const written = await db.recordBotUserSeen({
     telegramUserId: 100, username: 'joe_d', firstName: 'Joe', lastName: 'Driver',
     languageCode: 'en', groupId: 7, chatId: -100123, groupName: 'Driver Joe',
   });
+  // The write reports only whether it happened; the row is not echoed back —
+  // this runs on every group message (see database/botUsers.js).
+  assert.equal(written, true);
+  const row = fake.users.get(100);
   assert.equal(row.telegram_user_id, 100);
   assert.equal(row.message_count, 1);
   assert.equal(row.username, 'joe_d');
@@ -90,7 +94,8 @@ test('repeated messages increment message_count and refresh last seen (same id)'
   const db = loadBotUsersWith(fake.query);
   await db.recordBotUserSeen({ telegramUserId: 100, username: 'joe', groupName: 'G1' });
   await db.recordBotUserSeen({ telegramUserId: 100, username: 'joe', groupName: 'G2' });
-  const row = await db.recordBotUserSeen({ telegramUserId: 100, username: 'joe', groupName: 'G3' });
+  await db.recordBotUserSeen({ telegramUserId: 100, username: 'joe', groupName: 'G3' });
+  const row = fake.users.get(100);
   assert.equal(fake.users.size, 1);
   assert.equal(row.message_count, 3);
   assert.equal(row.last_group_name, 'G3');
@@ -100,7 +105,8 @@ test('a username change updates the SAME id row (no duplicate)', async () => {
   const fake = makeFakeDb();
   const db = loadBotUsersWith(fake.query);
   await db.recordBotUserSeen({ telegramUserId: 100, username: 'old_name', firstName: 'Joe' });
-  const row = await db.recordBotUserSeen({ telegramUserId: 100, username: 'new_name', firstName: 'Joe' });
+  await db.recordBotUserSeen({ telegramUserId: 100, username: 'new_name', firstName: 'Joe' });
+  const row = fake.users.get(100);
   assert.equal(fake.users.size, 1);
   assert.equal(row.username, 'new_name');
   assert.equal(row.message_count, 2);
@@ -109,7 +115,8 @@ test('a username change updates the SAME id row (no duplicate)', async () => {
 test('a message with no username still stores the id and names', async () => {
   const fake = makeFakeDb();
   const db = loadBotUsersWith(fake.query);
-  const row = await db.recordBotUserSeen({ telegramUserId: 55, firstName: 'Silent', lastName: 'Sam' });
+  await db.recordBotUserSeen({ telegramUserId: 55, firstName: 'Silent', lastName: 'Sam' });
+  const row = fake.users.get(55);
   assert.equal(row.telegram_user_id, 55);
   assert.equal(row.username, null);
   assert.equal(row.first_name, 'Silent');
@@ -119,23 +126,23 @@ test('a later message keeps an existing username when the new update omits it (C
   const fake = makeFakeDb();
   const db = loadBotUsersWith(fake.query);
   await db.recordBotUserSeen({ telegramUserId: 100, username: 'joe' });
-  const row = await db.recordBotUserSeen({ telegramUserId: 100 });
-  assert.equal(row.username, 'joe');
+  await db.recordBotUserSeen({ telegramUserId: 100 });
+  assert.equal(fake.users.get(100).username, 'joe');
 });
 
 test('recordBotUserSeen ignores a null telegramUserId', async () => {
   const fake = makeFakeDb();
   const db = loadBotUsersWith(fake.query);
-  const row = await db.recordBotUserSeen({ telegramUserId: null, username: 'x' });
-  assert.equal(row, null);
+  const written = await db.recordBotUserSeen({ telegramUserId: null, username: 'x' });
+  assert.equal(written, false);
   assert.equal(fake.users.size, 0);
 });
 
 test('no message text is ever stored on a bot_users row', async () => {
   const fake = makeFakeDb();
   const db = loadBotUsersWith(fake.query);
-  const row = await db.recordBotUserSeen({ telegramUserId: 100, username: 'joe' });
-  const keys = Object.keys(row);
+  await db.recordBotUserSeen({ telegramUserId: 100, username: 'joe' });
+  const keys = Object.keys(fake.users.get(100));
   assert.ok(!keys.some((k) => /text|message_body|body|content/.test(k)),
     `unexpected text-like column: ${keys.join(',')}`);
 });
@@ -143,8 +150,8 @@ test('no message text is ever stored on a bot_users row', async () => {
 test('a bot user is recorded with is_bot true (rule: caller decides; storage is honest)', async () => {
   const fake = makeFakeDb();
   const db = loadBotUsersWith(fake.query);
-  const row = await db.recordBotUserSeen({ telegramUserId: 999, username: 'somebot', isBot: true });
-  assert.equal(row.is_bot, true);
+  await db.recordBotUserSeen({ telegramUserId: 999, username: 'somebot', isBot: true });
+  assert.equal(fake.users.get(999).is_bot, true);
 });
 
 test('listBotUsers builds a dispatch-team join and infers dispatch by username OR id', async () => {

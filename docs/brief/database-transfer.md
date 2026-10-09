@@ -109,3 +109,35 @@ per-capability switches are cached 10 minutes. Every admin save still clears
 those caches at once, the router clears the roster itself when it puts a
 provider on cooldown, and a success clears that provider's cached failure count
 just as `recordSuccess` does in the table.
+
+## What one driver message costs
+
+October 2026, measured: about **5.7 KB and ten statements per message**, at
+roughly ten thousand messages a day. Now a repeated message costs **one
+statement**: the `bot_users` upsert, which counts messages and reads nothing
+back. In production the chat-capture insert is a second. The rules that got it
+there, each pinned by `tests/perMessageQueries.test.js`:
+
+- **The `groups` row is cached for 5 minutes** (`database/groupRowCache.js`).
+  Every write to `groups` in this process clears it, and the cached copy is
+  only used when the chat's title is unchanged.
+- **Writes that would change nothing are not sent**
+  (`bot/handlers/captureWriteMemo.js`):
+  - `drivers` and `group_members` are re-written when a name changes, or
+    every 15 minutes. So `group_members.last_seen_at` is at most 15 minutes
+    behind; it only orders the admin's username dropdown.
+  - The two Telegram-id backfills retry every 6 hours.
+  - The group's `last_message_seen_at`, a diagnostic, refreshes every
+    5 minutes.
+  - A write that fails is tried again on the next message.
+- **The person behind a chat is remembered with the time**, so the identity
+  resolver's 10-minute window no longer re-reads the link on every message.
+- **The legacy home-time clarification lookup** runs only after the home-time
+  candidate filter.
+
+**The polls that nearly always find nothing:**
+- the scheduler asks for ids only;
+- the dispatch-ETA claim looks first with a one-column query, because it
+  describes all 18 columns even when it claims nothing;
+- the auto-reaction rules are cached 10 minutes, and every admin save clears
+  that cache.

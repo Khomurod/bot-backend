@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const config = require('../config/config');
 const { pool, query, ping } = require('./pool');
+const { forgetGroupRows } = require('./groupRowCache');
 const { runMigrations, checksum, MIGRATIONS_DIR } = require('./migrate');
 
 // Feature modules extracted from this file. db.js stays the compatibility
@@ -162,6 +163,7 @@ async function updateGroupBotAccess(groupId, memberStatus, checkedAtIso) {
      WHERE id = $1 RETURNING id`,
     [groupId, memberStatus || null, checkedAtIso]
   );
+  forgetGroupRows();
   return res.rows.length > 0;
 }
 
