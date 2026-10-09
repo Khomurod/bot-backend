@@ -315,3 +315,27 @@ roster hash, the sync stamp, and the run ledger's two. It used to send six plus
 one per call since midnight. Pinned by
 `tests/recruiterCallSyncQueries.test.js` and
 `tests/recruiterLeaderboardQueries.test.js`.
+
+## The admin Leads page
+
+The page polls `GET /api/leads` every 45 seconds while it is visible. Each poll
+read `SELECT *` of the newest 100 leads, about 28 KB, nearly always to find the
+list it already had: some 2 MB an hour per open tab. Now the list reads only
+the nine columns the page renders, and **an unchanged list is not read at
+all**. The route asks first for an md5 of exactly that page (same filter, order,
+limit and columns, built from the statement `listLeads` runs), sends it as a
+strong ETag, and answers 304 with no body when `If-None-Match` names it.
+`admin/src/api/leads.js` keeps the last list and ETag per source and answers a
+304 from memory. Measured on PostgreSQL 16 with 100 made-up leads shaped like
+the real rows (their whole-row page came to 31 KB): an idle poll now costs the
+database **110 bytes**, plus the ~0.5 KB the admin auth guard reads on every
+request, and the browser gets a response of about 150 bytes. A changed list
+costs that plus the narrow page (16 KB on the same rows).
+
+Two rules keep it correct. The fingerprint is read BEFORE the list, so a write
+landing between them leaves a newer list under an older ETag and the next poll
+re-reads it, never the reverse. And the route compares `If-None-Match` itself,
+not through Express's `req.fresh`: a browser whose script sets that header also
+sends `Cache-Control: no-cache`, which `req.fresh` always treats as stale, so it
+would never answer 304. Pinned by `tests/leadsRoutes.test.js`,
+`tests/leadsListFingerprintPg.test.js` and `admin/src/api/leads.test.jsx`.
