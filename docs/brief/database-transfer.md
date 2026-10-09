@@ -110,7 +110,10 @@ those caches at once, the router clears the roster itself when it puts a
 provider on cooldown, and a success clears that provider's cached failure count
 just as `recordSuccess` does in the table. The effective ELD settings
 (`getEldConfig`, on the location resolver's hot path) are cached 5 minutes
-instead of 30 seconds, and a save clears them at once.
+instead of 30 seconds, and a save clears them at once. So are the Finance
+Monitor's settings (`isFinanceChat` asks on every message in every chat): 10
+minutes instead of 30 seconds, cleared at once by `updateFinanceSettings`, the
+row's only writer.
 
 ## What one driver message costs
 

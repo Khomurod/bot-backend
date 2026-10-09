@@ -22,7 +22,14 @@
  */
 const { query } = require('./db');
 
-const CACHE_TTL_MS = 30_000;
+/**
+ * TEN MINUTES. `isFinanceChat` asks on every message in every chat, so at 30
+ * seconds the row was re-read some 2,400 times a day (October 2026, with the
+ * database's transfer allowance nearly spent). The only writer is
+ * `updateFinanceSettings` below, which clears the cache at once, so an
+ * operator's change still takes effect on the next message.
+ */
+const CACHE_TTL_MS = 10 * 60 * 1000;
 let cache = null;
 let cacheExpiresAt = 0;
 
@@ -194,5 +201,6 @@ module.exports = {
   isFinanceChat,
   updateFinanceSettings,
   invalidateCache,
+  CACHE_TTL_MS,
   __shapeForTests: shape,
 };
