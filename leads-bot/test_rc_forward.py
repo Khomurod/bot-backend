@@ -260,5 +260,28 @@ class TestRingcentralForwardAsync(unittest.IsolatedAsyncioTestCase):
                         register.assert_awaited_once_with("+15550004444", "x", 6001, "")
 
 
+
+class TestInboundSmsMirrorRegistration(unittest.IsolatedAsyncioTestCase):
+    """The mirror is what lets a recruiter's Telegram reply reach the candidate.
+
+    Every other test patches `_register_inbound_sms_mirror` away, so its own body
+    never ran: it named `TELEGRAM_CHAT_ID` without importing it, the NameError
+    was swallowed as a warning, no mirror was ever registered, and every reply to
+    a forwarded inbound SMS came back "No auto-SMS mirror found" from Node.
+    """
+
+    async def test_registers_the_mirror_against_the_leads_chat(self):
+        with patch.object(cc, "_request_register_sms_mirror", new_callable=AsyncMock) as register_api:
+            await cc._register_inbound_sms_mirror("+15550001111", "hello", 9001, "+15550002222")
+        register_api.assert_awaited_once_with(
+            telegram_chat_id="-1001234567890",
+            telegram_message_id=9001,
+            driver_phone="+15550001111",
+            sms_body="hello",
+            source_type="inbound_rc",
+            to_number="+15550002222",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

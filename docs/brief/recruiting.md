@@ -19,6 +19,14 @@ the same treatment home time got, and for the same reason.
   creates a Bitrix24 CRM lead (best-effort; CRM failure never blocks the
   Telegram post) → fires auto-SMS **from the assigned recruiter's number** →
   mirrors SMS replies two-way.
+- **An inbound SMS forwarded to Telegram registers its own reply mirror**
+  (`leads-bot/webhook/connect_command.py` `_register_inbound_sms_mirror`), and a
+  recruiter's reply to the forward goes back as SMS through it. Until October
+  2026 that function named `TELEGRAM_CHAT_ID` without importing it. The
+  NameError was swallowed as a warning, no mirror was ever registered, and every
+  such reply failed with "No auto-SMS mirror found". Every other test patched
+  the function away; `test_rc_forward.TestInboundSmsMirrorRegistration` runs
+  its real body.
 - **The lead's text comes from whoever Bitrix24 assigned it to.** Bitrix assigns
   asynchronously, so `facebookLeadSmsSender.js` re-reads `crm.lead.get` on a
   bounded poll (the *assignee wait* setting, default 25s at 5s intervals) —
