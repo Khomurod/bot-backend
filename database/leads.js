@@ -93,8 +93,9 @@ async function updateLeadSmsSender(id, { assignedById = null, fromNumber = null,
 // Both run the statement leadListPage() builds, so the fingerprint covers
 // exactly the rows, the order and the columns the list sends: a change to any
 // of them moves it, and a change to anything else (the raw Meta payload, the
-// Bitrix id, the SMS sender) costs nothing. Read the fingerprint BEFORE the
-// list: see server/routes/leadsRoutes.js.
+// Bitrix id, the SMS sender) costs nothing. When the list IS read, its
+// fingerprint comes back in the same statement, so the ETag sent with a list
+// always names that very list: see server/routes/leadsRoutes.js.
 
 /** What the page renders, and all the list sends. Add a column here, not in a second list. */
 const LEAD_LIST_COLUMNS = 'id, source, full_name, email, phone, job_title, message, bitrix_status, created_at';
@@ -117,25 +118,43 @@ function leadListPage(limit, source) {
   };
 }
 
-async function listLeads(limit = 100, source = null) {
-  const page = leadListPage(limit, source);
-  const res = await query(page.text, page.values);
-  return res.rows;
-}
+/** The md5 of a page, over the relation `page`. An empty page has one too. */
+const LEAD_LIST_FINGERPRINT =
+  `md5(COALESCE(json_agg(json_build_array(${LEAD_LIST_COLUMNS}) ORDER BY ${LEAD_LIST_ORDER})::text, ''))`;
 
 /**
- * An md5 of exactly what listLeads(limit, source) would return, in its order:
- * the only thing sent back is the 32 characters. An empty page has one too.
+ * The fingerprint of the page listLeadsWithFingerprint(limit, source) would
+ * return: the only thing sent back is the 32 characters.
  */
 async function getLeadListFingerprint(limit = 100, source = null) {
   const page = leadListPage(limit, source);
   const res = await query(
-    `SELECT md5(COALESCE(json_agg(json_build_array(${LEAD_LIST_COLUMNS}) ORDER BY ${LEAD_LIST_ORDER})::text, ''))
-            AS fingerprint
-       FROM (${page.text}) AS page`,
+    `SELECT ${LEAD_LIST_FINGERPRINT} AS fingerprint FROM (${page.text}) AS page`,
     page.values
   );
   return res.rows[0].fingerprint;
+}
+
+/**
+ * The page, and the fingerprint of exactly that page. ONE statement, so one
+ * snapshot: a write landing while the list is read cannot leave it under the
+ * fingerprint of another state. The LEFT JOIN keeps one row when the page is
+ * empty, to carry the fingerprint; that row has no lead in it.
+ */
+async function listLeadsWithFingerprint(limit = 100, source = null) {
+  const page = leadListPage(limit, source);
+  const res = await query(
+    `WITH page AS MATERIALIZED (${page.text}),
+          stamp AS (SELECT ${LEAD_LIST_FINGERPRINT} AS fingerprint FROM page)
+     SELECT stamp.fingerprint, page.*
+       FROM stamp LEFT JOIN page ON true
+      ORDER BY ${LEAD_LIST_ORDER}`,
+    page.values
+  );
+  const leads = res.rows
+    .filter((row) => row.id != null)
+    .map(({ fingerprint, ...lead }) => lead);
+  return { leads, fingerprint: res.rows[0].fingerprint };
 }
 
 
@@ -144,6 +163,6 @@ module.exports = {
   updateLeadBitrixResult,
   updateLeadSmsSender,
   getLeadBySourceExternalId,
-  listLeads,
   getLeadListFingerprint,
+  listLeadsWithFingerprint,
 };

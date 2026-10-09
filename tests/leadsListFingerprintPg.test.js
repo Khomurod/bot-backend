@@ -55,12 +55,33 @@ test('the list sends only what the page renders, newest first, a tie broken by i
     source: 'indeed', externalId: 'gm-d', fullName: 'Dee Example', createdAt: '2020-01-03 09:00:00',
   });
 
-  const rows = await leads.listLeads(100, null);
+  const listed = async (limit, source) => (await leads.listLeadsWithFingerprint(limit, source)).leads;
+  const rows = await listed(100, null);
 
   assert.deepEqual(rows.map((row) => row.id), [dee, cy, ben, ada], 'Ben and Cy share an instant: the higher id first');
   for (const row of rows) assert.deepEqual(Object.keys(row), PAGE_COLUMNS);
-  assert.deepEqual((await leads.listLeads(100, 'indeed')).map((row) => row.id), [dee]);
-  assert.deepEqual((await leads.listLeads(2, 'facebook')).map((row) => row.id), [cy, ben]);
+  assert.deepEqual((await listed(100, 'indeed')).map((row) => row.id), [dee]);
+  assert.deepEqual((await listed(2, 'facebook')).map((row) => row.id), [cy, ben]);
+});
+
+test('a list comes with the fingerprint of exactly that list', { skip: skipWithoutPg() }, async (t) => {
+  const { harness, leads } = await setup(t);
+  const same = async (limit, source, what) => {
+    const { leads: rows, fingerprint } = await leads.listLeadsWithFingerprint(limit, source);
+    assert.equal(fingerprint, await leads.getLeadListFingerprint(limit, source), what);
+    return rows;
+  };
+
+  assert.deepEqual(await same(100, null, 'an empty page'), [], 'an empty page sends no lead');
+  await addLead(harness, { externalId: 'lg-a', fullName: 'Ada Example', createdAt: '2020-01-01 09:00:00' });
+  await addLead(harness, { externalId: 'lg-b', fullName: 'Ben Example', createdAt: '2020-01-02 09:00:00' });
+  await addLead(harness, {
+    source: 'indeed', externalId: 'gm-c', fullName: 'Cy Example', createdAt: '2020-01-03 09:00:00',
+  });
+  assert.equal((await same(100, null, 'the full page')).length, 3);
+  assert.equal((await same(1, null, 'a one-lead page')).length, 1);
+  assert.equal((await same(100, 'facebook', 'a filtered page')).length, 2);
+  assert.deepEqual(await same(100, 'nowhere', 'a filter nothing matches'), []);
 });
 
 test('the fingerprint is one md5, and holds while nothing shown changes', { skip: skipWithoutPg() }, async (t) => {

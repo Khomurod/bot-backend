@@ -15,10 +15,11 @@
  *   `req.fresh` calls every such request stale, so a route built on it passes a
  *   test that leaves the header out and never answers 304 in production.
  *
- *   THE FINGERPRINT IS READ BEFORE THE LIST. A write landing between the two
- *   leaves a newer list under an older ETag, and the next poll re-reads it. The
- *   reverse order could pin a list missing that write under an ETag that keeps
- *   matching.
+ *   THE ETAG SENT WITH A LIST IS THAT LIST'S OWN. The data layer returns a list
+ *   together with its fingerprint, from one statement. Were the ETag the
+ *   fingerprint checked a moment earlier, a write landing in between, and
+ *   undone before the next poll, would leave the browser holding a list that a
+ *   304 then keeps confirming.
  */
 'use strict';
 
@@ -36,8 +37,12 @@ const LIST = [{
   bitrix_status: 'created', created_at: '2026-10-09T12:00:00.000Z',
 }];
 
-/** A data layer that records what the route asked it, in order. */
-function stubDb({ fingerprint = FINGERPRINT, fail = null } = {}) {
+/**
+ * A data layer that records what the route asked it, in order. `listedAs` is
+ * the fingerprint the list comes back with: the same as the checked one unless
+ * the state moved between the two reads.
+ */
+function stubDb({ fingerprint = FINGERPRINT, listedAs = fingerprint, fail = null } = {}) {
   const calls = [];
   return {
     calls,
@@ -46,10 +51,10 @@ function stubDb({ fingerprint = FINGERPRINT, fail = null } = {}) {
       if (fail === 'fingerprint') throw new Error('connection refused');
       return fingerprint;
     },
-    async listLeads(limit, source) {
+    async listLeadsWithFingerprint(limit, source) {
       calls.push(['list', limit, source]);
       if (fail === 'list') throw new Error('connection refused');
-      return LIST;
+      return { leads: LIST, fingerprint: listedAs };
     },
   };
 }
@@ -68,7 +73,7 @@ async function get(app, url, headers = {}) {
   } finally { server.close(); }
 }
 
-test('the first poll gets the list under a strong ETag, the fingerprint read first', async () => {
+test('the first poll gets the list under a strong ETag, after the cheap check', async () => {
   const db = stubDb();
 
   const res = await get(appWith(db), '/api/leads?t=1');
@@ -76,8 +81,23 @@ test('the first poll gets the list under a strong ETag, the fingerprint read fir
   assert.equal(res.status, 200);
   assert.equal(res.etag, ETAG, 'quoted and without W/: a strong validator');
   assert.deepEqual(JSON.parse(res.text), LIST);
-  assert.deepEqual(db.calls, [['fingerprint', 100, null], ['list', 100, null]],
-    'fingerprint BEFORE list: the other order can pin a stale list under a matching ETag');
+  assert.deepEqual(db.calls, [['fingerprint', 100, null], ['list', 100, null]]);
+});
+
+test('a list is sent under ITS OWN fingerprint, not the one checked before it', async () => {
+  // The state moved between the check and the read: a lead landed. Under the
+  // checked ETag, undoing that lead before the next poll would earn a 304 and
+  // leave the browser showing it.
+  const checked = 'a'.repeat(32);
+  const listed = 'b'.repeat(32);
+  const db = stubDb({ fingerprint: checked, listedAs: listed });
+
+  const res = await get(appWith(db), '/api/leads');
+
+  assert.equal(res.status, 200);
+  assert.equal(res.etag, `"${listed}"`);
+  const later = await get(appWith(stubDb({ fingerprint: checked })), '/api/leads', { 'If-None-Match': res.etag });
+  assert.equal(later.status, 200, 'back at the checked state, the list is sent again');
 });
 
 test('repeating that ETag gets 304, no body, and no list read', async () => {

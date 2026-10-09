@@ -8,10 +8,11 @@
  * poll then costs the database a 32-character answer instead of a page of
  * leads.
  *
- * THE FINGERPRINT IS READ BEFORE THE LIST. A write landing between the two
- * leaves a newer list under an older ETag, and the next poll re-reads it. The
- * reverse order could leave the browser holding a list that is missing that
- * write, under an ETag that keeps matching.
+ * THE ETAG SENT WITH A LIST IS THAT LIST'S OWN. A list that has to be sent
+ * comes back with its fingerprint from one statement, so one snapshot. Were
+ * the ETag the fingerprint checked a moment earlier, a write landing in
+ * between, and undone before the next poll, would leave the browser holding a
+ * list that a 304 then keeps confirming.
  *
  * Routes use their full paths; the router is mounted at the app root so
  * matching behavior is identical to the previous inline definition.
@@ -34,6 +35,9 @@ function ifNoneMatchNames(header, etag) {
   return header.split(',').some((tag) => tag.trim().replace(/^W\//, '') === etag);
 }
 
+/** A fingerprint as a strong ETag. */
+const etagOf = (fingerprint) => `"${fingerprint}"`;
+
 function createLeadsRoutes({ db, authMiddleware }) {
   const router = express.Router();
 
@@ -43,12 +47,12 @@ function createLeadsRoutes({ db, authMiddleware }) {
         ? req.query.source
         : null;
       const limit = req.query.limit ? Number.parseInt(req.query.limit, 10) : 100;
-      const etag = `"${await db.getLeadListFingerprint(limit, source)}"`;
-      if (ifNoneMatchNames(req.get('If-None-Match'), etag)) {
-        return res.status(304).set('ETag', etag).end();
+      const current = etagOf(await db.getLeadListFingerprint(limit, source));
+      if (ifNoneMatchNames(req.get('If-None-Match'), current)) {
+        return res.status(304).set('ETag', current).end();
       }
-      const leads = await db.listLeads(limit, source);
-      return res.set('ETag', etag).json(leads);
+      const { leads, fingerprint } = await db.listLeadsWithFingerprint(limit, source);
+      return res.set('ETag', etagOf(fingerprint)).json(leads);
     } catch (err) {
       console.error('[API] Error fetching leads:', err.message);
       return res.status(500).json({ error: 'Failed to fetch leads' });

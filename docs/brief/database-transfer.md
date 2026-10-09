@@ -360,10 +360,17 @@ database **110 bytes**, plus the ~0.5 KB the admin auth guard reads on every
 request, and the browser gets a response of about 150 bytes. A changed list
 costs that plus the narrow page (16 KB on the same rows).
 
-Two rules keep it correct. The fingerprint is read BEFORE the list, so a write
-landing between them leaves a newer list under an older ETag and the next poll
-re-reads it, never the reverse. And the route compares `If-None-Match` itself,
-not through Express's `req.fresh`: a browser whose script sets that header also
-sends `Cache-Control: no-cache`, which `req.fresh` always treats as stale, so it
-would never answer 304. Pinned by `tests/leadsRoutes.test.js`,
-`tests/leadsListFingerprintPg.test.js` and `admin/src/api/leads.test.jsx`.
+Two rules keep it correct.
+
+- **The ETag sent with a list is that list's own.** When the list has to be
+  read, it comes back with its fingerprint from one statement, so from one
+  snapshot. Suppose instead the ETag were the fingerprint checked a moment
+  earlier, a lead landed in between, and that lead was then undone before the
+  next poll. The 304s would keep confirming a list showing it.
+- **The route compares `If-None-Match` itself**, not through Express's
+  `req.fresh`. A browser whose script sets that header also sends
+  `Cache-Control: no-cache`, which `req.fresh` always treats as stale, so it
+  would never answer 304.
+
+Pinned by `tests/leadsRoutes.test.js`, `tests/leadsListFingerprintPg.test.js`
+and `admin/src/api/leads.test.jsx`.
