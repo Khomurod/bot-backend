@@ -94,7 +94,7 @@ return. A dashboard left open overnight therefore costs nothing.
 | Page | Interval | Notes |
 |---|---|---|
 | Live Locations | **2 min** | server snapshot cache is 90s, so several tabs collapse onto one build; the explicit Refresh button passes `force=true` |
-| Leads | 45s | new leads also arrive by Telegram, so the page is not the notification path |
+| Leads | 45s | new leads also arrive by Telegram, so the page is not the notification path; an unchanged list is answered 304 from a 32-character fingerprint and never read (§7b) |
 | Scheduled messages | 60s | was an ungated 30s `setInterval` that polled from background tabs forever |
 | Mileage bonuses | 8s | **only while a run is in progress** |
 | Recruiters leaderboard (public) | 60s | only in "today" mode; the server keeps the answer until a call, a recruiter or the KPI settings change (5 min at most), so a poll in between costs no query |

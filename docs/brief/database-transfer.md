@@ -117,6 +117,34 @@ row's only writer. In both, a read already out when a save clears the cache
 still answers its own caller but is not kept, so a save can never be undone
 for the length of the TTL by a read that raced it.
 
+## The move to the company's project (9 October 2026)
+
+The personal Supabase organisation had spent its allowance, and Supabase will
+not transfer a project out of an organisation in its grace period. So the
+database was **copied** instead: the manual **Copy database** workflow
+(`docs/database/README.md`) put it in a free project in the company's
+organisation, in the same region. The check matched every row of all 141
+tables, every sequence position and the structure. Both services, the main one
+and the Samsara poller, were then pointed at the copy, and from that moment the
+old project received no writes. It is kept, unused, as a fallback for a couple
+of weeks.
+
+What the move changed:
+
+- **The allowance started again from zero.** Economy mode is not set on the new
+  project, so every feature runs. Check *Usage → Egress* after a full day; if
+  it runs above ~150 MB a day, set `ECONOMY_MODE_UNTIL`.
+- **This meter's month came across with the data.** `database_transfer_usage`
+  is a table like any other, so October's row in the new project started at the
+  old project's estimate, 6.4 GB, more than the whole allowance. The main
+  service adopts that row on boot, and every flush adds to it. Until the row is
+  zeroed and the service restarted, the banner keeps warning about the old
+  project's month. The move's runbook includes that step.
+- **Row security is on for every table.** The new project switches it on for
+  each table it is given, including the 62 the old one left off. It does not
+  restrict the applications, which connect as the tables' owner, and a table a
+  later migration creates is treated the same way.
+
 ## What one driver message costs
 
 October 2026, measured: about **5.7 KB and ten statements per message**, at
@@ -315,3 +343,34 @@ roster hash, the sync stamp, and the run ledger's two. It used to send six plus
 one per call since midnight. Pinned by
 `tests/recruiterCallSyncQueries.test.js` and
 `tests/recruiterLeaderboardQueries.test.js`.
+
+## The admin Leads page
+
+The page polls `GET /api/leads` every 45 seconds while it is visible. Each poll
+read `SELECT *` of the newest 100 leads, about 28 KB, nearly always to find the
+list it already had: some 2 MB an hour per open tab. Now the list reads only
+the nine columns the page renders, and **an unchanged list is not read at
+all**. The route asks first for an md5 of exactly that page (same filter, order,
+limit and columns, built from the statement `listLeads` runs), sends it as a
+strong ETag, and answers 304 with no body when `If-None-Match` names it.
+`admin/src/api/leads.js` keeps the last list and ETag per source and answers a
+304 from memory. Measured on PostgreSQL 16 with 100 made-up leads shaped like
+the real rows (their whole-row page came to 31 KB): an idle poll now costs the
+database **110 bytes**, plus the ~0.5 KB the admin auth guard reads on every
+request, and the browser gets a response of about 150 bytes. A changed list
+costs that plus the narrow page (16 KB on the same rows).
+
+Two rules keep it correct.
+
+- **The ETag sent with a list is that list's own.** When the list has to be
+  read, it comes back with its fingerprint from one statement, so from one
+  snapshot. Suppose instead the ETag were the fingerprint checked a moment
+  earlier, a lead landed in between, and that lead was then undone before the
+  next poll. The 304s would keep confirming a list showing it.
+- **The route compares `If-None-Match` itself**, not through Express's
+  `req.fresh`. A browser whose script sets that header also sends
+  `Cache-Control: no-cache`, which `req.fresh` always treats as stale, so it
+  would never answer 304.
+
+Pinned by `tests/leadsRoutes.test.js`, `tests/leadsListFingerprintPg.test.js`
+and `admin/src/api/leads.test.jsx`.
