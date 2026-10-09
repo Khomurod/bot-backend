@@ -249,3 +249,71 @@ test('A DATABASE BLIP SWITCHES AI OFF FOR SECONDS, not for the whole ten-minute 
   assert.equal((await registry.getRoster()).available, true, 'the next read after the short window succeeds');
   assert.equal(reads.providers, 2);
 });
+
+test('A SUCCESS CLEARS THE CACHED FAILURE COUNT — the next failure is counted from zero', async () => {
+  const reads = stubAi({ providers: [PROVIDER({ consecutiveFailures: 3, cooldownReason: 'rate limited' })], listing: [] });
+  // eslint-disable-next-line global-require
+  const router = require(ROUTER);
+  // eslint-disable-next-line global-require
+  const registry = require(REGISTRY);
+  await router.runCapability({ userText: 'hi' });
+  const [p] = (await registry.getRoster()).providers;
+  assert.equal(p.consecutiveFailures, 0, 'what recordSuccess wrote is what the cache now says');
+  assert.equal(p.cooldownReason, null);
+  assert.equal(reads.providers, 1, 'applied in place, not by re-reading every provider');
+});
+
+// ─── the Dispatcher Board read ───────────────────────────────────────────────
+
+const POLLER = resolve('../services/dispatchBoard/poller.js');
+
+function loadPoller() {
+  for (const p of [POLLER, LEDGER, ECONOMY]) delete require.cache[p];
+  require.cache[RUNS] = { exports: { async recordRunStart() { return true; }, async recordRunFinish() { return true; } } };
+  // eslint-disable-next-line global-require
+  const poller = require(POLLER);
+  delete require.cache[RUNS];
+  return poller;
+}
+
+function boardDeps(results) {
+  const calls = { fetch: 0 };
+  const deps = {
+    settings: {
+      getBoardConfig: async () => ({
+        enabled: true, configured: true, baseUrl: 'https://script.example.test/exec', token: 't', pollIntervalSeconds: 300,
+      }),
+      recordPollOutcome: async () => null,
+    },
+    client: {
+      fetchBoard: async () => {
+        const ok = results[calls.fetch] !== 'fail';
+        calls.fetch += 1;
+        if (!ok) throw new Error('fetch failed');
+        return { json: { rows: [{ driver: 'ALPHA ONE', truck: '001' }] } };
+      },
+    },
+    store: { applyBoardPass: async () => ({ inserted: 1, updated: 0, unchanged: 0, skipped: 0, absent: 0 }) },
+  };
+  return { deps, calls };
+}
+
+const settle = () => new Promise((r) => setImmediate(r));
+
+test('IN ECONOMY MODE a failed Board read retries in five minutes — a good one waits four hours', async (t) => {
+  withEconomy(t, FUTURE());
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const poller = loadPoller();
+  const { deps, calls } = boardDeps(['fail', 'ok', 'ok']);
+  poller.startDispatchBoardPoller(deps);
+  t.after(() => poller.stopDispatchBoardPoller());
+
+  t.mock.timers.tick(poller.FIRST_TICK_DELAY_MS); await settle();
+  assert.equal(calls.fetch, 1, 'the first read failed');
+  t.mock.timers.tick(5 * 60 * 1000); await settle();
+  assert.equal(calls.fetch, 2, 'retried at the normal pace, not four hours later');
+  t.mock.timers.tick(5 * 60 * 1000); await settle();
+  assert.equal(calls.fetch, 2, 'after a good read it waits');
+  t.mock.timers.tick(4 * 60 * 60 * 1000 - 5 * 60 * 1000); await settle();
+  assert.equal(calls.fetch, 3, 'four hours after the good read');
+});

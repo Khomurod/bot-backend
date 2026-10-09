@@ -75,8 +75,8 @@ costly ones. The owner chose what keeps running; everything else stands down
 until a date.
 
 - **The switch is `ECONOMY_MODE_UNTIL`** (an ISO date-time, set in Render).
-  Unset, unreadable or past means OFF; more than 45 days away is read as a
-  typo and is OFF, loudly. There is **no default date in the code**, so a test
+  Unset, unreadable or past means OFF; more than 45 days after the process
+  started is read as a typo and is OFF, loudly, for the life of the process. There is **no default date in the code**, so a test
   run or a fresh deploy can never pause anything by accident. When the date
   passes, every held service starts by itself — no deploy, no restart.
 - **Kept running:** driver chats and home-time requests (with their
@@ -92,7 +92,7 @@ until a date.
   status, model maintenance, the terms watcher, the safety coach).
 - **Slowed, not stopped:** the Dispatcher Board is read every **4 hours** —
   the Sunday raise review refuses a Board older than 6 — and the home-in /
-  home-out pass follows it.
+  home-out pass follows it. A failed read retries at the normal pace.
 - **The health endpoint skips its `operations` block** and says
   `economy: { active, until }` instead; the cron pinger was building it about
   150 times a day.
@@ -106,5 +106,6 @@ idle connection 10 minutes with TCP keepalive instead of reopening it after
 the AI roster is cached 10 minutes and never reads the providers' model
 listings, whose ids are read separately and cached 12 hours; the
 per-capability switches are cached 10 minutes. Every admin save still clears
-those caches at once, and the router clears the roster itself when it puts a
-provider on cooldown.
+those caches at once, the router clears the roster itself when it puts a
+provider on cooldown, and a success clears that provider's cached failure count
+just as `recordSuccess` does in the table.

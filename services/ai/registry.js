@@ -12,7 +12,9 @@
  * Nothing is lost by the longer window, because nothing that changes a provider
  * waits for it — every admin save calls `invalidateRegistry()`, and so does the
  * router itself the moment it puts a provider on cooldown, so a failing
- * provider is not asked again on the strength of a stale roster.
+ * provider is not asked again on the strength of a stale roster. A success is
+ * applied to the cached row directly (`noteProviderSuccess`), since the
+ * cooldown ladder counts consecutive failures.
  *
  * THE MODEL LISTING IS CACHED SEPARATELY, for twelve hours: the ids a provider
  * last listed change only when a refresh or a Connect writes them, and both
@@ -53,6 +55,25 @@ function invalidateRegistry() {
 function invalidateProviders() {
   cache = null;
   cacheExpiresAt = 0;
+}
+
+/**
+ * What `aiProviders.recordSuccess` just wrote, applied to the cached roster so
+ * the next failure is counted from zero — not from a count the database has
+ * already cleared (the cooldown ladder grows with consecutive failures). Only
+ * this provider's entry changes, and only when there is something to clear.
+ */
+function noteProviderSuccess(providerKey) {
+  if (!cache?.providers) return;
+  const stale = cache.providers.some((p) => p.providerKey === providerKey
+    && ((p.consecutiveFailures || 0) > 0 || p.cooledUntil != null || p.cooldownReason != null));
+  if (!stale) return;
+  cache = {
+    ...cache,
+    providers: cache.providers.map((p) => (p.providerKey === providerKey
+      ? { ...p, consecutiveFailures: 0, cooledUntil: null, cooldownReason: null }
+      : p)),
+  };
 }
 
 /**
@@ -140,5 +161,5 @@ function nextRotation() {
 
 module.exports = {
   CACHE_TTL_MS, LISTING_TTL_MS, FAILED_READ_TTL_MS,
-  getRoster, invalidateRegistry, invalidateProviders, nextRotation, isAiAvailable,
+  getRoster, invalidateRegistry, invalidateProviders, noteProviderSuccess, nextRotation, isAiAvailable,
 };

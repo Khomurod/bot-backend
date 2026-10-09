@@ -74,6 +74,18 @@ test(`A DATE MORE THAN ${MAX_ECONOMY_DAYS} DAYS AWAY IS A TYPO — off, loudly`,
   assert.match(state.problem, /typo/);
 });
 
+test('A REJECTED TYPO STAYS REJECTED as its date approaches — judged from when the process started', () => {
+  // Measured from the moving clock, `2027-10-21` left in place would come of
+  // age forty-five days before it and quietly switch itself on.
+  const startedAt = NOW;
+  const later = Date.parse('2027-09-30T00:00:00Z'); // 21 days before the typo'd date
+  const state = resolveEconomy({ env: { ECONOMY_MODE_UNTIL: '2027-10-21T00:00:00Z' }, now: later, startedAt });
+  assert.equal(state.active, false);
+  assert.match(state.problem, /typo/);
+  assert.equal(resolveEconomy({ env: { ECONOMY_MODE_UNTIL: UNTIL }, now: NOW + 1000, startedAt }).active, true,
+    'a real date set at start is honoured as the clock moves');
+});
+
 // ─── the pause list ──────────────────────────────────────────────────────────
 
 test('every paused key and every slowed key is a real catalogue entry', () => {
@@ -111,6 +123,12 @@ test('THE BOARD IS READ EVERY FOUR HOURS — the Sunday raise review needs one u
   assert.equal(economyIntervalMs('scheduler', 60 * 1000, on), 60 * 1000, 'nothing else is slowed');
   assert.equal(economyIntervalMs('dispatch_board_poll', 8 * 60 * 60 * 1000, on), 8 * 60 * 60 * 1000,
     'never faster than an operator configured');
+});
+
+test('A SLOWED PASS THAT FAILED retries at its normal pace — the raise review refuses a failed read', () => {
+  const on = resolveEconomy({ env: { ECONOMY_MODE_UNTIL: UNTIL }, now: NOW });
+  assert.equal(economyIntervalMs('dispatch_board_poll', 5 * 60 * 1000, on, { failed: true }), 5 * 60 * 1000);
+  assert.equal(economyIntervalMs('dispatch_board_poll', 5 * 60 * 1000, on, { failed: false }), 4 * 60 * 60 * 1000);
 });
 
 // ─── holding a service, and letting it go ────────────────────────────────────

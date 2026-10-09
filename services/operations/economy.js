@@ -25,13 +25,19 @@ const {
 
 /** setTimeout's own ceiling; a longer wait is taken in steps. */
 const MAX_TIMER_MS = 2 ** 31 - 1;
+/**
+ * When this process started — the moment the environment was read. A date the
+ * typo rule rejects stays rejected for the life of the process, rather than
+ * being re-judged against a clock that keeps moving towards it.
+ */
+const PROCESS_STARTED_AT = Date.now();
 
 const deferred = [];
 let endTimer = null;
 
 /** The current answer, from the process environment and the clock. */
 function currentEconomy(now = Date.now()) {
-  return resolveEconomy({ env: process.env, now });
+  return resolveEconomy({ env: process.env, now, startedAt: PROCESS_STARTED_AT });
 }
 
 /** The sentence a paused pass reports instead of running, or null. */
@@ -39,9 +45,12 @@ function economyPauseReasonFor(serviceKey, now = Date.now()) {
   return economyPauseReason(serviceKey, currentEconomy(now));
 }
 
-/** A pass interval, slowed while economy mode is on (see ECONOMY_SLOW_INTERVAL_MS). */
-function economyInterval(serviceKey, normalMs, now = Date.now()) {
-  return economyIntervalMs(serviceKey, normalMs, currentEconomy(now));
+/**
+ * A pass interval, slowed while economy mode is on (see ECONOMY_SLOW_INTERVAL_MS)
+ * — unless the pass just failed, which retries at its normal pace.
+ */
+function economyInterval(serviceKey, normalMs, { failed = false, now = Date.now() } = {}) {
+  return economyIntervalMs(serviceKey, normalMs, currentEconomy(now), { failed });
 }
 
 /**

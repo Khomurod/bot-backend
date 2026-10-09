@@ -30,7 +30,7 @@ it on.**
 | unset, empty, `off` | OFF |
 | not a date | OFF, and the boot log says why |
 | in the past | OFF — economy mode has simply ended |
-| more than 45 days ahead | OFF, loudly — a typo (2027 for 2026) would otherwise pause half the application for a year while nothing that would notice is running |
+| more than 45 days after the process started | OFF, loudly, for the life of the process — a typo (2027 for 2026) would otherwise pause half the application for a year while nothing that would notice is running. Judged from the START, because judged from the moving clock the same typo would come of age 45 days before its date |
 | otherwise | ON until that instant |
 
 There is deliberately **no default date in the code**. A hidden date would make
@@ -88,7 +88,9 @@ configuration", never a failure.
 **Slowed:** the Dispatcher Board is read every **4 hours**, instead of every 5
 minutes. It is not paused, because the Sunday raise review refuses a Board
 older than 6 hours (`MAX_BOARD_AGE_HOURS`, `services/raise/boardRoster.js`), so
-stopping the read would stop the review. The home-in/home-out pass follows the
+stopping the read would stop the review. A **failed** read retries at the
+normal pace, because the review also refuses a Board whose last read failed,
+however recent the snapshot before it. The home-in/home-out pass follows the
 read. The Board's own configured interval still wins if it is slower.
 
 **The health endpoint** skips its `operations` block and reports
