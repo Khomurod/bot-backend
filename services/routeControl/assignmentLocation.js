@@ -4,7 +4,7 @@
  * Its own module because BOTH the monitor pass and the completion-only
  * reconciliation need it — neither should have to depend on the other.
  */
-const db = require('../../database/db');
+const rc = require('../../database/routeControl');
 const { resolveLiveLocationForGroupTitle } = require('../liveLocationResolver');
 
 /**
@@ -12,14 +12,17 @@ const { resolveLiveLocationForGroupTitle } = require('../liveLocationResolver');
  * the assignment's stored unit_number → the group's current driver-profile
  * unit → group-title parsing (compatibility fallback inside the resolver).
  * Never throws — a failure is returned so the caller can diagnose it.
+ *
+ * The profile is asked for its unit alone: this runs for every route with no
+ * stored unit on every monitor tick, and the unit is all it uses.
  */
 async function resolveAssignmentLocation(assignment) {
   let unitNumber = assignment?.unit_number != null && String(assignment.unit_number).trim()
     ? String(assignment.unit_number).trim() : null;
   if (!unitNumber && assignment?.group_id) {
     try {
-      const profile = await db.getDriverProfileByGroupId(assignment.group_id);
-      if (profile?.unit_number) unitNumber = String(profile.unit_number).trim() || null;
+      const profileUnit = await rc.getProfileUnitNumberForGroup(assignment.group_id);
+      if (profileUnit) unitNumber = String(profileUnit).trim() || null;
     } catch (_) { /* fall through to group-title parsing */ }
   }
   try {

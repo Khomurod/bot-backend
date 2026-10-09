@@ -8,6 +8,7 @@
 const rc = require('../../database/routeControl');
 const { classifyPoint } = require('../googleMapsUrlParser');
 const { destinationCoordFromPolyline } = require('./geometryService');
+const { loadRoutePolyline } = require('./routePolyline');
 const {
   DESTINATION_REPAIR_MAX_ATTEMPTS,
   DESTINATION_REPAIR_MIN_INTERVAL_MS,
@@ -18,7 +19,7 @@ async function applyRepair(assignment, { lat, lng, detail }) {
   await rc.setRouteAssignmentDestinationCoords(assignment.id, { lat, lng });
   assignment.destination_lat = lat;
   assignment.destination_lng = lng;
-  await rc.insertRouteMonitorEvent({
+  await rc.recordRouteMonitorEvent({
     assignmentId: assignment.id,
     eventType: 'destination_repaired',
     detail,
@@ -39,8 +40,9 @@ async function maybeRepairDestinationCoordinates(assignment) {
   // Free path #1: the computed route polyline already ends AT the final
   // destination. No network, no attempt budget — this is how existing routes
   // (address-only destination, geometry already computed) self-heal on the next
-  // monitor tick after deploy/restart.
-  const fromPolyline = destinationCoordFromPolyline(assignment?.encoded_polyline);
+  // monitor tick after deploy/restart. The monitor's rows arrive without the
+  // polyline; it is fetched here, the one time a route needs it for this.
+  const fromPolyline = destinationCoordFromPolyline(await loadRoutePolyline(assignment));
   if (fromPolyline) {
     return applyRepair(assignment, {
       lat: fromPolyline.lat,
@@ -89,13 +91,13 @@ async function maybeRepairDestinationCoordinates(assignment) {
         detail: `final destination geocoded from text (attempt ${attempts + 1}/${DESTINATION_REPAIR_MAX_ATTEMPTS})`,
       });
     }
-    await rc.insertRouteMonitorEvent({
+    await rc.recordRouteMonitorEvent({
       assignmentId: assignment.id,
       eventType: 'destination_repair_failed',
       detail: `geocoding returned no result (attempt ${attempts + 1}/${DESTINATION_REPAIR_MAX_ATTEMPTS})`,
     });
   } catch (err) {
-    await rc.insertRouteMonitorEvent({
+    await rc.recordRouteMonitorEvent({
       assignmentId: assignment.id,
       eventType: 'destination_repair_failed',
       detail: `geocoding failed: ${String(err.message || err).slice(0, 200)} (attempt ${attempts + 1}/${DESTINATION_REPAIR_MAX_ATTEMPTS})`,

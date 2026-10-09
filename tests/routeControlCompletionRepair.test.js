@@ -238,7 +238,7 @@ test('destination repair via geocoding is BOUNDED — never retried when attempt
       async geocodePlace() { geocodeCalls += 1; return null; },
     },
     '../database/routeControl.js': {
-      async listActiveAssignmentsForMonitor() {
+      async listMonitorPassAssignments() {
         return [{
           id: 37, status: 'active', tracking_status: 'active',
           encoded_polyline: null, destination_lat: null, destination_lng: null,
@@ -247,8 +247,8 @@ test('destination repair via geocoding is BOUNDED — never retried when attempt
           group_name: 'G', telegram_group_id: -1,
         }];
       },
-      async updateCompletionDiagnostics() { return null; },
-      async insertRouteMonitorEvent() { return null; },
+      async updateCompletionDiagnostics() {},
+      async recordRouteMonitorEvent() {},
       async recordDestinationRepairAttempt() { return null; },
       async setRouteAssignmentDestinationCoords() { throw new Error('must not store anything'); },
     },
@@ -271,7 +271,7 @@ test('destination repair geocodes text destinations (bounded) and stores the res
       async geocodePlace(text) { return text === 'Dallas, TX' ? { latitude: 40, longitude: -100 } : null; },
     },
     '../database/routeControl.js': {
-      async listActiveAssignmentsForMonitor() {
+      async listMonitorPassAssignments() {
         return [{
           id: 38, status: 'active', tracking_status: 'active',
           encoded_polyline: null, destination_lat: null, destination_lng: null,
@@ -280,10 +280,10 @@ test('destination repair geocodes text destinations (bounded) and stores the res
         }];
       },
       async recordDestinationRepairAttempt(id) { attempts += 1; return { id }; },
-      async setRouteAssignmentDestinationCoords(id, coords) { stored = { id, ...coords }; return { id }; },
-      async completeRouteAssignment(id, data) { return { id, status: 'completed', ...data }; },
-      async insertRouteMonitorEvent() { return null; },
-      async updateCompletionDiagnostics() { return null; },
+      async setRouteAssignmentDestinationCoords(id, coords) { stored = { id, ...coords }; },
+      async completeRouteAssignment(id) { return { id }; },
+      async recordRouteMonitorEvent() {},
+      async updateCompletionDiagnostics() {},
     },
   });
   const res = await svc.runRouteMonitorCheck(null, { now: NOW });

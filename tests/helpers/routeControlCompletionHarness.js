@@ -60,19 +60,23 @@ function loadServiceForCompletion({
       },
     },
     '../database/routeControl.js': {
+      // The monitor tick reads listMonitorPassAssignments; the admin
+      // "Run completion check now" still reads whole rows.
+      async listMonitorPassAssignments() { return assignments; },
       async listActiveAssignmentsForMonitor() { return assignments; },
+      async getProfileUnitNumberForGroup() { return null; },
       async completeRouteAssignment(id, data) {
         captured.completed.push({ id, data });
-        // 'active' → we won the race and get the row back; 'raced' → another tick
+        // 'active' → we won the race and get the id back; 'raced' → another tick
         // already completed it (WHERE status='active' matched nothing → null).
-        return completeReturns === 'active' ? { id, status: 'completed', ...data } : null;
+        return completeReturns === 'active' ? { id } : null;
       },
-      async insertRouteMonitorEvent(e) { captured.events.push(e); return e; },
-      async updateRouteAssignmentMonitorState(id, s) { captured.monitorStates.push({ id, s }); return null; },
-      async updateCompletionDiagnostics(id, d) { captured.diagnostics.push({ id, ...d }); return { id }; },
-      async setTrackingHoldReason() { return null; },
-      async activateTracking(id) { captured.activated.push(id); return { id }; },
-      async setRouteAssignmentDestinationCoords() { return null; },
+      async recordRouteMonitorEvent(e) { captured.events.push(e); },
+      async updateRouteAssignmentMonitorState(id, s) { captured.monitorStates.push({ id, s }); },
+      async updateCompletionDiagnostics(id, d) { captured.diagnostics.push({ id, ...d }); },
+      async setTrackingHoldReason() {},
+      async activatePendingTracking(id) { captured.activated.push(id); },
+      async setRouteAssignmentDestinationCoords() {},
       async recordDestinationRepairAttempt() { return null; },
       ...extraRcMock,
     },

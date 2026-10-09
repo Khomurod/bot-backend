@@ -216,3 +216,20 @@ tick before; after, 0.8–0.9 KB and 3–4 statements when it may not ask, and
 116 KB and 9 when it may — most of that the candidates' evidence and proposed
 change, which the questions are worded from. Pinned by
 `tests/askPassQueries.test.js` and `tests/askPassReadsPg.test.js`.
+
+**Route Control's monitor tick** runs every five minutes, economy mode or not.
+Measured against PostgreSQL it cost ~3.2 KB a tick with no route at all, plus
+~12.4 KB for every tracked route — ~0.9 MB a day idle and ~3.5 MB a day more
+per route. It re-read the GMaps settings whole on every tick (a 30-second cache
+never survives a 300-second tick), read every route whole, and echoed each
+write back with `RETURNING *`. Now an idle tick asks one one-column question;
+the pass names the columns it uses; the polyline is fetched only when an
+off-route check or a destination repair needs it, then remembered until it
+changes; writes read nothing back; and the settings are cached 10 minutes, a
+save clearing them. Measured the same way: ~0.5 KB a tick idle, ~1.7 KB with
+one tracked route, ~0.4 KB for each route after that (~130 KB, ~470 KB and
+~106 KB a day). The rules are in
+[`route-control.md`](../architecture/route-control.md), and
+`tests/routeMonitorQueries.test.js` holds the tick to them. Still read on a tick
+that has a route: the live-GPS resolver's ELD settings, which fold in the
+Samsara settings and are cached 5 minutes (see above).

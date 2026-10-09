@@ -7,20 +7,39 @@
  * is set plus its masked last-4. When the stored key is empty the effective
  * config falls back to the GOOGLE_MAPS_API_KEY environment variable so nothing
  * breaks before a key is entered in the panel.
+ *
+ * CACHED TEN MINUTES. Route Control reads this on every monitor tick, 300 s
+ * apart by default, so the 30-second cache this used to have never held
+ * anything from one tick to the next: the row was read whole on every tick, a
+ * fixed share of the database transfer allowance (October 2026). Five minutes
+ * would expire just as the next tick starts. A long cache is safe because the
+ * one writer at runtime, `updateGmapsSettings` (Settings → GMaps → Save),
+ * clears it, so a saved switch or interval applies on the very next tick.
+ * `generation` makes that true even when a read is in flight during a save:
+ * the slow read still answers its caller, but it may not put the old row back
+ * for ten minutes. The admin view always reads the row itself.
  */
 const { query } = require('./db');
 const config = require('../config/config');
 const { encryptText } = require('../lib/security/facebookCrypto');
 const { maskKey, createSafeDecrypt } = require('../lib/security/secretMasking');
 
-const CACHE_TTL_MS = 30_000;
+const CACHE_TTL_MS = 10 * 60 * 1000;
 let cache = null;
 let cacheExpiresAt = 0;
+let generation = 0;
 
 function invalidateCache() {
   cache = null;
   cacheExpiresAt = 0;
+  generation += 1;
 }
+
+/** Every column the effective config and the admin view read — never the migration markers. */
+const SETTINGS_COLUMNS = `enabled, server_api_key_encrypted, routes_api_enabled, roads_api_enabled,
+  geocoding_api_enabled, geocoding_api_key_encrypted, deviation_threshold_meters, check_interval_seconds,
+  off_route_grace_checks, warning_cooldown_minutes, stale_gps_minutes, parked_speed_mph,
+  route_completion_radius_miles, updated_at`;
 
 const safeDecrypt = createSafeDecrypt('[GMAPS SETTINGS]', 'a stored key');
 
@@ -41,7 +60,7 @@ const safeDecrypt = createSafeDecrypt('[GMAPS SETTINGS]', 'a stored key');
  * distinction that matters during an outage — route geometry and off-route warnings read as switched off.
  */
 async function getSettingsRow() {
-  const res = await query('SELECT * FROM gmaps_settings WHERE id = 1');
+  const res = await query(`SELECT ${SETTINGS_COLUMNS} FROM gmaps_settings WHERE id = 1`);
   return res.rows[0] || null;
 }
 
@@ -64,20 +83,13 @@ const COMPLETION_RADIUS_MIN = ROUTE_COMPLETION_RADIUS_MILES.MIN;
 const COMPLETION_RADIUS_MAX = ROUTE_COMPLETION_RADIUS_MILES.MAX;
 const COMPLETION_RADIUS_DEFAULT = ROUTE_COMPLETION_RADIUS_MILES.DEFAULT;
 
-/**
- * Effective, decrypted config for server-side use. DB values win; an empty DB
- * key falls back to GOOGLE_MAPS_API_KEY. Cached for CACHE_TTL_MS.
- */
-async function getGmapsConfig() {
-  const now = Date.now();
-  if (cache && now < cacheExpiresAt) return cache;
-
-  const row = await getSettingsRow();
+/** PURE. The effective, decrypted config one settings row describes. */
+function effectiveConfigFrom(row) {
   const dbServerKey = safeDecrypt(row?.server_api_key_encrypted);
   const serverApiKey = dbServerKey || config.googleMapsApiKey || '';
   const geocodingKey = safeDecrypt(row?.geocoding_api_key_encrypted) || serverApiKey;
 
-  const effective = {
+  return {
     enabled: row ? row.enabled === true : false,
     serverApiKey,
     serverApiKeyFromEnv: !dbServerKey && Boolean(serverApiKey),
@@ -96,17 +108,37 @@ async function getGmapsConfig() {
     ),
     updatedAt: row?.updated_at || null,
   };
+}
 
-  cache = effective;
-  cacheExpiresAt = now + CACHE_TTL_MS;
-  return effective;
+/**
+ * Read the row now and remember what it says — unless a save cleared the
+ * cache while this read was in flight, in which case what it saw is already
+ * out of date and is handed back without being kept.
+ */
+async function readSettings() {
+  const startedAt = generation;
+  const row = await getSettingsRow();
+  const effective = effectiveConfigFrom(row);
+  if (startedAt === generation) {
+    cache = effective;
+    cacheExpiresAt = Date.now() + CACHE_TTL_MS;
+  }
+  return { row, effective };
+}
+
+/**
+ * Effective, decrypted config for server-side use. DB values win; an empty DB
+ * key falls back to GOOGLE_MAPS_API_KEY. Cached for CACHE_TTL_MS.
+ */
+async function getGmapsConfig() {
+  if (cache && Date.now() < cacheExpiresAt) return cache;
+  return (await readSettings()).effective;
 }
 
 
-/** Masked admin view — never returns the raw key. */
+/** Masked admin view — never returns the raw key, and never a cached copy. */
 async function getGmapsSettingsForAdmin() {
-  const cfg = await getGmapsConfig();
-  const row = await getSettingsRow();
+  const { row, effective: cfg } = await readSettings();
   return {
     enabled: cfg.enabled,
     serverApiKeySet: Boolean(cfg.serverApiKey),

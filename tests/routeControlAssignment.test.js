@@ -214,7 +214,7 @@ test('runRouteMonitorCheck activates a pending route once its message was sent',
       },
     },
     '../database/routeControl.js': {
-      async listActiveAssignmentsForMonitor() {
+      async listMonitorPassAssignments() {
         return [{
           id: 11, status: 'active', tracking_status: 'pending',
           tracking_start_mode: 'after_message_sent',
@@ -222,11 +222,11 @@ test('runRouteMonitorCheck activates a pending route once its message was sent',
           group_name: 'G', telegram_group_id: -1,
         }];
       },
-      async activateTracking(id) { activatedId = id; return { id }; },
+      async activatePendingTracking(id) { activatedId = id; },
       async setTrackingHoldReason() { throw new Error('should not be called'); },
-      async insertRouteMonitorEvent(e) { events.push(e); return e; },
-      async updateRouteAssignmentMonitorState() { return null; },
-      async updateCompletionDiagnostics() { return null; },
+      async recordRouteMonitorEvent(e) { events.push(e); },
+      async updateRouteAssignmentMonitorState() {},
+      async updateCompletionDiagnostics() {},
     },
   });
   const res = await svc.runRouteMonitorCheck(null, { now: NOW });
@@ -239,18 +239,18 @@ test('runRouteMonitorCheck records a hold-reason event once, not on every tick',
   const events = [];
   let holdSet = null;
   const rcMock = {
-    async listActiveAssignmentsForMonitor() {
+    async listMonitorPassAssignments() {
       return [{
         id: 12, status: 'active', tracking_status: 'pending',
         tracking_start_mode: 'scheduled_time', tracking_start_at: '2027-01-01T00:00:00Z',
         tracking_hold_reason: null, group_name: 'G', telegram_group_id: -1,
       }];
     },
-    async activateTracking() { throw new Error('should not activate'); },
-    async setTrackingHoldReason(id, reason) { holdSet = { id, reason }; return { id }; },
-    async insertRouteMonitorEvent(e) { events.push(e); return e; },
-    async updateRouteAssignmentMonitorState() { return null; },
-    async updateCompletionDiagnostics() { return null; },
+    async activatePendingTracking() { throw new Error('should not activate'); },
+    async setTrackingHoldReason(id, reason) { holdSet = { id, reason }; },
+    async recordRouteMonitorEvent(e) { events.push(e); },
+    async updateRouteAssignmentMonitorState() {},
+    async updateCompletionDiagnostics() {},
   };
   const gmapsMock = {
     async getGmapsConfig() {
@@ -274,7 +274,7 @@ test('runRouteMonitorCheck records a hold-reason event once, not on every tick',
     '../database/gmapsSettings.js': gmapsMock,
     '../database/routeControl.js': {
       ...rcMock,
-      async listActiveAssignmentsForMonitor() {
+      async listMonitorPassAssignments() {
         return [{
           id: 12, status: 'active', tracking_status: 'pending',
           tracking_start_mode: 'scheduled_time', tracking_start_at: '2027-01-01T00:00:00Z',
@@ -306,7 +306,7 @@ test('runRouteMonitorCheck activates a start-location route when GPS enters the 
       },
     },
     '../database/routeControl.js': {
-      async listActiveAssignmentsForMonitor() {
+      async listMonitorPassAssignments() {
         return [{
           id: 13, status: 'active', tracking_status: 'pending',
           tracking_start_mode: 'start_location',
@@ -314,11 +314,11 @@ test('runRouteMonitorCheck activates a start-location route when GPS enters the 
           group_name: 'G', telegram_group_id: -1,
         }];
       },
-      async activateTracking(id) { activatedId = id; return { id }; },
-      async setTrackingHoldReason() { return null; },
-      async insertRouteMonitorEvent(e) { events.push(e); return e; },
-      async updateRouteAssignmentMonitorState() { return null; },
-      async updateCompletionDiagnostics() { return null; },
+      async activatePendingTracking(id) { activatedId = id; },
+      async setTrackingHoldReason() {},
+      async recordRouteMonitorEvent(e) { events.push(e); },
+      async updateRouteAssignmentMonitorState() {},
+      async updateCompletionDiagnostics() {},
     },
   });
   const res = await svc.runRouteMonitorCheck(null, { now: NOW });
