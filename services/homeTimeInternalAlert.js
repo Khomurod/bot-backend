@@ -238,10 +238,13 @@ async function notifyInternalClarification(telegram, {
  * When no internal group is configured nothing is claimed at all, so pending
  * alerts keep their full attempt budget and deliver as soon as one is set.
  *
+ * `settings` is the tick's own read, handed on so it is not read twice; a
+ * caller with none of its own (undefined) has it read here.
+ *
  * @returns {{ configured:boolean, claimed:number, sent:number, failed:number }}
  */
-async function runInternalAlertSweep(telegram, { nowIso = null, limit = 10 } = {}) {
-  const settings = await ht.getHomeTimeSettings();
+async function runInternalAlertSweep(telegram, { nowIso = null, limit = 10, settings: given } = {}) {
+  const settings = given === undefined ? await ht.getHomeTimeSweepSettings() : given;
   if (!settings || !settings.enabled) {
     return {
       configured: false, claimed: 0, sent: 0, failed: 0, reason: 'tracking_disabled',

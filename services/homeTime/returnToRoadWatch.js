@@ -12,7 +12,8 @@
  * locally — the same shape the Live Locations map uses — so watching sixteen
  * drivers costs the same two requests as watching one. It deliberately does not
  * build the map's full snapshot, which also geocodes and computes ETAs that
- * nothing here reads.
+ * nothing here reads. The database is metered too — one narrow read of each
+ * driver's watch per pass; database/homeTime/returnWatch.js says what, and why.
  *
  * IT DECIDES NOTHING BY ITSELF. It records what it saw and files a finding:
  *   high    → `home_time.returned_to_road`, which the correction registry may
@@ -184,9 +185,8 @@ async function runReturnToRoadCheck({ now = Date.now(), deps = defaultDeps(), op
     const drivers = await deps.watch.listDriversAtHome();
     summary.watched = drivers.length;
     // Anyone no longer home stops being watched — including a driver a person
-    // moved by hand while this job was asleep.
-    const cleared = await deps.watch.clearStaleWatches(drivers.map((d) => d.groupId));
-    summary.cleared = cleared.length;
+    // moved by hand while this job was asleep. A count; nothing is read back.
+    summary.cleared = await deps.watch.clearStaleWatches(drivers.map((d) => d.groupId));
     if (!drivers.length) {
       // The whole point of asking the database first: no driver at home means
       // no Samsara call, no Datatruck scan, no cost.
@@ -331,13 +331,13 @@ async function runReturnToRoadCheck({ now = Date.now(), deps = defaultDeps(), op
 
 async function checkOneDriver(driver, { fleets, byUnit, byDriver, nowIso, now, deps, options }) {
   const unit = unitFor(driver);
-  await deps.watch.ensureWatch({
+  // Creates the watch on a first look, and is this driver's ONE read of it.
+  const watch = await deps.watch.ensureWatch({
     groupId: driver.groupId,
     personId: driver.personId,
     roadHistoryId: driver.roadHistoryId,
     homeSince: driver.homeSince,
   });
-  const watch = await deps.watch.getWatch(driver.groupId);
 
   // Where the truck is. An ambiguous unit resolves to nothing on purpose —
   // plotting the wrong truck is worse than plotting none.
@@ -411,7 +411,7 @@ async function checkOneDriver(driver, { fleets, byUnit, byDriver, nowIso, now, d
     if (reviewed) verdict = reviewed;
   }
 
-  await deps.watch.recordObservation(driver.groupId, {
+  await deps.watch.recordVerdict(driver.groupId, {
     checkedAt: nowIso,
     confidence: verdict.confidence,
     score: verdict.score,

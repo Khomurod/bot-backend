@@ -69,10 +69,13 @@ let telegramClient = null;
  * legible; it is not a notice, because "the dates a driver asked for have gone
  * by" is a calendar fact, not an operational problem.
  *
+ * `settings` is the tick's own read, handed on so it is not read twice; a
+ * caller with none of its own (undefined) has it read here.
+ *
  * @returns {{ enabled:boolean, scanned:number, closed:number }}
  */
-async function runHomeTimeCleanupSweep(telegram, { nowIso } = {}) {
-  const settings = await ht.getHomeTimeSettings();
+async function runHomeTimeCleanupSweep(telegram, { nowIso, settings: given } = {}) {
+  const settings = given === undefined ? await ht.getHomeTimeSweepSettings() : given;
   if (!settings || !settings.enabled) return { enabled: false, scanned: 0, closed: 0 };
   const { sweepOutdatedHomeTimeRequests } = require('./homeTimeApproval');
   const todayIso = (nowIso ? DateTime.fromISO(nowIso) : DateTime.now())
@@ -113,9 +116,16 @@ async function tick() {
     // recorded `ok` — including when Home Time is switched off entirely, where
     // the honest ledger state is `blocked`. A feature nobody has enabled must
     // not look identical to one chasing reminders every five minutes.
-    await withRunRecord('home_time_reminders', async () => reminderRunSummary(
-      await runHomeTimeCleanupSweep(telegramClient),
-    ));
+    //
+    // THE SETTINGS ARE READ ONCE A TICK, here, and handed to both sweeps —
+    // each used to read the whole row for itself. Inside the ledger callback
+    // so a failed read is still this run's recorded error, and still ends the
+    // tick, exactly as it did when the cleanup sweep read them itself.
+    let settings;
+    await withRunRecord('home_time_reminders', async () => {
+      settings = await ht.getHomeTimeSweepSettings();
+      return reminderRunSummary(await runHomeTimeCleanupSweep(telegramClient, { settings }));
+    });
     // Rides this service's cadence but is a SEPARATE responsibility: the two
     // sweeps above chase DRIVERS, this one chases STAFF. Required lazily so the
     // reminder tests can load this module without the alert outbox. Isolated in
@@ -123,7 +133,7 @@ async function tick() {
     // reminders (or vice versa).
     try {
       const { runInternalAlertSweep } = require('./homeTimeInternalAlert');
-      await runInternalAlertSweep(telegramClient);
+      await runInternalAlertSweep(telegramClient, { settings });
     } catch (alertErr) {
       console.error('[HOME-TIME-INTERNAL] sweep error:', alertErr.message);
     }

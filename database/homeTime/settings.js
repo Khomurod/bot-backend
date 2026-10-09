@@ -14,6 +14,22 @@ async function getHomeTimeSettings() {
   return res.rows[0] || null;
 }
 
+/**
+ * The two values the five-minute housekeeping tick reads — whether Home Time
+ * is on, and where staff alerts go — in the same shape as the full row, so a
+ * caller reads `settings.enabled` either way.
+ *
+ * The tick reads them ONCE and hands them to both of its sweeps. It used to
+ * read the whole eleven-column row in each, twice a tick, every five minutes,
+ * on a database that bills every byte it sends back.
+ */
+async function getHomeTimeSweepSettings() {
+  const res = await query(
+    'SELECT enabled, internal_clarification_group_id FROM home_time_settings WHERE id = 1'
+  );
+  return res.rows[0] || null;
+}
+
 const SETTINGS_COLUMNS = [
   'enabled', 'road_allowance_weeks', 'home_allowance_days', 'bonus_per_week',
   'reminder_first_hours', 'reminder_second_hours', 'completed_notify_group_id',
@@ -63,6 +79,7 @@ async function updateBotAccessSettings({ superAdminTelegramId, superAdminLabel }
 
 module.exports = {
   getHomeTimeSettings,
+  getHomeTimeSweepSettings,
   updateHomeTimeSettings,
   getBotAccessSettings,
   updateBotAccessSettings,

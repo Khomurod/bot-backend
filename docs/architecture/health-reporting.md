@@ -298,8 +298,7 @@ healthy and it is not broken**: `statusFromSummary` reads `blocked`, and a
 summary that never mentions it makes a feature nobody has enabled look exactly
 like one running every five minutes. A callback that returns `undefined` cannot
 mention it at all, which is why `home_time_reminders` now builds its summary in
-a pure `reminderRunSummary(reminders, expiry)` the tests can drive without the
-timer.
+a pure `reminderRunSummary(cleanup)` the tests can drive without the timer.
 
 The rule, now applied to all seven: **the pass decides whether its errors amount
 to a failure and says so in `error`.** `statusFromSummary` stays deliberately

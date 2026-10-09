@@ -65,16 +65,49 @@ async function enqueueInternalAlert(id, { nowIso = null } = {}) {
 }
 
 /**
+ * The alerts a sweep may take — ONE predicate, read by the cheap look and by
+ * the claim alike, so the two cannot disagree about what is due. `$1` is
+ * `nowIso` in both statements.
+ */
+const DUE_ALERT_PREDICATE = `internal_alert_state = 'pending'
+           AND (internal_alert_next_attempt_at IS NULL
+                OR internal_alert_next_attempt_at <= COALESCE($1::timestamptz, NOW()))
+           AND (internal_alert_claimed_until IS NULL
+                OR internal_alert_claimed_until <= COALESCE($1::timestamptz, NOW()))`;
+
+/**
+ * What `deliverClaimedAlert` reads from a claimed row (services/
+ * homeTimeInternalAlert.js): the id and the attempt count it logs, and what
+ * `renderAlertForRequest` writes into the alert. Nothing else of the 46.
+ */
+const ALERT_SENDER_COLUMNS = [
+  'id', 'internal_alert_attempts', 'driver_name', 'unit_number', 'telegram_group_id',
+  'root_chat_id', 'root_message_id', 'detected_intent', 'home_from', 'return_to_road_date',
+  'missing_fields', 'ai_reasoning',
+];
+
+/**
  * Claim up to `limit` due alerts for THIS worker.
  *
  * `FOR UPDATE SKIP LOCKED` makes concurrent workers take disjoint sets within
  * the statement; the `claimed_until` lease extends that guarantee across
  * transactions and processes. Attempts are incremented at CLAIM time (not at
  * failure) so a crash-loop is still bounded by MAX_ATTEMPTS.
+ *
+ * A ONE-COLUMN LOOK FIRST. This runs on every five-minute tick, economy mode
+ * or not, and nearly always claims nothing — but an `UPDATE … RETURNING r.*`
+ * describes all 46 columns of `home_time_requests` even when it returns no
+ * row. Same pattern as `claimDueDispatchEtaUpdates`. An alert that falls due
+ * between the look and the claim is simply taken on the next tick.
  */
 async function claimDueInternalAlerts({
   nowIso = null, limit = 10, leaseSeconds = DEFAULT_LEASE_SECONDS,
 } = {}) {
+  const anyDue = await query(
+    `SELECT 1 FROM home_time_requests WHERE ${DUE_ALERT_PREDICATE} LIMIT 1`,
+    [nowIso]
+  );
+  if (!anyDue.rows.length) return [];
   const res = await query(
     `UPDATE home_time_requests r
         SET internal_alert_claimed_until = COALESCE($1::timestamptz, NOW())
@@ -82,16 +115,12 @@ async function claimDueInternalAlerts({
             internal_alert_attempts = r.internal_alert_attempts + 1
       WHERE r.id IN (
         SELECT id FROM home_time_requests
-         WHERE internal_alert_state = 'pending'
-           AND (internal_alert_next_attempt_at IS NULL
-                OR internal_alert_next_attempt_at <= COALESCE($1::timestamptz, NOW()))
-           AND (internal_alert_claimed_until IS NULL
-                OR internal_alert_claimed_until <= COALESCE($1::timestamptz, NOW()))
+         WHERE ${DUE_ALERT_PREDICATE}
          ORDER BY internal_alert_next_attempt_at NULLS FIRST, id
          LIMIT $3
          FOR UPDATE SKIP LOCKED
       )
-      RETURNING r.*`,
+      RETURNING ${ALERT_SENDER_COLUMNS.map((c) => `r.${c}`).join(', ')}`,
     [nowIso, String(leaseSeconds), limit]
   );
   return res.rows;

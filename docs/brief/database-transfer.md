@@ -233,3 +233,38 @@ one tracked route, ~0.4 KB for each route after that (~130 KB, ~470 KB and
 `tests/routeMonitorQueries.test.js` holds the tick to them. Still read on a tick
 that has a route: the live-GPS resolver's ELD settings, which fold in the
 Samsara settings and are cached 5 minutes (see above).
+
+## The two home-time passes that never stand down
+
+Both keep running in economy mode, so both were made cheap instead (October
+2026; figures measured on a seeded local copy, old code against new).
+
+**The return-to-road watch** (every 12 minutes) received the whole 24-column
+watch row FOUR times for each driver at home — the create echoed it, a
+`SELECT *` read it, and both observation writes echoed it — every copy
+carrying a `last_signals` JSON the pass never reads back; the audit put it at
+~12 MB a day. Now the create IS the one read, returning the eight values the
+score uses; the sighting write echoes only the four it can change, still
+computed by the database, because the moving-sighting counter's guards have
+been wrong twice in ways only the real statement showed; the verdict write
+returns nothing. The at-home list stopped reading two columns nothing used,
+and the tidy-up counts what it drops. Eight drivers at home: 48 KB → 6.4 KB a
+pass (~0.8 MB a day), and it no longer grows with the stored signals. The
+correction still reads the whole row under its own lock; it runs only when a
+return is applied, so it was left alone. `tests/returnToRoadPassQueries.test.js`,
+`tests/homeTimeReturnWatchPg.test.js`.
+
+**The home-time housekeeping tick** (every 5 minutes) read the whole settings
+row twice, once per sweep; all 46 columns of every open request, to judge each
+on five dates — and legacy `pending` rows with no dates stay open, so that was
+every tick; and claimed staff alerts with an `UPDATE … RETURNING r.*`, which
+describes all 46 columns even when nothing is due — nearly always. Now the
+tick reads `enabled` and the staff chat ONCE and hands them to both sweeps
+(inside the run-ledger callback, so a failed read is still that run's error);
+the open requests come back as the six columns the closing rule reads; and the
+claim looks first with `SELECT 1 … LIMIT 1` under the SAME predicate, then
+returns only the twelve columns the sender reads. Idle it costs ~0.6 KB plus
+~70 B per open request, from ~4.6 KB plus ~535 B: with ten open requests,
+~2.9 MB a day → ~0.4 MB. Nothing is sent at a different time; the one
+difference is that a settings save landing DURING a tick counts from the next
+tick. `tests/homeTimeTickQueries.test.js`, `tests/homeTimeHousekeepingPg.test.js`.

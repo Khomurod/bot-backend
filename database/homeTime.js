@@ -46,6 +46,7 @@ module.exports = {
 
   // Settings rows
   getHomeTimeSettings: settings.getHomeTimeSettings,
+  getHomeTimeSweepSettings: settings.getHomeTimeSweepSettings,
   updateHomeTimeSettings: settings.updateHomeTimeSettings,
   getBotAccessSettings: settings.getBotAccessSettings,
   updateBotAccessSettings: settings.updateBotAccessSettings,

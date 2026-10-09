@@ -301,7 +301,8 @@ marks the stay closed.
 - **It costs nothing when nobody is home.** A tick asks the database first; with
   no driver at home it makes no provider calls at all. With sixteen it makes the
   same two requests as for one — one fleet fetch, one order window — and matches
-  locally.
+  locally. The database is metered too: each driver costs one narrow read of
+  its watch row, never the whole row (§7b, `database-transfer.md`).
 - **A completed request is `recorded`, not `pending`.** Nothing waits for a
   decision, so nothing sits in a status that means "waiting for one". Historical
   `approved` / `denied` rows are untouched and still read: `homeTimeEfficiency`

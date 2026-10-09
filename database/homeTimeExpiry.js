@@ -18,12 +18,18 @@ const { OPEN_REQUEST_STATUSES } = require('./homeTime/requests');
 /**
  * Every still-open request (a posted card awaiting a decision, or any awaiting /
  * unanswered clarification) — the candidate set for the outdated-request sweep.
- * Oldest first. Returns raw home_time_requests rows (all columns, so the caller
- * can judge staleness and rebuild the Telegram card without a second read).
+ * Oldest first.
+ *
+ * ONLY WHAT THE SWEEP READS: the five values `isHomeTimeRequestOutdated` judges
+ * a request on, and the id it closes by. The Telegram card is rebuilt from the
+ * row the CLOSE returns, never from this one. This runs every five minutes,
+ * economy mode or not, and it used to return all 46 columns of every open row
+ * — legacy `pending` rows with no dates stay open, so that was every tick.
  */
 async function listOpenHomeTimeRequests() {
   const res = await query(
-    `SELECT * FROM home_time_requests
+    `SELECT id, status, home_from, home_to, return_to_road_date, requested_at
+       FROM home_time_requests
       WHERE status = ANY($1)
       ORDER BY requested_at ASC`,
     [OPEN_REQUEST_STATUSES]
