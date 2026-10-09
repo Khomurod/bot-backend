@@ -144,7 +144,10 @@ jobs:
       postgres:
         # UTF8 + a C locale template: database/schema.sql contains box-drawing
         # characters in comments that a non-UTF8 cluster cannot store.
-        image: postgres:16
+        # The official image through Google's mirror of Docker Hub: Docker Hub
+        # itself refused this job's anonymous pull ("toomanyrequests") on
+        # 9 October 2026, failing the job before any test ran.
+        image: mirror.gcr.io/library/postgres:16
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
