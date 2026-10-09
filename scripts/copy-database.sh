@@ -170,6 +170,8 @@ old_secured="$(q "$OLD" "$SECURED")"
 pg_restore --list "$work/db.dump" \
   | grep -vE '^[0-9]+; [0-9]+ [0-9]+ (SCHEMA - public|COMMENT - SCHEMA public) ' > "$work/restore.list"
 pg_restore --use-list="$work/restore.list" --no-owner --no-privileges --file="$work/restore.sql" "$work/db.dump"
+# Tools from 17 on set transaction_timeout, which an older target does not know.
+if (( new_version / 10000 < 17 )); then sed -i '/^SET transaction_timeout = 0;$/d' "$work/restore.sql"; fi
 
 # Run last in the restore's transaction: the target's snapshot must equal the
 # source's, or the whole copy is rolled back.

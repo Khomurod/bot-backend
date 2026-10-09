@@ -35,11 +35,8 @@ jobs:
     name: Copy OLD_DATABASE_URL into NEW_DATABASE_URL
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    # The client tools must be at least the servers' major version.
-    container: postgres:17
     steps:
       - name: Refuse without confirmation
-        shell: bash
         env:
           CONFIRM: ${{ inputs.confirm }}
         run: |
@@ -48,12 +45,25 @@ jobs:
             exit 1
           fi
 
+      # The client tools must be at least the servers' major version (17); the
+      # runner ships 16. They come from PostgreSQL's own apt repository, not a
+      # container image: Docker Hub refuses anonymous pulls from busy runners.
+      - name: Install the PostgreSQL 17 client
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+            https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-17
+          echo /usr/lib/postgresql/17/bin >> "$GITHUB_PATH"
+
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
 
       - name: Copy and verify
-        shell: bash
         env:
           OLD_DATABASE_URL: ${{ secrets.OLD_DATABASE_URL }}
           NEW_DATABASE_URL: ${{ secrets.NEW_DATABASE_URL }}
