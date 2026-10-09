@@ -16,12 +16,18 @@
 # database belongs to the host, and the production one had nothing of ours
 # there (checked: no auth users, no storage objects, no scheduled jobs).
 #
-# The restore is ONE transaction. It lands whole or not at all, so a failed
-# run leaves the target empty and can simply be run again.
+# HOW IT IS CHECKED. A snapshot — a hash of every row of every table, every
+# sequence's position, and the structure — is taken of the source before and
+# after it is read. If they differ, something wrote to it meanwhile, and the
+# copy stops before writing anything. The same snapshot is taken of the target
+# INSIDE the restore's one transaction, which commits only if it matches. So a
+# run either leaves an exact copy, or leaves the target empty and can simply
+# be run again. Rows are hashed where they are: only the hashes cross the
+# network.
 #
 # The repository is public, and so is the Actions log. Nothing here prints a
-# row, a row count, a size, or any part of a connection string: tables whose
-# rows differ are named, and their counts are not shown.
+# row, a row count, a size, or any part of a connection string: what differs
+# is named, never counted.
 #
 # Needs the PostgreSQL client tools of the servers' major version or newer.
 set -euo pipefail
@@ -29,7 +35,8 @@ set -euo pipefail
 fail() { echo "::error::$*" >&2; exit 1; }
 
 # GitHub masks a secret's whole value, not its parts, and the addresses are
-# rewritten below. Mask every piece that could identify or open the database.
+# rewritten below. Mask every piece that could identify or open the database,
+# including the server's name and addresses, which a connection error quotes.
 hide() {
   if [ "${GITHUB_ACTIONS:-}" = true ] && [ -n "$1" ]; then echo "::add-mask::$1"; fi
 }
@@ -37,7 +44,7 @@ hide() {
 # Sets the variable named $2 to the address in $1, made safe to connect with:
 # session pooling, and encryption required.
 prepare_url() {
-  local name="$1" url="${!1:-}" host port
+  local name="$1" url="${!1:-}" host port ip
   [ -n "$url" ] || fail "$name is not set."
   hide "$url"
   case "$url" in
@@ -49,6 +56,10 @@ prepare_url() {
   hide "${BASH_REMATCH[4]}"
   host="${BASH_REMATCH[5]}"
   port="${BASH_REMATCH[7]}"
+  hide "$host"
+  if [ "${GITHUB_ACTIONS:-}" = true ]; then
+    for ip in $(getent ahosts "$host" | awk '{ print $1 }' | sort -u); do hide "$ip"; done
+  fi
   if [[ "$host" == db.*.supabase.co ]]; then
     fail "$name is Supabase's direct address, which GitHub cannot reach. Use Connect → Session pooler."
   fi
@@ -73,6 +84,38 @@ prepare_url NEW_DATABASE_URL NEW
 
 q() { psql -X -A -t -q -v ON_ERROR_STOP=1 -d "$1" -c "$2"; }
 identifier() { [[ "$1" =~ ^[A-Za-z0-9_-]+$ ]] || fail "Unexpected name in the source catalog."; }
+
+# ── The snapshot ────────────────────────────────────────────────────────────
+# One line per table ("table:<name> <md5 over the sorted md5s of its rows>"),
+# one per sequence ("sequence:<name> <position>"), and one for the structure.
+# Every setting that changes how a value is written as text is fixed first, so
+# the same rows give the same hash on any server.
+SETTINGS="SET TimeZone = 'UTC'; SET DateStyle = 'ISO, MDY'; SET IntervalStyle = 'postgres';
+SET extra_float_digits = 1; SET bytea_output = 'hex'; SET statement_timeout = 0;"
+SNAPSHOT="$(cat <<'SQL'
+SELECT line FROM (
+  SELECT 'table:' || c.relname || ' ' || (pg_catalog.xpath('/row/h/text()', pg_catalog.query_to_xml(pg_catalog.format(
+           'SELECT md5(coalesce(string_agg(r, '','' ORDER BY r COLLATE "C"), '''')) AS h'
+           ' FROM (SELECT md5(t::text) AS r FROM public.%I AS t) AS s', c.relname),
+         false, true, '')))[1]::text AS line
+    FROM pg_catalog.pg_class c
+   WHERE c.relnamespace = 'public'::regnamespace AND c.relkind IN ('r', 'p')
+  UNION ALL
+  SELECT 'sequence:' || sequencename || ' ' || coalesce(last_value::text, '-')
+    FROM pg_catalog.pg_sequences WHERE schemaname = 'public'
+  UNION ALL
+  SELECT '(structure) ' || concat_ws(',',
+    (SELECT count(*) FROM pg_catalog.pg_class WHERE relnamespace = 'public'::regnamespace AND relkind IN ('r','p')) || '-tables',
+    (SELECT count(*) FROM pg_catalog.pg_class WHERE relnamespace = 'public'::regnamespace AND relkind IN ('i','I')) || '-indexes',
+    (SELECT count(*) FROM pg_catalog.pg_constraint WHERE connamespace = 'public'::regnamespace AND contype IN ('p','u','f','c','x')) || '-constraints',
+    (SELECT count(*) FROM pg_catalog.pg_class WHERE relnamespace = 'public'::regnamespace AND relkind = 'S') || '-sequences',
+    (SELECT count(*) FROM pg_catalog.pg_class WHERE relnamespace = 'public'::regnamespace AND relkind IN ('v','m')) || '-views',
+    (SELECT count(*) FROM pg_catalog.pg_policies WHERE schemaname = 'public') || '-policies')
+) AS snapshot ORDER BY line COLLATE "C"
+SQL
+)"
+SECURED="SELECT count(*) FROM pg_class WHERE relnamespace = 'public'::regnamespace AND relrowsecurity"
+snapshot() { psql -X -A -t -q -v ON_ERROR_STOP=1 -d "$1" -c "$SETTINGS" -c "$SNAPSHOT"; }
 
 # ── Before writing anything ─────────────────────────────────────────────────
 old_version="$(q "$OLD" 'SHOW server_version_num')"
@@ -108,90 +151,81 @@ for role in "${roles[@]}"; do
     || fail "The role $role, named by a row-level security policy, does not exist on the target."
 done
 
-# ── Copy ────────────────────────────────────────────────────────────────────
+# ── Read the source, and make sure nothing changed while it was read ────────
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 
 echo "Reading the source…"
+snapshot "$OLD" > "$work/before"
 pg_dump --dbname="$OLD" --schema=public --format=custom --no-owner --no-privileges --file="$work/db.dump"
+snapshot "$OLD" > "$work/after"
+cmp -s "$work/before" "$work/after" \
+  || fail "Something wrote to the source while it was being read. Nothing was written. Stop everything that writes to it, then run again."
+grep -qvE '^(table|sequence):[A-Za-z0-9_-]+ [0-9a-f-]+$|^\(structure\) [0-9a-z,-]+$' "$work/after" \
+  && fail "Unexpected line in the source's snapshot."
+old_secured="$(q "$OLD" "$SECURED")"
+[[ "$old_secured" =~ ^[0-9]+$ ]] || fail "Unexpected answer from the source."
 
 # Every database already has a public schema; restoring its CREATE would fail.
 pg_restore --list "$work/db.dump" \
   | grep -vE '^[0-9]+; [0-9]+ [0-9]+ (SCHEMA - public|COMMENT - SCHEMA public) ' > "$work/restore.list"
 pg_restore --use-list="$work/restore.list" --no-owner --no-privileges --file="$work/restore.sql" "$work/db.dump"
 
+# Run last in the restore's transaction: the target's snapshot must equal the
+# source's, or the whole copy is rolled back.
+{
+  echo "$SETTINGS"
+  echo 'CREATE TEMP TABLE copy_expected (line text) ON COMMIT DROP;'
+  echo 'COPY copy_expected (line) FROM STDIN;'
+  cat "$work/after"
+  echo '\.'
+  echo "CREATE TEMP TABLE copy_found ON COMMIT DROP AS $SNAPSHOT;"
+  cat <<SQL
+DO \$verify\$
+DECLARE differing text;
+BEGIN
+  SELECT string_agg(DISTINCT split_part(line, ' ', 1), ' ') INTO differing FROM (
+    (SELECT line FROM copy_expected EXCEPT SELECT line FROM copy_found)
+    UNION ALL
+    (SELECT line FROM copy_found EXCEPT SELECT line FROM copy_expected)) AS d;
+  IF differing IS NOT NULL THEN
+    RAISE EXCEPTION 'The copy does not match the source in: %', differing;
+  END IF;
+  IF ($SECURED) < $old_secured THEN
+    RAISE EXCEPTION 'Row security is on for fewer tables in the copy than in the source.';
+  END IF;
+END
+\$verify\$;
+SQL
+} > "$work/verify.sql"
+
+# ── Write the target ────────────────────────────────────────────────────────
 echo "Writing the target, in one transaction…"
 # The script's own output is dropped: its setval() results are sequence
 # positions, which say how many rows were ever written. Errors still show, terse
 # and without context, because a failing COPY would otherwise quote its row.
 psql -X -q -v ON_ERROR_STOP=1 -v VERBOSITY=terse -v SHOW_CONTEXT=never --single-transaction \
-  -d "$NEW" "${create_extensions[@]}" -f "$work/restore.sql" > /dev/null \
-  || fail "Writing the target failed, so none of it was kept: the target is still empty. The error is above."
+  -d "$NEW" "${create_extensions[@]}" -f "$work/restore.sql" -f "$work/verify.sql" > /dev/null \
+  || fail "Writing or checking the target failed, so none of it was kept: the target is still empty. The error is above."
 
-psql -X -q -v ON_ERROR_STOP=1 -d "$NEW" <<'SQL'
+# The copy is committed. Nothing below may fail the run: the target is no
+# longer empty, so a second run would be refused.
+psql -X -q -v ON_ERROR_STOP=1 -d "$NEW" <<'SQL' \
+  || echo "::warning::ANALYZE did not finish. The database gathers the statistics on its own; the copy is complete."
 SELECT format('ANALYZE public.%I', relname)
   FROM pg_class
  WHERE relnamespace = 'public'::regnamespace AND relkind IN ('r', 'p')
 \gexec
 SQL
 
-# ── Verify ──────────────────────────────────────────────────────────────────
-SHAPE="SELECT concat_ws(', ',
-  (SELECT count(*) FROM pg_class WHERE relnamespace = 'public'::regnamespace AND relkind IN ('r','p')) || ' tables',
-  (SELECT count(*) FROM pg_class WHERE relnamespace = 'public'::regnamespace AND relkind IN ('i','I')) || ' indexes',
-  (SELECT count(*) FROM pg_constraint WHERE connamespace = 'public'::regnamespace AND contype IN ('p','u','f','c','x')) || ' constraints',
-  (SELECT count(*) FROM pg_class WHERE relnamespace = 'public'::regnamespace AND relkind = 'S') || ' sequences',
-  (SELECT count(*) FROM pg_class WHERE relnamespace = 'public'::regnamespace AND relkind IN ('v','m')) || ' views',
-  (SELECT count(*) FROM pg_policies WHERE schemaname = 'public') || ' policies')"
-SECURED="SELECT count(*) FROM pg_class WHERE relnamespace = 'public'::regnamespace AND relrowsecurity"
-ROWS="SELECT relname || ' ' || (xpath('/row/n/text()',
-  query_to_xml(format('SELECT count(*) AS n FROM public.%I', relname), false, true, '')))[1]::text
-  FROM pg_class WHERE relnamespace = 'public'::regnamespace AND relkind IN ('r','p') ORDER BY 1"
-SEQUENCES="SELECT sequencename || ' ' || coalesce(last_value::text, '-')
-  FROM pg_sequences WHERE schemaname = 'public' ORDER BY 1"
-
-old_shape="$(q "$OLD" "$SHAPE")"
-new_shape="$(q "$NEW" "$SHAPE")"
-old_secured="$(q "$OLD" "$SECURED")"
-new_secured="$(q "$NEW" "$SECURED")"
-echo "Source: $old_shape; row security on $old_secured tables."
-echo "Target: $new_shape; row security on $new_secured tables."
-
-# Names whose value differs, or that exist on one side only.
-differing() {
-  awk 'NR == FNR { a[$1] = $2; next }
-       { if (!($1 in a) || a[$1] != $2) print $1; delete a[$1] }
-       END { for (k in a) print k }' "$1" "$2" | sort -u
-}
-q "$OLD" "$ROWS" > "$work/old.rows"
-q "$NEW" "$ROWS" > "$work/new.rows"
-q "$OLD" "$SEQUENCES" > "$work/old.sequences"
-q "$NEW" "$SEQUENCES" > "$work/new.sequences"
-rows_differ="$(differing "$work/old.rows" "$work/new.rows")"
-sequences_differ="$(differing "$work/old.sequences" "$work/new.sequences")"
-
-ok=true
-[ "$old_shape" = "$new_shape" ] || { echo "::error::The target's structure differs from the source's."; ok=false; }
+structure="$(sed -n -e 's/^(structure) //' -e 's/-/ /g' -e 's/,/, /gp' "$work/after")"
+echo "The copy matches the source: every row of $(grep -c '^table:' "$work/after") tables," \
+  "every sequence position, and the structure ($structure)."
+new_secured="$(q "$NEW" "$SECURED" || echo "$old_secured")"
 # A host may switch row security on for every new table (Supabase can). That
-# restricts no one connecting as the tables' owner, which is what the restore
-# made the target's user. Fewer tables secured than before would be a loss.
-if (( new_secured < old_secured )); then
-  echo "::error::Row security is on for fewer tables in the target."
-  ok=false
-elif (( new_secured > old_secured )); then
-  echo "::notice::The target switched row security on for more tables than the source has it on. Its owner, the user this copy wrote with, is not restricted by it."
+# restricts no one connecting as the tables' owner: the user this copy wrote
+# with, which is the user the applications connect as.
+if (( new_secured > old_secured )); then
+  echo "::notice::The target switched row security on for more tables ($new_secured) than the source had it on ($old_secured). The tables' owner, the user this copy wrote with, is not restricted by it."
 fi
-if [ -n "$rows_differ" ]; then
-  echo "::error::Row counts differ in: $(echo "$rows_differ" | paste -sd ' ' -)"
-  ok=false
-else
-  echo "Row counts: the same in all $(wc -l < "$work/old.rows") tables."
-fi
-if [ -n "$sequences_differ" ]; then
-  echo "::error::Sequence positions differ in: $(echo "$sequences_differ" | paste -sd ' ' -)"
-  ok=false
-else
-  echo "Sequence positions: the same in all $(wc -l < "$work/old.sequences") sequences."
-fi
-$ok || fail "The copy was written but does not match the source. If something wrote to the source during the copy, that explains it."
-echo "Done. The source was only read; the target now holds the copy."
+echo "Done. The source was only read."

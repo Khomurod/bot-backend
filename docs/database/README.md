@@ -100,19 +100,23 @@ What it guarantees:
 - **The target must be empty.** If `public` holds any table, view or sequence,
   nothing is written. A run can therefore never overwrite a live database, even
   with the two secrets swapped.
-- **The write is one transaction.** It lands whole or not at all. A failed run
-  leaves the target empty and can simply be run again.
-- **It checks its own result**, by comparing source and target:
-  - the structure (tables, indexes, constraints, sequences, views, policies);
-  - the row count of every table;
-  - the position of every sequence.
+- **The copy is exact, or nothing is kept.** The check is a snapshot: a hash
+  of every row of every table, every sequence's position, and the structure
+  (tables, indexes, constraints, sequences, views, policies).
+  - It is taken of the source before and after the source is read. If the two
+    differ, something wrote to the source meanwhile — an update that changes no
+    count included — and the copy stops before writing anything.
+  - It is taken of the target inside the restore's single transaction, which
+    commits only if it equals the source's. A failed write or a failed check
+    leaves the target empty, so the run can simply be repeated.
 
-  Anything written to the source during the copy shows up as a difference.
-  Stop every writer first: the main service and the Samsara poller.
+  The rows are hashed where they are, so only hashes cross the network. Stop
+  every writer first: the main service and the Samsara poller.
 - **The log shows nothing private.** The repository and its Actions logs are
-  public, so the log carries no rows, no row counts, no sizes and no part of
-  either address. Errors are terse, because a failing `COPY` would otherwise
-  quote its row.
+  public, so the log carries no rows, no row counts and no sizes. No part of
+  either address appears either: the server's name and network addresses are
+  masked too, because a connection error quotes them. Errors are terse,
+  because a failing `COPY` would otherwise quote its row.
 
 To use it:
 
