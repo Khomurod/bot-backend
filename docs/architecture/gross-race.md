@@ -143,6 +143,13 @@ celebration while nobody has any gross.
   built for the celebration and torn down after it (`carScene.js`). A screen
   without WebGL, or one where the car fails to load, shows the same words with
   a trophy.
+- **three.js is why the admin build sets its own heap limit.** Render applies
+  the service's `NODE_OPTIONS=--max-old-space-size=256`, meant for the server,
+  to the build as well. Bundling three.js needs more than that: `vite build`
+  died with "JavaScript heap out of memory" (exit 134), and every deploy failed
+  while production stayed on the previous build. `admin/package.json` runs vite
+  with `--max-old-space-size=512`, which beats `NODE_OPTIONS`, and
+  `tests/adminBuildHeap.test.js` keeps it there.
 - **`?celebrate` in the address shows it at once**, e.g.
   `/dispatchteam?celebrate`, to check a screen without waiting for four
   o'clock.
