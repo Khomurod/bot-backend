@@ -143,7 +143,12 @@
 .gross-race .gr-finish-note {
   color: var(--color-accent-700); font-weight: 800; line-height: 1.35; padding-right: 16px; text-wrap: pretty;
 }
-.gross-race .gr-lanes { position: relative; border-top: 2px solid var(--color-divider); min-height: 0; }
+.gross-race .gr-lanes { position: relative; border-top: 2px solid var(--color-divider); min-height: 0; perspective: 1400px; }
+/* The airport board: a new screen of lanes flips in, one row after another. */
+.gross-race .gr-lane.gr-flip { animation: gr-flip-in .6s cubic-bezier(.2, .8, .2, 1) both; transform-origin: 50% 0; }
+@keyframes gr-flip-in { from { transform: rotateX(-90deg); opacity: 0; } to { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .gross-race .gr-lane.gr-flip { animation: none; } }
+.gross-race .gr-board-page { margin-left: .8em; color: var(--color-neutral-700); white-space: nowrap; }
 .gross-race .gr-lane {
   position: absolute; left: 0; right: 0; align-items: center; border-bottom: 1px solid var(--color-divider);
   transition: top 1.3s cubic-bezier(.3, 1.3, .5, 1), background-color .8s;

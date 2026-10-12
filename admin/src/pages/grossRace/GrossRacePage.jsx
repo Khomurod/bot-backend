@@ -3,7 +3,7 @@ import { getGrossRace } from "../../api/grossRace";
 import useVisibleInterval from "../../utils/useVisibleInterval";
 import useFullscreen from "./useFullscreen";
 import { EVENT_LIMIT, FLASH_MS, raceEvents } from "./raceEvents";
-import { bannerView, ranked } from "./raceView";
+import { bannerView, pageCount, ranked } from "./raceView";
 import RaceHeader from "./RaceHeader";
 import RaceTrack from "./RaceTrack";
 import RaceSidebar from "./RaceSidebar";
@@ -18,20 +18,29 @@ import "./grossRace.css";
  * this page polls it once a minute while the tab is visible, every few seconds
  * while the server is still reading the week. The race feed and the banner
  * come from comparing one reading with the last, here, as in the design.
+ *
+ * The dispatchers' board shows five racers at a time and turns to the next
+ * five every ten seconds, round and round, like an airport departures board
+ * (the owner, 12 October 2026). The teams fit on one screen.
  */
 
 const POLL_MS = 60_000;
 const WARMING_POLL_MS = 5_000;
 const OFFLINE = "No connection to the server";
+export const PAGE_SIZE = { dispatchers: 5, teams: Infinity };
+export const PAGE_MS = 10_000;
 
-export default function GrossRacePage({ view }) {
+export default function GrossRacePage({ view, pageMs = PAGE_MS }) {
   const [data, setData] = useState(null);
   const [now, setNow] = useState(() => Date.now());
   const [events, setEvents] = useState([]);
   const [flashUntil, setFlashUntil] = useState({});
   const [banner, setBanner] = useState({ current: null, shown: null });
+  const [page, setPage] = useState(0);
   const last = useRef(null);
   const fullscreen = useFullscreen();
+  const pageSize = PAGE_SIZE[view] || Infinity;
+  const pages = pageCount(data && data.race, pageSize);
 
   const load = useCallback(async () => {
     let next;
@@ -77,11 +86,19 @@ export default function GrossRacePage({ view }) {
     return () => clearInterval(tick);
   }, []);
 
+  useEffect(() => {
+    setPage((held) => (held < pages ? held : 0));
+    if (pages <= 1) return undefined;
+    const turn = setInterval(() => setPage((held) => (held + 1) % pages), pageMs);
+    return () => clearInterval(turn);
+  }, [pages, pageMs]);
+
   return (
     <div className="gross-race">
       <RaceHeader view={view} data={data} now={now} fullscreen={fullscreen} />
       <div className="gr-body">
-        <RaceTrack view={view} data={data} now={now} flashUntil={flashUntil} banner={banner} />
+        <RaceTrack view={view} data={data} now={now} flashUntil={flashUntil} banner={banner}
+          page={Math.min(page, pages - 1)} pages={pages} pageSize={pageSize} />
         <RaceSidebar data={data} now={now} events={events} />
       </div>
     </div>

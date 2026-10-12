@@ -120,6 +120,30 @@ describe("GrossRacePage", () => {
     expect(screen.getByText(/Waiting for the next move/)).toBeInTheDocument();
   });
 
+  test("the dispatchers' board: gross only, five to a screen, turning like an airport board", async () => {
+    const names = ["Ann", "Bo", "Cy", "Di", "Ed", "Flo", "Gus"].map((n) => `${n} Example`);
+    const racers = names.map((name, i) => ({
+      id: name, name, rank: i + 1, gross: 70000 - i * 10000, loads: 7 - i, miles: 20000, rpm: 3, gap: i * 10000,
+    }));
+    respond({
+      ...live, view: "dispatchers", targets: null,
+      race: { racers, lead: 70000, topRpmId: null, rankBy: "gross" },
+    });
+    render(<GrossRacePage view="dispatchers" pageMs={60} />);
+
+    expect(await screen.findByText("Board 1 of 2")).toBeInTheDocument();
+    for (const name of names.slice(0, 5)) expect(screen.getAllByText(name).length).toBeGreaterThan(0);
+    expect(screen.queryByText("Flo Example")).not.toBeInTheDocument();
+    expect(screen.getByText("Ranked by gross")).toBeInTheDocument();
+    expect(screen.getAllByText("$70,000").length).toBeGreaterThan(0);
+    expect(screen.queryByText(/%|target/i)).not.toBeInTheDocument();
+
+    expect(await screen.findByText("Board 2 of 2")).toBeInTheDocument();
+    expect(screen.getByText("Flo Example")).toBeInTheDocument();
+    expect(screen.getByText("Gus Example")).toBeInTheDocument();
+    expect(await screen.findByText("Board 1 of 2")).toBeInTheDocument();
+  });
+
   test("says plainly when Datatruck is not reachable", async () => {
     respond({ ...live, status: "error", error: "Datatruck is not connected", race: null });
     render(<GrossRacePage view="teams" />);

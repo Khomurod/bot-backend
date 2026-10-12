@@ -3,10 +3,10 @@
 /**
  * The Gross Grand Prix's week, in the office's time zone. Pure.
  *
- * The race counts a load by its delivery appointment, Monday to Monday, the way
- * the dispatchers' board does: Monday 00:00 to the next Monday 00:00 is the
- * week the countdown runs to, and the Monday after is counted as well. Ported
- * from the race display the owner approved (October 2026).
+ * Monday 00:00 to the next Monday 00:00, America/Chicago: the week Datatruck's
+ * driver board shows ("Oct 12 – Oct 18"), and the one the countdown runs to.
+ * The race design also counted the Monday after; that day belongs to the next
+ * week on Datatruck's board, so it does here too (12 October 2026).
  */
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -44,24 +44,23 @@ function zoneMidnight(y, mo, day, tz) {
 }
 
 /**
- * @returns {{ start: Date, end: Date, countedUntil: Date, label: string,
- *             day: number, dayName: string, tz: string }}
- *   `end` is when the week's race finishes; loads are counted until
- *   `countedUntil`, a day later. `day` is 1 on the first day of the week.
+ * @returns {{ start: Date, end: Date, label: string, day: number,
+ *             dayName: string, tz: string }}
+ *   A load counts when its date is at or after `start` and before `end`.
+ *   `day` is 1 on the first day of the week.
  */
 function raceWeek({ weekStart = 'mon', tz = 'America/Chicago', now = new Date() } = {}) {
   const today = zoneParts(now, tz);
   const back = weekStart === 'sun' ? today.wd : (today.wd + 6) % 7;
   const start = zoneMidnight(today.y, today.mo, today.d - back, tz);
   const end = zoneMidnight(today.y, today.mo, today.d - back + 7, tz);
-  const countedUntil = zoneMidnight(today.y, today.mo, today.d - back + 8, tz);
   const monthDay = new Intl.DateTimeFormat('en-US', { timeZone: tz, month: 'short', day: 'numeric' });
-  const lastDay = new Date(countedUntil.getTime() - 12 * 3600e3);
+  const lastDay = new Date(end.getTime() - 12 * 3600e3);
   const last = zoneParts(lastDay, tz);
   const label = zoneParts(start, tz).mo === last.mo
     ? `${monthDay.format(start)}–${last.d}`
     : `${monthDay.format(start)} – ${monthDay.format(lastDay)}`;
-  return { start, end, countedUntil, label, day: back + 1, dayName: WEEKDAYS[today.wd], tz };
+  return { start, end, label, day: back + 1, dayName: WEEKDAYS[today.wd], tz };
 }
 
 module.exports = { raceWeek };

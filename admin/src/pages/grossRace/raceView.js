@@ -54,48 +54,62 @@ export function ranked(race) {
   return race ? [...race.racers].sort((a, b) => a.rank - b.rank) : [];
 }
 
-/** One lane per racer, in the racers' stable order; `top` places it by rank. */
-export function lanesView(race, { now, flashUntil = {} }) {
+const loadCount = (n) => n + (n === 1 ? " load" : " loads");
+
+/** How many screens the racers take, `pageSize` lanes to a screen. */
+export function pageCount(race, pageSize = Infinity) {
+  return race && race.racers.length > pageSize ? Math.ceil(race.racers.length / pageSize) : 1;
+}
+
+/**
+ * One lane per racer on screen, in the racers' stable order; `top` places it
+ * by rank. With a `pageSize`, only the ranks on `page` are on screen, the way
+ * an airport board shows a few flights at a time.
+ */
+export function lanesView(race, { now, flashUntil = {}, page = 0, pageSize = Infinity }) {
   if (!race) return [];
   const byPct = race.rankBy !== "gross";
-  const max = byPct ? Math.max(1.12, race.leadPct * 1.22) : scale(Math.max(race.lead * 1.25, race.maxTarget * 1.06, 5000));
-  const n = Math.max(race.racers.length, 1);
+  const max = byPct ? Math.max(1.12, race.leadPct * 1.22) : scale(Math.max(race.lead * 1.15, 5000));
+  const first = Number.isFinite(pageSize) ? page * pageSize + 1 : 1;
+  const last = Number.isFinite(pageSize) ? first + pageSize - 1 : race.racers.length;
+  const n = Math.max(Math.min(race.racers.length, Number.isFinite(pageSize) ? pageSize : race.racers.length), 1);
   const along = (x) => "calc((100% - 2.3em) * " + x.toFixed(4) + ")";
-  return race.racers.map((racer) => {
+  return race.racers.filter((racer) => racer.rank >= first && racer.rank <= last).map((racer) => {
     const value = byPct ? racer.pct : racer.gross;
     const p = Math.min(1, value / max);
-    const finish = Math.min(1, (byPct ? 1 : racer.target) / max);
-    const first = racer.rank === 1;
-    const done = racer.target > 0 && racer.pct >= 1;
+    const leader = racer.rank === 1;
+    const done = byPct && racer.target > 0 && racer.pct >= 1;
+    const gap = byPct ? percent(racer.gapPct) : money(racer.gap);
     return {
       id: racer.id,
       name: racer.name,
       rank: racer.rank,
-      top: ((racer.rank - 1) * 100) / n + "%",
+      top: ((racer.rank - first) * 100) / n + "%",
       height: 100 / n + "%",
       rowBg: (flashUntil[racer.id] || 0) > now ? "var(--color-accent-100)" : "transparent",
       trailWidth: along(p).replace(/\)$/, " + 1.15em)"),
-      trailBg: first ? "var(--color-accent-400)" : done ? MUTED : "var(--color-neutral-400)",
+      trailBg: leader ? "var(--color-accent-400)" : done ? MUTED : "var(--color-neutral-400)",
       tokenLeft: along(p),
-      tokenBg: first ? ACCENT : "var(--color-text)",
+      tokenBg: leader ? ACCENT : "var(--color-text)",
       labelLeft: along(p).replace(/\)$/, " + 2.3em)"),
-      finishLeft: along(finish).replace(/\)$/, " + 1.15em)"),
-      labelColor: first ? ACCENT_TEXT : "var(--color-text)",
+      // The checkered flag is 100% of the target; a race by gross has none.
+      finishLeft: byPct ? along(Math.min(1, 1 / max)).replace(/\)$/, " + 1.15em)") : null,
+      labelColor: leader ? ACCENT_TEXT : "var(--color-text)",
       label: byPct ? percent(racer.pct) : money(racer.gross),
-      result: money(racer.gross) + " / " + moneyK(racer.target),
-      detail: (first ? "Leader" : "−" + (byPct ? percent(racer.gapPct) : money(racer.gap)) + " to leader")
-        + " · RPM " + (racer.miles ? rpm(racer.rpm) : "—"),
-      detailColor: first ? ACCENT_TEXT : MUTED,
-      lights: racer.lights.map((light) => ({ width: light.team ? ".9em" : ".42em", bg: light.hit ? ACCENT : "var(--color-neutral-400)" })),
+      // By gross, the gross is the token's label, so this column counts loads.
+      result: byPct ? money(racer.gross) + " / " + moneyK(racer.target) : loadCount(racer.loads),
+      detail: (leader ? "Leader" : "−" + gap + " to leader") + " · RPM " + (racer.miles ? rpm(racer.rpm) : "—"),
+      detailColor: leader ? ACCENT_TEXT : MUTED,
+      lights: (racer.lights || []).map((light) => ({ width: light.team ? ".9em" : ".42em", bg: light.hit ? ACCENT : "var(--color-neutral-400)" })),
       finished: done,
       topRpm: racer.id === race.topRpmId,
     };
   });
 }
 
-/** Lane text size: as large as the screen allows for this many racers. */
-export function laneFontSize(race) {
-  const n = Math.max(race ? race.racers.length : 0, 1);
+/** Lane text size: as large as the screen allows for this many lanes on it. */
+export function laneFontSize(race, pageSize = Infinity) {
+  const n = Math.max(Math.min(race ? race.racers.length : 0, pageSize), 1);
   return "clamp(14px, calc((100vh - 240px) * " + (0.28 / Math.max(n, 3)).toFixed(4) + "), 38px)";
 }
 
@@ -110,7 +124,7 @@ export function podiumView(race) {
       rank,
       name: racer ? racer.name : "—",
       metric: racer ? (byPct ? percent(racer.pct) : money(racer.gross)) : "",
-      gross: racer ? (byPct ? money(racer.gross) + " of " + moneyK(racer.target) : percent(racer.pct) + " of target") : "",
+      gross: racer ? (byPct ? money(racer.gross) + " of " + moneyK(racer.target) : loadCount(racer.loads)) : "",
       metricColor: rank === 1 ? ACCENT_TEXT : "var(--color-text)",
       height: PODIUM_HEIGHT[rank],
       bg: !racer ? "var(--color-neutral-300)" : rank === 1 ? ACCENT : rank === 2 ? "var(--color-text)" : MUTED,

@@ -11,7 +11,7 @@
  *
  * WHAT IT COSTS DATATRUCK. Its API allows 20 requests a minute at 25 orders a
  * page, and the rest of the app uses it too. So, as the design did:
- *   - the whole week (about a dozen pages) is read at most every 20 minutes;
+ *   - the whole week (about five pages) is read at most every 20 minutes;
  *   - in between, only the orders modified since the last read, usually one
  *     page;
  *   - at most one read a minute however many screens poll, and none while no
@@ -55,8 +55,8 @@ function createGrossRaceFeed({
     const weekKey = week.start.toISOString();
     const full = held.weekKey !== weekKey || startedAt - held.fullAt >= fullEveryMs;
     const modifiedAfterIso = full ? null : new Date(held.readAt - MODIFIED_OVERLAP_MS).toISOString();
-    const orders = await api.fetchOrdersByDeliveryAppointment(
-      week.start.toISOString(), new Date(week.countedUntil.getTime() - 1).toISOString(), { modifiedAfterIso },
+    const orders = await api.fetchOrdersByDeliveryDate(
+      week.start.toISOString(), new Date(week.end.getTime() - 1).toISOString(), { modifiedAfterIso },
     );
     const loads = full ? new Map() : new Map(held.loads);
     for (const order of orders) {
@@ -85,7 +85,7 @@ function createGrossRaceFeed({
   }
 
   /** The race for one display, as it stands now. Starts a read when one is due. */
-  function getRace(view, { rankBy = 'percent' } = {}) {
+  function getRace(view) {
     const at = now();
     const week = raceWeek({ tz: TZ, now: new Date(at) });
     const weekKey = week.start.toISOString();
@@ -98,10 +98,10 @@ function createGrossRaceFeed({
     if (held.weekKey !== weekKey) {
       return shape({ view, week, status: held.error ? 'error' : 'loading', error: held.error, race: null });
     }
-    const loads = [...held.loads.values()].filter((load) => load.at >= week.start && load.at < week.countedUntil);
+    const loads = [...held.loads.values()].filter((load) => load.at >= week.start && load.at < week.end);
     return shape({
       view, week, status: held.error ? 'stale' : 'live', error: held.error,
-      updatedAt: held.updatedAt, race: standings(loads, { view, rankBy }),
+      updatedAt: held.updatedAt, race: standings(loads, { view }),
     });
   }
 
@@ -121,7 +121,7 @@ function shape({ view, week, status, error = null, updatedAt = null, race }) {
       start: week.start.toISOString(), end: week.end.toISOString(),
       label: week.label, day: week.day, dayName: week.dayName, tz: week.tz,
     },
-    targets: { solo: SOLO_TARGET, team: TEAM_TARGET },
+    targets: view === 'teams' ? { solo: SOLO_TARGET, team: TEAM_TARGET } : null,
     race,
   };
 }
