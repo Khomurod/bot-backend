@@ -51,6 +51,19 @@ export const GainIcon = (props) => (
 );
 
 /** Arrows out: go full screen. */
+export const CheckIcon = (props) => (
+  <Icon {...props}>
+    <path d="M20 6 9 17l-5-5" />
+  </Icon>
+);
+
+export const CrossIcon = (props) => (
+  <Icon {...props}>
+    <path d="M18 6 6 18" />
+    <path d="m6 6 12 12" />
+  </Icon>
+);
+
 export const MaximizeIcon = (props) => (
   <Icon {...props}>
     <polyline points="15 3 21 3 21 9" />

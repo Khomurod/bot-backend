@@ -479,8 +479,11 @@ turn one exposed file into an exposed directory.
 
 ### Gross Grand Prix at `/dispatch` and `/dispatchteam`
 
-Office-screen races of this week's gross, counted the way Datatruck's driver
-board counts it (no booked or cancelled load, the week of the DEL date).
+Office-screen races of this week's gross, counting only loads created, picked
+up AND delivered this week (Monday–Sunday, Chicago) that are not booked or
+cancelled — a load that started before Monday counts in no week, so the teams'
+totals are below Datatruck's driver board on purpose. The rule is printed on
+the board.
 `/dispatchteam` races the dispatch teams by the share of a
 $15,000-per-solo / $20,000-per-team-truck target; `/dispatch` races whoever
 created the loads, by gross alone, five to a screen. Public, like

@@ -30,6 +30,18 @@ export function ago(at, now) {
   return s < 3600 ? Math.floor(s / 60) + " min ago" : Math.floor(s / 3600) + " h ago";
 }
 
+const dayFormats = new Map();
+/** "Mon, Oct 12 – Sun, Oct 18": the race week's first and last day in its time zone. */
+export function weekRange(week) {
+  let format = dayFormats.get(week.tz);
+  if (!format) {
+    format = new Intl.DateTimeFormat("en-US", { timeZone: week.tz, weekday: "short", month: "short", day: "numeric" });
+    dayFormats.set(week.tz, format);
+  }
+  const lastDay = new Date(Date.parse(week.end) - 12 * 3600e3);
+  return format.format(new Date(week.start)) + " – " + format.format(lastDay);
+}
+
 const clockFormats = new Map();
 /** "3:41 PM" in the office's time zone. */
 export function clock(date, tz) {
