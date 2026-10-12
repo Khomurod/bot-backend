@@ -22,7 +22,7 @@
 
 const datatruck = require('../datatruckApiService');
 const { raceWeek } = require('./week');
-const { raceLoad, standings, SOLO_TARGET, TEAM_TARGET } = require('./standings');
+const { raceLoad, countsInWeek, standings, SOLO_TARGET, TEAM_TARGET } = require('./standings');
 
 const REFRESH_MS = 60_000;
 const FULL_EVERY_MS = 20 * 60_000;
@@ -98,7 +98,7 @@ function createGrossRaceFeed({
     if (held.weekKey !== weekKey) {
       return shape({ view, week, status: held.error ? 'error' : 'loading', error: held.error, race: null });
     }
-    const loads = [...held.loads.values()].filter((load) => load.at >= week.start && load.at < week.end);
+    const loads = [...held.loads.values()].filter((load) => countsInWeek(load, week));
     return shape({
       view, week, status: held.error ? 'stale' : 'live', error: held.error,
       updatedAt: held.updatedAt, race: standings(loads, { view }),

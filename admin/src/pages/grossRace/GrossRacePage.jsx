@@ -5,6 +5,7 @@ import useFullscreen from "./useFullscreen";
 import { EVENT_LIMIT, FLASH_MS, raceEvents } from "./raceEvents";
 import { bannerView, pageCount, ranked } from "./raceView";
 import RaceHeader from "./RaceHeader";
+import RaceRules from "./RaceRules";
 import RaceTrack from "./RaceTrack";
 import RaceSidebar from "./RaceSidebar";
 import "./grossRace.css";
@@ -96,6 +97,7 @@ export default function GrossRacePage({ view, pageMs = PAGE_MS }) {
   return (
     <div className="gross-race">
       <RaceHeader view={view} data={data} now={now} fullscreen={fullscreen} />
+      <RaceRules view={view} data={data} />
       <div className="gr-body">
         <RaceTrack view={view} data={data} now={now} flashUntil={flashUntil} banner={banner}
           page={Math.min(page, pages - 1)} pages={pages} pageSize={pageSize} />

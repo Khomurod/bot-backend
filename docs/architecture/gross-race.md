@@ -10,28 +10,38 @@ that turns into **Exit full screen** while the page is in full screen, and back
 again however full screen was left, Esc included (`useFullscreen.js` follows
 `fullscreenchange`, not its own clicks).
 
-## Which loads count: Datatruck's own rule
+## Which loads count
 
-**The race must show what Datatruck's driver board shows** (the owner, 12
-October 2026). The rule below was found by reproducing that board from the API
-and matches it to the cent on every row checked: Steven's Team $92,990 in 30
-trips, Charles's Team $23,750, Franky's Team $21,642 and five more.
+**A load counts in the week it was created, picked up AND delivered** (the
+owner, 12 October 2026):
 
-- **Every load except a booked or a cancelled one.** Booked is planned, not yet
-  dispatched to a driver. Dispatched, in transit, delivered, invoiced and paid
-  all count. Taking only the status *dispatched* would have shown Steven's
-  Team $86,640, which is not what Datatruck shows.
-- **In the week of its DEL date** (`delivery_time`), not its delivery
-  appointment. The two can be days apart: a load with an appointment on 13
-  October and a DEL date of 4 October is last week's on Datatruck's board.
-- **The week is Monday 00:00 to the next Monday 00:00, America/Chicago** —
-  Datatruck's "Oct 12 – Oct 18". The race design also counted the Monday after;
-  that day belongs to the next week (`services/grossRace/week.js`).
-- **Gross is `load_pay`.** A load that was counted is dropped when it turns
+- its `created_datetime`, its PU date (`pickup_time`) and its DEL date
+  (`delivery_time`) all fall between **Monday 00:00 and the next Monday 00:00,
+  America/Chicago** (`services/grossRace/week.js`; `countsInWeek` in
+  `standings.js`). Dates, not statuses: a load delivering Friday counts from
+  the moment it is dispatched;
+- and it is **dispatched**: not booked (planned, no driver yet) and not
+  cancelled. Datatruck has no "dispatched at" date, so the status is the test;
+- **gross is `load_pay`.** A load that was counted is dropped when it turns
   booked or cancelled.
-- Read by `services/grossRace/feed.js` through `fetchOrdersByDeliveryDate` in
-  `services/datatruckApiService.js` — GET only, with the app's own
-  `DATATRUCK_API_TOKEN` / `DATATRUCK_COMPANY`.
+
+**A load that started before Monday counts in no week** — not last week, where
+it was not delivered, and not this one, where it was not created or picked up.
+The owner chose that knowingly: on 12 October it left 46 of 105 dispatched
+loads ($118,108 of $293,912) on the board. It is also why **the teams' totals
+are lower than Datatruck's driver board**, which counts every dispatched load
+by its DEL date alone (Steven's Team: $34,800 here, $92,590 there, the same
+day). An earlier version matched that board to the cent; this rule replaced it
+on purpose.
+
+**The rule is printed on both boards**, under the header: the week's dates,
+what counts and what does not (`RaceRules.jsx`). Change the rule and that text
+together.
+
+The week's orders are read by DEL date through `fetchOrdersByDeliveryDate` in
+`services/datatruckApiService.js` — GET only, with the app's own
+`DATATRUCK_API_TOKEN` / `DATATRUCK_COMPANY` — and the created and PU dates are
+checked here.
 
 ## Who a load counts for
 

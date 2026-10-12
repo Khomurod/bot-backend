@@ -61,7 +61,7 @@
   height: 100vh;
   min-height: 540px;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr);
   background: var(--color-bg);
   color: var(--color-text);
   font-family: var(--font-body);
@@ -128,6 +128,21 @@
 }
 .gross-race .gr-status-line { flex-basis: 100%; font-size: clamp(12px, .8vw, 16px); line-height: 1.3; }
 .gross-race .gr-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+
+/* ── the rule, in words, under the header ── */
+.gross-race .gr-rules {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 4px clamp(14px, 1.6vw, 32px);
+  padding: clamp(8px, .7vw, 14px) clamp(16px, 1.8vw, 36px); border-bottom: 2px solid var(--color-divider);
+  background: var(--color-neutral-200); font-size: clamp(12px, .85vw, 17px); line-height: 1.35;
+}
+.gross-race .gr-rules-kicker {
+  font-weight: 800; letter-spacing: .12em; text-transform: uppercase; color: var(--color-accent-700);
+  font-size: clamp(11px, .75vw, 15px);
+}
+.gross-race .gr-rule { display: inline-flex; align-items: center; gap: .45em; font-weight: 600; }
+.gross-race .gr-rule svg { flex: none; }
+.gross-race .gr-rule--yes svg { color: var(--color-accent); }
+.gross-race .gr-rule--no { color: var(--color-neutral-700); }
 
 /* ── body: the track and the sidebar ── */
 .gross-race .gr-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 27vw); min-height: 0; }

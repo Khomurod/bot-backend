@@ -3,12 +3,16 @@
 /**
  * Gross Grand Prix standings. Pure: Datatruck orders in, a ranked race out.
  *
- * WHICH LOADS COUNT is Datatruck's own rule, so the race shows what
- * Datatruck's driver board shows — checked to the cent against it on
- * 12 October 2026: every load except a booked one (planned, not dispatched
- * yet) or a cancelled one, in the week of its DEL date (`delivery_time`). Not
- * the delivery appointment, which can be days away from it. Gross is the
- * order's `load_pay`.
+ * WHICH LOADS COUNT (the owner, 12 October 2026): a load that was CREATED,
+ * PICKED UP and DELIVERED inside the race week — its `created_datetime`, its PU
+ * date (`pickup_time`) and its DEL date (`delivery_time`) all between Monday
+ * 00:00 and the next Monday 00:00 — and that is dispatched: not booked
+ * (planned, no driver yet) and not cancelled. Gross is the order's `load_pay`.
+ *
+ * So a load that started before Monday counts in no week: not last week, where
+ * it was not delivered, and not this one, where it was not created. That is
+ * deliberate, and it is why the teams' totals are lower than Datatruck's driver
+ * board, which counts every dispatched load by its DEL date alone.
  *
  * WHO A LOAD COUNTS FOR depends on the display:
  *   - teams (/dispatchteam): the load's dispatcher, and only names with the
@@ -34,13 +38,17 @@ const plain = (name) => String(name || '').trim().replace(/\s+/g, ' ');
 const isTeam = (name) => name.toLowerCase().includes(TEAM_WORD);
 
 /**
- * One Datatruck order as a race load, or null when it does not count: booked,
- * cancelled, or with no DEL date. A null still matters to the caller, which
- * must forget an order it counted before.
+ * One Datatruck order as a race load, or null when it can never count: booked,
+ * cancelled, or missing its created, PU or DEL date. A null still matters to
+ * the caller, which must forget an order it counted before. Whether a load
+ * counts THIS week is countsInWeek().
  */
 function raceLoad(order) {
   const at = new Date(order?.delivery_time || NaN);
-  if (NOT_COUNTED.test(String(order?.status || '').trim()) || Number.isNaN(at.getTime())) return null;
+  const created = new Date(order?.created_datetime || NaN);
+  const pickedUp = new Date(order?.pickup_time || NaN);
+  if (NOT_COUNTED.test(String(order?.status || '').trim())) return null;
+  if ([at, created, pickedUp].some((date) => Number.isNaN(date.getTime()))) return null;
   const trip = order.trip || (Array.isArray(order.trips) ? order.trips[0] : null) || {};
   const first = plain(trip.driver__full_name);
   const second = plain(trip.team_driver__full_name);
@@ -52,7 +60,14 @@ function raceLoad(order) {
     amount: Number.parseFloat(order.load_pay) || 0,
     miles: Number.parseFloat(order.total_miles) || 0,
     at,
+    created,
+    pickedUp,
   };
+}
+
+/** The week's rule: created, picked up AND delivered inside `week`. */
+function countsInWeek(load, week) {
+  return [load.created, load.pickedUp, load.at].every((date) => date >= week.start && date < week.end);
 }
 
 /** Racers keyed by name, in alphabetical order (a stable order for the lanes). */
@@ -145,4 +160,4 @@ function standings(loads, { view, ...targets } = {}) {
   return view === 'teams' ? teamStandings(loads, targets) : dispatcherStandings(loads);
 }
 
-module.exports = { raceLoad, standings, SOLO_TARGET, TEAM_TARGET };
+module.exports = { raceLoad, countsInWeek, standings, SOLO_TARGET, TEAM_TARGET };
