@@ -16,7 +16,7 @@ import webhook_server as wh
 # (the attachment download, the Telegram senders, the SMS-mirror registration)
 # in webhook/ringcentral.py, so that is the module patch.object must target —
 # patching webhook_server would leave the real functions in place, silently.
-import sms
+import rc_inbound_subscription as rcin
 from webhook import connect_command as cc
 from webhook import ringcentral as rc
 
@@ -87,31 +87,29 @@ class TestInboundSmsFilters(unittest.TestCase):
     """
 
     def test_shared_extension_only_when_no_recruiters(self):
-        # Byte-identical to the pre-feature subscription.
-        self.assertEqual(sms.inbound_sms_filters(None), list(sms.RC_INBOUND_SMS_MMS_FILTERS))
-        self.assertEqual(sms.inbound_sms_filters([]), list(sms.RC_INBOUND_SMS_MMS_FILTERS))
+        self.assertEqual(rcin.inbound_sms_filters(None), [rcin.RC_INBOUND_SMS_FILTER])
+        self.assertEqual(rcin.inbound_sms_filters([]), [rcin.RC_INBOUND_SMS_FILTER])
 
-    def test_adds_sms_and_mms_for_each_recruiter_extension(self):
-        filters = sms.inbound_sms_filters(["101", "102"])
-        self.assertEqual(filters[:2], list(sms.RC_INBOUND_SMS_MMS_FILTERS))
+    def test_adds_one_filter_for_each_recruiter_extension(self):
+        filters = rcin.inbound_sms_filters(["101", "102"])
+        self.assertEqual(filters[0], rcin.RC_INBOUND_SMS_FILTER)
         for ext in ("101", "102"):
-            for kind in ("SMS", "MMS"):
-                self.assertIn(
-                    f"/restapi/v1.0/account/~/extension/{ext}/message-store/instant?type={kind}",
-                    filters,
-                )
-        self.assertEqual(len(filters), 6)
+            self.assertIn(
+                f"/restapi/v1.0/account/~/extension/{ext}/message-store/instant?type=SMS",
+                filters,
+            )
+        self.assertEqual(len(filters), 3)
 
     def test_ignores_blanks_and_never_duplicates_the_shared_extension(self):
-        filters = sms.inbound_sms_filters(["", "  ", "~", "101", "101"])
-        self.assertEqual(len(filters), 4, filters)
+        filters = rcin.inbound_sms_filters(["", "  ", "~", "101", "101"])
+        self.assertEqual(len(filters), 2, filters)
         self.assertEqual(len(set(filters)), len(filters))
 
     def test_accepts_ids_that_arrive_as_numbers(self):
         # The hub returns strings, but a JSON int must not produce "extension/101 ".
         self.assertIn(
             "/restapi/v1.0/account/~/extension/101/message-store/instant?type=SMS",
-            sms.inbound_sms_filters([101]),
+            rcin.inbound_sms_filters([101]),
         )
 
 
@@ -198,6 +196,30 @@ class TestRingcentralForwardAsync(unittest.IsolatedAsyncioTestCase):
                     method = upload.call_args[0][0]
                     self.assertEqual(method, "sendPhoto")
                     register.assert_awaited_once_with("+15550001111", "see pic", 8001, "")
+
+    async def test_a_picture_message_arrives_as_an_sms_and_is_sent_as_a_photo(self):
+        # RingCentral's documented MMS: its `type` is "SMS" (there is no MMS
+        # event filter) and the picture is an MmsAttachment beside the text.
+        # So the SMS filter alone is what brings pictures to Telegram.
+        event = {
+            "type": "SMS",
+            "direction": "Inbound",
+            "from": {"phoneNumber": "+15550001111"},
+            "to": [{"phoneNumber": "+15550002222"}],
+            "subject": "photo of the truck",
+            "attachments": [
+                {"type": "Text", "contentType": "text/plain", "uri": "https://platform.ringcentral.com/t"},
+                {"type": "MmsAttachment", "contentType": "image/jpeg", "uri": "https://platform.ringcentral.com/p"},
+            ],
+        }
+        self.assertIn(event["type"], rc.RC_INBOUND_TYPES, "the webhook route lets it through")
+        jpeg = (b"\xff\xd8\xff\xe0" + b"\x00" * 20, "image/jpeg")
+        with patch.object(rc, "download_ringcentral_attachment", new_callable=AsyncMock, return_value=jpeg) as download:
+            with patch.object(rc, "_send_telegram_upload", new_callable=AsyncMock, return_value=8002) as upload:
+                with patch.object(rc, "_register_inbound_sms_mirror", new_callable=AsyncMock):
+                    await wh._forward_ringcentral_inbound_to_telegram(event)
+        download.assert_awaited_once_with("https://platform.ringcentral.com/p")
+        self.assertEqual(upload.call_args[0][0], "sendPhoto")
 
     async def test_two_images_prefers_media_group(self):
         img = b"\xff\xd8\xff\xe0" + b"\x00" * 20

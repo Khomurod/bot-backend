@@ -5,7 +5,10 @@ extension is in the subscription, the SMS they send works and the driver's
 reply reaches nobody — so registering once at startup leaves a hole that only
 a restart closes. These tests pin the reconcile behaviour, and especially the
 two ways it must NOT behave: re-registering on every tick, and treating a
-failed read of the roster as "no recruiters".
+failed read of the roster as "no recruiters". And one thing it must do: notice
+when RingCentral stops delivering the subscription of an unchanged roster —
+it blacklists a webhook whose address stopped answering, and the roster says
+nothing about that.
 """
 import asyncio
 import os
@@ -26,6 +29,10 @@ CALLBACK = "https://app.test/rc-webhook"
 class TestReconcileRcSubscription(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         rcs._reset_state_for_tests()
+        # RingCentral says the subscription is delivering unless a test says not.
+        status = patch.object(rcs, "subscription_active", new_callable=AsyncMock, return_value=True)
+        self.status = status.start()
+        self.addCleanup(status.stop)
 
     async def test_first_pass_registers(self):
         with patch.object(rcs, "_fetch_ringcentral_sms_extensions", new_callable=AsyncMock, return_value=["101"]):
@@ -37,10 +44,12 @@ class TestReconcileRcSubscription(unittest.IsolatedAsyncioTestCase):
         with patch.object(rcs, "_fetch_ringcentral_sms_extensions", new_callable=AsyncMock, return_value=["101"]):
             with patch.object(rcs, "register_sms_webhook", new_callable=AsyncMock, return_value=True) as register:
                 await rcs.reconcile_rc_subscription(CALLBACK)
-                # Steady state: one internal read per tick and nothing else.
+                # Steady state: one internal read and one status read per tick.
                 self.assertFalse(await rcs.reconcile_rc_subscription(CALLBACK))
                 self.assertFalse(await rcs.reconcile_rc_subscription(CALLBACK))
                 self.assertEqual(register.await_count, 1)
+                self.assertEqual(self.status.await_count, 2)
+                self.status.assert_awaited_with(CALLBACK)
 
     async def test_a_newly_onboarded_recruiter_is_picked_up(self):
         rosters = [["101"], ["101", "102"]]
@@ -105,6 +114,40 @@ class TestReconcileRcSubscription(unittest.IsolatedAsyncioTestCase):
                 # Not recorded as live, so the next tick tries again.
                 self.assertTrue(await rcs.reconcile_rc_subscription(CALLBACK))
                 self.assertEqual(register.await_count, 2)
+
+    async def test_a_subscription_ringcentral_stopped_delivering_is_registered_again(self):
+        with patch.object(rcs, "_fetch_ringcentral_sms_extensions", new_callable=AsyncMock, return_value=["101"]):
+            with patch.object(rcs, "register_sms_webhook", new_callable=AsyncMock, return_value=True) as register:
+                await rcs.reconcile_rc_subscription(CALLBACK)
+                self.status.return_value = False  # blacklisted after a failed delivery
+                self.assertTrue(await rcs.reconcile_rc_subscription(CALLBACK))
+                self.assertEqual(register.await_count, 2)
+                self.assertEqual(register.await_args.args, (CALLBACK, ["101"]))
+
+    async def test_an_unreadable_status_is_not_a_reason_to_re_register(self):
+        with patch.object(rcs, "_fetch_ringcentral_sms_extensions", new_callable=AsyncMock, return_value=["101"]):
+            with patch.object(rcs, "register_sms_webhook", new_callable=AsyncMock, return_value=True) as register:
+                await rcs.reconcile_rc_subscription(CALLBACK)
+                self.status.return_value = None  # RingCentral did not answer
+                self.assertFalse(await rcs.reconcile_rc_subscription(CALLBACK))
+                self.assertEqual(register.await_count, 1)
+
+    async def test_a_failed_re_registration_is_tried_again_next_tick(self):
+        with patch.object(rcs, "_fetch_ringcentral_sms_extensions", new_callable=AsyncMock, return_value=["101"]):
+            with patch.object(
+                rcs, "register_sms_webhook", new_callable=AsyncMock, side_effect=[True, False, True]
+            ) as register:
+                await rcs.reconcile_rc_subscription(CALLBACK)
+                self.status.return_value = False
+                self.assertFalse(await rcs.reconcile_rc_subscription(CALLBACK))
+                self.assertTrue(await rcs.reconcile_rc_subscription(CALLBACK))
+                self.assertEqual(register.await_count, 3)
+
+    async def test_the_first_pass_does_not_wait_for_a_status_read(self):
+        with patch.object(rcs, "_fetch_ringcentral_sms_extensions", new_callable=AsyncMock, return_value=["101"]):
+            with patch.object(rcs, "register_sms_webhook", new_callable=AsyncMock, return_value=True):
+                await rcs.reconcile_rc_subscription(CALLBACK)
+                self.status.assert_not_awaited()
 
 
 class TestRefresherLifecycle(unittest.IsolatedAsyncioTestCase):
