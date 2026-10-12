@@ -164,6 +164,11 @@ jobs:
       # Google's and AWS's mirrors of it, whose caches promise no particular
       # tag. Readiness is checked over TCP, because the image's first start
       # runs a socket-only server that a socket check would mistake for ready.
+      #
+      # fsync, synchronous_commit and full_page_writes are off: this cluster
+      # lives for one job and is thrown away, so nothing it writes needs to
+      # survive a crash, and every test creates a database and applies the
+      # whole schema — measured locally, about twice as fast without them.
       - name: Start PostgreSQL 16
         run: |
           image=
@@ -177,7 +182,7 @@ jobs:
           docker run --detach --name postgres --publish 5432:5432 \
             --env POSTGRES_USER=postgres --env POSTGRES_PASSWORD=postgres --env POSTGRES_DB=postgres \
             --env POSTGRES_INITDB_ARGS='--encoding=UTF8 --locale=C' \
-            "$image"
+            "$image" -c fsync=off -c synchronous_commit=off -c full_page_writes=off
           for attempt in $(seq 1 30); do
             if docker exec postgres pg_isready --username postgres --host 127.0.0.1 > /dev/null; then exit 0; fi
             sleep 2

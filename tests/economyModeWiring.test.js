@@ -152,6 +152,20 @@ test('IDLE CONNECTIONS ARE KEPT TEN MINUTES, with TCP keepalive — a reconnect 
   assert.equal(options.keepAliveInitialDelayMillis, 60000);
 });
 
+test('AN IDLE CONNECTION NEVER HOLDS A FINISHED PROCESS OPEN — the ten minutes are for the server', (t) => {
+  const pgPath = require.resolve('pg');
+  let options = null;
+  delete require.cache[POOL];
+  require.cache[pgPath] = { exports: { Pool: class { constructor(o) { options = o; } on() {} } } };
+  t.after(() => {
+    delete require.cache[pgPath];
+    delete require.cache[POOL];
+  });
+  // eslint-disable-next-line global-require
+  require(POOL);
+  assert.equal(options.allowExitOnIdle, true);
+});
+
 // ─── the AI roster ───────────────────────────────────────────────────────────
 
 function stubAi({ providers, listing, failFirstModel = false }) {

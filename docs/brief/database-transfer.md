@@ -102,7 +102,10 @@ until a date.
 
 **Cheaper all the time, economy or not** (the same audit): the pool keeps an
 idle connection 10 minutes with TCP keepalive instead of reopening it after
-30 seconds (every reconnect is a TLS handshake plus authentication, metered);
+30 seconds (every reconnect is a TLS handshake plus authentication, metered),
+with `allowExitOnIdle` so an idle connection never keeps a finished script or
+test process alive for those 10 minutes (two PostgreSQL test files did, and CI
+took 28 minutes instead of 8 until that was set);
 the AI roster is cached 10 minutes and never reads the providers' model
 listings, whose ids are read separately and cached 12 hours; the
 per-capability switches are cached 10 minutes. Every admin save still clears
