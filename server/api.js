@@ -240,7 +240,11 @@ app.use('/api/recruiters', createRecruiterRouter({ authMiddleware: legacyAuthMid
 // /dispatch and /dispatchteam. Datatruck is read by the server, never the page.
 const { createGrossRaceRoutes } = require('./routes/grossRaceRoutes');
 const { createGrossRaceFeed } = require('../services/grossRace/feed');
-app.use(createGrossRaceRoutes({ feed: createGrossRaceFeed() }));
+const { createRacePageVersion } = require('../services/grossRace/pageVersion');
+app.use(createGrossRaceRoutes({
+  feed: createGrossRaceFeed(),
+  racePageVersion: createRacePageVersion({ assetsDir: path.join(adminBuildDir, 'assets') }),
+}));
 
 // Teaching Wenze what it may tell a candidate. Mounted beside the recruiters
 // rather than under settings: it is operational content a recruiting manager
