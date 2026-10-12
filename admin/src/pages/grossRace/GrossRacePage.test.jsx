@@ -9,6 +9,10 @@ import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import GrossRacePage from "./GrossRacePage";
 
+vi.mock("./celebration/carScene", () => ({
+  supportsWebGL: () => false, mountCarScene: vi.fn(), preloadCar: () => Promise.resolve(),
+}));
+
 const week = { start: "2026-10-12T05:00:00.000Z", end: "2026-10-19T05:00:00.000Z", label: "Oct 12–19", day: 3, dayName: "Wed", tz: "America/Chicago" };
 const racer = (name, rank, gross, target) => ({
   id: name, name, rank, gross, target, pct: gross / target, loads: 3, miles: 2000, rpm: gross / 2000,
@@ -145,6 +149,19 @@ describe("GrossRacePage", () => {
     expect(screen.getByText("Flo Example")).toBeInTheDocument();
     expect(screen.getByText("Gus Example")).toBeInTheDocument();
     expect(await screen.findByText("Board 1 of 2")).toBeInTheDocument();
+  });
+
+  test("?celebrate previews the 4 PM celebration of the race leader", async () => {
+    window.history.pushState({}, "", "/dispatchteam?celebrate");
+    try {
+      respond(live);
+      render(<GrossRacePage view="teams" />);
+      const dialog = await screen.findByRole("dialog", { name: "Today's leader" });
+      expect(dialog).toHaveTextContent("Falcon's Team");
+      expect(dialog).toHaveTextContent("You took first place! Keep it up, and one day you'll buy a great new car.");
+    } finally {
+      window.history.pushState({}, "", "/");
+    }
   });
 
   test("says plainly when Datatruck is not reachable", async () => {

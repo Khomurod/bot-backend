@@ -80,7 +80,8 @@ A screen never waits on Datatruck: it gets what the server holds and the read
 finishes in the background. **Nothing touches the database.** The week lives in
 memory, so after a restart the first screen to ask starts the read; the page
 shows "Loading loads…" and asks every 5 seconds until the week is there, then
-once a minute.
+every 30 seconds, so a load is on screen within about a minute of Datatruck
+having it.
 
 An incremental read only sees orders still dated inside the week, so a load
 rescheduled out of it drops off at the next full read, within 20 minutes.
@@ -124,6 +125,39 @@ a driver on target) and the banner. The feed comes from comparing one reading wi
 with an empty feed — and when the week turns over, a screen left open clears
 last week's feed, flashes and banner: a new week is a new race.
 
+## The 4 PM celebration
+
+**Every day at 4:00 PM Chicago time, each screen celebrates its leader for
+twelve seconds** (the owner, 12 October 2026). On `/dispatch` that is the
+dispatcher with the most gross. On `/dispatchteam` it is the team leading the
+race, ranked by share of target, the board's own order. The screen shows the
+name over a realistic 3D car the camera circles, with the line *"You took
+first place! Keep it up, and one day you'll buy a great new car."* There is no
+celebration while nobody has any gross.
+
+- **Each screen keeps its own clock** (`celebration/celebrationTime.js`): the
+  celebration is "4:00 PM, the whole minute, once per Chicago day". A screen
+  that is off or asleep at 4 PM does not catch up.
+- **The 3D is never loaded with the board.** three.js (~190 KB gzipped) and the
+  car (3.2 MB) are fetched in the three minutes before 4 PM. The WebGL scene is
+  built for the celebration and torn down after it (`carScene.js`). A screen
+  without WebGL, or one where the car fails to load, shows the same words with
+  a trophy.
+- **`?celebrate` in the address shows it at once**, e.g.
+  `/dispatchteam?celebrate`, to check a screen without waiting for four
+  o'clock.
+- **The car** is Khronos' "Car Concept" (CC BY 4.0, Eric Chadwick / Darmstadt
+  Graphics Group). The Khronos and 3DCommerce marks are removed and the plate
+  reads WENZE. The credit is on screen while the car is. See
+  `admin/src/pages/grossRace/celebration/CREDITS.md`, and do not put the marks
+  back: the licence does not cover them.
+- **Two traps are already fixed. Keep the fixes.**
+  - The car's floor placement uses PRECISE bounding boxes
+    (`setFromObject(…, true)`). The wheels are turned, a turned part's quick
+    box reaches below the tyre, and the car hovered.
+  - The lit floor disc and the contact shadows are what make the floor visible
+    at all. Without them the car reads as floating.
+
 ## `/dispatch` is a new page, not the Dispatch Center
 
 `/dispatch` was the retired Dispatch Center's address and answered 410
@@ -142,6 +176,7 @@ sign-in check, the way it maps `/recruiters`.
 | `services/grossRace/feed.js` | the held week, when to read, the failure phrases |
 | `server/routes/grossRaceRoutes.js` | `GET /api/gross-race` |
 | `admin/src/pages/grossRace/` | the page, its stylesheet and fonts (Archivo, SIL OFL), the race feed |
+| `admin/src/pages/grossRace/celebration/` | the 4 PM celebration: when and whom (pure), the three.js scene, the overlay, the car and its credits |
 
 ## Tests
 
