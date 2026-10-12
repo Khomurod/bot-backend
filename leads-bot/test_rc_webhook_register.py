@@ -13,6 +13,12 @@ filter count, so the offending value was invisible.
 What is pinned here: the filters that actually go out, that a malformed id is
 refused locally rather than sent, that a refusal sheds one extension at a time
 instead of all of them, and that the warning names what was really lost.
+
+Also pinned: no `?type=MMS` filter is ever sent. RingCentral has none — a
+picture message arrives through the SMS filter — and sending one made every
+first attempt fail, every boot warn that pictures were not delivered (they
+were), and every registration delete the working subscription and make a new
+one.
 """
 import asyncio
 import os
@@ -113,26 +119,40 @@ class ValidExtensionIdsTests(unittest.TestCase):
         self.assertEqual(rejected, [])
 
 
+def _refuses_mms_filters():
+    """A client that answers like RingCentral: a `?type=MMS` filter is invalid."""
+
+    class RingCentralLike(FakeClient):
+        async def post(self, url, json=None, headers=None):
+            self.posts.append(json or {})
+            if any("type=MMS" in f for f in (json or {}).get("eventFilters", [])):
+                return _response(400, text="CMN-101 Parameter [eventFilters] value is invalid")
+            return _response(200, {"id": f"sub-{len(self.posts)}"})
+
+    return RingCentralLike([])
+
+
 class InboundSmsFiltersTests(unittest.TestCase):
     def test_shared_extension_is_always_covered(self):
-        self.assertEqual(sms.inbound_sms_filters([]), list(sms.RC_INBOUND_SMS_MMS_FILTERS))
+        self.assertEqual(sms.inbound_sms_filters([]), [sms.RC_INBOUND_SMS_FILTER])
 
-    def test_each_recruiter_extension_gets_sms_and_mms(self):
-        filters = sms.inbound_sms_filters(["101", "102"])
-        self.assertEqual(len(filters), 6)
-        self.assertIn("/restapi/v1.0/account/~/extension/101/message-store/instant?type=SMS", filters)
-        self.assertIn("/restapi/v1.0/account/~/extension/102/message-store/instant?type=MMS", filters)
-
-    def test_mms_can_be_left_out_entirely(self):
-        filters = sms.inbound_sms_filters(["101"], include_mms=False)
-        self.assertEqual(filters, [
-            sms.RC_INBOUND_SMS_MMS_FILTERS[0],
+    def test_each_recruiter_extension_gets_one_filter(self):
+        self.assertEqual(sms.inbound_sms_filters(["101", "102"]), [
+            sms.RC_INBOUND_SMS_FILTER,
             "/restapi/v1.0/account/~/extension/101/message-store/instant?type=SMS",
+            "/restapi/v1.0/account/~/extension/102/message-store/instant?type=SMS",
         ])
+
+    def test_only_the_filter_ringcentral_has_is_ever_sent(self):
+        # RingCentral's one inbound-text filter is `instant?type=SMS`; pictures
+        # come through it as an SMS with an MmsAttachment.
+        for filt in sms.inbound_sms_filters(["101", "102"]):
+            self.assertTrue(filt.endswith("/message-store/instant?type=SMS"), filt)
+            self.assertNotIn("MMS", filt)
 
     def test_a_malformed_id_is_dropped_rather_than_interpolated(self):
         filters = sms.inbound_sms_filters(["101", "'; DROP--"])
-        self.assertEqual(len(filters), 4, "the shared pair plus one recruiter pair")
+        self.assertEqual(len(filters), 2, "the shared filter plus one recruiter's")
         self.assertFalse(any("DROP" in f for f in filters))
 
 
@@ -154,30 +174,22 @@ class RegisterSmsWebhookTests(unittest.TestCase):
         self.assertFalse(any("oops" in f for f in sent))
         self.assertTrue(any("/extension/101/" in f for f in sent))
 
-    def test_a_refusal_sheds_mms_before_it_sheds_a_recruiter(self):
-        # Losing picture messages on a watched number costs less than losing a
-        # recruiter's replies altogether.
-        ok, client = _run(
-            FakeClient([
-                _response(400, text="CMN-101 Parameter [eventFilters] value is invalid"),
-                _response(200, {"id": "sub-2"}),
-            ]),
-            ["101", "102"],
-        )
+    def test_ringcentral_accepts_the_first_request_and_nothing_is_reported(self):
+        # The production warning: the first request carried `?type=MMS`, which
+        # RingCentral refuses, so every boot fell back and announced that
+        # picture messages were lost. One request, every recruiter, no warning.
+        with self.assertNoLogs(sms.logger, level="WARNING"):
+            ok, client = _run(_refuses_mms_filters(), ["101", "102"])
         self.assertTrue(ok)
-        self.assertEqual(len(client.posts), 2)
-        second = client.posts[1]["eventFilters"]
-        self.assertTrue(any("/extension/101/" in f for f in second), "101 is still watched")
-        self.assertTrue(any("/extension/102/" in f for f in second), "and so is 102")
-        self.assertFalse(any("type=MMS" in f for f in second), "MMS is what was given up")
+        self.assertEqual(len(client.posts), 1)
+        self.assertEqual(sms._extensions_in(client.posts[0]["eventFilters"]), {"101", "102"})
 
     def test_one_unwatchable_extension_does_not_cost_the_others(self):
         # The regression: the old ladder went straight from "everyone" to
         # "nobody", so one unwatchable extension cost every other recruiter.
         ok, client = _run(
             FakeClient([
-                _response(400, text="CMN-101"),   # all three, SMS+MMS
-                _response(400, text="CMN-101"),   # all three, SMS only
+                _response(400, text="CMN-101"),   # all three
                 _response(200, {"id": "sub-3"}),  # first leave-one-out
             ]),
             ["101", "102", "103"],
@@ -193,8 +205,8 @@ class RegisterSmsWebhookTests(unittest.TestCase):
         # the bad one, so every attempt that still contains it must fail and
         # the ladder must go on to exclude it specifically.
         def answer(n):
-            # 1: all + MMS, 2: all SMS-only, 3: except 101 → the first that works
-            return _response(200, {"id": "sub-9"}) if n >= 3 else _response(400, text="CMN-101")
+            # 1: all three, 2: except 101 → the first that works
+            return _response(200, {"id": "sub-9"}) if n >= 2 else _response(400, text="CMN-101")
 
         class Selective(FakeClient):
             async def post(self, url, json=None, headers=None):
@@ -223,17 +235,19 @@ class RegisterSmsWebhookTests(unittest.TestCase):
 
     def test_the_shared_number_is_the_last_resort_never_the_first(self):
         # An account-admin refusal fails EVERY attempt that names another
-        # extension: all+MMS, all SMS-only, and each leave-one-out.
+        # extension: all of them, then each leave-one-out.
         ok, client = _run(
-            FakeClient([_response(403, text="admin required")] * 4 + [_response(200, {"id": "sub-4"})]),
+            FakeClient([_response(403, text="admin required")] * 3 + [_response(200, {"id": "sub-4"})]),
             ["101", "102"],
         )
         self.assertTrue(ok)
+        self.assertEqual(len(client.posts), 4)
         final = client.posts[-1]["eventFilters"]
         self.assertEqual(sms._extensions_in(final), set(), "no recruiter extension survives")
-        self.assertEqual(final, list(sms.RC_INBOUND_SMS_MMS_FILTERS))
+        self.assertEqual(final, [sms.RC_INBOUND_SMS_FILTER])
 
     def test_it_reports_which_recruiters_were_lost(self):
+        # All, then "except 101" refused; "except 102" works, so 102 is lost.
         with self.assertLogs(sms.logger, level="WARNING") as captured:
             _run(
                 FakeClient([
@@ -244,24 +258,15 @@ class RegisterSmsWebhookTests(unittest.TestCase):
                 ["101", "102"],
             )
         joined = "\n".join(captured.output)
-        self.assertIn("102", joined, "the dropped extension is named")
+        self.assertIn("Extension(s) 102 are NOT watched", joined, "the dropped extension is named")
         self.assertIn("will not reach Telegram", joined, "and the consequence is stated")
 
-    def test_an_empty_roster_losing_mms_is_not_reported_as_losing_recruiters(self):
-        # The misattributed warning: with nobody onboarded, the only thing a
-        # fallback can give up is MMS — saying "replies will not reach Telegram"
-        # sent operators looking for a recruiter problem that did not exist.
-        with self.assertLogs(sms.logger, level="WARNING") as captured:
-            _run(
-                FakeClient([
-                    _response(400, text="MMS not supported"),
-                    _response(200, {"id": "sub-6"}),
-                ]),
-                [],
-            )
-        joined = "\n".join(captured.output)
-        self.assertIn("MMS", joined)
-        self.assertNotIn("will not reach Telegram", joined)
+    def test_an_empty_roster_has_nothing_smaller_to_ask_for(self):
+        # The shared filter alone IS the request that failed, so there is no
+        # fallback: the caller retries on its next tick.
+        ok, client = _run(FakeClient([_response(503, text="try later")] * 3), [])
+        self.assertFalse(ok)
+        self.assertEqual(len(client.posts), 1)
 
     def test_the_filters_are_logged_so_a_bad_id_is_diagnosable(self):
         with self.assertLogs(sms.logger, level="WARNING") as captured:
@@ -280,16 +285,56 @@ class RegisterSmsWebhookTests(unittest.TestCase):
         self.assertFalse(ok, "reconcile_rc_subscription retries on False")
 
     def test_an_existing_matching_subscription_is_left_alone(self):
-        wanted = sms.inbound_sms_filters(["101"])
+        # Exactly what this code registers today: before the MMS filter went,
+        # this never matched, so every registration deleted it and made anew.
         existing = _response(200, {"records": [{
             "id": "sub-old",
+            "status": "Active",
             "deliveryMode": {"address": CALLBACK},
-            "eventFilters": wanted,
+            "eventFilters": sms.inbound_sms_filters(["101"]),
         }]})
         ok, client = _run(FakeClient([], get_response=existing), ["101"])
         self.assertTrue(ok)
         self.assertEqual(client.posts, [], "nothing is re-registered")
         self.assertEqual(client.deletes, [], "and nothing is deleted")
+
+    def test_a_subscription_ringcentral_stopped_delivering_is_replaced(self):
+        # Right filters, but blacklisted: keeping it would watch nothing.
+        existing = _response(200, {"records": [{
+            "id": "sub-dead",
+            "status": "Blacklisted",
+            "deliveryMode": {"address": CALLBACK},
+            "eventFilters": sms.inbound_sms_filters(["101"]),
+        }]})
+        ok, client = _run(FakeClient([_response(200, {"id": "sub-new"})], get_response=existing), ["101"])
+        self.assertTrue(ok)
+        self.assertEqual(len(client.deletes), 1)
+        self.assertTrue(client.deletes[0].endswith("/subscription/sub-dead"))
+        self.assertEqual(client.posts[0]["eventFilters"], sms.inbound_sms_filters(["101"]))
+
+    def test_a_subscription_missing_a_new_recruiter_is_replaced(self):
+        existing = _response(200, {"records": [{
+            "id": "sub-old",
+            "status": "Active",
+            "deliveryMode": {"address": CALLBACK},
+            "eventFilters": sms.inbound_sms_filters(["101"]),
+        }]})
+        ok, client = _run(FakeClient([_response(200, {"id": "sub-new"})], get_response=existing), ["101", "102"])
+        self.assertTrue(ok)
+        self.assertEqual(len(client.deletes), 1)
+        self.assertEqual(sms._extensions_in(client.posts[0]["eventFilters"]), {"101", "102"})
+
+    def test_a_subscription_for_another_address_is_not_touched(self):
+        existing = _response(200, {"records": [{
+            "id": "sub-other",
+            "status": "Active",
+            "deliveryMode": {"address": "https://someone-else.test/hook"},
+            "eventFilters": [sms.RC_INBOUND_SMS_FILTER],
+        }]})
+        ok, client = _run(FakeClient([_response(200, {"id": "sub-new"})], get_response=existing), [])
+        self.assertTrue(ok)
+        self.assertEqual(client.deletes, [])
+        self.assertEqual(len(client.posts), 1)
 
     def test_it_never_raises_when_ringcentral_is_unreachable(self):
         class Exploding(FakeClient):
@@ -305,7 +350,7 @@ class ExtensionsInTests(unittest.TestCase):
         self.assertEqual(sms._extensions_in(sms.inbound_sms_filters(["101", "102"])), {"101", "102"})
 
     def test_the_shared_extension_is_not_an_extension_id(self):
-        self.assertEqual(sms._extensions_in(sms.RC_INBOUND_SMS_MMS_FILTERS), set())
+        self.assertEqual(sms._extensions_in([sms.RC_INBOUND_SMS_FILTER]), set())
 
     def test_junk_does_not_throw(self):
         self.assertEqual(sms._extensions_in([None, "", "not a filter"]), set())

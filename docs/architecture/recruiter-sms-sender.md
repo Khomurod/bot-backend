@@ -310,16 +310,37 @@ already walks every credentialed recruiter, and runs **once at boot**, so a
 deploy repairs production in minutes rather than a day. The internal route now
 warns by name about anyone still missing one instead of dropping them silently.
 
+**One filter per extension, `message-store/instant?type=SMS`, and nothing
+else.** It is the only inbound-text filter RingCentral has, and picture messages
+come through it: an MMS arrives as `"type": "SMS"` with an `MmsAttachment`,
+which `webhook/ringcentral.py` downloads and forwards. The subscription used to
+add a `?type=MMS` filter as well. RingCentral has no such filter, so it refused
+the whole first request (CMN-101) on every registration, and the SMS-only retry
+then worked. Three things followed from that:
+
+- every boot logged "picture messages (MMS) are not delivered", which was false;
+- the existing subscription never matched the filter set being looked for, so
+  every registration deleted the working subscription and created a new one;
+- recruiter extensions were never the problem, but the warning read as if they
+  might be.
+
 **A refused filter set sheds one extension at a time.** It used to go straight
 from "everyone" to "nobody": one unusable extension id produced
 `CMN-101 Parameter [eventFilters] value is invalid` and the retry dropped
-**every** recruiter's filter. Now `valid_extension_ids()` refuses a non-numeric
-id locally (naming it, rather than letting it invalidate the whole payload), and
-the ladder gives up capability in the order that costs least — MMS first, then
-recruiters one at a time, then the shared extension alone. The filters
-themselves are logged; they carry no secret, and without them a bad id was
-invisible. The warning also stopped claiming "WITHOUT per-recruiter extensions"
-when the roster was empty and the real loss was MMS.
+**every** recruiter's filter. Now:
+
+- `valid_extension_ids()` refuses a non-numeric id locally, naming it, rather
+  than letting it invalidate the whole payload.
+- The ladder leaves out one recruiter at a time, then falls back to the shared
+  extension alone. A fallback that works always names the extensions it lost.
+- The filters themselves are logged. They carry no secret, and without them a
+  bad id was invisible.
+
+**An existing subscription is kept only while it is `Active`.** RingCentral
+suspends or blacklists a webhook whose address stopped answering, so a
+subscription with the right filters can still deliver nothing. When the filters
+match and the status is `Active`, it is left alone. Otherwise it is deleted and
+registered again.
 
 `hub_client._fetch_ringcentral_sms_extensions` now **raises** when the shared
 secret is unset instead of returning `[]`. Returning an empty list made a
@@ -424,7 +445,7 @@ about the sending half.
 | Migration 0012 and the blank-means-delete rule, on real PostgreSQL | `tests/facebookLeadRecruiterMessagesPg.test.js` |
 | The extension identity backfill | `tests/ringCentralTokenRefresh.test.js` |
 | `fallback_reason` on the mirror, on real PostgreSQL | `tests/smsMirrorFallbackReasonPg.test.js` |
-| The subscription payload, and shedding one extension at a time (Python) | `leads-bot/test_rc_webhook_register.py` |
+| The subscription payload (no `?type=MMS` filter), shedding one extension at a time, keeping only an `Active` subscription (Python) | `leads-bot/test_rc_webhook_register.py` |
 | Token exchange, rotation, expiry flagging | `tests/ringCentralOAuthService.test.js` |
 | The connect link, and the wrong-extension warning | `tests/ringCentralConnectService.test.js` |
 | The daily refresh job | `tests/ringCentralTokenRefresh.test.js` |
@@ -437,5 +458,5 @@ about the sending half.
 | Migration 0008 on real PostgreSQL | `tests/recruiterSenderIdentityPg.test.js` |
 | The Bitrix diagnosis, and that the webhook secret never leaves | `tests/bitrixDiagnostics.test.js`, `tests/bitrixSettingsRoutes.test.js` |
 | Answers reaching the CRM, and the inert-assignee warning | `tests/bitrix24LeadMapper.test.js` |
-| Inbound recipient extraction, per-extension filters (Python) | `leads-bot/test_rc_forward.py` |
+| Inbound recipient extraction, per-extension filters, a picture arriving as an SMS with an `MmsAttachment` (Python) | `leads-bot/test_rc_forward.py` |
 | The subscription keeping up with the roster (Python) | `leads-bot/test_rc_subscription.py` |

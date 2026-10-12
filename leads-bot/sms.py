@@ -19,11 +19,17 @@ _cached_token: dict = {"access_token": "", "expires_at": 0}
 # Base URL for relative attachment URIs from webhook payloads
 RC_PLATFORM_BASE = "https://platform.ringcentral.com"
 
-# Subscriptions must include these filters so inbound SMS and MMS (photos) are delivered.
-RC_INBOUND_SMS_MMS_FILTERS: tuple[str, ...] = (
-    "/restapi/v1.0/account/~/extension/~/message-store/instant?type=SMS",
-    "/restapi/v1.0/account/~/extension/~/message-store/instant?type=MMS",
-)
+# The one event filter RingCentral has for inbound texts, on the shared number.
+# Picture messages come through it too: RingCentral sends an MMS as
+# `"type": "SMS"` with an `MmsAttachment`, which webhook/ringcentral.py
+# downloads and forwards.
+#
+# There is no `?type=MMS` filter. The subscription used to ask for one as well,
+# so RingCentral refused EVERY first attempt (CMN-101), the SMS-only retry then
+# worked, and each boot logged "picture messages (MMS) are not delivered" —
+# untrue, and the working subscription was deleted and re-created every time,
+# because the one found never had the MMS filter it was looking for.
+RC_INBOUND_SMS_FILTER = "/restapi/v1.0/account/~/extension/~/message-store/instant?type=SMS"
 
 
 def valid_extension_ids(
@@ -64,10 +70,9 @@ def valid_extension_ids(
     return usable, rejected
 
 
-def extension_filters(extension_id: str, *, include_mms: bool = True) -> list[str]:
-    """The SMS (and optionally MMS) filters for one extension."""
-    base = f"/restapi/v1.0/account/~/extension/{extension_id}/message-store/instant"
-    return [f"{base}?type=SMS"] + ([f"{base}?type=MMS"] if include_mms else [])
+def extension_filter(extension_id: str) -> str:
+    """The inbound-text filter for one extension (pictures included, as above)."""
+    return f"/restapi/v1.0/account/~/extension/{extension_id}/message-store/instant?type=SMS"
 
 
 def _extensions_in(filters: list[str] | tuple[str, ...]) -> set[str]:
@@ -75,7 +80,7 @@ def _extensions_in(filters: list[str] | tuple[str, ...]) -> set[str]:
 
     Used to say, precisely, which recruiters a degraded subscription lost —
     rather than the old blanket "WITHOUT per-recruiter extensions", which was
-    wrong whenever the roster was empty or only MMS had been given up.
+    wrong whenever the roster was empty.
     """
     found: set[str] = set()
     for item in filters or ():
@@ -87,8 +92,6 @@ def _extensions_in(filters: list[str] | tuple[str, ...]) -> set[str]:
 
 def inbound_sms_filters(
     extension_ids: list[str] | tuple[str, ...] | None = None,
-    *,
-    include_mms: bool = True,
 ) -> list[str]:
     """Event filters covering the shared extension plus each recruiter's own.
 
@@ -101,19 +104,22 @@ def inbound_sms_filters(
     Watching another extension requires the subscribing user to be an account
     admin; when that is refused, register_sms_webhook() sheds extensions one at
     a time rather than losing every recruiter at once.
+
+    One filter per extension, never a duplicate: valid_extension_ids() drops
+    `~` and repeats, so no id can produce the shared filter again.
     """
-    filters = list(RC_INBOUND_SMS_MMS_FILTERS if include_mms else RC_INBOUND_SMS_MMS_FILTERS[:1])
     usable, _rejected = valid_extension_ids(extension_ids)
-    for ext in usable:
-        filters.extend(extension_filters(ext, include_mms=include_mms))
-    # De-duplicate while keeping order: `~` may also appear as an explicit id.
-    seen: set[str] = set()
-    unique: list[str] = []
-    for item in filters:
-        if item not in seen:
-            seen.add(item)
-            unique.append(item)
-    return unique
+    return [RC_INBOUND_SMS_FILTER] + [extension_filter(ext) for ext in usable]
+
+
+def _is_active(subscription: dict) -> bool:
+    """Whether RingCentral is still delivering this subscription's events.
+
+    RingCentral suspends or blacklists a webhook whose address stopped
+    answering. Such a subscription has the right filters and delivers nothing,
+    so it must be replaced, not kept.
+    """
+    return str(subscription.get("status") or "").strip().lower() == "active"
 
 
 def resolve_ringcentral_uri(uri: str) -> str:
@@ -226,8 +232,10 @@ async def register_sms_webhook(
     """Register a RingCentral webhook subscription for incoming SMS.
 
     Creates a subscription so RingCentral POSTs to callback_url whenever an SMS
-    arrives on the shared company number or on any recruiter extension in
-    `extension_ids`. Returns True on success, False on failure. Never raises.
+    — or a picture message, which arrives the same way — reaches the shared
+    company number or any recruiter extension in `extension_ids`. An active
+    subscription that already covers them is kept. Returns True on success,
+    False on failure. Never raises.
     """
     if not all([RC_CLIENT_ID, RC_CLIENT_SECRET, RC_JWT_TOKEN]):
         logger.info("RingCentral not configured — skipping webhook registration.")
@@ -259,14 +267,15 @@ async def register_sms_webhook(
                     if delivery.get("address", "") != callback_url:
                         continue
                     existing_filters = set(sub.get("eventFilters") or [])
-                    if desired.issubset(existing_filters):
+                    if desired.issubset(existing_filters) and _is_active(sub):
                         logger.info(
-                            "RingCentral webhook already registered (SMS+MMS) at %s (ID: %s).",
+                            "RingCentral webhook already registered at %s (ID: %s).",
                             callback_url,
                             sub.get("id"),
                         )
                         return True
-                    # Replace stale subscription (e.g. SMS-only) so MMS events are delivered.
+                    # Replace it: it misses an extension that is wanted now, or
+                    # RingCentral has stopped delivering it.
                     sub_id = sub.get("id")
                     if sub_id:
                         del_resp = await client.delete(
@@ -274,7 +283,12 @@ async def register_sms_webhook(
                             headers=headers,
                         )
                         if del_resp.is_success:
-                            logger.info("Removed outdated RingCentral subscription %s to add MMS filter.", sub_id)
+                            logger.info(
+                                "Removed RingCentral subscription %s (status %s): it is replaced by "
+                                "one watching the current extensions.",
+                                sub_id,
+                                sub.get("status") or "unknown",
+                            )
                         else:
                             logger.warning(
                                 "Could not delete RingCentral subscription %s (%s): %s",
@@ -306,11 +320,10 @@ async def register_sms_webhook(
                 )
                 return True
 
-            # Watching another extension needs an admin subscriber, and some
-            # tenants also reject the MMS filter. Shed capability in the order
-            # that costs least, and keep every recruiter we still can: dropping
-            # ALL of them because one was refused is how a single bad row used
-            # to take out everybody's inbound SMS.
+            # Watching another extension needs an admin subscriber. Keep every
+            # recruiter we still can: dropping ALL of them because one was
+            # refused is how a single bad row used to take out everybody's
+            # inbound SMS.
             #
             # The filters are logged in full. They carry no secret — an account
             # id is `~` and the rest is an extension number — and without them
@@ -324,13 +337,7 @@ async def register_sms_webhook(
             )
 
             attempts: list[tuple[str, list[str]]] = []
-            # 1. SMS only for the extras (MMS is the commonest tenant refusal).
-            if usable_extensions:
-                attempts.append((
-                    f"{len(usable_extensions)} recruiter extension(s), SMS only",
-                    inbound_sms_filters(usable_extensions, include_mms=False),
-                ))
-            # 2. Leave ONE extension out at a time, so the unwatchable one is
+            # 1. Leave ONE extension out at a time, so the unwatchable one is
             #    isolated wherever it sits in the roster.
             #
             #    Shedding a SUFFIX instead — the obvious version — only works if
@@ -341,15 +348,15 @@ async def register_sms_webhook(
             for excluded in usable_extensions:
                 kept = [ext for ext in usable_extensions if ext != excluded]
                 if not kept:
-                    continue  # covered by the shared-only attempts below
+                    continue  # covered by the shared-only attempt below
                 attempts.append((
                     f"every recruiter extension except {excluded}",
                     inbound_sms_filters(kept),
                 ))
-            # 3. The shared number alone, with and then without MMS. One number
-            #    covered beats none.
-            attempts.append(("the shared extension only", list(RC_INBOUND_SMS_MMS_FILTERS)))
-            attempts.append(("the shared extension only, SMS only", [RC_INBOUND_SMS_MMS_FILTERS[0]]))
+            # 2. The shared number alone. One number covered beats none. With
+            #    no recruiter extensions this IS the request that just failed,
+            #    so it is skipped and the caller retries on its next tick.
+            attempts.append(("the shared extension only", [RC_INBOUND_SMS_FILTER]))
 
             tried: set[tuple[str, ...]] = {tuple(wanted_filters)}
             for description, fallback_filters in attempts:
@@ -371,32 +378,20 @@ async def register_sms_webhook(
                     )
                     continue
 
+                # Every fallback leaves out at least one recruiter extension,
+                # so a fallback that works always says whose replies are lost.
                 sub_id = retry.json().get("id", "?")
                 covered = _extensions_in(fallback_filters)
                 dropped = [ext for ext in usable_extensions if ext not in covered]
-                if dropped:
-                    logger.warning(
-                        "RingCentral webhook subscription created with %s (ID: %s) → %s. "
-                        "Extension(s) %s are NOT watched, so replies to those recruiters' "
-                        "numbers will not reach Telegram.",
-                        description,
-                        sub_id,
-                        callback_url,
-                        ", ".join(dropped),
-                    )
-                else:
-                    # No recruiter was lost: what we gave up was MMS on a number
-                    # we ARE watching. Saying "without per-recruiter extensions"
-                    # here — as this used to, even for an empty roster — sends an
-                    # operator looking for the wrong problem.
-                    logger.warning(
-                        "RingCentral webhook subscription created with %s (ID: %s) → %s. "
-                        "Every recruiter extension is still watched; picture messages (MMS) "
-                        "are not delivered.",
-                        description,
-                        sub_id,
-                        callback_url,
-                    )
+                logger.warning(
+                    "RingCentral webhook subscription created with %s (ID: %s) → %s. "
+                    "Extension(s) %s are NOT watched, so replies to those recruiters' "
+                    "numbers will not reach Telegram.",
+                    description,
+                    sub_id,
+                    callback_url,
+                    ", ".join(dropped),
+                )
                 return True
             return False
 
