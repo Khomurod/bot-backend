@@ -53,6 +53,7 @@ afterEach(() => {
   delete document.documentElement.requestFullscreen;
   delete document.exitFullscreen;
   delete document.fullscreenElement;
+  window.sessionStorage.clear();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
@@ -159,6 +160,61 @@ describe("GrossRacePage", () => {
       const dialog = await screen.findByRole("dialog", { name: "Today's leader" });
       expect(dialog).toHaveTextContent("Falcon's Team");
       expect(dialog).toHaveTextContent("You took first place! Keep it up, and one day you'll buy a great new car.");
+    } finally {
+      window.history.pushState({}, "", "/");
+    }
+  });
+
+  const poll = async () => {
+    act(() => { document.dispatchEvent(new Event("visibilitychange")); });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  };
+
+  test("a screen running an older build of the page reloads itself, once", async () => {
+    respond({ ...live, page: "GrossRacePage-new2.js" });
+    const reload = vi.fn();
+    render(<GrossRacePage view="teams" ownChunk="GrossRacePage-old1.js" reload={reload} />);
+    await screen.findAllByText("Falcon's Team");
+    await poll(); // the same new build named a second time, a poll later
+    await waitFor(() => expect(reload).toHaveBeenCalledTimes(1));
+    expect(Number(window.sessionStorage.getItem("grossRace.reloadedAt"))).toBeGreaterThan(0);
+
+    await poll();
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  test("one stray answer naming another build does not reload: a deploy switching over can send one", async () => {
+    respond({ ...live, page: "GrossRacePage-old1.js" });
+    const reload = vi.fn();
+    render(<GrossRacePage view="teams" ownChunk="GrossRacePage-new2.js" reload={reload} />);
+    await screen.findAllByText("Falcon's Team");
+    respond({ ...live, page: "GrossRacePage-new2.js" });
+    await poll();
+    await poll();
+    expect(reload).not.toHaveBeenCalled();
+  });
+
+  test("the same build, or a server that names none, never reloads", async () => {
+    for (const page of ["GrossRacePage-same.js", null]) {
+      respond({ ...live, page });
+      const reload = vi.fn();
+      const { unmount } = render(<GrossRacePage view="teams" ownChunk="GrossRacePage-same.js" reload={reload} />);
+      await screen.findAllByText("Falcon's Team");
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(reload).not.toHaveBeenCalled();
+      unmount();
+    }
+  });
+
+  test("not while the celebration is on screen", async () => {
+    window.history.pushState({}, "", "/dispatchteam?celebrate");
+    try {
+      respond({ ...live, page: "GrossRacePage-new2.js" });
+      const reload = vi.fn();
+      render(<GrossRacePage view="teams" ownChunk="GrossRacePage-old1.js" reload={reload} />);
+      await screen.findByRole("dialog", { name: "Today's leader" });
+      await poll(); // confirmed a second time, but the celebration is on screen
+      expect(reload).not.toHaveBeenCalled();
     } finally {
       window.history.pushState({}, "", "/");
     }

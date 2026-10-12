@@ -7,12 +7,15 @@
  * names and race numbers (services/grossRace/standings.js says which), and the
  * Datatruck token never leaves the server. Answering never waits on Datatruck
  * and never reads the database: services/grossRace/feed.js holds the week.
+ *
+ * `page` names the build of the race page this server hands out
+ * (services/grossRace/pageVersion.js); a screen running another one reloads.
  */
 const express = require('express');
 
 const VIEWS = new Set(['teams', 'dispatchers']);
 
-function createGrossRaceRoutes({ feed }) {
+function createGrossRaceRoutes({ feed, racePageVersion = () => null }) {
   const router = express.Router();
 
   router.get('/api/gross-race', (req, res) => {
@@ -20,7 +23,7 @@ function createGrossRaceRoutes({ feed }) {
     if (!VIEWS.has(view)) return res.status(400).json({ error: 'view must be teams or dispatchers' });
     try {
       res.set('Cache-Control', 'no-store');
-      return res.json(feed.getRace(view));
+      return res.json({ ...feed.getRace(view), page: racePageVersion() });
     } catch (err) {
       console.error('[GROSS-RACE] standings failed:', err.message);
       return res.status(500).json({ error: 'Failed to load the race' });

@@ -488,7 +488,9 @@ the board.
 $15,000-per-solo / $20,000-per-team-truck target; `/dispatch` races whoever
 created the loads, by gross alone, five to a screen. At 4:00 PM Chicago, every
 day, each board celebrates its leader for twelve seconds over a 3D car
-(`?celebrate` previews it). Public, like
+(`?celebrate` previews it). A screen reloads itself within about a minute
+of an admin-panel deploy; on the office screens use the browser's own full
+screen (F11), because a reload ends the page's. Public, like
 `/recruiters`. **The server reads Datatruck with the app's own token and holds
 the week in memory; the page never sees a token.** See
 [`docs/architecture/gross-race.md`](../architecture/gross-race.md).

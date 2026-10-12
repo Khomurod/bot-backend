@@ -165,6 +165,38 @@ celebration while nobody has any gross.
   - The lit floor disc and the contact shadows are what make the floor visible
     at all. Without them the car reads as floating.
 
+## The screens update themselves
+
+The owner (12 October 2026): after a code update the office screens should
+pick it up without anyone reloading them.
+
+- **Every answer names the page build the server hands out:** `page`, the
+  race page chunk's file name, e.g. `GrossRacePage-BgHoDpj_.js`
+  (`services/grossRace/pageVersion.js`, read once from `admin/build/assets`).
+  Vite hashes that name from the chunk's content. The page knows its own name
+  from `import.meta.url`. When two answers in a row name the same other build,
+  the screen reloads itself, 30 to 60 seconds after the deploy.
+- **What triggers it.** The chunk imports the panel's main chunk, so ANY admin
+  code change renames it, not only a change to these pages: editing the
+  Samsara settings tab did. A deploy that touches only the server leaves it
+  alone.
+- **When it does not reload** (`admin/src/pages/grossRace/pageVersion.js`):
+  - the server names no build (`null`: tests, `vite dev`, or a doubtful build
+    directory), or the page is not a built chunk;
+  - on a single answer naming another build. A hash says which build, not
+    which is newer, and while a deploy switches over, a screen already on the
+    new page can get one answer from the old server (Codex, #280). The new
+    build is still there a poll later; a stray answer is not;
+  - while the celebration is on screen, or during the 4:00 PM minute, when a
+    fresh page would celebrate a second time;
+  - a second time within five minutes. A deploy in progress answers from the
+    old and the new server for a while, and must not set a screen reloading
+    over and over. The time is kept in the tab's `sessionStorage`.
+- **A reload ends the page's own full screen.** Browsers allow the **Full
+  screen** button only from a person's click, so after an update a screen in
+  that mode drops out of it. For screens that should stay full screen, use the
+  browser's own full screen (F11, or a kiosk mode), which survives a reload.
+
 ## `/dispatch` is a new page, not the Dispatch Center
 
 `/dispatch` was the retired Dispatch Center's address and answered 410
@@ -181,14 +213,15 @@ sign-in check, the way it maps `/recruiters`.
 | `services/grossRace/week.js` | the race week (pure) |
 | `services/grossRace/standings.js` | which loads count, who they count for, targets, ranking, what the public payload holds (pure) |
 | `services/grossRace/feed.js` | the held week, when to read, the failure phrases |
+| `services/grossRace/pageVersion.js` | which build of the race page the server hands out |
 | `server/routes/grossRaceRoutes.js` | `GET /api/gross-race` |
-| `admin/src/pages/grossRace/` | the page, its stylesheet and fonts (Archivo, SIL OFL), the race feed |
+| `admin/src/pages/grossRace/` | the page, its stylesheet and fonts (Archivo, SIL OFL), the race feed; `pageVersion.js` decides when a screen reloads itself |
 | `admin/src/pages/grossRace/celebration/` | the 4 PM celebration: when and whom (pure), the three.js scene, the overlay, the car and its credits |
 
 ## Tests
 
 ```
-node --test tests/grossRaceStandings.test.js tests/grossRaceFeed.test.js tests/grossRaceRoutes.test.js
+node --test tests/grossRaceStandings.test.js tests/grossRaceFeed.test.js tests/grossRaceRoutes.test.js tests/grossRacePageVersion.test.js
 node --test tests/api-surface.test.js   # /dispatch and /dispatchteam serve the shell; /dispatch/* → 410
 npm test --prefix admin -- --run src/pages/grossRace
 ```

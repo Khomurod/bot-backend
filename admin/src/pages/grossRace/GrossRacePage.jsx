@@ -11,6 +11,7 @@ import RaceSidebar from "./RaceSidebar";
 import CelebrationOverlay from "./celebration/CelebrationOverlay";
 import { CELEBRATION_MS, celebrationTick, celebrationWinner } from "./celebration/celebrationTime";
 import { preloadCar } from "./celebration/carScene";
+import { chunkOf, lastReloadAt, markReload, noteServed, shouldReload, tabStorage } from "./pageVersion";
 import "./grossRace.css";
 
 /**
@@ -31,6 +32,10 @@ import "./grossRace.css";
  * At 4:00 PM in Chicago, every day, the leader is celebrated for twelve seconds
  * over a 3D car (celebration/). `?celebrate` in the address shows it at once,
  * to preview it without waiting for four o'clock.
+ *
+ * Every answer also names the build of this page the server hands out; a
+ * screen running an older one reloads itself (pageVersion.js), so a code
+ * update reaches the office screens without anyone touching them.
  */
 
 const POLL_MS = 30_000;
@@ -39,18 +44,30 @@ const WARMING_POLL_MS = 5_000;
 const OFFLINE = "No connection to the server";
 export const PAGE_SIZE = { dispatchers: 5, teams: Infinity };
 export const PAGE_MS = 10_000;
+// The build this screen is running: the chunk Vite put this module in.
+const OWN_CHUNK = chunkOf(import.meta.url);
+const reloadPage = () => window.location.reload();
 
-export default function GrossRacePage({ view, pageMs = PAGE_MS }) {
+export default function GrossRacePage({ view, pageMs = PAGE_MS, ownChunk = OWN_CHUNK, reload = reloadPage }) {
   const [data, setData] = useState(null);
   const [now, setNow] = useState(() => Date.now());
   const [events, setEvents] = useState([]);
   const [flashUntil, setFlashUntil] = useState({});
   const [banner, setBanner] = useState({ current: null, shown: null });
   const [page, setPage] = useState(0);
-  const [celebration, setCelebration] = useState(null);
+  const [celebration, setCelebrationState] = useState(null);
+  // Mirrors `celebration` the moment it is set, for the reload check, which
+  // runs in the same pass and would otherwise see the state before it changed.
+  const celebrating = useRef(false);
+  const setCelebration = useCallback((value) => {
+    celebrating.current = Boolean(value);
+    setCelebrationState(value);
+  }, []);
   const celebratedOn = useRef(null);
   const preloading = useRef(false);
   const preview = useRef(typeof window !== "undefined" && new URLSearchParams(window.location.search).has("celebrate"));
+  const reloading = useRef(false);
+  const otherBuild = useRef(null); // a build the server named that is not ours, and how many times in a row
   const last = useRef(null);
   const fullscreen = useFullscreen();
   const pageSize = PAGE_SIZE[view] || Infinity;
@@ -66,6 +83,7 @@ export default function GrossRacePage({ view, pageMs = PAGE_MS }) {
         : { ...(held || {}), status: "error", error: OFFLINE, race: null }));
       return;
     }
+    otherBuild.current = noteServed(otherBuild.current, next.page, ownChunk);
     setData(next);
     const weekStart = next.week ? next.week.start : null;
     if (last.current && last.current.weekStart !== weekStart) {
@@ -86,7 +104,7 @@ export default function GrossRacePage({ view, pageMs = PAGE_MS }) {
       setFlashUntil((held) => ({ ...held, ...Object.fromEntries(change.flashed.map((id) => [id, at + FLASH_MS])) }));
     }
     if (change.banner) setBanner({ current: change.banner, shown: bannerView(change.banner) });
-  }, [view]);
+  }, [view, ownChunk]);
 
   useEffect(() => {
     document.title = `Gross Grand Prix · ${view === "teams" ? "Teams" : "Dispatchers"}`;
@@ -111,18 +129,33 @@ export default function GrossRacePage({ view, pageMs = PAGE_MS }) {
     if (!tick.winner) return;
     celebratedOn.current = tick.day;
     setCelebration({ winner: tick.winner, until: now + CELEBRATION_MS });
-  }, [now, data]);
+  }, [now, data, setCelebration]);
 
   useEffect(() => {
     if (!preview.current || !data || !data.race) return;
     preview.current = false;
     const winner = celebrationWinner(data.race);
     if (winner) setCelebration({ winner, until: Date.now() + CELEBRATION_MS });
-  }, [data]);
+  }, [data, setCelebration]);
 
   useEffect(() => {
     if (celebration && now >= celebration.until) setCelebration(null);
-  }, [now, celebration]);
+  }, [now, celebration, setCelebration]);
+
+  // A newer build of this page is out: reload, unless now is a bad moment.
+  useEffect(() => {
+    if (reloading.current || !data || !data.page) return;
+    const tz = (data.week && data.week.tz) || DEFAULT_TZ;
+    const storage = tabStorage();
+    const due = shouldReload({
+      own: ownChunk, served: data.page, confirmations: otherBuild.current && otherBuild.current.name === data.page ? otherBuild.current.count : 0,
+      now, tz, celebrating: celebrating.current, lastReloadAt: lastReloadAt(storage),
+    });
+    if (!due) return;
+    reloading.current = true;
+    markReload(storage, now);
+    reload();
+  }, [data, now, ownChunk, reload]);
 
   useEffect(() => {
     setPage((held) => (held < pages ? held : 0));
