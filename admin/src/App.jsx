@@ -25,6 +25,7 @@ const UsersPage = lazy(() => import("./pages/UsersPage"));
 const SettingsPage = lazy(() => import("./pages/SettingsPage"));
 const RecruiterKpiPage = lazy(() => import("./pages/RecruiterKpiPage"));
 const RecruitersPublicPage = lazy(() => import("./pages/RecruitersPublicPage"));
+const GrossRacePage = lazy(() => import("./pages/grossRace/GrossRacePage"));
 const LiveLocationsPage = lazy(() => import("./pages/LiveLocationsPage"));
 const RouteControlPage = lazy(() => import("./pages/RouteControlPage"));
 const OperationsPage = lazy(() => import("./pages/OperationsPage"));
@@ -76,12 +77,15 @@ function LazyPage({ pageKey, children }) {
  * `navigation/pageKeys.js`: a key that moved opens where its content went, and
  * anything else opens Driver Groups — the page the shell has always opened on.
  *
- * `/dispatch` is NOT here. The Dispatch Center is retired and the server
- * answers 410 on that path before the SPA is ever served, so a held bookmark
- * gets a plain "this feature has been removed" rather than the shell quietly
+ * `/dispatch` and `/dispatchteam` are the Gross Grand Prix race displays, and
+ * only those exact paths: `/dispatch/…` was the retired Dispatch Center, which
+ * the server answers with 410 before the SPA is ever served, so a held deep
+ * link gets "this feature has been removed" rather than the shell quietly
  * rendering Driver Groups. See server/routes/retiredRoutes.js.
  */
 function pageFromLocation(pathname, hash) {
+  if (pathname === "/dispatch") return "gross_race_dispatchers";
+  if (pathname === "/dispatchteam") return "gross_race_teams";
   if (pathname === "/raise" || pathname.startsWith("/raise/")) {
     return "raise_public";
   }
@@ -153,6 +157,7 @@ export default function App() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const isRaisePublicPage = page === "raise_public";
   const isRecruitersPublicPage = page === "recruiters_public";
+  const grossRaceView = { gross_race_teams: "teams", gross_race_dispatchers: "dispatchers" }[page] || null;
 
   useEffect(() => {
     // Back/forward must move the selected page AND the active sidebar item.
@@ -228,6 +233,11 @@ export default function App() {
   // Full-bleed public leaderboard — no admin chrome, no auth.
   if (isRecruitersPublicPage) {
     return <LazyPage pageKey="recruiters_public"><RecruitersPublicPage /></LazyPage>;
+  }
+
+  // The Gross Grand Prix displays for the office screens — no chrome, no auth.
+  if (grossRaceView) {
+    return <LazyPage pageKey={page}><GrossRacePage key={grossRaceView} view={grossRaceView} /></LazyPage>;
   }
 
   if (checking) {

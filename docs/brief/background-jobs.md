@@ -97,6 +97,7 @@ return. A dashboard left open overnight therefore costs nothing.
 | Leads | 45s | new leads also arrive by Telegram, so the page is not the notification path; an unchanged list is answered 304 from a 32-character fingerprint and never read (§7b) |
 | Scheduled messages | 60s | was an ungated 30s `setInterval` that polled from background tabs forever |
 | Mileage bonuses | 8s | **only while a run is in progress** |
+| Gross Grand Prix (public, `/dispatch`, `/dispatchteam`) | 60s | 5s only while the server is still reading the week after a restart; the answer is held in memory and costs no query, and Datatruck is read at most once a minute however many screens are open (`docs/architecture/gross-race.md`) |
 | Recruiters leaderboard (public) | 60s | only in "today" mode; the server keeps the answer until a call, a recruiter or the KPI settings change (5 min at most), so a poll in between costs no query |
 
 Do not add a bare `setInterval` that fetches — use the hook, or the next

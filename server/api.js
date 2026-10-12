@@ -236,6 +236,12 @@ app.use('/api/route-control', createRouteControlRouter({
 const { createRecruiterRouter } = require('./routes/recruiterRoutes');
 app.use('/api/recruiters', createRecruiterRouter({ authMiddleware: legacyAuthMiddleware }));
 
+// Public, like the recruiters' leaderboard: the Gross Grand Prix displays at
+// /dispatch and /dispatchteam. Datatruck is read by the server, never the page.
+const { createGrossRaceRoutes } = require('./routes/grossRaceRoutes');
+const { createGrossRaceFeed } = require('../services/grossRace/feed');
+app.use(createGrossRaceRoutes({ feed: createGrossRaceFeed() }));
+
 // Teaching Wenze what it may tell a candidate. Mounted beside the recruiters
 // rather than under settings: it is operational content a recruiting manager
 // maintains, not a connection setting.
@@ -308,13 +314,14 @@ app.use(createRetiredRoutes());
 
 // ─── Catch-all for the admin SPA ────────────────────────────────────────────
 //
-// `/dispatch` was here too, as a sidebar-less full-width page. It is retired and
-// now answers 410 from `retiredRoutes` — which has to be mounted BEFORE this,
-// or the catch-all would serve the shell and the SPA, finding no dispatch
-// section, would silently render Driver Groups instead.
+// `/dispatch` and `/dispatchteam` are the Gross Grand Prix race displays, public
+// pages of the SPA like `/recruiters`. `/dispatch` used to be the Dispatch
+// Center, which stays retired: `/dispatch/*` still answers 410 from
+// `retiredRoutes`, mounted BEFORE this so a held deep link never reaches the
+// shell.
 // Asset URLs are absolute (/admin/assets/… via Vite's `base`), so the same
 // index.html works under either prefix.
-app.get(['/admin', '/admin/*', '/raise', '/raise/*', '/recruiters', '/recruiters/*'], (req, res) => {
+app.get(['/admin', '/admin/*', '/raise', '/raise/*', '/recruiters', '/recruiters/*', '/dispatch', '/dispatchteam'], (req, res) => {
   if (!fs.existsSync(adminSpaIndexPath)) {
     return res.status(503).type('text/plain').send(
       'Admin UI build is missing (admin/build/index.html). '

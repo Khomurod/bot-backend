@@ -476,3 +476,12 @@ The page and its assets are served through an **explicit allow-list** in
 `server/routes/remoteRoutes.js`, not `express.static` — the page was one
 self-contained file until it passed the 500-line limit, and the split must not
 turn one exposed file into an exposed directory.
+
+### Gross Grand Prix at `/dispatch` and `/dispatchteam`
+
+Office-screen races of this week's gross: `/dispatchteam` races the dispatch
+teams, `/dispatch` the dispatchers, ranked by the share of a $15,000-per-solo /
+$20,000-per-team-truck target. Public, like `/recruiters`. **The server reads
+Datatruck with the app's own token and holds the week in memory; the page never
+sees a token**, and a driver's name goes out only once their truck has hit its
+target. See [`docs/architecture/gross-race.md`](../architecture/gross-race.md).

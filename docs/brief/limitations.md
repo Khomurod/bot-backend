@@ -50,7 +50,8 @@
   clean and shipped the token as visible page text. `npm run lint:undef` is
   what catches it, which is one more reason it runs in CI.
 - **Admin navigation is state-based**, not URL-router-based, except for the
-  special-cased public paths (`/raise`, `/recruiters`) which
+  special-cased public paths (`/raise`, `/recruiters`, `/dispatch`,
+  `/dispatchteam`) which
   `App.jsx` reads from `window.location`. Pages are lazy-loaded behind a
   chunk-error boundary.
 - **Committed artifacts, not runtime logic**: `eng.traineddata` (Tesseract OCR

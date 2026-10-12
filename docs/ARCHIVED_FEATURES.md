@@ -80,9 +80,11 @@ by hand in the database. It moved to **Settings → Dispatcher Board** as
 unchanged down to the string.
 
 Nothing was dropped from the database and no table belonged to this feature.
-`/dispatch` answers **410** rather than falling through to the SPA, because the
+`/dispatch/*` answers **410** rather than falling through to the SPA, because the
 shell finding no dispatch section would silently render Driver Groups instead —
-a held bookmark quietly opening an unrelated page is worse than an error.
+a held bookmark quietly opening an unrelated page is worse than an error. The
+bare `/dispatch` has since (October 2026) become the Gross Grand Prix
+dispatchers' race, a new page ([`architecture/gross-race.md`](architecture/gross-race.md)).
 
 ---
 

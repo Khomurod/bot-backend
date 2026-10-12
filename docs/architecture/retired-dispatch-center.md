@@ -58,13 +58,19 @@ System & AI Health**, from recorded runs rather than a live fan-out.
 
 It went with the page. The settings it sat beside did not.
 
-## `/dispatch` answers 410, and that is load-bearing
+## `/dispatch/*` answers 410, and that is load-bearing
 
-The page path is in `RETIRED_PAGE_PATHS`, which is mounted **before** the SPA
-catch-all. Without it, `/dispatch` falls through to the shell, the shell finds
-no dispatch section, and it renders Driver Groups — a held bookmark quietly
-opening an unrelated page, which is worse than an error. This is the same
-reasoning that put `/admin/trailers` in that list.
+The page's deep paths are in `RETIRED_PAGE_PATHS`, which is mounted **before**
+the SPA catch-all. Without it, a held link into the old page falls through to
+the shell, the shell finds no dispatch section, and it renders Driver Groups — a
+held bookmark quietly opening an unrelated page, which is worse than an error.
+This is the same reasoning that put `/admin/trailers` in that list.
+
+**The bare `/dispatch` was given to a new page in October 2026**: the Gross
+Grand Prix dispatchers' race ([`gross-race.md`](gross-race.md)), which the
+shell maps by path like `/recruiters`. A bookmark to the old Dispatch Center
+therefore opens the race now — a page that says plainly what it is, not a
+section of the admin panel pretending to be the removed one.
 
 `/api/dispatch` is **not** retired: the ETA endpoints under it are live. The
 list holds page paths only.
@@ -72,7 +78,7 @@ list holds page paths only.
 ## Tests that hold this in place
 
 ```
-node --test tests/api-surface.test.js            # /dispatch → 410; the ETA API 401 then 200;
+node --test tests/api-surface.test.js            # /dispatch/* → 410 (/dispatch is the race); the ETA API 401 then 200;
                                                  # /api/dispatch/groups → 404 WITH a valid token
 node --test tests/retiredRoutes.test.js          # every retired prefix answers 410
 node --test tests/removedFeaturesStayRemoved.test.js

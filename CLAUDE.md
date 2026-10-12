@@ -244,6 +244,7 @@ that area**, and run the tests it names.
 | Route Control, route screenshots, Telegram media transport | [`docs/architecture/route-control.md`](docs/architecture/route-control.md) |
 | Which recruiter's number texts a lead, which MESSAGE they send, the E.164 `from` rule, per-recruiter RingCentral credentials, inbound-SMS subscriptions | [`docs/architecture/recruiter-sms-sender.md`](docs/architecture/recruiter-sms-sender.md) |
 | The Dispatcher Board feed, which system is the authority on a driver's current assignment, fleet types, and why a truck number alone is not unique | [`docs/architecture/dispatcher-board.md`](docs/architecture/dispatcher-board.md) |
+| The Gross Grand Prix displays: why the Datatruck token never reaches the page, what Datatruck may be asked and how often, which names may be public | [`docs/architecture/gross-race.md`](docs/architecture/gross-race.md) |
 | Fleet type, `(fleet_type, unit_number, seat)`, team seats, and the two driver-type vocabularies | [`docs/architecture/fleet-type-and-unit-identity.md`](docs/architecture/fleet-type-and-unit-identity.md) |
 | Which Telegram account belongs to which driver, one human per account, and why a username is never evidence | [`docs/architecture/telegram-identity.md`](docs/architecture/telegram-identity.md) |
 | Which dispatch team a driver belongs to, the Sunday roster rebuild, and what a human override means | [`docs/architecture/driver-raise-roster.md`](docs/architecture/driver-raise-roster.md) |
