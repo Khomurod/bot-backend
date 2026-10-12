@@ -85,7 +85,7 @@ async function httpJson(server, method, pathname, headers = {}) {
   return { status: res.status, json };
 }
 
-test('GET /api/health, /health, HEAD; the ETA API; the retired /dispatch page; admin SPA', async () => {
+test('GET /api/health, /health, HEAD; the ETA API; the race displays; the retired /dispatch/* pages; admin SPA', async () => {
   const shared = { dbOk: true };
   const dbMock = {
     async ping() {
@@ -183,11 +183,18 @@ test('GET /api/health, /health, HEAD; the ETA API; the retired /dispatch page; a
     assert.equal(admin.status, 200);
     assert.match(admin.text, /fixture|html/i);
 
-    // THE RETIRED PAGE ANSWERS 410, NOT THE SHELL. `/dispatch` used to be
-    // served by the SPA catch-all as a sidebar-less full-width page; a held
-    // bookmark now gets "this feature has been removed" instead of the shell
-    // finding no dispatch section and silently rendering Driver Groups.
-    const dispatchPage = await httpText(server, 'GET', '/dispatch');
+    // `/dispatch` and `/dispatchteam` are the Gross Grand Prix displays, public
+    // pages of the shell like `/recruiters`.
+    for (const racePath of ['/dispatch', '/dispatchteam']) {
+      const racePage = await httpText(server, 'GET', racePath);
+      assert.equal(racePage.status, 200, racePath);
+      assert.match(racePage.text, /fixture|html/i, racePath);
+    }
+
+    // THE RETIRED PAGE ANSWERS 410, NOT THE SHELL. A deep link into the old
+    // Dispatch Center gets "this feature has been removed" instead of the shell
+    // finding no such section and silently rendering Driver Groups.
+    const dispatchPage = await httpText(server, 'GET', '/dispatch/loads');
     assert.equal(dispatchPage.status, 410);
     assert.match(dispatchPage.text, /removed/i);
   } finally {

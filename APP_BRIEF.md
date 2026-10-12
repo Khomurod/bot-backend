@@ -169,7 +169,7 @@ unchanged, so a reference to "§7" still means the same section.
 
 | Section | Read it when |
 |---|---|
-| [§4. Features and workflows](docs/brief/features.md) | You are touching any feature: driver comms, dispatch, payroll-adjacent flows, the Finance Monitor, fuel, the Groups page, the presenter remote |
+| [§4. Features and workflows](docs/brief/features.md) | You are touching any feature: driver comms, dispatch, payroll-adjacent flows, the Finance Monitor, fuel, the Groups page, the presenter remote, the Gross Grand Prix displays |
 | [§4b. Home time](docs/brief/home-time.md) | You are touching home time: the home/road state machine, the three manager notices, request detection, automatic return-to-road detection, the cycle invariant |
 | [§4c. Recruiting and leads](docs/brief/recruiting.md) | The Facebook lead chain, whose number texts a candidate, after-hours answering, Teach Wenze, Customer Inquiries, recruiter KPIs |
 | [§4a. The system checking itself, and the AI that helps](docs/brief/self-checking-and-ai.md) | Operational findings, tiered corrections, the audit trail |
@@ -227,6 +227,7 @@ by a number on every stage does not belong in the file everything else fits in.
 | The implementation workflow | `.claude/skills/implement/SKILL.md` (`/implement`) |
 | Route Control + media-transport invariants | `docs/architecture/route-control.md` |
 | Whose number texts a lead, WHICH message they send, and the RingCentral/TCR prerequisites | `docs/architecture/recruiter-sms-sender.md` |
+| The Gross Grand Prix displays (`/dispatch`, `/dispatchteam`): the Datatruck read budget, and what a public page may show | `docs/architecture/gross-race.md` |
 | Samsara settings (the shared `samsara_settings` row, the shared-secret envelope for its API key) and missing-video recovery | `docs/architecture/samsara-settings-and-video-recovery.md` |
 | Database: authoritative schema + migration rules | `database/baseline/`, `database/migrations/`, `docs/database/` |
 | Moving the database to another server | `docs/database/README.md` → the manual `Copy database` workflow (`scripts/copy-database.sh`) |

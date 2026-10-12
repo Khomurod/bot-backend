@@ -69,6 +69,7 @@ prefixed key and may never claim a reserved key or `super_`/`admin_` prefix
 |---|---|
 | `/raise/*`, `/api/raise/:token/*` | Per-**round** token (expiring) + per-team OTP, used by dispatchers |
 | `/recruiters`, `GET /api/recruiters/public-stats` | Public; names + KPI numbers only |
+| `/dispatch`, `/dispatchteam`, `GET /api/gross-race` | Public; dispatcher and team names + race numbers only. A driver's name only once their truck has hit its weekly target, and never the Datatruck token (`docs/architecture/gross-race.md`) |
 | `/employee-birthday-form`, `POST /api/submit-employee-birthday` | Public form |
 | `/facebook/connect/:sessionToken`, `/facebook/oauth/*` | Session token |
 | `/ringcentral/connect/:sessionToken`, `/ringcentral/oauth/*` | Session token — single-use, 30-minute `ringcentral_connect_sessions` row; `oauth_state` binds the redirect to the callback. Public because a recruiter has no admin session |
