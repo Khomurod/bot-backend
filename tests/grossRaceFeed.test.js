@@ -17,10 +17,10 @@ const { createGrossRaceFeed } = require('../services/grossRace/feed');
 const MINUTE = 60_000;
 const START = Date.parse('2026-10-14T18:00:00Z'); // a Wednesday
 
-function order(id, { dispatcher = 'Ann Example', pay = 5000, status = 'delivered' } = {}) {
+function order(id, { creator = 'Ann Example', pay = 5000, status = 'delivered' } = {}) {
   return {
-    id, dispatcher__full_name: dispatcher, load_pay: String(pay), total_miles: '1000', status,
-    delivery_appointment_time: '2026-10-13T15:00:00Z',
+    id, dispatcher__full_name: "Falcon's Team", created_by__full_name: creator, load_pay: String(pay),
+    total_miles: '1000', status, delivery_time: '2026-10-13T15:00:00Z',
     trip: { driver__full_name: `Driver ${id}`, team_driver__full_name: '' },
   };
 }
@@ -33,7 +33,7 @@ function harness({ configured = true } = {}) {
   const api = {
     isConfigured: () => configured,
     maskToken: (text) => String(text).split('SECRET-TOKEN').join('***'),
-    async fetchOrdersByDeliveryAppointment(startIso, endIso, opts) {
+    async fetchOrdersByDeliveryDate(startIso, endIso, opts) {
       calls.push({ startIso, endIso, ...opts });
       const reply = replies.shift();
       if (reply instanceof Error) throw reply;
@@ -55,7 +55,7 @@ test('the first screen gets "loading" at once; the week is read whole in the bac
   const first = h.feed.getRace('dispatchers');
   assert.equal(first.status, 'loading');
   assert.equal(first.race, null);
-  assert.equal(first.week.label, 'Oct 12–19');
+  assert.equal(first.week.label, 'Oct 12–18');
 
   await h.feed.settled();
   const race = h.feed.getRace('dispatchers');
@@ -63,9 +63,11 @@ test('the first screen gets "loading" at once; the week is read whole in the bac
   assert.equal(race.race.racers[0].gross, 12000);
   assert.equal(h.calls.length, 1, 'the second ask, a moment later, starts no read');
   assert.deepEqual(h.calls[0], {
-    startIso: '2026-10-12T05:00:00.000Z', endIso: '2026-10-20T04:59:59.999Z', modifiedAfterIso: null,
+    startIso: '2026-10-12T05:00:00.000Z', endIso: '2026-10-19T04:59:59.999Z', modifiedAfterIso: null,
   });
-  assert.deepEqual(race.targets, { solo: 15000, team: 20000 });
+  assert.equal(race.targets, null, 'the dispatchers race has no target');
+  assert.deepEqual(h.feed.getRace('teams').targets, { solo: 15000, team: 20000 });
+  assert.equal(h.feed.getRace('teams').race.racers[0].gross, 12000, 'the same loads, credited to the team');
 });
 
 test('screens polling together cost one read a minute, and only modified orders between full reads', async () => {
@@ -137,7 +139,7 @@ test('a new week starts empty and reads the new week whole', async () => {
   h.reply([]);
   const turnover = h.feed.getRace('dispatchers');
   assert.equal(turnover.status, 'loading', "last week's standings are not shown as this week's");
-  assert.equal(turnover.week.label, 'Oct 19–26');
+  assert.equal(turnover.week.label, 'Oct 19–25');
   await h.feed.settled();
   assert.equal(h.calls.at(-1).modifiedAfterIso, null);
   assert.equal(h.calls.at(-1).startIso, '2026-10-19T05:00:00.000Z');

@@ -479,9 +479,11 @@ turn one exposed file into an exposed directory.
 
 ### Gross Grand Prix at `/dispatch` and `/dispatchteam`
 
-Office-screen races of this week's gross: `/dispatchteam` races the dispatch
-teams, `/dispatch` the dispatchers, ranked by the share of a $15,000-per-solo /
-$20,000-per-team-truck target. Public, like `/recruiters`. **The server reads
-Datatruck with the app's own token and holds the week in memory; the page never
-sees a token**, and a driver's name goes out only once their truck has hit its
-target. See [`docs/architecture/gross-race.md`](../architecture/gross-race.md).
+Office-screen races of this week's gross, counted the way Datatruck's driver
+board counts it (no booked or cancelled load, the week of the DEL date).
+`/dispatchteam` races the dispatch teams by the share of a
+$15,000-per-solo / $20,000-per-team-truck target; `/dispatch` races whoever
+created the loads, by gross alone, five to a screen. Public, like
+`/recruiters`. **The server reads Datatruck with the app's own token and holds
+the week in memory; the page never sees a token.** See
+[`docs/architecture/gross-race.md`](../architecture/gross-race.md).
