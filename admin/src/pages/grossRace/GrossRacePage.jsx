@@ -11,7 +11,7 @@ import RaceSidebar from "./RaceSidebar";
 import CelebrationOverlay from "./celebration/CelebrationOverlay";
 import { CELEBRATION_MS, celebrationTick, celebrationWinner } from "./celebration/celebrationTime";
 import { preloadCar } from "./celebration/carScene";
-import { chunkOf, lastReloadAt, markReload, shouldReload, tabStorage } from "./pageVersion";
+import { chunkOf, lastReloadAt, markReload, noteServed, shouldReload, tabStorage } from "./pageVersion";
 import "./grossRace.css";
 
 /**
@@ -67,6 +67,7 @@ export default function GrossRacePage({ view, pageMs = PAGE_MS, ownChunk = OWN_C
   const preloading = useRef(false);
   const preview = useRef(typeof window !== "undefined" && new URLSearchParams(window.location.search).has("celebrate"));
   const reloading = useRef(false);
+  const otherBuild = useRef(null); // a build the server named that is not ours, and how many times in a row
   const last = useRef(null);
   const fullscreen = useFullscreen();
   const pageSize = PAGE_SIZE[view] || Infinity;
@@ -82,6 +83,7 @@ export default function GrossRacePage({ view, pageMs = PAGE_MS, ownChunk = OWN_C
         : { ...(held || {}), status: "error", error: OFFLINE, race: null }));
       return;
     }
+    otherBuild.current = noteServed(otherBuild.current, next.page, ownChunk);
     setData(next);
     const weekStart = next.week ? next.week.start : null;
     if (last.current && last.current.weekStart !== weekStart) {
@@ -102,7 +104,7 @@ export default function GrossRacePage({ view, pageMs = PAGE_MS, ownChunk = OWN_C
       setFlashUntil((held) => ({ ...held, ...Object.fromEntries(change.flashed.map((id) => [id, at + FLASH_MS])) }));
     }
     if (change.banner) setBanner({ current: change.banner, shown: bannerView(change.banner) });
-  }, [view]);
+  }, [view, ownChunk]);
 
   useEffect(() => {
     document.title = `Gross Grand Prix · ${view === "teams" ? "Teams" : "Dispatchers"}`;
@@ -146,7 +148,8 @@ export default function GrossRacePage({ view, pageMs = PAGE_MS, ownChunk = OWN_C
     const tz = (data.week && data.week.tz) || DEFAULT_TZ;
     const storage = tabStorage();
     const due = shouldReload({
-      own: ownChunk, served: data.page, now, tz, celebrating: celebrating.current, lastReloadAt: lastReloadAt(storage),
+      own: ownChunk, served: data.page, confirmations: otherBuild.current && otherBuild.current.name === data.page ? otherBuild.current.count : 0,
+      now, tz, celebrating: celebrating.current, lastReloadAt: lastReloadAt(storage),
     });
     if (!due) return;
     reloading.current = true;

@@ -174,8 +174,8 @@ pick it up without anyone reloading them.
   race page chunk's file name, e.g. `GrossRacePage-BgHoDpj_.js`
   (`services/grossRace/pageVersion.js`, read once from `admin/build/assets`).
   Vite hashes that name from the chunk's content. The page knows its own name
-  from `import.meta.url`, and a screen whose name differs reloads itself
-  within one poll, about 30 seconds after the deploy.
+  from `import.meta.url`. When two answers in a row name the same other build,
+  the screen reloads itself, 30 to 60 seconds after the deploy.
 - **What triggers it.** The chunk imports the panel's main chunk, so ANY admin
   code change renames it, not only a change to these pages: editing the
   Samsara settings tab did. A deploy that touches only the server leaves it
@@ -183,6 +183,10 @@ pick it up without anyone reloading them.
 - **When it does not reload** (`admin/src/pages/grossRace/pageVersion.js`):
   - the server names no build (`null`: tests, `vite dev`, or a doubtful build
     directory), or the page is not a built chunk;
+  - on a single answer naming another build. A hash says which build, not
+    which is newer, and while a deploy switches over, a screen already on the
+    new page can get one answer from the old server (Codex, #280). The new
+    build is still there a poll later; a stray answer is not;
   - while the celebration is on screen, or during the 4:00 PM minute, when a
     fresh page would celebrate a second time;
   - a second time within five minutes. A deploy in progress answers from the

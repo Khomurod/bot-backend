@@ -14,6 +14,7 @@ import { celebrationCue } from "./celebration/celebrationTime";
 const CHUNK = /^GrossRacePage-[\w-]+\.js$/;
 const RELOADED_AT = "grossRace.reloadedAt";
 export const RELOAD_GAP_MS = 5 * 60_000;
+export const CONFIRMATIONS = 2;
 
 /** The race page's chunk name in a module URL; null outside a build (dev, tests). */
 export function chunkOf(url) {
@@ -22,14 +23,28 @@ export function chunkOf(url) {
 }
 
 /**
- * Whether to reload now. Only when both sides name a built race page and the
- * names differ. Never while the 4 PM celebration is on screen or due this
- * minute: a fresh page would celebrate a second time. And never twice within
- * five minutes, so a deploy in progress — some answers from the old server,
- * some from the new — cannot set a screen reloading over and over.
+ * How many answers in a row have named the same build other than ours. A hash
+ * says which build, not which is newer: while a deploy switches over, a screen
+ * already on the new build can get one answer from the old server. Asking for
+ * the same other name twice, a poll apart, lets that one answer pass; a real
+ * new build is still there on the next poll.
  */
-export function shouldReload({ own, served, now, tz, celebrating, lastReloadAt }) {
+export function noteServed(seen, served, own) {
+  if (!served || served === own) return { name: null, count: 0 };
+  return seen && seen.name === served ? { name: served, count: seen.count + 1 } : { name: served, count: 1 };
+}
+
+/**
+ * Whether to reload now. Only when both sides name a built race page, the
+ * names differ, and the server's has been named in CONFIRMATIONS answers in a
+ * row (noteServed). Never while the 4 PM celebration is on screen or due this
+ * minute: a fresh page would celebrate a second time. And never twice within
+ * five minutes, so whatever a deploy in progress answers, a screen cannot be
+ * set reloading over and over.
+ */
+export function shouldReload({ own, served, confirmations, now, tz, celebrating, lastReloadAt }) {
   if (!own || !served || !CHUNK.test(served) || own === served) return false;
+  if (!(confirmations >= CONFIRMATIONS)) return false;
   if (celebrating || celebrationCue(now, tz, null).cue === "show") return false;
   return !(lastReloadAt && now - lastReloadAt < RELOAD_GAP_MS);
 }

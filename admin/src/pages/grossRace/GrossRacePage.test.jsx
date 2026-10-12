@@ -165,17 +165,33 @@ describe("GrossRacePage", () => {
     }
   });
 
+  const poll = async () => {
+    act(() => { document.dispatchEvent(new Event("visibilitychange")); });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  };
+
   test("a screen running an older build of the page reloads itself, once", async () => {
     respond({ ...live, page: "GrossRacePage-new2.js" });
     const reload = vi.fn();
     render(<GrossRacePage view="teams" ownChunk="GrossRacePage-old1.js" reload={reload} />);
     await screen.findAllByText("Falcon's Team");
+    await poll(); // the same new build named a second time, a poll later
     await waitFor(() => expect(reload).toHaveBeenCalledTimes(1));
     expect(Number(window.sessionStorage.getItem("grossRace.reloadedAt"))).toBeGreaterThan(0);
 
-    act(() => { document.dispatchEvent(new Event("visibilitychange")); });
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await poll();
     expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  test("one stray answer naming another build does not reload: a deploy switching over can send one", async () => {
+    respond({ ...live, page: "GrossRacePage-old1.js" });
+    const reload = vi.fn();
+    render(<GrossRacePage view="teams" ownChunk="GrossRacePage-new2.js" reload={reload} />);
+    await screen.findAllByText("Falcon's Team");
+    respond({ ...live, page: "GrossRacePage-new2.js" });
+    await poll();
+    await poll();
+    expect(reload).not.toHaveBeenCalled();
   });
 
   test("the same build, or a server that names none, never reloads", async () => {
@@ -197,7 +213,7 @@ describe("GrossRacePage", () => {
       const reload = vi.fn();
       render(<GrossRacePage view="teams" ownChunk="GrossRacePage-old1.js" reload={reload} />);
       await screen.findByRole("dialog", { name: "Today's leader" });
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      await poll(); // confirmed a second time, but the celebration is on screen
       expect(reload).not.toHaveBeenCalled();
     } finally {
       window.history.pushState({}, "", "/");
