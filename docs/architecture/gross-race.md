@@ -84,7 +84,8 @@ Everything else is the design: the lanes, the lights, the podium, the race feed
 (a gain, an overtake, a new leader, 100% of target, a driver on target) and the
 banner. The feed comes from comparing one reading with the last, in the browser
 (`admin/src/pages/grossRace/raceEvents.js`), so a screen opened mid-week starts
-with an empty feed.
+with an empty feed — and when the week turns over, a screen left open clears
+last week's feed, flashes and banner: a new week is a new race.
 
 ## `/dispatch` is a new page, not the Dispatch Center
 

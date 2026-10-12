@@ -96,6 +96,30 @@ describe("GrossRacePage", () => {
     expect(await screen.findByRole("button", { name: "Full screen" })).toBeInTheDocument();
   });
 
+  test("a new week clears last week's feed and banner", async () => {
+    respond(live);
+    render(<GrossRacePage view="teams" />);
+    await screen.findAllByText("Falcon's Team");
+
+    // Bison overtakes Falcon: a feed line and the banner.
+    respond({
+      ...live,
+      race: { ...live.race, racers: [racer("Bison's Team", 1, 50000, 60000), racer("Falcon's Team", 2, 45000, 60000)] },
+    });
+    act(() => { document.dispatchEvent(new Event("visibilitychange")); });
+    expect(await screen.findByText("Bison's Team takes the lead!")).toBeInTheDocument();
+    expect(screen.getByText("Bison's Team takes 1st place!")).toBeInTheDocument();
+
+    // Monday: the server is on the next week.
+    const nextWeek = { ...week, start: "2026-10-19T05:00:00.000Z", end: "2026-10-26T05:00:00.000Z", label: "Oct 19–26", day: 1, dayName: "Mon" };
+    respond({ ...live, week: nextWeek, race: { ...live.race, racers: [], lead: 0, leadPct: 0, maxTarget: 0 } });
+    act(() => { document.dispatchEvent(new Event("visibilitychange")); });
+    expect(await screen.findByText("Datatruck · Week of Oct 19–26")).toBeInTheDocument();
+    expect(screen.queryByText("Bison's Team takes the lead!")).not.toBeInTheDocument();
+    expect(screen.queryByText("Bison's Team takes 1st place!")).not.toBeInTheDocument();
+    expect(screen.getByText(/Waiting for the next move/)).toBeInTheDocument();
+  });
+
   test("says plainly when Datatruck is not reachable", async () => {
     respond({ ...live, status: "error", error: "Datatruck is not connected", race: null });
     render(<GrossRacePage view="teams" />);

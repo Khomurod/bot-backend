@@ -44,10 +44,18 @@ export default function GrossRacePage({ view }) {
       return;
     }
     setData(next);
+    const weekStart = next.week ? next.week.start : null;
+    if (last.current && last.current.weekStart !== weekStart) {
+      // A new week is a new race: last week's feed, flashes and banner end with it.
+      last.current = null;
+      setEvents([]);
+      setFlashUntil({});
+      setBanner({ current: null, shown: null });
+    }
     if (!next.race) return;
     const order = ranked(next.race);
-    const previous = last.current && last.current.weekStart === next.week.start ? last.current.order : null;
-    last.current = { weekStart: next.week.start, order };
+    const previous = last.current ? last.current.order : null;
+    last.current = { weekStart, order };
     const at = Date.now();
     const change = raceEvents(previous, order, at);
     if (change.events.length) setEvents((held) => [...change.events, ...held].slice(0, EVENT_LIMIT));
