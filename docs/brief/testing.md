@@ -57,6 +57,9 @@ npm run build:schema:check                        # schema.sql is in sync with b
   build, the Node unit suite with **no application env at all**, and the
   PostgreSQL integration suite against a real Postgres 16 container.
   **Both test jobs fail on ANY skip.** CI also asserts FleetView stays archived.
+  The CI PostgreSQL runs with `fsync`, `synchronous_commit` and
+  `full_page_writes` off — it is thrown away with the job, and every test
+  creates a database and applies the whole schema.
   The static job additionally runs `lint:undef` and `lint:imports` — the two
   checks a green build does not perform.
 - **Run the suite before claiming success, and report the exact command and

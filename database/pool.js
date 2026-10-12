@@ -26,6 +26,12 @@ const pool = new Pool({
   idleTimeoutMillis: Number.parseInt(process.env.PG_IDLE_TIMEOUT_MS || '600000', 10),
   keepAlive: true,
   keepAliveInitialDelayMillis: 60 * 1000,
+  // An idle connection must never be what keeps a process alive. The server
+  // is kept up by its HTTP listener and the bot; a script or a test that has
+  // finished would otherwise wait out the ten minutes above before exiting —
+  // which is exactly what two PostgreSQL test files did in CI from 9 October
+  // 2026, adding twenty minutes to every run.
+  allowExitOnIdle: true,
   // Free-tier databases can be slow to open a fresh connection (cold start +
   // SSL handshake), so allow a generous window. Set 0 to wait indefinitely.
   connectionTimeoutMillis: Number.parseInt(process.env.PG_CONNECTION_TIMEOUT_MS || '30000', 10),
