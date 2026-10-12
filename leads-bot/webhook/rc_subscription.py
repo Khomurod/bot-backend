@@ -1,17 +1,19 @@
 """Keeping the inbound-SMS subscription in step with the recruiter list.
 
 RingCentral delivers message-store events PER EXTENSION, so the subscription
-carries one filter per recruiter extension (see sms.inbound_sms_filters). That
-list is not static: a recruiter can finish RingCentral onboarding at any time,
-and until their extension is in the subscription their drivers' replies reach
-nobody — the SMS they send works, the answer vanishes.
+carries one filter per recruiter extension (see
+rc_inbound_subscription.inbound_sms_filters). That list is not static: a
+recruiter can finish RingCentral onboarding at any time, and until their
+extension is in the subscription their drivers' replies reach nobody — the SMS
+they send works, the answer vanishes.
 
 Registering once at startup therefore leaves a hole that only a restart closes.
 This reconciles instead: it re-reads the extension list on a slow timer and
-re-registers ONLY when the set has actually changed, so the steady state costs
-one internal request and nothing else.
+re-registers ONLY when the set has actually changed — or when RingCentral has
+stopped delivering the subscription — so the steady state costs one internal
+request and one RingCentral status read.
 
-Two rules that matter more than they look:
+Three rules that matter more than they look:
 
   * a FAILED read is not an empty list. After the first pass, a failure skips
     the tick and leaves the working subscription alone — re-registering with []
@@ -19,13 +21,17 @@ Two rules that matter more than they look:
     recruiter's inbound SMS.
   * the first pass registers regardless, even with an empty list, because the
     shared company number must be watched from boot.
+  * an unchanged roster is not proof of a working subscription. RingCentral
+    suspends or blacklists a webhook whose address stopped answering (a deploy
+    or a crash is enough), and that changes nothing here; only a definite
+    "not delivering" re-registers — an unreadable status does not.
 
 Split out of leads-bot/webhook_server.py.
 """
 import asyncio
 import logging
 
-from sms import register_sms_webhook
+from rc_inbound_subscription import register_sms_webhook, subscription_active
 
 from .hub_client import _fetch_ringcentral_sms_extensions
 
@@ -48,7 +54,8 @@ def _reset_state_for_tests() -> None:
 
 
 async def reconcile_rc_subscription(callback_url: str) -> bool:
-    """Register the inbound-SMS subscription if the extension set changed.
+    """Register the inbound-SMS subscription if the extension set changed, or
+    if RingCentral is no longer delivering it.
 
     Returns True when a registration was performed, False when nothing needed
     doing (or the extension list could not be read on a later pass).
@@ -68,7 +75,13 @@ async def reconcile_rc_subscription(callback_url: str) -> bool:
 
     wanted = frozenset(extensions)
     if not first_pass and wanted == _registered:
-        return False
+        if await subscription_active(callback_url) is not False:
+            return False
+        logger.warning(
+            "RingCentral is no longer delivering the inbound-SMS subscription at %s; "
+            "registering it again.",
+            callback_url,
+        )
 
     logger.info(
         "Registering RingCentral SMS webhook → %s (%d recruiter extension(s))",

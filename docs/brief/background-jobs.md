@@ -61,7 +61,7 @@ without any timer firing), `tests/jobQueueScheduler.test.js` and
 | `databaseUsageService` | 60s flush | persists the estimated monthly database transfer and logs once at 80/90/95% of the budget |
 | `memoryWatchdog` | **off by default**; 15 min when on | heap/RSS pressure logging. Requires `MEMORY_WATCHDOG_ENABLED='true'`; `MEMORY_WATCHDOG_INTERVAL_MS` is clamped to ≥60s |
 | Python leads child | supervised process; **liveness probed every 10 min** (first probe +60s) | Meta + RingCentral webhook intake. The probe GETs the child's own `/health` on loopback and records the answer in the run ledger — a spawn is a lifecycle event, not a heartbeat, and before the probe existed a healthy child read `stale_stopped` after an hour |
-| leads-bot RC subscription reconciler | 15 min (first pass +3s) | re-registers the inbound-SMS subscription **only when the recruiter extension set changes**, so a recruiter who onboards after boot has their replies mirrored without a restart |
+| leads-bot RC subscription reconciler | 15 min (first pass +3s) | re-registers the inbound-SMS subscription **only when the recruiter extension set changes** — so a recruiter who onboards after boot has their replies mirrored without a restart — or when RingCentral reports it no longer `Active` (one status read per tick) |
 
 Event-driven (no timer) but equally live: the driver-group message pipeline
 (`bot/handlers/groupCaptureHandlers.js`) fans a single incoming message out to

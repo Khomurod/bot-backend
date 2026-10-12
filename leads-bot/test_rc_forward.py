@@ -16,7 +16,7 @@ import webhook_server as wh
 # (the attachment download, the Telegram senders, the SMS-mirror registration)
 # in webhook/ringcentral.py, so that is the module patch.object must target —
 # patching webhook_server would leave the real functions in place, silently.
-import sms
+import rc_inbound_subscription as rcin
 from webhook import connect_command as cc
 from webhook import ringcentral as rc
 
@@ -87,12 +87,12 @@ class TestInboundSmsFilters(unittest.TestCase):
     """
 
     def test_shared_extension_only_when_no_recruiters(self):
-        self.assertEqual(sms.inbound_sms_filters(None), [sms.RC_INBOUND_SMS_FILTER])
-        self.assertEqual(sms.inbound_sms_filters([]), [sms.RC_INBOUND_SMS_FILTER])
+        self.assertEqual(rcin.inbound_sms_filters(None), [rcin.RC_INBOUND_SMS_FILTER])
+        self.assertEqual(rcin.inbound_sms_filters([]), [rcin.RC_INBOUND_SMS_FILTER])
 
     def test_adds_one_filter_for_each_recruiter_extension(self):
-        filters = sms.inbound_sms_filters(["101", "102"])
-        self.assertEqual(filters[0], sms.RC_INBOUND_SMS_FILTER)
+        filters = rcin.inbound_sms_filters(["101", "102"])
+        self.assertEqual(filters[0], rcin.RC_INBOUND_SMS_FILTER)
         for ext in ("101", "102"):
             self.assertIn(
                 f"/restapi/v1.0/account/~/extension/{ext}/message-store/instant?type=SMS",
@@ -101,7 +101,7 @@ class TestInboundSmsFilters(unittest.TestCase):
         self.assertEqual(len(filters), 3)
 
     def test_ignores_blanks_and_never_duplicates_the_shared_extension(self):
-        filters = sms.inbound_sms_filters(["", "  ", "~", "101", "101"])
+        filters = rcin.inbound_sms_filters(["", "  ", "~", "101", "101"])
         self.assertEqual(len(filters), 2, filters)
         self.assertEqual(len(set(filters)), len(filters))
 
@@ -109,7 +109,7 @@ class TestInboundSmsFilters(unittest.TestCase):
         # The hub returns strings, but a JSON int must not produce "extension/101 ".
         self.assertIn(
             "/restapi/v1.0/account/~/extension/101/message-store/instant?type=SMS",
-            sms.inbound_sms_filters([101]),
+            rcin.inbound_sms_filters([101]),
         )
 
 

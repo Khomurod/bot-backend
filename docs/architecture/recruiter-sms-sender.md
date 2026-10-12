@@ -292,7 +292,7 @@ sender — every row written before this feature, and every lead that fell back 
 uses the shared number exactly as before.
 
 For an inbound SMS to a recruiter's number to reach Telegram at all, the
-subscription must watch that extension: `leads-bot/sms.py → inbound_sms_filters()`
+subscription must watch that extension: `leads-bot/rc_inbound_subscription.py → inbound_sms_filters()`
 adds one `message-store/instant` filter per extension, read from
 `GET /api/internal/ringcentral/sms-extensions`. That route reads only
 `id, name, rc_extension_id` (`listRecruiterSmsExtensions()`), the same
@@ -333,14 +333,23 @@ from "everyone" to "nobody": one unusable extension id produced
   than letting it invalidate the whole payload.
 - The ladder leaves out one recruiter at a time, then falls back to the shared
   extension alone. A fallback that works always names the extensions it lost.
+- **Only a refusal sheds.** A 408, 429 or 5xx means RingCentral could not answer
+  just now, which says nothing about the filters. Shedding a recruiter for it,
+  and then succeeding, was recorded as the whole roster, so that recruiter stayed
+  unwatched until the roster next changed. Now registration stops and returns
+  False, and the next pass tries the whole roster again.
 - The filters themselves are logged. They carry no secret, and without them a
   bad id was invisible.
 
 **An existing subscription is kept only while it is `Active`.** RingCentral
 suspends or blacklists a webhook whose address stopped answering, so a
 subscription with the right filters can still deliver nothing. When the filters
-match and the status is `Active`, it is left alone. Otherwise it is deleted and
-registered again.
+match and the status is `Active`, it is left alone, and any other subscription
+at the same address is deleted (two would deliver every message twice).
+Otherwise a new one is registered, and **only once it exists** is the old one
+deleted. Deleting first left nothing watching whenever RingCentral then refused
+or failed the new request; the old one, even missing a new recruiter, still
+delivers for everybody else.
 
 `hub_client._fetch_ringcentral_sms_extensions` now **raises** when the shared
 secret is unset instead of returning `[]`. Returning an empty list made a
@@ -352,16 +361,22 @@ rather than leaving the working subscription alone.
 (`leads-bot/webhook/rc_subscription.py`). A recruiter can finish onboarding at
 any time, and registering only at startup would leave their replies reaching
 nobody until the Python worker restarted. Every 15 minutes the roster is
-re-read and the subscription is re-registered **only if the set changed**, so
-the steady state costs one internal request and nothing else. Two rules there
-matter more than they look:
+re-read and the subscription is re-registered **only if the set changed** — or
+if RingCentral is no longer delivering it — so the steady state costs one
+internal request and one RingCentral status read. Three rules there matter more
+than they look:
 
 - a **failed** read is not an empty roster. After the first pass a failure skips
   the tick and leaves the working subscription alone — re-registering with no
   extensions because the hub was briefly unreachable would silently drop every
   recruiter's inbound SMS;
 - the **first** pass registers regardless, even with an empty roster, because
-  the shared company number must be watched from boot.
+  the shared company number must be watched from boot;
+- an **unchanged** roster is not proof of a working subscription. RingCentral
+  blacklists a webhook whose address stopped answering — a deploy or a crash is
+  enough — and the roster says nothing about it. Each such tick reads the status
+  (`subscription_active()`) and re-registers only on a definite "not
+  delivering"; an unreadable status is evidence of nothing and changes nothing.
 
 ## Operational prerequisites (not code)
 
@@ -445,7 +460,8 @@ about the sending half.
 | Migration 0012 and the blank-means-delete rule, on real PostgreSQL | `tests/facebookLeadRecruiterMessagesPg.test.js` |
 | The extension identity backfill | `tests/ringCentralTokenRefresh.test.js` |
 | `fallback_reason` on the mirror, on real PostgreSQL | `tests/smsMirrorFallbackReasonPg.test.js` |
-| The subscription payload (no `?type=MMS` filter), shedding one extension at a time, keeping only an `Active` subscription (Python) | `leads-bot/test_rc_webhook_register.py` |
+| The subscription payload (no `?type=MMS` filter), shedding one extension at a time, and never for a transient RingCentral error (Python) | `leads-bot/test_rc_webhook_register.py` |
+| Keeping only an `Active` subscription, deleting the old one only after its successor exists, the status read (Python) | `leads-bot/test_rc_existing_subscription.py` |
 | Token exchange, rotation, expiry flagging | `tests/ringCentralOAuthService.test.js` |
 | The connect link, and the wrong-extension warning | `tests/ringCentralConnectService.test.js` |
 | The daily refresh job | `tests/ringCentralTokenRefresh.test.js` |
@@ -459,4 +475,4 @@ about the sending half.
 | The Bitrix diagnosis, and that the webhook secret never leaves | `tests/bitrixDiagnostics.test.js`, `tests/bitrixSettingsRoutes.test.js` |
 | Answers reaching the CRM, and the inert-assignee warning | `tests/bitrix24LeadMapper.test.js` |
 | Inbound recipient extraction, per-extension filters, a picture arriving as an SMS with an `MmsAttachment` (Python) | `leads-bot/test_rc_forward.py` |
-| The subscription keeping up with the roster (Python) | `leads-bot/test_rc_subscription.py` |
+| The subscription keeping up with the roster, and re-registered when RingCentral stops delivering it (Python) | `leads-bot/test_rc_subscription.py` |

@@ -4,7 +4,8 @@
  * Which RingCentral extension is each recruiter?
  *
  * THE PROBLEM THIS SOLVES. An inbound-SMS subscription is built one event
- * filter per extension id (`leads-bot/sms.py → inbound_sms_filters`), read from
+ * filter per extension id
+ * (`leads-bot/rc_inbound_subscription.py → inbound_sms_filters`), read from
  * `recruiters.rc_extension_id`. That column was written by exactly one code
  * path: the OAuth "sign in with RingCentral" callback. A recruiter onboarded
  * the other supported way — an admin pasting their JWT in Settings — therefore
