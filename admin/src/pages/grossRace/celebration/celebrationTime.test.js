@@ -3,7 +3,7 @@
  * whom (the board's leader, once anybody has gross).
  */
 import { describe, expect, test } from "vitest";
-import { celebrationCue, celebrationWinner } from "./celebrationTime";
+import { celebrationCue, celebrationTick, celebrationWinner } from "./celebrationTime";
 
 const TZ = "America/Chicago";
 const at = (iso) => Date.parse(iso);
@@ -27,6 +27,23 @@ describe("celebrationCue", () => {
   test("standard time: 4 PM CST is 22:00 UTC", () => {
     expect(celebrationCue(at("2026-11-02T21:00:00Z"), TZ, null).cue).toBe(null);
     expect(celebrationCue(at("2026-11-02T22:00:00Z"), TZ, null).cue).toBe("show");
+  });
+});
+
+describe("celebrationTick", () => {
+  const race = { racers: [{ id: "A", name: "A", rank: 1, gross: 9000 }] };
+
+  test("a screen opened at 4:00 whose race is still loading celebrates when it arrives", () => {
+    const loading = celebrationTick(at("2026-10-12T21:00:02Z"), TZ, null, null);
+    expect(loading).toEqual({ preload: false, winner: null, day: null });
+    const arrived = celebrationTick(at("2026-10-12T21:00:09Z"), TZ, loading.day, race);
+    expect(arrived.winner.name).toBe("A");
+    expect(arrived.day).toBe("2026-10-12");
+    expect(celebrationTick(at("2026-10-12T21:00:20Z"), TZ, arrived.day, race).winner).toBe(null);
+  });
+
+  test("before four it only says to fetch the car", () => {
+    expect(celebrationTick(at("2026-10-12T20:58:00Z"), TZ, null, race)).toEqual({ preload: true, winner: null, day: null });
   });
 });
 

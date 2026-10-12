@@ -9,7 +9,7 @@ import RaceRules from "./RaceRules";
 import RaceTrack from "./RaceTrack";
 import RaceSidebar from "./RaceSidebar";
 import CelebrationOverlay from "./celebration/CelebrationOverlay";
-import { CELEBRATION_MS, celebrationCue, celebrationWinner } from "./celebration/celebrationTime";
+import { CELEBRATION_MS, celebrationTick, celebrationWinner } from "./celebration/celebrationTime";
 import { preloadCar } from "./celebration/carScene";
 import "./grossRace.css";
 
@@ -102,15 +102,15 @@ export default function GrossRacePage({ view, pageMs = PAGE_MS }) {
 
   // 4:00 PM: celebrate the leader once a day; fetch the car in the minutes before.
   useEffect(() => {
-    const { cue, day } = celebrationCue(now, (data && data.week && data.week.tz) || DEFAULT_TZ, celebratedOn.current);
-    if (cue === "preload" && !preloading.current) {
+    const tz = (data && data.week && data.week.tz) || DEFAULT_TZ;
+    const tick = celebrationTick(now, tz, celebratedOn.current, data && data.race);
+    if (tick.preload && !preloading.current) {
       preloading.current = true;
       preloadCar().catch(() => { preloading.current = false; });
     }
-    if (cue !== "show") return;
-    celebratedOn.current = day;
-    const winner = celebrationWinner(data && data.race);
-    if (winner) setCelebration({ winner, until: now + CELEBRATION_MS });
+    if (!tick.winner) return;
+    celebratedOn.current = tick.day;
+    setCelebration({ winner: tick.winner, until: now + CELEBRATION_MS });
   }, [now, data]);
 
   useEffect(() => {

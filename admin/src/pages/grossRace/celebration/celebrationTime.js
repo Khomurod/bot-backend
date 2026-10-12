@@ -45,3 +45,16 @@ export function celebrationWinner(race) {
   const [leader] = ranked(race);
   return leader && leader.gross > 0 ? leader : null;
 }
+
+/**
+ * One tick of a screen's 4 PM check: whether to fetch the car, and whom to
+ * celebrate now. `day` comes back only with a winner: the day counts as
+ * celebrated once somebody WAS, so a screen opened at 4:00 whose race is
+ * still loading celebrates when it arrives, within the minute.
+ */
+export function celebrationTick(now, tz, celebratedOn, race) {
+  const { cue, day } = celebrationCue(now, tz, celebratedOn);
+  if (cue !== "show") return { preload: cue === "preload", winner: null, day: null };
+  const winner = celebrationWinner(race);
+  return { preload: false, winner, day: winner ? day : null };
+}
