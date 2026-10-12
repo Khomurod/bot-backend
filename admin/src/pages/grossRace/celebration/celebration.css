@@ -1,0 +1,65 @@
+/*
+ * The 4 PM celebration, over the whole board. Scoped under .gross-race, whose
+ * colour tokens it uses. The overlay fades in, holds, and fades out by itself
+ * within the twelve seconds the page keeps it mounted.
+ */
+.gross-race .gr-celebration {
+  position: fixed; inset: 0; z-index: 50; overflow: hidden; color: #fff;
+  background:
+    radial-gradient(ellipse 60% 45% at 50% 62%, rgba(236, 48, 19, .28), transparent 70%),
+    radial-gradient(ellipse 90% 70% at 50% 40%, #2a2626 0%, #121010 55%, #070606 100%);
+  animation: gr-celebrate-in .7s ease-out both, gr-celebrate-out .8s ease-in 11.1s both;
+}
+@keyframes gr-celebrate-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes gr-celebrate-out { from { opacity: 1; } to { opacity: 0; } }
+
+.gross-race .gr-celebration-car {
+  position: absolute; inset: 0; width: 100%; height: 100%; display: block;
+  opacity: 0; transition: opacity 1.2s ease;
+}
+.gross-race .gr-celebration-car.is-on { opacity: 1; }
+
+.gross-race .gr-celebration-top {
+  position: absolute; left: 0; right: 0; top: clamp(24px, 6vh, 90px); text-align: center; padding: 0 4vw;
+  animation: gr-celebrate-rise 1.1s cubic-bezier(.2, .8, .2, 1) .35s both;
+}
+.gross-race .gr-celebration-kicker {
+  font-weight: 800; letter-spacing: .32em; text-transform: uppercase; color: var(--color-accent-400);
+  font-size: clamp(14px, 1.3vw, 26px);
+}
+.gross-race .gr-celebration-name {
+  margin-top: .15em; font-weight: 800; line-height: .95; letter-spacing: -.03em;
+  font-size: clamp(44px, 7.2vw, 150px);
+  background: linear-gradient(100deg, #fff 0%, #fff 38%, #ffd9a8 50%, #fff 62%, #fff 100%);
+  background-size: 260% 100%; -webkit-background-clip: text; background-clip: text; color: transparent;
+  animation: gr-celebrate-shine 3.2s ease-in-out 1.2s infinite;
+  text-shadow: 0 10px 40px rgba(0, 0, 0, .35);
+}
+.gross-race .gr-celebration-bottom {
+  position: absolute; left: 0; right: 0; bottom: clamp(20px, 5vh, 70px); text-align: center; padding: 0 6vw;
+  animation: gr-celebrate-rise 1.1s cubic-bezier(.2, .8, .2, 1) 1.3s both;
+}
+.gross-race .gr-celebration-message {
+  margin: 0 auto; max-width: 52ch; font-weight: 700; line-height: 1.3; color: rgba(255, 255, 255, .92);
+  font-size: clamp(18px, 1.9vw, 40px); text-wrap: balance;
+}
+.gross-race .gr-celebration-credit {
+  margin-top: 1.2em; font-size: clamp(10px, .6vw, 13px); color: rgba(255, 255, 255, .45); letter-spacing: .02em;
+}
+.gross-race .gr-celebration-trophy {
+  position: absolute; left: 50%; top: 52%; transform: translate(-50%, -50%);
+  font-size: clamp(120px, 22vh, 300px); color: #ffcf7a;
+  animation: gr-celebrate-rise 1.1s cubic-bezier(.2, .8, .2, 1) .6s both;
+}
+.gross-race .gr-celebration-trophy svg { display: block; }
+@keyframes gr-celebrate-rise { from { opacity: 0; transform: translateY(28px); } to { opacity: 1; transform: none; } }
+.gross-race .gr-celebration-trophy { animation-name: gr-celebrate-trophy; }
+@keyframes gr-celebrate-trophy {
+  from { opacity: 0; transform: translate(-50%, calc(-50% + 28px)) scale(.9); }
+  to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+@keyframes gr-celebrate-shine { 0%, 100% { background-position: 100% 0; } 50% { background-position: 0 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .gross-race .gr-celebration, .gross-race .gr-celebration-top, .gross-race .gr-celebration-bottom,
+  .gross-race .gr-celebration-name, .gross-race .gr-celebration-trophy { animation: none; }
+}

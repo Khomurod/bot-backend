@@ -105,7 +105,7 @@ after deploy on the live service.
 | D5 | ETA lookup works. | **[AUTO]** `etaRoutingService.test.js`, `dispatchEtaUpdateService.test.js`. |
 | D6 | Datatruck active load lookup works. | **[AUTO]** `datatruckLoadService.test.js`, `datatruckApiService.test.js`. |
 | D7 | Driver group result is accurate. | **[AUTO]** `driverStatusLookupService.test.js`; **[MANUAL]** spot-check a known driver. |
-| D8 | **The Gross Grand Prix shows this week's race, and the page holds no token.** | **[AUTO]** `grossRaceStandings.test.js`, `grossRaceFeed.test.js`, `grossRaceRoutes.test.js`, `api-surface.test.js`; **[PROD]** `/dispatch` and `/dispatchteam` show *Live* within a minute of opening; the rule line under the header shows this week's dates; `/dispatch` turns to its next five every ten seconds; **Full screen** turns into **Exit full screen**. |
+| D8 | **The Gross Grand Prix shows this week's race, and the page holds no token.** | **[AUTO]** `grossRaceStandings.test.js`, `grossRaceFeed.test.js`, `grossRaceRoutes.test.js`, `api-surface.test.js`; **[PROD]** `/dispatch` and `/dispatchteam` show *Live* within a minute of opening; the rule line under the header shows this week's dates; `/dispatchteam?celebrate` shows the leader over the 3D car; `/dispatch` turns to its next five every ten seconds; **Full screen** turns into **Exit full screen**. |
 
 ---
 
