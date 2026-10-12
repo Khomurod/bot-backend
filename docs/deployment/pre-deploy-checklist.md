@@ -46,7 +46,7 @@ after deploy on the live service.
 | A3 | **No missing environment variables.** | **[MANUAL]** `npm run` `check-prod-env` script (`scripts/check-prod-env.js`); compare Render env against `.env.example` and `render.yaml`. |
 | A4 | **Database connection works.** | **[AUTO/PROD]** `GET /api/health` returns `{ healthy: true, db: true }`. |
 | A5 | **Telegram bot connects.** | **[PROD]** Logs show the bot launched; send a command in the test group (see B). |
-| A6 | **Admin panel loads.** | **[AUTO]** admin build succeeds (`npm run build --prefix admin`); **[PROD]** `/admin` returns the SPA. |
+| A6 | **Admin panel loads.** | **[AUTO]** admin build succeeds (`npm run build --prefix admin`); **[PROD]** `/admin` returns the SPA. The build keeps its own heap limit (`admin/package.json`): Render's `NODE_OPTIONS` cap also applies to builds, and a build that outgrows it fails the deploy while production stays on the previous build. |
 | A7 | **Logs show no critical errors.** | **[PROD]** No `[FATAL]`, no `uncaughtException`, no repeated `[LEADS] CIRCUIT BREAKER OPEN`. |
 | A8 | **Scheduled jobs still run.** | **[PROD]** After boot, logs show the schedulers starting (dispatch ETA, birthday, mileage bonus, fuel, recruiter sync, etc. — all started from `index.js`). They must run with **no admin panel open**; nothing in `server/routes/**` starts one. |
 | A9 | **No undefined identifier or missing import shipped.** A build is not a scope check: 26 of these once passed `vite build` and broke the admin panel at runtime. | **[AUTO]** `npm run lint:undef` and `npm run lint:imports` (both also run in `npm test` and CI). |

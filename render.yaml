@@ -86,6 +86,8 @@ services:
         # service from github.com/Khomurod/samsara-integration, which is what
         # freed the memory that used to cause OOM kills.
         # 256 (was 300) leaves more OS/GC headroom to avoid OOM kills.
+        # Render applies it to the BUILD too; the admin build sets its own
+        # limit (admin/package.json), which three.js needs.
         value: --max-old-space-size=256
       # Limit glibc malloc arenas to reduce native heap fragmentation in the
       # main Node process (the Python child already sets this).
