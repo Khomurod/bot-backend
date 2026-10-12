@@ -64,7 +64,7 @@ test('the first screen gets "loading" at once; the week is read whole in the bac
   assert.equal(race.race.racers[0].gross, 12000);
   assert.equal(h.calls.length, 1, 'the second ask, a moment later, starts no read');
   assert.deepEqual(h.calls[0], {
-    startIso: '2026-10-12T05:00:00.000Z', endIso: '2026-10-19T04:59:59.999Z', modifiedAfterIso: null,
+    startIso: '2026-10-11T17:00:00.000Z', endIso: '2026-10-19T04:59:59.999Z', modifiedAfterIso: null,
   });
   assert.equal(race.targets, null, 'the dispatchers race has no target');
   assert.deepEqual(h.feed.getRace('teams').targets, { solo: 15000, team: 20000 });
@@ -152,7 +152,7 @@ test('a new week starts empty and reads the new week whole', async () => {
   assert.equal(turnover.week.label, 'Oct 19–25');
   await h.feed.settled();
   assert.equal(h.calls.at(-1).modifiedAfterIso, null);
-  assert.equal(h.calls.at(-1).startIso, '2026-10-19T05:00:00.000Z');
+  assert.equal(h.calls.at(-1).startIso, '2026-10-18T17:00:00.000Z', "twelve hours early, for Monday's date-only DEL dates");
 });
 
 test('without a Datatruck token the screens say so and nothing is read', () => {

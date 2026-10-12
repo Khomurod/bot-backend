@@ -58,6 +58,16 @@ test('a load counts only when it was created, picked up AND delivered this week'
     'Monday 00:00 to Sunday 23:59 in Chicago');
 });
 
+test('a PU or DEL date typed without a time is that calendar day, not the evening before', () => {
+  const week = raceWeek({ now: new Date('2026-10-14T18:00:00Z') });
+  const counts = (fields) => countsInWeek(raceLoad(order({ pay: 1000, ...fields })), week);
+  assert.equal(counts({ pickedUp: '2026-10-12T00:00:00Z' }), true, 'Monday, not Sunday 7 pm in Chicago');
+  assert.equal(counts({ pickedUp: '10/12/2026' }), true, 'a bare date');
+  assert.equal(counts({ pickedUp: '2026-10-12' }), true);
+  assert.equal(counts({ at: '2026-10-19T00:00:00Z' }), false, 'next Monday, not this Sunday evening');
+  assert.equal(counts({ pickedUp: '2026-10-11T23:30:00Z' }), false, 'a real time keeps its zone: Sunday 6:30 pm');
+});
+
 test('the DEL date is the delivery date, not the delivery appointment', () => {
   const load = raceLoad({ ...order({ pay: 1400 }), delivery_time: '2026-10-04T15:00:00Z', delivery_appointment_time: '2026-10-13T15:00:00Z' });
   assert.equal(load.at.toISOString(), '2026-10-04T15:00:00.000Z');

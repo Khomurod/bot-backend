@@ -35,6 +35,26 @@ const NOT_COUNTED = /^(booked|cancell?ed)$/i;
 const NOT_RACING = new Set(['ayzik dinosour']);
 
 const plain = (name) => String(name || '').trim().replace(/\s+/g, ' ');
+const NOON = 12 * 3600e3;
+
+/**
+ * A PU or DEL date as an instant. Datatruck sends most as real times at the
+ * stop ("2026-10-12T15:00:00Z"), but a date typed without a time arrives as
+ * midnight UTC — 7 pm the day before in Chicago, so a Monday pickup would read
+ * as Sunday's — and a bare date ("10/12/2026", "2026-10-12") has no zone at
+ * all. Each of those is a calendar day, read as noon UTC of that day: the same
+ * day in Chicago. (A real stop at exactly 00:00:00 UTC is taken as a date too;
+ * on 12 October 2026 that hour was three times as common as its neighbours.)
+ */
+function stopDate(value) {
+  const text = String(value || '').trim();
+  let day = text.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (day) return new Date(Date.UTC(+day[3], +day[1] - 1, +day[2]) + NOON);
+  day = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (day) return new Date(Date.UTC(+day[1], +day[2] - 1, +day[3]) + NOON);
+  const at = new Date(text || NaN);
+  return at.getTime() % 86400e3 === 0 ? new Date(at.getTime() + NOON) : at;
+}
 const isTeam = (name) => name.toLowerCase().includes(TEAM_WORD);
 
 /**
@@ -44,9 +64,9 @@ const isTeam = (name) => name.toLowerCase().includes(TEAM_WORD);
  * counts THIS week is countsInWeek().
  */
 function raceLoad(order) {
-  const at = new Date(order?.delivery_time || NaN);
+  const at = stopDate(order?.delivery_time);
   const created = new Date(order?.created_datetime || NaN);
-  const pickedUp = new Date(order?.pickup_time || NaN);
+  const pickedUp = stopDate(order?.pickup_time);
   if (NOT_COUNTED.test(String(order?.status || '').trim())) return null;
   if ([at, created, pickedUp].some((date) => Number.isNaN(date.getTime()))) return null;
   const trip = order.trip || (Array.isArray(order.trips) ? order.trips[0] : null) || {};
