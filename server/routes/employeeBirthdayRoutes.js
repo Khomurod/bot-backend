@@ -246,7 +246,9 @@ function createEmployeeBirthdayRoutes({ db, config, authMiddleware, bot }) {
     try {
       if (!config.employeeGroupId) return res.status(400).json({ error: 'EMPLOYEE_GROUP_ID not configured in .env' });
       const { Markup } = require('telegraf');
-      const appUrl = process.env.RENDER_EXTERNAL_URL || 'https://bot-backend-x9lc.onrender.com';
+      // The configured public URL, else the address this request came in on
+      // (`trust proxy` makes req.protocol honour the proxy's X-Forwarded-Proto).
+      const appUrl = config.publicBaseUrl || `${req.protocol}://${req.get('host')}`;
       const keyboard = Markup.inlineKeyboard([
         Markup.button.url('🎂 Enter Your Birthday', `${appUrl}/employee-birthday-form`)
       ]);
