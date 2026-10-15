@@ -1,0 +1,24 @@
+# Never ship dependency trees or build output from a developer machine; the
+# image installs and builds its own.
+node_modules
+admin/node_modules
+admin/build
+admin/dist
+**/__pycache__
+**/*.pyc
+
+# Secrets stay in the platform's environment, never in the image.
+.env
+.env.*
+!.env.example
+
+# Not needed at runtime.
+.git
+.github
+.claude
+.serena
+tests
+scratch
+brain
+reports
+*.log

@@ -78,7 +78,9 @@ Business problems it solves:
 ---
 ## 2. Deployment topology and processes
 
-`render.yaml` defines two Render services in this repo; a third lives elsewhere.
+Production runs on a Hostinger VPS under Coolify, built from the root
+`Dockerfile` (`docs/deployment/hostinger-coolify.md`); it was on Render until
+October 2026, and `render.yaml` still describes that layout.
 
 | Service | Repo | What it is |
 |---|---|---|
@@ -108,8 +110,9 @@ The three cooperate in **two different ways** — do not confuse them:
 
 Hard constraints of this deployment:
 
-- **Memory-constrained.** The Node process runs with `--max-old-space-size=256`
-  on a 512MB instance, `MALLOC_ARENA_MAX=2`, and a Postgres pool of `max=5`.
+- **Memory-conscious.** The Node process runs with `--max-old-space-size=1024`
+  on the 8 GB VPS (it was 256 on Render's 512MB instance), `MALLOC_ARENA_MAX=2`,
+  and a Postgres pool of `max=5`.
   Avoid buffering large files, unbounded caches, and new always-on intervals.
   `services/memoryWatchdog.js` can log pressure but is **off unless
   `MEMORY_WATCHDOG_ENABLED='true'`**.
@@ -123,7 +126,7 @@ Hard constraints of this deployment:
 - The Python child is supervised with exponential-backoff restart and a
   **circuit breaker** (5 crashes in 3 minutes → stop restarting; exit code 78 =
   permanent config error, never restarted).
-- `main` auto-deploys to Render. A push opens and merges nothing by itself —
+- `main` auto-deploys (Coolify on the VPS). A push opens and merges nothing by itself —
   the agent opens the PR, the repository owner merges it — but the owner may
   merge at any moment, so **review the complete diff BEFORE pushing**
   (`CLAUDE.md`).
@@ -233,7 +236,7 @@ by a number on every stage does not belong in the file everything else fits in.
 | Moving the database to another server | `docs/database/README.md` → the manual `Copy database` workflow (`scripts/copy-database.sh`) |
 | What was removed and why | `docs/ARCHIVED_FEATURES.md`, `docs/architecture/retired-*.md`, `docs/architecture/samsara-separation.md` |
 | Clearing a removed feature's leftover tables and roles | Settings → Retired Leftovers; `database/retiredLeftovers.js` |
-| Deployment checks | `docs/deployment/pre-deploy-checklist.md`, `render.yaml` |
+| Deployment checks | `docs/deployment/pre-deploy-checklist.md`, `docs/deployment/hostinger-coolify.md`, `Dockerfile` |
 
 ### Working conventions
 
