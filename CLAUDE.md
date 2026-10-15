@@ -86,7 +86,7 @@ enough to benefit, and never let their absence block or delay work:
   `copy-database.yml`, so the agent opens the PR
   and the repository owner merges it (29 minutes to 8 hours later, on PRs
   #161–#163). The push is still the point of no return, because **`main`
-  auto-deploys to Render** and the owner may merge at any moment without asking
+  auto-deploys (Coolify on the Hostinger VPS)** and the owner may merge at any moment without asking
   for a second look. **Review the complete diff BEFORE pushing.**
 
 # Testing expectations

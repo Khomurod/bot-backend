@@ -56,7 +56,10 @@ logger = logging.getLogger(__name__)
 app = FastAPI(title="Leads Webhook")
 
 # ── Public base URL (for RingCentral webhook callback) ────────
-BASE_URL = os.environ.get("RENDER_EXTERNAL_URL", "https://bot-backend-x9lc.onrender.com")
+# RENDER_EXTERNAL_URL is the hub's public HTTPS address on any host (Render set
+# it automatically; Coolify must be given it). No hard-coded fallback: a
+# subscription pointed at a host we no longer run on loses every inbound SMS.
+BASE_URL = os.environ.get("RENDER_EXTERNAL_URL", "").strip().rstrip("/")
 
 
 # ── Startup: register RingCentral webhook ────────────────────
@@ -68,7 +71,13 @@ async def _startup_register_rc_webhook():
     # group. RECONCILED, not registered once: a recruiter can finish RingCentral
     # onboarding at any time, and until their extension is in the subscription
     # their replies reach nobody.
-    start_rc_subscription_refresher(f"{BASE_URL}/rc-webhook")
+    if BASE_URL:
+        start_rc_subscription_refresher(f"{BASE_URL}/rc-webhook")
+    else:
+        logger.error(
+            "RENDER_EXTERNAL_URL is not set: the RingCentral inbound-SMS "
+            "subscription is not registered and recruiters' replies will not arrive"
+        )
     start_connect_command_poller()
 
 

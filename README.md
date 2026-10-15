@@ -16,7 +16,7 @@ not describe the features in depth.
 | Which module owns what | [`docs/architecture/module-map.md`](docs/architecture/module-map.md) |
 | The real HTTP surface | `server/api.js` (mounting order) and `server/routes/` |
 | Database schema and migrations | [`docs/database/`](docs/database/) |
-| Deployment checks | [`docs/deployment/pre-deploy-checklist.md`](docs/deployment/pre-deploy-checklist.md), `render.yaml` |
+| Deployment checks | [`docs/deployment/pre-deploy-checklist.md`](docs/deployment/pre-deploy-checklist.md), [`docs/deployment/hostinger-coolify.md`](docs/deployment/hostinger-coolify.md) |
 
 ## Tech stack
 
@@ -103,20 +103,25 @@ is a real failure. The `*Pg.test.js` integration tests skip without
 `TEST_DATABASE_URL` — a skipped test is not a passing test. CI
 (`.github/workflows/ci.yml`) fails on any skip.
 
-## Deployment (Render)
+## Deployment (Hostinger VPS + Coolify)
 
-1. Set every environment variable in the Render dashboard — deployment settings
-   are never automated from this repository.
-2. `render.yaml` supplies the build and start commands.
+1. Coolify builds the root `Dockerfile` (Node 20 + Python for the leads worker)
+   on every push to `main` — see
+   [`docs/deployment/hostinger-coolify.md`](docs/deployment/hostinger-coolify.md).
+2. Set every environment variable in Coolify — deployment settings are never
+   automated from this repository. `RENDER_EXTERNAL_URL` must be set by hand to
+   the public `https://` URL.
 3. Health check: `/api/health`.
-4. After the first deploy, run `npm run init-db` and `npm run seed-admin` from
-   the shell.
+4. After the first deploy to an empty database, run `npm run init-db` and
+   `npm run seed-admin` from the container's terminal.
+
+`render.yaml` is kept only as a record of the former Render setup.
 
 Run through [`docs/deployment/pre-deploy-checklist.md`](docs/deployment/pre-deploy-checklist.md)
 before shipping.
 
-> A push opens no PR and merges nothing by itself, but `main` auto-deploys to
-> Render and the repository owner may merge yours at any moment. **Review the
+> A push opens no PR and merges nothing by itself, but `main` auto-deploys
+> (Coolify) and the repository owner may merge yours at any moment. **Review the
 > complete diff *before* pushing.**
 
 ## Project layout

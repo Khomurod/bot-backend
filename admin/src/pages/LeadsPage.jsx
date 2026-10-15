@@ -28,7 +28,7 @@ function Badge({ map, value }) {
 
 const APPS_SCRIPT = `// === Wenze Indeed → Bitrix24 forwarder ===
 // 1) Paste your two values below.
-var ENDPOINT = 'https://bot-backend-x9lc.onrender.com/api/internal/indeed/lead';
+var ENDPOINT = '${window.location.origin}/api/internal/indeed/lead';
 var SECRET   = 'PASTE_YOUR_LEADS_INTERNAL_SHARED_SECRET_HERE';
 
 function pollIndeed() {

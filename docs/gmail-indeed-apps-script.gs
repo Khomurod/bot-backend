@@ -5,11 +5,11 @@
  * for the step-by-step guide. Summary:
  *   1. In Indeed, turn on "email me the candidate's résumé as an attachment".
  *   2. script.google.com → New project → paste this file.
- *   3. Fill ENDPOINT (your Render URL) and SECRET (LEADS_INTERNAL_SHARED_SECRET).
+ *   3. Fill ENDPOINT (the hub's public URL) and SECRET (LEADS_INTERNAL_SHARED_SECRET).
  *   4. Run pollIndeed once and click Allow.
  *   5. Triggers (⏰) → Add Trigger → pollIndeed → Time-driven → every 5 minutes.
  */
-var ENDPOINT = 'https://bot-backend-x9lc.onrender.com/api/internal/indeed/lead';
+var ENDPOINT = 'https://YOUR-HUB-DOMAIN/api/internal/indeed/lead';
 var SECRET   = 'PASTE_YOUR_LEADS_INTERNAL_SHARED_SECRET_HERE';
 
 function pollIndeed() {
