@@ -12,6 +12,8 @@ import CelebrationOverlay from "./celebration/CelebrationOverlay";
 import { CELEBRATION_MS, celebrationTick, celebrationWinner } from "./celebration/celebrationTime";
 import { preloadCar } from "./celebration/carScene";
 import { chunkOf, lastReloadAt, markReload, noteServed, shouldReload, tabStorage } from "./pageVersion";
+import SoundTestOverlay from "./soundTest/SoundTestOverlay";
+import useSoundTest from "./soundTest/useSoundTest";
 import "./grossRace.css";
 
 /**
@@ -31,7 +33,9 @@ import "./grossRace.css";
  *
  * At 4:00 PM in Chicago, every day, the leader is celebrated for twelve seconds
  * over a 3D car (celebration/). `?celebrate` in the address shows it at once,
- * to preview it without waiting for four o'clock.
+ * to preview it without waiting for four o'clock. The "Test sound" button runs
+ * the celebration and then a clip with sound, and says what the screen can do
+ * (soundTest/).
  *
  * Every answer also names the build of this page the server hands out; a
  * screen running an older one reloads itself (pageVersion.js), so a code
@@ -70,6 +74,7 @@ export default function GrossRacePage({ view, pageMs = PAGE_MS, ownChunk = OWN_C
   const otherBuild = useRef(null); // a build the server named that is not ours, and how many times in a row
   const last = useRef(null);
   const fullscreen = useFullscreen();
+  const sound = useSoundTest({ race: data && data.race, celebration, setCelebration });
   const pageSize = PAGE_SIZE[view] || Infinity;
   const pages = pageCount(data && data.race, pageSize);
 
@@ -149,13 +154,13 @@ export default function GrossRacePage({ view, pageMs = PAGE_MS, ownChunk = OWN_C
     const storage = tabStorage();
     const due = shouldReload({
       own: ownChunk, served: data.page, confirmations: otherBuild.current && otherBuild.current.name === data.page ? otherBuild.current.count : 0,
-      now, tz, celebrating: celebrating.current, lastReloadAt: lastReloadAt(storage),
+      now, tz, celebrating: celebrating.current || sound.active.current, lastReloadAt: lastReloadAt(storage),
     });
     if (!due) return;
     reloading.current = true;
     markReload(storage, now);
     reload();
-  }, [data, now, ownChunk, reload]);
+  }, [data, now, ownChunk, reload, sound.active]);
 
   useEffect(() => {
     setPage((held) => (held < pages ? held : 0));
@@ -166,14 +171,17 @@ export default function GrossRacePage({ view, pageMs = PAGE_MS, ownChunk = OWN_C
 
   return (
     <div className="gross-race">
-      <RaceHeader view={view} data={data} now={now} fullscreen={fullscreen} />
+      <RaceHeader view={view} data={data} now={now} fullscreen={fullscreen} onSoundTest={sound.start} />
       <RaceRules view={view} data={data} />
       <div className="gr-body">
         <RaceTrack view={view} data={data} now={now} flashUntil={flashUntil} banner={banner}
           page={Math.min(page, pages - 1)} pages={pages} pageSize={pageSize} />
         <RaceSidebar data={data} now={now} events={events} />
       </div>
-      {celebration && <CelebrationOverlay winner={celebration.winner} view={view} />}
+      {celebration && <CelebrationOverlay winner={celebration.winner} view={view} onCar={sound.noteCar} />}
+      {sound.test && sound.test.stage === "video" && (
+        <SoundTestOverlay autoplay={sound.autoplay} car={sound.test.car} onClose={sound.close} />
+      )}
     </div>
   );
 }

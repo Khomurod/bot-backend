@@ -7,9 +7,10 @@ import "./celebration.css";
 /**
  * The 4 PM celebration: the leader's name over a real 3D car, for twelve
  * seconds. Without WebGL, or if the car fails to load, the same words with a
- * trophy — the celebration never depends on the 3D.
+ * trophy — the celebration never depends on the 3D. `onCar`, when given, hears
+ * which it was ("on" or "off"): the sound test reports it.
  */
-export default function CelebrationOverlay({ winner, view }) {
+export default function CelebrationOverlay({ winner, view, onCar }) {
   const canvas = useRef(null);
   const [car, setCar] = useState(() => (supportsWebGL() ? "loading" : "off"));
 
@@ -29,6 +30,10 @@ export default function CelebrationOverlay({ winner, view }) {
     };
     // Mounted once per celebration; `car` only moves forward from here.
   }, []);
+
+  useEffect(() => {
+    if (car !== "loading" && onCar) onCar(car);
+  }, [car, onCar]);
 
   return (
     <div className="gr-celebration" role="dialog" aria-label="Today's leader">
