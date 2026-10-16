@@ -69,8 +69,8 @@ describe("GrossRacePage", () => {
     expect(screen.getByText("Lap 3 of 7 · Wed")).toBeInTheDocument();
     expect(screen.getAllByText("75%").length).toBeGreaterThan(0);
     expect(screen.getByRole("link", { name: "Dispatchers race" })).toHaveAttribute("href", "/dispatch");
-    expect(screen.getByText(/Counted: dispatched loads created, picked up and delivered Mon, Oct 12 – Sun, Oct 18 \(Chicago time\), credited to the load's dispatch team/)).toBeInTheDocument();
-    expect(screen.getByText(/Not counted: booked or canceled loads, and any load created or picked up before Monday/)).toBeInTheDocument();
+    expect(screen.getByText(/Counted: dispatched loads picked up Mon, Oct 12 – Sun, Oct 18 \(Chicago time\), credited to the load's dispatch team/)).toBeInTheDocument();
+    expect(screen.getByText(/Not counted: booked or canceled loads, and loads picked up in another week/)).toBeInTheDocument();
     expect(document.title).toBe("Gross Grand Prix · Teams");
   });
 
