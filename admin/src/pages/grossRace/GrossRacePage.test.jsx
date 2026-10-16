@@ -12,6 +12,7 @@ import GrossRacePage from "./GrossRacePage";
 vi.mock("./celebration/carScene", () => ({
   supportsWebGL: () => false, mountCarScene: vi.fn(), preloadCar: () => Promise.resolve(),
 }));
+vi.mock("./soundTest/autoplayProbe", () => ({ probeAutoplay: async () => "blocked" }));
 
 const week = { start: "2026-10-12T05:00:00.000Z", end: "2026-10-19T05:00:00.000Z", label: "Oct 12–19", day: 3, dayName: "Wed", tz: "America/Chicago" };
 const racer = (name, rank, gross, target) => ({
@@ -163,6 +164,16 @@ describe("GrossRacePage", () => {
     } finally {
       window.history.pushState({}, "", "/");
     }
+  });
+
+  test("the Test sound button runs the celebration of the race leader", async () => {
+    respond(live);
+    const user = userEvent.setup();
+    render(<GrossRacePage view="teams" />);
+    await screen.findAllByText("Falcon's Team");
+    await user.click(screen.getByRole("button", { name: "Test sound" }));
+    const dialog = await screen.findByRole("dialog", { name: "Today's leader" });
+    expect(dialog).toHaveTextContent("Falcon's Team");
   });
 
   const poll = async () => {

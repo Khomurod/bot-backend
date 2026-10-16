@@ -1,13 +1,13 @@
 import React from "react";
-import { MaximizeIcon, MinimizeIcon } from "./RaceIcons";
+import { MaximizeIcon, MinimizeIcon, SpeakerIcon } from "./RaceIcons";
 import { OTHER_DISPLAY, statusView, weekView } from "./raceView";
 
 /**
  * The header: title and display, the week's laps, the countdown to the
- * checkered flag, the live status, the other display and the full-screen
- * button. In full screen the button turns into the one that leaves it.
+ * checkered flag, the live status, the other display, the sound test and the
+ * full-screen button. In full screen the button turns into the one that leaves it.
  */
-export default function RaceHeader({ view, data, now, fullscreen }) {
+export default function RaceHeader({ view, data, now, fullscreen, onSoundTest }) {
   const week = weekView(data, now);
   const status = statusView(data, now);
   const other = OTHER_DISPLAY[view];
@@ -44,6 +44,12 @@ export default function RaceHeader({ view, data, now, fullscreen }) {
         </div>
         <div className="gr-actions">
           <a className="gr-btn" href={other.href}>{other.label}</a>
+          {onSoundTest && (
+            <button type="button" className="gr-btn" onClick={onSoundTest}>
+              <SpeakerIcon size="14" strokeWidth={2.4} />
+              Test sound
+            </button>
+          )}
           {fullscreen.supported && (
             <button type="button" className="gr-btn" onClick={fullscreen.toggle}
               aria-label={fullscreenLabel} title={fullscreenLabel} aria-pressed={fullscreen.active}>
