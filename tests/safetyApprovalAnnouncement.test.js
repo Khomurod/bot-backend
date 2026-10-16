@@ -38,6 +38,11 @@ test('a refusal, with nothing optional', () => {
     '❌ <b>NOT APPROVED</b>\n<b>Renata Ilves</b>');
 });
 
+test('a name read off the CDL says so', () => {
+  assert.equal(buildCaption({ decision: 'approved', name: 'Renata Ilves', nameFromCdl: true }),
+    '✅ <b>APPROVED</b>\n<b>Renata Ilves</b> <i>(name read from the CDL)</i>');
+});
+
 test('a long note gives way, and the caption fits Telegram\'s limit', () => {
   const caption = buildCaption({
     decision: 'approved', name: 'Renata Ilves', phone: '555-010-7788', safetyNote: '<&>'.repeat(900),

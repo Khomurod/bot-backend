@@ -20,6 +20,7 @@ function stub(rel, exports) {
 // ── an in-memory group ────────────────────────────────────────────────────
 let rows = [];
 let announcements = [];
+let failComplete = false;
 const finished = [];
 const retried = [];
 
@@ -38,9 +39,18 @@ stub('database/safetyApprovals/messages.js', {
 stub('database/safetyApprovals/reviews.js', {
   finishReview: async (review, fields) => { finished.push({ id: review.id, ...fields }); return true; },
   retryReview: async (review, fields) => { retried.push({ id: review.id, ...fields }); return true; },
-  lastAnnouncement: async (chatId, postId, key) => announcements
-    .filter((a) => a.chatId === chatId && a.postMessageId === postId && a.driverKey === key).at(-1) || null,
-  recordAnnouncement: async (a) => { announcements.push(a); },
+  reserveAnnouncement: async (a) => {
+    const last = announcements
+      .filter((x) => x.chatId === a.chatId && x.postMessageId === a.postMessageId && x.driverKey === a.driverKey).at(-1);
+    if (last && last.decision === a.decision) return null;
+    announcements.push({ ...a, id: announcements.length + 1, topicMessageIds: null });
+    return { id: announcements.length };
+  },
+  completeAnnouncement: async (id, ids) => {
+    if (failComplete) throw new Error('database is down');
+    announcements.find((a) => a.id === id).topicMessageIds = ids;
+  },
+  releaseAnnouncement: async (id) => { announcements = announcements.filter((a) => a.id !== id); },
 });
 
 const { processReview } = require('../services/safetyApprovals/reviewer');
@@ -116,6 +126,7 @@ const review = (fields = {}) => ({
 function reset(seed) {
   rows = seed;
   announcements = [];
+  failComplete = false;
   finished.length = 0;
   retried.length = 0;
 }
@@ -283,4 +294,28 @@ test('no vision model for a while: the words are read, and the post goes out wit
   const { media } = d.telegram.calls[0];
   assert.deepEqual(media.map((m) => m.media), ['psp', 'mvr'], 'no CDL: the model never saw a photo');
   assert.equal(finished.at(-1).outcome.withoutPhotos, true);
+});
+
+test('posted but not recorded: the retry does not post it again', async () => {
+  reset([...soloPost(), ...safetyAlbum('We can hire Renata')]);
+  failComplete = true;
+  const first = deps({ readReply: model(APPROVED_RENATA) });
+  assert.equal(await processReview(review(), first), 'published');
+  assert.equal(first.telegram.calls.length, 1);
+
+  const retry = deps({ readReply: model(APPROVED_RENATA) });
+  assert.equal(await processReview(review({ id: 2 }), retry), 'published');
+  assert.equal(retry.telegram.calls.length, 0, 'the reservation says it went out');
+});
+
+test('Telegram refused: the reservation is given back, and the retry posts it', async () => {
+  reset([...soloPost(), ...safetyAlbum('We can hire Renata')]);
+  const refusing = deps({ readReply: model(APPROVED_RENATA) });
+  refusing.telegram.sendMediaGroup = async () => { throw new Error('400: Bad Request: message thread not found'); };
+  assert.equal(await processReview(review(), refusing), 'retry');
+  assert.equal(announcements.length, 0);
+
+  const later = deps({ readReply: model(APPROVED_RENATA) });
+  assert.equal(await processReview(review({ id: 2 }), later), 'published');
+  assert.equal(later.telegram.calls.length, 1);
 });

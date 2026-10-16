@@ -149,6 +149,9 @@ test('a photo index outside what the model was shown is no photo', () => {
   const out = read({ candidates: [{ name: 'Renata Ilves', cdl_photo: 7 }, { name: 'Darnell Brooks', cdl_photo: -1 }], decisions: [] },
     { postText: `${SOLO_POST}\n${TEAM_POST}`, safetyText: '' });
   assert.deepEqual(out.candidates.map((c) => c.cdlPhoto), [null, null]);
+  const none = read({ candidates: [{ name: 'Renata Ilves', cdl_photo: null }, { name: 'Darnell Brooks' }], decisions: [] },
+    { postText: `${SOLO_POST}\n${TEAM_POST}`, safetyText: '' });
+  assert.deepEqual(none.candidates.map((c) => c.cdlPhoto), [null, null], '"no CDL" is not photo 0');
 });
 
 test('two different answers for one driver are no answer', () => {
@@ -181,4 +184,35 @@ test('in a team, Safety\'s file names do not name a driver — only Safety\'s wo
     fileNames: ['DARNELL BROOKS PSP.pdf', 'CALVIN BROOKS MVR.pdf'],
   });
   assert.deepEqual(out.decisions.map((d) => d.name), ['Darnell Brooks']);
+});
+
+test('a post with no name in writing: one candidate read off the CDL is kept, and says so', () => {
+  const out = read({
+    candidates: [{ name: 'Renata Ilves', phone: '555-010-7788', cdl_photo: 0 }],
+    decisions: [{ name: 'Renata Ilves', decision: 'approved' }],
+  }, { postText: 'solo driver 555-010-7788 exp 3 years', safetyText: 'we can hire him' });
+  assert.equal(out.decisions.length, 1);
+  assert.equal(out.decisions[0].nameFromCdl, true);
+  assert.equal(out.decisions[0].cdlPhoto, 0);
+});
+
+test('...but not without the photo it was read from, and not for two drivers', () => {
+  const noPhoto = read({
+    candidates: [{ name: 'Renata Ilves', cdl_photo: null }],
+    decisions: [{ name: 'Renata Ilves', decision: 'approved' }],
+  }, { postText: 'solo driver', safetyText: 'approved' });
+  assert.equal(noPhoto.decisions.length, 0);
+
+  const two = read({
+    candidates: [{ name: 'Renata Ilves', cdl_photo: 0 }, { name: 'Joseph Abbott', cdl_photo: 1 }],
+    decisions: [{ name: 'Renata Ilves', decision: 'approved' }],
+  }, { postText: 'team drivers', safetyText: 'approved' });
+  assert.equal(two.decisions.length, 0);
+  assert.deepEqual(two.dropped.map((d) => d.why).slice(0, 2), ['name_not_in_messages', 'name_not_in_messages']);
+
+  const alongside = read({
+    candidates: [{ name: 'Renata Ilves', cdl_photo: 0 }, { name: 'Joseph Abbott', cdl_photo: 1 }],
+    decisions: [{ name: 'Joseph Abbott', decision: 'approved' }],
+  }, { postText: SOLO_POST, safetyText: 'approved' });
+  assert.deepEqual(alongside.decisions.map((d) => d.name), [], 'a written name exists, so an unwritten one is not added');
 });

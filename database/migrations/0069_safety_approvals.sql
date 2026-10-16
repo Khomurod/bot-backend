@@ -111,7 +111,9 @@ CREATE INDEX IF NOT EXISTS safety_approval_reviews_due_idx
   WHERE status = 'pending';
 
 -- What was posted in the topic, per driver, so the same decision is never
--- posted twice and a reversed one is.
+-- posted twice and a reversed one is. A row is RESERVED (sent_at NULL) before
+-- the send and completed after it, so a database failure after Telegram has
+-- accepted the post cannot lead to the same decision being posted again.
 CREATE TABLE IF NOT EXISTS safety_approval_announcements (
   id                 BIGSERIAL PRIMARY KEY,
   chat_id            TEXT NOT NULL,
@@ -122,6 +124,7 @@ CREATE TABLE IF NOT EXISTS safety_approval_announcements (
   review_id          BIGINT REFERENCES safety_approval_reviews(id) ON DELETE SET NULL,
   topic_message_ids  BIGINT[] NOT NULL DEFAULT '{}',
   created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  sent_at            TIMESTAMPTZ,
   CONSTRAINT safety_approval_announcements_decision CHECK (decision IN ('approved', 'not_approved'))
 );
 

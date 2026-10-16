@@ -125,19 +125,33 @@ test('the queue: settle, lease, and a reply edited mid-read is read again', { sk
   assert.deepEqual([listed.status, listed.outcome], ['unclear', { reason: 'x' }]);
 });
 
-test('what was posted is remembered per post and driver', { skip: skipWithoutPg() }, async (t) => {
-  const { reviews } = await setup(t);
-  assert.equal(await reviews.lastAnnouncement(CHAT, 10, 'renata ilves'), null);
-  await reviews.recordAnnouncement({
-    chatId: CHAT, postMessageId: 10, driverKey: 'renata ilves', driverName: 'Renata Ilves',
-    decision: 'approved', reviewId: null, topicMessageIds: [700, 701],
-  });
-  await reviews.recordAnnouncement({
-    chatId: CHAT, postMessageId: 10, driverKey: 'renata ilves', driverName: 'Renata Ilves',
-    decision: 'not_approved', reviewId: null, topicMessageIds: [710],
-  });
-  assert.equal((await reviews.lastAnnouncement(CHAT, 10, 'renata ilves')).decision, 'not_approved');
-  assert.equal(await reviews.lastAnnouncement(CHAT, 11, 'renata ilves'), null);
+test('the right to post is reserved first, once per decision, and a refused send gives it back', { skip: skipWithoutPg() }, async (t) => {
+  const { h, reviews } = await setup(t);
+  const base = { chatId: CHAT, postMessageId: 10, driverKey: 'renata ilves', driverName: 'Renata Ilves', reviewId: null };
+
+  // Two workers at once: exactly one may post.
+  const [a, b] = await Promise.all([
+    reviews.reserveAnnouncement({ ...base, decision: 'approved' }),
+    reviews.reserveAnnouncement({ ...base, decision: 'approved' }),
+  ]);
+  assert.equal([a, b].filter(Boolean).length, 1);
+  const held = a || b;
+
+  // Reserved but never completed still counts as posted.
+  assert.equal(await reviews.reserveAnnouncement({ ...base, decision: 'approved' }), null);
+  await reviews.completeAnnouncement(held.id, [700, 701]);
+
+  // A changed decision is posted; a refused send hands the reservation back.
+  const reversed = await reviews.reserveAnnouncement({ ...base, decision: 'not_approved' });
+  assert.ok(reversed);
+  await reviews.releaseAnnouncement(reversed.id);
+  assert.ok(await reviews.reserveAnnouncement({ ...base, decision: 'not_approved' }), 'free to post again');
+
+  // A sent row is never released.
+  await reviews.releaseAnnouncement(held.id);
+  const kept = await h.pool.query('SELECT sent_at FROM safety_approval_announcements WHERE id = $1', [held.id]);
+  assert.ok(kept.rows[0]?.sent_at);
+  assert.ok(await reviews.reserveAnnouncement({ ...base, postMessageId: 11, decision: 'approved' }), 'another post is its own');
 });
 
 test('old captured messages are deleted', { skip: skipWithoutPg() }, async (t) => {

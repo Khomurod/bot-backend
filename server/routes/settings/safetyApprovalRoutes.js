@@ -24,6 +24,8 @@ const { parseTopicReference } = require('../../../lib/safetyApprovals/announceme
 const { sendFailure } = require('../../middleware/failureResponse');
 
 const LOG = { logPrefix: '[SETTINGS API]' };
+const CANNOT_SEE = 'The bot can reach this group but cannot see its messages. Make the bot an admin of the '
+  + 'group (or turn its privacy mode off in BotFather), then validate again.';
 
 /** Can the bot read every message in this chat? `null` when it cannot be asked. */
 async function botSeesEverything(telegram, chatId) {
@@ -98,10 +100,7 @@ function createSafetyApprovalSettingsRouter({ authMiddleware, telegram }) {
         chatId: result.chatId,
         chatTitle: result.groupName ?? null,
         seesEverything: sees.known ? sees.ok : null,
-        message: sees.known && !sees.ok
-          ? 'The bot can reach this group but cannot see its messages. Make the bot an admin of the '
-            + 'group (or turn its privacy mode off in BotFather), then validate again.'
-          : null,
+        message: sees.known && !sees.ok ? CANNOT_SEE : null,
       });
     } catch (err) {
       return sendFailure(res, err, { message: 'Failed to validate the recruiting group', ...LOG });
@@ -126,6 +125,10 @@ function createSafetyApprovalSettingsRouter({ authMiddleware, telegram }) {
               error: result.message, status: result.status, field: 'chatId', suggestion: result.suggestion ?? null,
             });
           }
+          // A group the bot cannot read is not a validated group: it would
+          // never see a post, and the switch would turn on to do nothing.
+          const sees = await botSeesEverything(telegram, result.chatId);
+          if (sees.known && !sees.ok) return res.status(400).json({ error: CANNOT_SEE, field: 'chatId' });
           patch.chatId = result.chatId;
           patch.chatTitle = result.groupName ?? null;
           patch.chatValidatedAt = new Date();

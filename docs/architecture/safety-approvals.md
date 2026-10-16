@@ -47,7 +47,10 @@ Every rule below closes a way to post one.
    messages. Every new item or edit re-arms a 30-second settle delay.
 6. **A model reads the language; the messages decide the facts.**
    `lib/safetyApprovals/reading.js` keeps a candidate only if every part of the
-   name appears in the post, Safety's words or Safety's file names; keeps a
+   name appears in the post, Safety's words or Safety's file names — or, in a
+   post with no name in writing at all, the ONE candidate the model read off a
+   CDL photo it was shown (captioned "name read from the CDL", with that CDL
+   attached so a person can check it; two such names stay dropped); keeps a
    phone only if the recruiter typed it; drops an "approved" when the words
    about that driver carry a refusal or a question mark; in a team counts a
    decision only for a driver Safety's **words** name by a name the other
@@ -59,7 +62,12 @@ Every rule below closes a way to post one.
    own words quoted verbatim (`lib/safetyApprovals/announcement.js`).
 8. **The same decision is never posted twice; a changed one is.**
    `safety_approval_announcements` remembers the last decision per (post,
-   driver). An edit from "approved" to "not approved" posts again.
+   driver). An edit from "approved" to "not approved" posts again. The right
+   to post is **reserved before the send**, under an advisory lock, so two
+   workers cannot both post and a database failure after Telegram accepted
+   the post cannot post it again. A send Telegram refused gives the
+   reservation back. This is at-most-once on purpose: a duplicate APPROVED
+   is worse than a missing one, which shows in Settings.
 9. **In a team, a driver's files are that driver's.** A file whose name names
    the other driver is not attached (`documentsFor`).
 10. **The recruiting group is not a driver group.** Every group the bot joins
@@ -116,7 +124,8 @@ drivers' names and phone numbers.
 ## Setting it up (Settings → Safety Approvals)
 
 1. Make the bot an **admin** of the recruiting group (or turn its privacy mode
-   off in BotFather) — otherwise it never sees the posts. Validation says so.
+   off in BotFather) — otherwise it never sees the posts. Validation says so,
+   and saving such a group is refused.
 2. Paste the group's chat id, **Validate**, **Save group**.
 3. Copy a message link from the approved / not approved topic, paste it,
    **Save topic**, and **Send a test message** to prove the bot may post there.

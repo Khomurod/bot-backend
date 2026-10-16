@@ -14,7 +14,8 @@
  * it was being read stays `pending` and is read again.
  *
  * ANNOUNCEMENTS ARE THE MEMORY OF WHAT WAS POSTED. The same decision for the
- * same driver on the same post is never posted twice; a changed one is.
+ * same driver on the same post is never posted twice; a changed one is. The
+ * row is reserved before the send (see reserveAnnouncement).
  */
 
 const { query, pool } = require('../pool');
@@ -173,28 +174,69 @@ async function listRecentReviews(limit = 30) {
   }
 }
 
-/** The decision last posted for this driver on this post, or null. */
-async function lastAnnouncement(chatId, postMessageId, driverKey) {
-  const { rows } = await query(
-    `SELECT decision, created_at FROM safety_approval_announcements
-      WHERE chat_id = $1 AND post_message_id = $2 AND driver_key = $3
-      ORDER BY created_at DESC, id DESC
-      LIMIT 1`,
-    [String(chatId), Number(postMessageId), driverKey],
-  );
-  return rows[0] ? { decision: rows[0].decision, createdAt: rows[0].created_at } : null;
+/**
+ * Claim the right to post this decision, BEFORE posting it.
+ *
+ * Under a transaction-scoped advisory lock on (chat, post, driver), so two
+ * workers cannot both see "not posted yet": the latest row for this driver on
+ * this post — reserved or sent — is read, and a new row is reserved only when
+ * its decision differs. A reservation counts as posted from that moment, so a
+ * database failure after Telegram accepted the post can never post it twice.
+ * At most once, on purpose: a duplicate APPROVED is worse than a missing one,
+ * which a person sees in Settings → Safety Approvals.
+ *
+ * @returns {Promise<{id: number}|null>} null when this decision is already posted
+ */
+async function reserveAnnouncement({
+  chatId, postMessageId, driverKey, driverName, decision, reviewId,
+}) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
+      `safety_approval:${chatId}:${postMessageId}:${driverKey}`,
+    ]);
+    const last = await client.query(
+      `SELECT decision FROM safety_approval_announcements
+        WHERE chat_id = $1 AND post_message_id = $2 AND driver_key = $3
+        ORDER BY created_at DESC, id DESC
+        LIMIT 1`,
+      [String(chatId), Number(postMessageId), driverKey],
+    );
+    if (last.rows[0]?.decision === decision) {
+      await client.query('COMMIT');
+      return null;
+    }
+    const { rows } = await client.query(
+      `INSERT INTO safety_approval_announcements
+         (chat_id, post_message_id, driver_key, driver_name, decision, review_id)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id`,
+      [String(chatId), Number(postMessageId), driverKey, driverName, decision, reviewId ?? null],
+    );
+    await client.query('COMMIT');
+    return { id: Number(rows[0].id) };
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
-async function recordAnnouncement({
-  chatId, postMessageId, driverKey, driverName, decision, reviewId, topicMessageIds,
-}) {
+/** The post went out: record where. */
+async function completeAnnouncement(id, topicMessageIds) {
   await query(
-    `INSERT INTO safety_approval_announcements
-       (chat_id, post_message_id, driver_key, driver_name, decision, review_id, topic_message_ids)
-     VALUES ($1, $2, $3, $4, $5, $6, $7::bigint[])`,
-    [String(chatId), Number(postMessageId), driverKey, driverName, decision,
-      reviewId ?? null, (topicMessageIds || []).map(Number)],
+    `UPDATE safety_approval_announcements
+        SET sent_at = NOW(), topic_message_ids = $2::bigint[]
+      WHERE id = $1`,
+    [id, (topicMessageIds || []).map(Number)],
   );
+}
+
+/** Telegram refused the post: give the reservation back so a retry may send it. */
+async function releaseAnnouncement(id) {
+  await query('DELETE FROM safety_approval_announcements WHERE id = $1 AND sent_at IS NULL', [id]);
 }
 
 module.exports = {
@@ -205,7 +247,8 @@ module.exports = {
   retryReview,
   nextReviewDueAt,
   listRecentReviews,
-  lastAnnouncement,
-  recordAnnouncement,
+  reserveAnnouncement,
+  completeAnnouncement,
+  releaseAnnouncement,
   DEFAULT_LEASE_SECONDS,
 };

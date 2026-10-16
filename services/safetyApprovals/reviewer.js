@@ -14,7 +14,8 @@
  *   4. a model reads the words, and lib/safetyApprovals/reading.js keeps only
  *      what the messages prove. Nothing proven → `unclear`, nothing posted;
  *   5. a decision already posted for that driver on that post is not posted
- *      again; a changed one is.
+ *      again; a changed one is. The right to post is RESERVED before the
+ *      send, so a failure after Telegram accepted it cannot post it twice.
  *
  * An AI outage, a Telegram failure or a file that would not download is
  * retried with backoff, and given up (`gave_up`, visible in Settings) after
@@ -167,39 +168,50 @@ async function processReview(review, deps) {
     const unchanged = [];
     for (const decision of reading.decisions) {
       // eslint-disable-next-line no-await-in-loop
-      const last = await reviews.lastAnnouncement(chatId, post.anchorId, decision.key);
-      if (last && last.decision === decision.decision) {
-        unchanged.push(decision.name);
-        continue;
-      }
-      const caption = buildCaption({
-        decision: decision.decision,
-        name: decision.name,
-        phone: decision.phone,
-        safetyNote: safety.text,
-        recruiterName: post.recruiterName,
-        safetyName: safety.safetyName,
-        link: postLink(chatId, post.anchorId),
-      });
-      // eslint-disable-next-line no-await-in-loop
-      const topicMessageIds = await postDecision(telegram, {
-        chatId,
-        topicId: settings.topicId,
-        caption,
-        name: decision.name,
-        cdl: decision.cdlPhoto === null ? null : images[decision.cdlPhoto],
-        documents: documentsFor(decision, reading.candidates, safety.documents),
-      });
-      // eslint-disable-next-line no-await-in-loop
-      await reviews.recordAnnouncement({
+      const reservation = await reviews.reserveAnnouncement({
         chatId,
         postMessageId: post.anchorId,
         driverKey: decision.key,
         driverName: decision.name,
         decision: decision.decision,
         reviewId: review.id,
-        topicMessageIds,
       });
+      if (!reservation) {
+        unchanged.push(decision.name);
+        continue;
+      }
+      const caption = buildCaption({
+        decision: decision.decision,
+        name: decision.name,
+        nameFromCdl: decision.nameFromCdl,
+        phone: decision.phone,
+        safetyNote: safety.text,
+        recruiterName: post.recruiterName,
+        safetyName: safety.safetyName,
+        link: postLink(chatId, post.anchorId),
+      });
+      let topicMessageIds;
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        topicMessageIds = await postDecision(telegram, {
+          chatId,
+          topicId: settings.topicId,
+          caption,
+          name: decision.name,
+          cdl: decision.cdlPhoto === null ? null : images[decision.cdlPhoto],
+          documents: documentsFor(decision, reading.candidates, safety.documents),
+        });
+      } catch (err) {
+        // Not posted: the retry may post it.
+        // eslint-disable-next-line no-await-in-loop
+        await reviews.releaseAnnouncement(reservation.id).catch(() => {});
+        throw err;
+      }
+      // Posted. Failing to note where must not make a retry post it again —
+      // the reservation already says it went out.
+      // eslint-disable-next-line no-await-in-loop
+      await reviews.completeAnnouncement(reservation.id, topicMessageIds)
+        .catch((err) => log(`review ${review.id}: posted, but not recorded where (${errorText(err)})`));
       posted.push(decision.name);
     }
 

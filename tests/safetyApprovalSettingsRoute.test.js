@@ -117,7 +117,7 @@ test('a topic link from another group is refused', async () => {
   });
 });
 
-test('validation reports a bot that cannot see the group\'s messages', async () => {
+test('a bot that cannot see the group\'s messages is reported, and the group is not saved', async () => {
   freshRow();
   seesAll = false;
   await withServer(async (base) => {
@@ -126,6 +126,11 @@ test('validation reports a bot that cannot see the group\'s messages', async () 
     assert.equal(body.ok, true);
     assert.equal(body.seesEverything, false);
     assert.match(body.message, /admin/);
+
+    const saved = await put(base, { chatId: '-100777' });
+    assert.equal(saved.status, 400);
+    assert.match((await saved.json()).error, /cannot see its messages/);
+    assert.equal(row.chat_validated_at, null, 'not stamped as validated');
   });
   seesAll = true;
 });
