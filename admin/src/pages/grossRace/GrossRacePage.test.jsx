@@ -13,6 +13,9 @@ vi.mock("./celebration/carScene", () => ({
   supportsWebGL: () => false, mountCarScene: vi.fn(), preloadCar: () => Promise.resolve(),
 }));
 vi.mock("./soundTest/autoplayProbe", () => ({ probeAutoplay: async () => "blocked" }));
+// The one-off catch-up day is a date: off here, so these tests do not depend on today.
+const catchUp = vi.hoisted(() => ({ day: null }));
+vi.mock("./celebration/catchUp", async (actual) => ({ ...(await actual()), catchUpDay: () => catchUp.day }));
 
 const week = { start: "2026-10-12T05:00:00.000Z", end: "2026-10-19T05:00:00.000Z", label: "Oct 12–19", day: 3, dayName: "Wed", tz: "America/Chicago" };
 const racer = (name, rank, gross, target) => ({
@@ -203,6 +206,34 @@ describe("GrossRacePage", () => {
     await user.click(screen.getByRole("button", { name: "Test sound" }));
     await screen.findByRole("dialog", { name: "Today's leader" });
     expect(celebrationVideo()).toBe(null);
+  });
+
+  test("the day the video went live, a screen opened after 4 PM celebrates once; /dispatchteam waits for the video", async () => {
+    catchUp.day = "2026-10-16";
+    try {
+      respond({ ...live, view: "dispatchers" });
+      const first = render(<GrossRacePage view="dispatchers" />);
+      expect(await screen.findByRole("dialog", { name: "Today's leader" })).toHaveTextContent("Falcon's Team");
+      first.unmount();
+      respond({ ...live, view: "dispatchers" });
+      const again = render(<GrossRacePage view="dispatchers" />); // the reload a new build brings
+      await screen.findAllByText("Falcon's Team");
+      expect(screen.queryByRole("dialog", { name: "Today's leader" })).not.toBeInTheDocument();
+      again.unmount();
+      window.sessionStorage.clear();
+
+      respond({ ...live, video: false });
+      const teams = render(<GrossRacePage view="teams" />);
+      await screen.findAllByText("Falcon's Team");
+      expect(screen.queryByRole("dialog", { name: "Today's leader" })).not.toBeInTheDocument();
+      teams.unmount();
+      respond({ ...live, video: true });
+      render(<GrossRacePage view="teams" />);
+      await screen.findByRole("dialog", { name: "Today's leader" });
+      expect(celebrationVideo()).not.toBe(null);
+    } finally {
+      catchUp.day = null;
+    }
   });
 
   test("the dispatchers' board has no Test sound button: the video is the teams' board's alone", async () => {

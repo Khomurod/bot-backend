@@ -13,6 +13,7 @@ import { CELEBRATION_MS, celebrationTick, celebrationWinner } from "./celebratio
 import { preloadCar } from "./celebration/carScene";
 import CelebrationVideo from "./celebration/CelebrationVideo";
 import useCelebrationVideo from "./celebration/useCelebrationVideo";
+import { catchUpDay, caughtUp, markCaughtUp } from "./celebration/catchUp";
 import { chunkOf, lastReloadAt, markReload, noteServed, shouldReload, tabStorage } from "./pageVersion";
 import SoundTestOverlay from "./soundTest/SoundTestOverlay";
 import useSoundTest from "./soundTest/useSoundTest";
@@ -142,6 +143,21 @@ export default function GrossRacePage({ view, pageMs = PAGE_MS, ownChunk = OWN_C
     celebratedOn.current = tick.day;
     setCelebration({ winner: tick.winner, until: now + CELEBRATION_MS });
   }, [now, data, setCelebration]);
+
+  // The day the video went live, a screen that missed 4 PM celebrates once
+  // (celebration/catchUp.js); on /dispatchteam once the server has the video.
+  useEffect(() => {
+    if (!data || !data.race || celebrating.current || sound.active.current) return;
+    const day = catchUpDay(now, (data.week && data.week.tz) || DEFAULT_TZ);
+    if (!day || celebratedOn.current === day || (withVideo && !data.video)) return;
+    const winner = celebrationWinner(data.race);
+    if (!winner) return;
+    celebratedOn.current = day;
+    const storage = tabStorage();
+    if (caughtUp(storage, day)) return;
+    markCaughtUp(storage, day);
+    setCelebration({ winner, until: Date.now() + CELEBRATION_MS });
+  }, [now, data, withVideo, sound.active, setCelebration]);
 
   useEffect(() => {
     if (!preview.current || !data || !data.race) return;
