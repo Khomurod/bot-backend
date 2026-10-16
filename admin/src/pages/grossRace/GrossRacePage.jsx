@@ -11,6 +11,8 @@ import RaceSidebar from "./RaceSidebar";
 import CelebrationOverlay from "./celebration/CelebrationOverlay";
 import { CELEBRATION_MS, celebrationTick, celebrationWinner } from "./celebration/celebrationTime";
 import { preloadCar } from "./celebration/carScene";
+import CelebrationVideo from "./celebration/CelebrationVideo";
+import useCelebrationVideo from "./celebration/useCelebrationVideo";
 import { chunkOf, lastReloadAt, markReload, noteServed, shouldReload, tabStorage } from "./pageVersion";
 import SoundTestOverlay from "./soundTest/SoundTestOverlay";
 import useSoundTest from "./soundTest/useSoundTest";
@@ -34,8 +36,9 @@ import "./grossRace.css";
  * At 4:00 PM in Chicago, every day, the leader is celebrated for twelve seconds
  * over a 3D car (celebration/). `?celebrate` in the address shows it at once,
  * to preview it without waiting for four o'clock. On /dispatchteam only, the
- * "Test sound" button runs the celebration and then a clip with sound, and says
- * what the screen can do (soundTest/): the video is that board's alone.
+ * company's video follows the car, when the server has one (celebration/
+ * CelebrationVideo), and the "Test sound" button runs the celebration and then
+ * a clip with sound, and says what the screen can do (soundTest/).
  *
  * Every answer also names the build of this page the server hands out; a
  * screen running an older one reloads itself (pageVersion.js), so a code
@@ -78,6 +81,7 @@ export default function GrossRacePage({ view, pageMs = PAGE_MS, ownChunk = OWN_C
   // 16 October 2026): /dispatch keeps the car only, so it has no sound test.
   const withVideo = view === "teams";
   const sound = useSoundTest({ race: data && data.race, celebration, setCelebration, enabled: withVideo });
+  const video = useCelebrationVideo({ enabled: withVideo, available: Boolean(data && data.video), celebration, testing: sound.active });
   const pageSize = PAGE_SIZE[view] || Infinity;
   const pages = pageCount(data && data.race, pageSize);
 
@@ -157,13 +161,13 @@ export default function GrossRacePage({ view, pageMs = PAGE_MS, ownChunk = OWN_C
     const storage = tabStorage();
     const due = shouldReload({
       own: ownChunk, served: data.page, confirmations: otherBuild.current && otherBuild.current.name === data.page ? otherBuild.current.count : 0,
-      now, tz, celebrating: celebrating.current || sound.active.current, lastReloadAt: lastReloadAt(storage),
+      now, tz, celebrating: celebrating.current || sound.active.current || video.active.current, lastReloadAt: lastReloadAt(storage),
     });
     if (!due) return;
     reloading.current = true;
     markReload(storage, now);
     reload();
-  }, [data, now, ownChunk, reload, sound.active]);
+  }, [data, now, ownChunk, reload, sound.active, video.active]);
 
   useEffect(() => {
     setPage((held) => (held < pages ? held : 0));
@@ -182,6 +186,7 @@ export default function GrossRacePage({ view, pageMs = PAGE_MS, ownChunk = OWN_C
         <RaceSidebar data={data} now={now} events={events} />
       </div>
       {celebration && <CelebrationOverlay winner={celebration.winner} view={view} onCar={sound.noteCar} />}
+      {video.stage && <CelebrationVideo playing={video.stage === "playing"} onDone={video.done} />}
       {sound.test && sound.test.stage === "video" && (
         <SoundTestOverlay autoplay={sound.autoplay} car={sound.test.car} onClose={sound.close} />
       )}

@@ -166,6 +166,45 @@ describe("GrossRacePage", () => {
     }
   });
 
+  const celebrationVideo = () => document.querySelector(".gr-celvideo video");
+
+  test("on /dispatchteam the server's video is fetched during the car, to follow it; on /dispatch it is not", async () => {
+    window.history.pushState({}, "", "/dispatchteam?celebrate");
+    try {
+      for (const view of ["teams", "dispatchers"]) {
+        respond({ ...live, view, video: true });
+        const { unmount } = render(<GrossRacePage view={view} />);
+        await screen.findByRole("dialog", { name: "Today's leader" });
+        if (view === "teams") expect(celebrationVideo().getAttribute("src")).toBe("/api/gross-race/video");
+        else expect(celebrationVideo()).toBe(null);
+        unmount();
+        window.history.pushState({}, "", "/dispatch?celebrate");
+      }
+    } finally {
+      window.history.pushState({}, "", "/");
+    }
+  });
+
+  test("no video on the server, or a sound test: the car alone", async () => {
+    window.history.pushState({}, "", "/dispatchteam?celebrate");
+    try {
+      respond({ ...live, video: false });
+      const { unmount } = render(<GrossRacePage view="teams" />);
+      await screen.findByRole("dialog", { name: "Today's leader" });
+      expect(celebrationVideo()).toBe(null);
+      unmount();
+    } finally {
+      window.history.pushState({}, "", "/");
+    }
+    respond({ ...live, video: true });
+    const user = userEvent.setup();
+    render(<GrossRacePage view="teams" />);
+    await screen.findAllByText("Falcon's Team");
+    await user.click(screen.getByRole("button", { name: "Test sound" }));
+    await screen.findByRole("dialog", { name: "Today's leader" });
+    expect(celebrationVideo()).toBe(null);
+  });
+
   test("the dispatchers' board has no Test sound button: the video is the teams' board's alone", async () => {
     respond({ ...live, view: "dispatchers" });
     render(<GrossRacePage view="dispatchers" />);
