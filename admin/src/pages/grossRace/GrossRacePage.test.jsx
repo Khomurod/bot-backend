@@ -166,6 +166,13 @@ describe("GrossRacePage", () => {
     }
   });
 
+  test("the dispatchers' board has no Test sound button: the video is the teams' board's alone", async () => {
+    respond({ ...live, view: "dispatchers" });
+    render(<GrossRacePage view="dispatchers" />);
+    await screen.findAllByText("Falcon's Team");
+    expect(screen.queryByRole("button", { name: "Test sound" })).not.toBeInTheDocument();
+  });
+
   test("the Test sound button runs the celebration of the race leader", async () => {
     respond(live);
     const user = userEvent.setup();
