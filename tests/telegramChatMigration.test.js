@@ -45,8 +45,8 @@ test('the owner is told in words, without an id', () => {
 // ── the guard: every chat column in a settings table is accounted for ────────
 
 // A settings column that names a chat but must NOT move with a group goes
-// here, with the reason. None does today: the scan finds twelve columns and all
-// twelve are destinations.
+// here, with the reason. None does today: the scan finds thirteen columns and
+// all thirteen are destinations.
 const NOT_DESTINATIONS = Object.freeze({});
 
 test('every chat-id column in a *_settings table is a destination or has a stated reason not to be', () => {

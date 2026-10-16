@@ -127,3 +127,21 @@ the same treatment home time got, and for the same reason.
   call is written, a recruiter or the KPI settings change, or five minutes
   pass. A screen left polling costs the database nothing in between
   (`docs/brief/database-transfer.md`).
+
+## Safety Approvals (the recruiting group)
+
+- **The bot listens quietly in the recruiting group** and posts Safety's hire
+  decisions, one driver at a time, in the group's "approved / not approved"
+  topic: the CDL as a file, every file Safety attached (PSP / MVR / CLH), and
+  APPROVED or NOT APPROVED with the name and phone under them. It never writes
+  in the conversation itself.
+- **Only a reply from a person ticked as Safety is a decision**, and only a
+  reply to a post the bot saw. A model reads the language ("We cah hire him");
+  `lib/safetyApprovals/reading.js` keeps only names the messages contain,
+  phones the recruiter typed, and approvals with no refusal or question beside
+  them. **An unclear reply posts nothing** — the owner's choice.
+- Off by default; Settings → Safety Approvals cannot switch it on without a
+  validated group, a topic and a Safety person. The group is moved from
+  `driver` to `recruitment` so no driver feature acts on it. Captured messages
+  are deleted after 60 days. See
+  [`docs/architecture/safety-approvals.md`](../architecture/safety-approvals.md).

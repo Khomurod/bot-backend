@@ -135,6 +135,10 @@ const {
   stopFinanceWeeklyReport,
 } = require('./finance/weeklyReportService');
 const {
+  startSafetyApprovalWorker,
+  stopSafetyApprovalWorker,
+} = require('./safetyApprovals/worker');
+const {
   startPolicyWatcher,
   stopPolicyWatcher,
 } = require('./ai/policy/policyService');
@@ -258,6 +262,9 @@ function startBackgroundServices({ telegram }) {
   // is taken before any work, so a redeploy on a Monday morning cannot send
   // the same report again. Stands down until the report is switched on.
   startFinanceWeeklyReport({ telegram: telegram || null });
+  // Reads Safety's replies in the recruiting group and posts each decision in
+  // the approvals topic. `blocked` until Safety Approvals is switched on.
+  startSafetyApprovalWorker({ telegram: telegram || null });
   // A saved driver profile keeps the person layer current (unit change,
   // Telegram id). Registered here so database/ never depends upward.
   setProfileSavedHook(onProfileSaved);
@@ -309,6 +316,7 @@ function stopBackgroundServices() {
   try { stopDispatchBoardPoller(); } catch (err) { console.error('[SHUTDOWN] stopDispatchBoardPoller failed:', err.message); }
   try { stopFinanceDocumentReader(); } catch (err) { console.error('[SHUTDOWN] stopFinanceDocumentReader failed:', err.message); }
   try { stopFinanceWeeklyReport(); } catch (err) { console.error('[SHUTDOWN] stopFinanceWeeklyReport failed:', err.message); }
+  try { stopSafetyApprovalWorker(); } catch (err) { console.error('[SHUTDOWN] stopSafetyApprovalWorker failed:', err.message); }
   try { stopPolicyWatcher(); } catch (err) { console.error('[SHUTDOWN] stopPolicyWatcher failed:', err.message); }
   try { stopModelMaintenance(); } catch (err) { console.error('[SHUTDOWN] stopModelMaintenance failed:', err.message); }
   try { stopTelegramDestinationProbe(); } catch (err) { console.error('[SHUTDOWN] stopTelegramDestinationProbe failed:', err.message); }
