@@ -148,13 +148,13 @@ async function fetchOrdersByDeliveryWindow(startIso, endIso) {
 }
 
 /**
- * Orders whose DEL date (`delivery_time`) falls in [startIso, endIso]: how
- * the Gross Grand Prix counts a load into a week, the way Datatruck's driver
- * board does. With `modifiedAfterIso`, only those changed since then, for the
- * race's incremental read; most recently modified first.
+ * Orders whose PU date (`pickup_time`) falls in [startIso, endIso]: how the
+ * Gross Grand Prix counts a load into a week (the owner, 16 October 2026).
+ * With `modifiedAfterIso`, only those changed since then, for the race's
+ * incremental read; most recently modified first.
  */
-async function fetchOrdersByDeliveryDate(startIso, endIso, { modifiedAfterIso = null } = {}) {
-  const filter = [{ column: 'delivery_time', value: `${startIso},${endIso}`, contains: 'between_datetime' }];
+async function fetchOrdersByPickupDate(startIso, endIso, { modifiedAfterIso = null } = {}) {
+  const filter = [{ column: 'pickup_time', value: `${startIso},${endIso}`, contains: 'between_datetime' }];
   if (modifiedAfterIso) filter.push({ column: 'modified_datetime', value: modifiedAfterIso, contains: 'after' });
   return fetchAllPages('orders/', {
     filter: JSON.stringify(filter),
@@ -336,7 +336,7 @@ module.exports = {
   maskToken,
   fetchOrdersByPickupWindow,
   fetchOrdersByDeliveryWindow,
-  fetchOrdersByDeliveryDate,
+  fetchOrdersByPickupDate,
   fetchOrdersByDocumentWindow,
   fetchActiveOrderForDriver,
   fetchActiveOrderForUnit,
