@@ -93,7 +93,7 @@ organization should converge toward.
 | Datatruck peer-bot reactions/banter | `bot/datatruckPeerHandlers.js`, `services/datatruckPeerBotService.js`, `services/datatruckPeerPatterns.js`, `services/datatruckBanterMessage.js` |
 | Rate-con text extraction (for pinned context) | `server/services/dispatchParserService.js` `extractRateConRawTextFromFile` + `dispatchParser/{textExtraction,constants}.js` — the model-read half went with the Dispatch Center |
 | Automatic ETA updates — admin API / UI | `server/routes/dispatchEtaRoutes.js` (`/api/dispatch/testing-feature/*`), `admin/src/pages/settings/dispatcherBoard/{EtaTrackingCard.jsx,useEtaTracking.js,ToggleSwitch.jsx,helpers.js}` on the Dispatcher Board settings tab |
-| Gross Grand Prix displays (`/dispatch`, `/dispatchteam`) | pure: `services/grossRace/{week,standings}.js`; the held week and the Datatruck reads: `services/grossRace/feed.js` (`fetchOrdersByDeliveryDate` in `services/datatruckApiService.js`); `server/routes/grossRaceRoutes.js` (public `GET /api/gross-race`); `admin/src/pages/grossRace/`. `docs/architecture/gross-race.md` |
+| Gross Grand Prix displays (`/dispatch`, `/dispatchteam`) | pure: `services/grossRace/{week,standings}.js`; the held week and the Datatruck reads: `services/grossRace/feed.js` (`fetchOrdersByPickupDate` in `services/datatruckApiService.js`); `server/routes/grossRaceRoutes.js` (public `GET /api/gross-race`); `admin/src/pages/grossRace/`. `docs/architecture/gross-race.md` |
 | **Retired** | The Dispatch Center at `/dispatch` — Send Load, its rate-confirmation parser, and the per-group diagnostics expander. `docs/architecture/retired-dispatch-center.md` |
 
 ### 3. Recruiting / Lead Pipeline Module

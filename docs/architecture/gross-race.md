@@ -12,36 +12,41 @@ again however full screen was left, Esc included (`useFullscreen.js` follows
 
 ## Which loads count
 
-**A load counts in the week it was created, picked up AND delivered** (the
-owner, 12 October 2026):
+**A load counts in the week of its PU date** (the owner, 16 October 2026):
 
-- its `created_datetime`, its PU date (`pickup_time`) and its DEL date
-  (`delivery_time`) all fall between **Monday 00:00 and the next Monday 00:00,
-  America/Chicago** (`services/grossRace/week.js`; `countsInWeek` in
-  `standings.js`). Dates, not statuses: a load delivering Friday counts from
-  the moment it is dispatched;
+- its PU date (`pickup_time`) falls between **Monday 00:00 and the next
+  Monday 00:00, America/Chicago** (`services/grossRace/week.js`;
+  `countsInWeek` in `standings.js`). When it was created and when it delivers
+  do not matter. Dates, not statuses: a load picked up on Friday counts from
+  the moment it is dispatched, and stays in that week if it delivers on
+  Monday;
 - and it is **dispatched**: not booked (planned, no driver yet) and not
   cancelled. Datatruck has no "dispatched at" date, so the status is the test;
 - **gross is `load_pay`.** A load that was counted is dropped when it turns
   booked or cancelled.
 
-**A load that started before Monday counts in no week** — not last week, where
-it was not delivered, and not this one, where it was not created or picked up.
-The owner chose that knowingly: on 12 October it left 46 of 105 dispatched
-loads ($118,108 of $293,912) on the board. It is also why **the teams' totals
-are lower than Datatruck's driver board**, which counts every dispatched load
-by its DEL date alone (Steven's Team: $34,800 here, $92,590 there, the same
-day). An earlier version matched that board to the cent; this rule replaced it
-on purpose.
+**Every dispatched load counts in exactly one week**, the week it was picked
+up. The totals therefore differ from Datatruck's driver board, which files a
+load under its DEL date: a load picked up Sunday and delivered Monday is in
+this race's earlier week and the board's later one.
+
+**History.** 12–16 October 2026 a load counted only when it was created,
+picked up AND delivered in the same week. That left a load in no week at all
+whenever it crossed a Sunday night — started before Monday, or delivered after
+Sunday (one dispatcher's $5,400 load, picked up Friday 16 October and
+delivered Monday 19 October, would never have counted). The owner replaced it
+with the PU date on 16 October. Before 12 October the race matched Datatruck's
+board, by DEL date, to the cent.
 
 **The rule is printed on both boards**, under the header: the week's dates,
 what counts and what does not (`RaceRules.jsx`). Change the rule and that text
 together.
 
-The week's orders are read by DEL date through `fetchOrdersByDeliveryDate` in
+The week's orders are read by PU date through `fetchOrdersByPickupDate` in
 `services/datatruckApiService.js` — GET only, with the app's own
-`DATATRUCK_API_TOKEN` / `DATATRUCK_COMPANY` — and the created and PU dates are
-checked here.
+`DATATRUCK_API_TOKEN` / `DATATRUCK_COMPANY` — from 12 hours before Monday, so
+a PU date typed without a time (stored as midnight UTC, Sunday evening in
+Chicago) is read and then placed on its day by `stopDate()`.
 
 ## Who a load counts for
 
@@ -83,8 +88,9 @@ shows "Loading loads…" and asks every 5 seconds until the week is there, then
 every 30 seconds, so a load is on screen within about a minute of Datatruck
 having it.
 
-An incremental read only sees orders still dated inside the week, so a load
-rescheduled out of it drops off at the next full read, within 20 minutes.
+An incremental read only sees orders still picked up inside the week, so a
+load whose PU date moves out of it drops off at the next full read, within 20
+minutes.
 
 ## Public, and what that obliges
 
