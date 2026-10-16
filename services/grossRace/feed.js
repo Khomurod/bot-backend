@@ -29,7 +29,7 @@ const FULL_EVERY_MS = 20 * 60_000;
 // Datatruck's modified_datetime and this server's clock are not the same
 // clock; re-reading a few minutes back costs one page and misses nothing.
 const MODIFIED_OVERLAP_MS = 3 * 60_000;
-// A DEL date typed without a time is stored as midnight UTC, hours before the
+// A PU date typed without a time is stored as midnight UTC, hours before the
 // week's Chicago midnight; read from earlier so Monday's are not missed
 // (standings.js stopDate() places them on their day).
 const DATE_ONLY_SLACK_MS = 12 * 3600e3;
@@ -59,7 +59,7 @@ function createGrossRaceFeed({
     const weekKey = week.start.toISOString();
     const full = held.weekKey !== weekKey || startedAt - held.fullAt >= fullEveryMs;
     const modifiedAfterIso = full ? null : new Date(held.readAt - MODIFIED_OVERLAP_MS).toISOString();
-    const orders = await api.fetchOrdersByDeliveryDate(
+    const orders = await api.fetchOrdersByPickupDate(
       new Date(week.start.getTime() - DATE_ONLY_SLACK_MS).toISOString(),
       new Date(week.end.getTime() - 1).toISOString(), { modifiedAfterIso },
     );

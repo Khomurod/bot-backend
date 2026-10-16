@@ -34,7 +34,7 @@ function harness({ configured = true } = {}) {
   const api = {
     isConfigured: () => configured,
     maskToken: (text) => String(text).split('SECRET-TOKEN').join('***'),
-    async fetchOrdersByDeliveryDate(startIso, endIso, opts) {
+    async fetchOrdersByPickupDate(startIso, endIso, opts) {
       calls.push({ startIso, endIso, ...opts });
       const reply = replies.shift();
       if (reply instanceof Error) throw reply;
@@ -71,13 +71,17 @@ test('the first screen gets "loading" at once; the week is read whole in the bac
   assert.equal(h.feed.getRace('teams').race.racers[0].gross, 12000, 'the same loads, credited to the team');
 });
 
-test('a load created or picked up before Monday is read but not counted', async () => {
+test('a load picked up before Monday is read but not counted; one only created before Monday counts', async () => {
   const h = harness();
-  h.reply([order(1), { ...order(2, { pay: 9000 }), created_datetime: '2026-10-08T14:00:00Z', pickup_time: '2026-10-09T14:00:00Z' }]);
+  h.reply([
+    order(1),
+    { ...order(2, { pay: 9000 }), created_datetime: '2026-10-08T14:00:00Z', pickup_time: '2026-10-09T14:00:00Z' },
+    { ...order(3, { pay: 700 }), created_datetime: '2026-10-09T14:00:00Z' },
+  ]);
   h.feed.getRace('teams');
   await h.feed.settled();
-  assert.equal(h.feed.getRace('teams').race.racers[0].gross, 5000);
-  assert.equal(h.feed.getRace('dispatchers').race.racers[0].gross, 5000);
+  assert.equal(h.feed.getRace('teams').race.racers[0].gross, 5700);
+  assert.equal(h.feed.getRace('dispatchers').race.racers[0].gross, 5700);
 });
 
 test('screens polling together cost one read a minute, and only modified orders between full reads', async () => {
