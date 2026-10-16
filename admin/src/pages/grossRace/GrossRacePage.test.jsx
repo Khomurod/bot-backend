@@ -13,6 +13,9 @@ vi.mock("./celebration/carScene", () => ({
   supportsWebGL: () => false, mountCarScene: vi.fn(), preloadCar: () => Promise.resolve(),
 }));
 vi.mock("./soundTest/autoplayProbe", () => ({ probeAutoplay: async () => "blocked" }));
+// The one-off catch-up day is a date: off here, so these tests do not depend on today.
+const catchUp = vi.hoisted(() => ({ day: null }));
+vi.mock("./celebration/catchUp", async (actual) => ({ ...(await actual()), catchUpDay: () => catchUp.day }));
 
 const week = { start: "2026-10-12T05:00:00.000Z", end: "2026-10-19T05:00:00.000Z", label: "Oct 12–19", day: 3, dayName: "Wed", tz: "America/Chicago" };
 const racer = (name, rank, gross, target) => ({
@@ -163,6 +166,73 @@ describe("GrossRacePage", () => {
       expect(dialog).toHaveTextContent("You took first place! Keep it up, and one day you'll buy a great new car.");
     } finally {
       window.history.pushState({}, "", "/");
+    }
+  });
+
+  const celebrationVideo = () => document.querySelector(".gr-celvideo video");
+
+  test("on /dispatchteam the server's video is fetched during the car, to follow it; on /dispatch it is not", async () => {
+    window.history.pushState({}, "", "/dispatchteam?celebrate");
+    try {
+      for (const view of ["teams", "dispatchers"]) {
+        respond({ ...live, view, video: true });
+        const { unmount } = render(<GrossRacePage view={view} />);
+        await screen.findByRole("dialog", { name: "Today's leader" });
+        if (view === "teams") expect(celebrationVideo().getAttribute("src")).toBe("/api/gross-race/video");
+        else expect(celebrationVideo()).toBe(null);
+        unmount();
+        window.history.pushState({}, "", "/dispatch?celebrate");
+      }
+    } finally {
+      window.history.pushState({}, "", "/");
+    }
+  });
+
+  test("no video on the server, or a sound test: the car alone", async () => {
+    window.history.pushState({}, "", "/dispatchteam?celebrate");
+    try {
+      respond({ ...live, video: false });
+      const { unmount } = render(<GrossRacePage view="teams" />);
+      await screen.findByRole("dialog", { name: "Today's leader" });
+      expect(celebrationVideo()).toBe(null);
+      unmount();
+    } finally {
+      window.history.pushState({}, "", "/");
+    }
+    respond({ ...live, video: true });
+    const user = userEvent.setup();
+    render(<GrossRacePage view="teams" />);
+    await screen.findAllByText("Falcon's Team");
+    await user.click(screen.getByRole("button", { name: "Test sound" }));
+    await screen.findByRole("dialog", { name: "Today's leader" });
+    expect(celebrationVideo()).toBe(null);
+  });
+
+  test("the day the video went live, a screen opened after 4 PM celebrates once; /dispatchteam waits for the video", async () => {
+    catchUp.day = "2026-10-16";
+    try {
+      respond({ ...live, view: "dispatchers" });
+      const first = render(<GrossRacePage view="dispatchers" />);
+      expect(await screen.findByRole("dialog", { name: "Today's leader" })).toHaveTextContent("Falcon's Team");
+      first.unmount();
+      respond({ ...live, view: "dispatchers" });
+      const again = render(<GrossRacePage view="dispatchers" />); // the reload a new build brings
+      await screen.findAllByText("Falcon's Team");
+      expect(screen.queryByRole("dialog", { name: "Today's leader" })).not.toBeInTheDocument();
+      again.unmount();
+      window.sessionStorage.clear();
+
+      respond({ ...live, video: false });
+      const teams = render(<GrossRacePage view="teams" />);
+      await screen.findAllByText("Falcon's Team");
+      expect(screen.queryByRole("dialog", { name: "Today's leader" })).not.toBeInTheDocument();
+      teams.unmount();
+      respond({ ...live, video: true });
+      render(<GrossRacePage view="teams" />);
+      await screen.findByRole("dialog", { name: "Today's leader" });
+      expect(celebrationVideo()).not.toBe(null);
+    } finally {
+      catchUp.day = null;
     }
   });
 

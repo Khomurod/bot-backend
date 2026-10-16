@@ -227,15 +227,15 @@ sign-in check, the way it maps `/recruiters`.
 ## Tests
 
 ```
-node --test tests/grossRaceStandings.test.js tests/grossRaceFeed.test.js tests/grossRaceRoutes.test.js tests/grossRacePageVersion.test.js
+node --test tests/grossRaceStandings.test.js tests/grossRaceFeed.test.js tests/grossRaceRoutes.test.js tests/grossRacePageVersion.test.js tests/grossRaceVideo.test.js
 node --test tests/api-surface.test.js   # /dispatch and /dispatchteam serve the shell; /dispatch/* → 410
 npm test --prefix admin -- --run src/pages/grossRace
 ```
 
 ## The "Test sound" button
 
-The owner plans a video with sound after the 4 PM celebration (16 October
-2026). The office screens are Smart TVs, whose built-in browsers each decide
+The owner wanted a video with sound after the 4 PM celebration (16 October
+2026; see below). The office screens are Smart TVs, whose built-in browsers each decide
 for themselves whether a page may start sound without a click, so the board
 that will play it carries a **Test sound** button that finds out
 (`admin/src/pages/grossRace/soundTest/`). **The video is `/dispatchteam`'s
@@ -253,5 +253,29 @@ button and asks nothing about sound.
   showed, and the browser's name. The card closes itself after a minute.
 - The page never reloads itself for a new build while a test is running.
 
-The video itself is not in this repository: it is a third-party film clip, and
-this repository is public. It will be served from the server's own storage.
+## The video after the celebration
+
+On `/dispatchteam`, the company's video follows the car (the owner, 16 October
+2026); `/dispatch` keeps the car alone.
+
+- **The file is on the server, never in this repository**, which is public:
+  `GROSS_RACE_VIDEO_PATH`, by default `data/gross-race/celebration.mp4` under
+  the app (`/app/data/...` in the container, a Coolify volume, so a deploy
+  keeps it). `/data/` is ignored by git and by the Docker build.
+- `GET /api/gross-race/video` serves it with no sign-in (the screens have
+  none), in byte ranges, `Cache-Control: no-cache`, so a replaced video
+  reaches the screens the same day. `GET /api/gross-race?view=teams` says
+  `video: true` when there is one; without one the car plays alone.
+- `PUT /api/gross-race/video` (an MP4 body, `Content-Type: video/mp4`, at most
+  100 MB) replaces it; signed in with full admin access. It is written beside
+  the old file and renamed over it, so a screen never reads half an upload.
+- **On the screen** (`celebration/useCelebrationVideo.js`,
+  `CelebrationVideo.jsx`): while the car is on, the video is fetched out of
+  sight; when the car is gone it starts, with sound if the TV allows it and
+  without if not, rather than not at all. When it ends, fails, or after three
+  minutes, the board is back. A sound test never leads to it, and the page
+  never reloads for a new build while it plays.
+- **One-off catch-up** (`celebration/catchUp.js`, `CATCH_UP_DAYS`): on
+  16 October 2026, the day the video went live after four o'clock, a screen
+  shows the celebration once when it opens (once per tab; `/dispatchteam`
+  waits until the server has the video). Other days are unchanged.

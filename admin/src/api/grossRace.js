@@ -1,5 +1,8 @@
 import { API_BASE } from "./http";
 
+/** The video /dispatchteam plays after the 4 PM celebration (public, like the race). */
+export const GROSS_RACE_VIDEO_URL = `${API_BASE}/gross-race/video`;
+
 /**
  * The Gross Grand Prix standings for one display: "teams" or "dispatchers".
  * Public, like the recruiters' leaderboard: no auth header. The server reads

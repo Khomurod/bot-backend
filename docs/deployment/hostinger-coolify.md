@@ -30,6 +30,12 @@ out.
 | Exposed port | `3001` |
 | Domain | the hub's public `https://` domain |
 | Health check | `/api/health` |
+| Persistent storage | volume mounted at `/app/data` (the 4 PM celebration video, `data/gross-race/celebration.mp4`) |
+
+The celebration video is never in the repository (it is public). Upload or
+replace it, signed in to the admin panel as a full admin, with
+`PUT /api/gross-race/video` (`Content-Type: video/mp4`); see
+[`docs/architecture/gross-race.md`](../architecture/gross-race.md).
 
 ## Environment
 

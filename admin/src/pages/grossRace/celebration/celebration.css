@@ -63,3 +63,13 @@
   .gross-race .gr-celebration, .gross-race .gr-celebration-top, .gross-race .gr-celebration-bottom,
   .gross-race .gr-celebration-name, .gross-race .gr-celebration-trophy { animation: none; }
 }
+
+/* The video after the celebration (CelebrationVideo): fetched out of sight
+   while the car is on screen, then over the whole board. */
+.gross-race .gr-celvideo {
+  position: fixed; inset: 0; z-index: 55; background: #000;
+  display: flex; align-items: center; justify-content: center;
+  visibility: hidden; pointer-events: none;
+}
+.gross-race .gr-celvideo.is-playing { visibility: visible; pointer-events: auto; }
+.gross-race .gr-celvideo-video { width: 100%; height: 100%; object-fit: contain; background: #000; }
