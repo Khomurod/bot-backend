@@ -34,3 +34,6 @@ scratch/
 brain/
 reports/
 .cursor/
+
+# The 4 PM celebration video and other runtime files (a volume in production)
+/data/

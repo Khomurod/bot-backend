@@ -22,3 +22,6 @@ scratch
 brain
 reports
 *.log
+
+# Runtime files (the celebration video): a volume in production, never baked in
+data/
