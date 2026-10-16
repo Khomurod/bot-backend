@@ -275,3 +275,7 @@ On `/dispatchteam`, the company's video follows the car (the owner, 16 October
   without if not, rather than not at all. When it ends, fails, or after three
   minutes, the board is back. A sound test never leads to it, and the page
   never reloads for a new build while it plays.
+- **One-off catch-up** (`celebration/catchUp.js`, `CATCH_UP_DAYS`): on
+  16 October 2026, the day the video went live after four o'clock, a screen
+  shows the celebration once when it opens (once per tab; `/dispatchteam`
+  waits until the server has the video). Other days are unchanged.
