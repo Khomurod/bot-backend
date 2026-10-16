@@ -231,3 +231,24 @@ node --test tests/grossRaceStandings.test.js tests/grossRaceFeed.test.js tests/g
 node --test tests/api-surface.test.js   # /dispatch and /dispatchteam serve the shell; /dispatch/* → 410
 npm test --prefix admin -- --run src/pages/grossRace
 ```
+
+## The "Test sound" button
+
+The owner plans a video with sound after the 4 PM celebration (16 October
+2026). The office screens are Smart TVs, whose built-in browsers each decide
+for themselves whether a page may start sound without a click, so both boards
+carry a **Test sound** button that finds out (`admin/src/pages/grossRace/soundTest/`):
+
+- **When the page opens**, before anybody presses anything, it tries to start
+  a quarter of a second of silence with sound on (`autoplayProbe.js`). Whether
+  the browser lets it is the one answer the 4 PM video depends on.
+- **A press** runs what 4 PM will run: the celebration of the current leader
+  (the 3D car, or the trophy where the TV cannot draw it), then a five-second
+  clip of our own with two chimes (`sound-test.mp4`, made for this, no
+  third-party content), then a card that says, in large letters, whether sound
+  may start by itself, whether the clip played with sound, whether the 3D car
+  showed, and the browser's name. The card closes itself after a minute.
+- The page never reloads itself for a new build while a test is running.
+
+The video itself is not in this repository: it is a third-party film clip, and
+this repository is public. It will be served from the server's own storage.
