@@ -50,6 +50,14 @@ describe("useSoundTest", () => {
     expect(setCelebration).toHaveBeenCalledWith(expect.objectContaining({ winner: TEST_WINNER }));
   });
 
+  test("switched off (the dispatchers' board): no probe, and a press does nothing", async () => {
+    const { result, setCelebration, probe } = setup({ enabled: false });
+    act(() => result.current.start());
+    expect(setCelebration).not.toHaveBeenCalled();
+    expect(result.current.test).toBe(null);
+    expect(probe).not.toHaveBeenCalled();
+  });
+
   test("the real 4 PM celebration's car is not a test's", () => {
     const { result } = setup();
     act(() => result.current.noteCar("on"));

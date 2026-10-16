@@ -236,8 +236,11 @@ npm test --prefix admin -- --run src/pages/grossRace
 
 The owner plans a video with sound after the 4 PM celebration (16 October
 2026). The office screens are Smart TVs, whose built-in browsers each decide
-for themselves whether a page may start sound without a click, so both boards
-carry a **Test sound** button that finds out (`admin/src/pages/grossRace/soundTest/`):
+for themselves whether a page may start sound without a click, so the board
+that will play it carries a **Test sound** button that finds out
+(`admin/src/pages/grossRace/soundTest/`). **The video is `/dispatchteam`'s
+alone** (the owner, 16 October 2026): `/dispatch` keeps the car only, has no
+button and asks nothing about sound.
 
 - **When the page opens**, before anybody presses anything, it tries to start
   a quarter of a second of silence with sound on (`autoplayProbe.js`). Whether

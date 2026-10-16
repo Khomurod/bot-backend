@@ -14,26 +14,27 @@ export const TEST_WINNER = { id: "sound-test", name: "Sound test", gross: 0 };
  * anything. `active` is a ref so the page's reload check, which runs in the
  * same pass as a press, never reloads the screen in the middle of a test.
  */
-export default function useSoundTest({ race, celebration, setCelebration, probe = probeAutoplay }) {
+export default function useSoundTest({ race, celebration, setCelebration, probe = probeAutoplay, enabled = true }) {
   const [autoplay, setAutoplay] = useState("checking");
   const [test, setTest] = useState(null); // { stage: "car" | "video", car: null | "on" | "off" }
   const active = useRef(false);
 
   useEffect(() => {
+    if (!enabled) return undefined;
     let gone = false;
     probe().then(
       (answer) => { if (!gone) setAutoplay(answer); },
       () => { if (!gone) setAutoplay("unknown"); },
     );
     return () => { gone = true; };
-  }, [probe]);
+  }, [probe, enabled]);
 
   const start = useCallback(() => {
-    if (active.current) return;
+    if (!enabled || active.current) return;
     active.current = true;
     setTest({ stage: "car", car: null });
     setCelebration({ winner: celebrationWinner(race) || TEST_WINNER, until: Date.now() + CELEBRATION_MS });
-  }, [race, setCelebration]);
+  }, [race, setCelebration, enabled]);
 
   // The celebration on screen, then over: on to the clip. Over only once it
   // was seen, so the pass that starts the test does not skip it.

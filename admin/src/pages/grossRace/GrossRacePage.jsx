@@ -33,9 +33,9 @@ import "./grossRace.css";
  *
  * At 4:00 PM in Chicago, every day, the leader is celebrated for twelve seconds
  * over a 3D car (celebration/). `?celebrate` in the address shows it at once,
- * to preview it without waiting for four o'clock. The "Test sound" button runs
- * the celebration and then a clip with sound, and says what the screen can do
- * (soundTest/).
+ * to preview it without waiting for four o'clock. On /dispatchteam only, the
+ * "Test sound" button runs the celebration and then a clip with sound, and says
+ * what the screen can do (soundTest/): the video is that board's alone.
  *
  * Every answer also names the build of this page the server hands out; a
  * screen running an older one reloads itself (pageVersion.js), so a code
@@ -74,7 +74,10 @@ export default function GrossRacePage({ view, pageMs = PAGE_MS, ownChunk = OWN_C
   const otherBuild = useRef(null); // a build the server named that is not ours, and how many times in a row
   const last = useRef(null);
   const fullscreen = useFullscreen();
-  const sound = useSoundTest({ race: data && data.race, celebration, setCelebration });
+  // The video after the celebration is the teams' board's alone (the owner,
+  // 16 October 2026): /dispatch keeps the car only, so it has no sound test.
+  const withVideo = view === "teams";
+  const sound = useSoundTest({ race: data && data.race, celebration, setCelebration, enabled: withVideo });
   const pageSize = PAGE_SIZE[view] || Infinity;
   const pages = pageCount(data && data.race, pageSize);
 
@@ -171,7 +174,7 @@ export default function GrossRacePage({ view, pageMs = PAGE_MS, ownChunk = OWN_C
 
   return (
     <div className="gross-race">
-      <RaceHeader view={view} data={data} now={now} fullscreen={fullscreen} onSoundTest={sound.start} />
+      <RaceHeader view={view} data={data} now={now} fullscreen={fullscreen} onSoundTest={withVideo ? sound.start : undefined} />
       <RaceRules view={view} data={data} />
       <div className="gr-body">
         <RaceTrack view={view} data={data} now={now} flashUntil={flashUntil} banner={banner}
