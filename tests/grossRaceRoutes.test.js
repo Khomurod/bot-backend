@@ -12,9 +12,11 @@ const express = require('express');
 
 const { createGrossRaceRoutes } = require('../server/routes/grossRaceRoutes');
 
-function serve(t, feed, racePageVersion) {
+const noVideo = { hasVideo: () => false };
+
+function serve(t, feed, racePageVersion, video = noVideo) {
   const app = express();
-  app.use(createGrossRaceRoutes({ feed, racePageVersion }));
+  app.use(createGrossRaceRoutes({ feed, racePageVersion, video }));
   const server = app.listen(0);
   t.after(() => new Promise((resolve) => server.close(resolve)));
   return `http://127.0.0.1:${server.address().port}`;
@@ -28,7 +30,7 @@ test('each display gets its own race, with no sign-in and no caching', async (t)
     const res = await fetch(`${base}/api/gross-race?view=${view}`);
     assert.equal(res.status, 200, view);
     assert.equal(res.headers.get('cache-control'), 'no-store');
-    assert.deepEqual(await res.json(), { view, status: 'live', page: null });
+    assert.deepEqual(await res.json(), { view, status: 'live', page: null, video: false });
   }
   assert.deepEqual(asked, ['teams', 'dispatchers']);
 });
@@ -37,6 +39,12 @@ test('every answer names the build of the page, so an older screen reloads', asy
   const base = serve(t, { getRace: (view) => ({ view, status: 'loading', race: null }) }, () => 'GrossRacePage-aaaa.js');
   const res = await fetch(`${base}/api/gross-race?view=teams`);
   assert.equal((await res.json()).page, 'GrossRacePage-aaaa.js', 'even while the week is still loading');
+});
+
+test('only the teams\' board is told there is a video to play after the celebration', async (t) => {
+  const base = serve(t, { getRace: (view) => ({ view }) }, undefined, { hasVideo: () => true });
+  assert.equal((await (await fetch(`${base}/api/gross-race?view=teams`)).json()).video, true);
+  assert.equal((await (await fetch(`${base}/api/gross-race?view=dispatchers`)).json()).video, false);
 });
 
 test('any other view is refused before the feed is asked', async (t) => {
