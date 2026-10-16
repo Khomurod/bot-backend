@@ -3,8 +3,8 @@
 /**
  * Gross Grand Prix: how a week of Datatruck orders becomes a race. Pure.
  *
- * Which loads count is Datatruck's driver-board rule (no booked or cancelled
- * load, the week of the DEL date). Teams race their dispatched loads against a
+ * Which loads count: no booked or cancelled load, in the week of its PU date
+ * (the owner, 16 October 2026). Teams race their dispatched loads against a
  * truck target; dispatchers race the loads they created, by gross alone. A
  * public page never names a driver whose truck is short of its target.
  */
@@ -22,55 +22,59 @@ function order({
 }) {
   return {
     id: nextId++, dispatcher__full_name: dispatcher, created_by__full_name: creator, load_pay: String(pay),
-    total_miles: String(miles), status, delivery_time: at, delivery_appointment_time: at,
-    created_datetime: created, pickup_time: pickedUp,
+    total_miles: String(miles), status, delivery_time: at,
+    created_datetime: created, pickup_time: pickedUp, pickup_appointment_time: pickedUp,
     trip: { driver__full_name: driver, team_driver__full_name: teammate },
   };
 }
 const loadsOf = (orders) => orders.map(raceLoad).filter(Boolean);
 const byRank = (race) => [...race.racers].sort((a, b) => a.rank - b.rank);
 
-test('a booked or cancelled load, or one missing a date, does not count', () => {
+test('a booked or cancelled load, or one with no PU date, does not count', () => {
   assert.equal(raceLoad(order({ pay: 2000, status: 'booked' })), null, 'planned, not dispatched yet');
   assert.equal(raceLoad(order({ pay: 2000, status: 'Cancelled' })), null);
   assert.equal(raceLoad(order({ pay: 2000, status: 'canceled' })), null);
-  assert.equal(raceLoad({ ...order({ pay: 2000 }), delivery_time: null }), null);
   assert.equal(raceLoad({ ...order({ pay: 2000 }), pickup_time: null }), null);
-  assert.equal(raceLoad({ ...order({ pay: 2000 }), created_datetime: null }), null);
+  assert.ok(raceLoad({ ...order({ pay: 2000 }), delivery_time: null }), 'the DEL date does not matter');
+  assert.ok(raceLoad({ ...order({ pay: 2000 }), created_datetime: null }), 'nor when it was created');
   for (const status of ['dispatched', 'assigned', 'in_transit', 'delivered', 'invoiced', 'paid']) {
     assert.ok(raceLoad(order({ pay: 2000, status })), status);
   }
   const load = raceLoad(order({ dispatcher: " Falcon's  Team ", pay: '2500.50', driver: 'Zed Driver', teammate: 'Amy Driver' }));
-  assert.deepEqual({ ...load, at: undefined, created: undefined, pickedUp: undefined }, {
+  assert.deepEqual({ ...load, pickedUp: undefined }, {
     dispatcher: "Falcon's Team", creator: 'Ann Example', truck: 'Amy Driver + Zed Driver', team: true,
-    amount: 2500.5, miles: 1000, at: undefined, created: undefined, pickedUp: undefined,
+    amount: 2500.5, miles: 1000, pickedUp: undefined,
   });
 });
 
-test('a load counts only when it was created, picked up AND delivered this week', () => {
+test('a load counts in the week it was picked up, whenever it was created or delivers', () => {
   const week = raceWeek({ now: new Date('2026-10-14T18:00:00Z') });
   const counts = (fields) => countsInWeek(raceLoad(order({ pay: 1000, ...fields })), week);
-  assert.equal(counts({}), true, 'created Monday, picked up Monday, delivered Tuesday');
-  assert.equal(counts({ created: '2026-10-09T15:00:00Z' }), false, 'created last Friday');
-  assert.equal(counts({ pickedUp: '2026-10-11T15:00:00Z' }), false, 'picked up last Sunday, delivered this week');
-  assert.equal(counts({ at: '2026-10-19T15:00:00Z' }), false, 'delivered next Monday');
-  assert.equal(counts({ created: '2026-10-12T05:00:00Z', pickedUp: '2026-10-18T10:00:00Z', at: '2026-10-19T04:59:00Z' }), true,
-    'Monday 00:00 to Sunday 23:59 in Chicago');
+  assert.equal(counts({}), true, 'picked up Monday');
+  assert.equal(counts({ created: '2026-10-09T15:00:00Z' }), true, 'created last Friday, picked up this Monday');
+  assert.equal(counts({ pickedUp: '2026-10-16T14:00:00Z', at: '2026-10-19T20:30:00Z' }), true,
+    'picked up Friday, delivered next Monday: this week, not lost between two');
+  assert.equal(counts({ pickedUp: '2026-10-11T15:00:00Z', at: '2026-10-13T15:00:00Z' }), false,
+    "picked up last Sunday, delivered this week: last week's");
+  assert.equal(counts({ pickedUp: '2026-10-19T15:00:00Z', at: '2026-10-20T15:00:00Z' }), false, 'picked up next Monday');
+  assert.equal(counts({ pickedUp: '2026-10-12T05:00:00Z' }), true, 'Monday 00:00 in Chicago');
+  assert.equal(counts({ pickedUp: '2026-10-19T04:59:00Z' }), true, 'Sunday 23:59 in Chicago');
+  assert.equal(counts({ pickedUp: '2026-10-19T05:00:00Z' }), false, 'next Monday 00:00 in Chicago');
 });
 
-test('a PU or DEL date typed without a time is that calendar day, not the evening before', () => {
+test('a PU date typed without a time is that calendar day, not the evening before', () => {
   const week = raceWeek({ now: new Date('2026-10-14T18:00:00Z') });
   const counts = (fields) => countsInWeek(raceLoad(order({ pay: 1000, ...fields })), week);
   assert.equal(counts({ pickedUp: '2026-10-12T00:00:00Z' }), true, 'Monday, not Sunday 7 pm in Chicago');
   assert.equal(counts({ pickedUp: '10/12/2026' }), true, 'a bare date');
   assert.equal(counts({ pickedUp: '2026-10-12' }), true);
-  assert.equal(counts({ at: '2026-10-19T00:00:00Z' }), false, 'next Monday, not this Sunday evening');
+  assert.equal(counts({ pickedUp: '2026-10-19T00:00:00Z' }), false, 'next Monday, not this Sunday evening');
   assert.equal(counts({ pickedUp: '2026-10-11T23:30:00Z' }), false, 'a real time keeps its zone: Sunday 6:30 pm');
 });
 
-test('the DEL date is the delivery date, not the delivery appointment', () => {
-  const load = raceLoad({ ...order({ pay: 1400 }), delivery_time: '2026-10-04T15:00:00Z', delivery_appointment_time: '2026-10-13T15:00:00Z' });
-  assert.equal(load.at.toISOString(), '2026-10-04T15:00:00.000Z');
+test('the PU date is the pickup date, not the pickup appointment', () => {
+  const load = raceLoad({ ...order({ pay: 1400 }), pickup_time: '2026-10-04T15:00:00Z', pickup_appointment_time: '2026-10-13T15:00:00Z' });
+  assert.equal(load.pickedUp.toISOString(), '2026-10-04T15:00:00.000Z');
 });
 
 test('teams race the loads they dispatched; dispatchers race the loads they created', () => {
