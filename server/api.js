@@ -238,12 +238,14 @@ app.use('/api/recruiters', createRecruiterRouter({ authMiddleware: legacyAuthMid
 
 // Public, like the recruiters' leaderboard: the Gross Grand Prix displays at
 // /dispatch and /dispatchteam. Datatruck is read by the server, never the page.
+// Only replacing the 4 PM video (PUT /api/gross-race/video) needs a sign-in.
 const { createGrossRaceRoutes } = require('./routes/grossRaceRoutes');
 const { createGrossRaceFeed } = require('../services/grossRace/feed');
 const { createRacePageVersion } = require('../services/grossRace/pageVersion');
 app.use(createGrossRaceRoutes({
   feed: createGrossRaceFeed(),
   racePageVersion: createRacePageVersion({ assetsDir: path.join(adminBuildDir, 'assets') }),
+  authMiddleware: legacyAuthMiddleware, // replacing the celebration video only
 }));
 
 // Teaching Wenze what it may tell a candidate. Mounted beside the recruiters
