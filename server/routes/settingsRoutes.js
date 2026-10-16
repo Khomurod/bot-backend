@@ -14,6 +14,7 @@
  *   ./settings/bolPodRoutes.js        /bol-pod*        document forwarding
  *   ./settings/retiredLeftoversRoutes.js /retired-leftovers*  removed-feature cleanup
  *   ./settings/financeRoutes.js       /finance*        the Finance Monitor's group
+ *   ./settings/safetyApprovalRoutes.js /safety-approvals* Safety's hire decisions
  *
  * Two conventions hold across all of them: `authMiddleware` guards every route
  * (these read and write credentials), and a stored secret is NEVER returned in
@@ -37,6 +38,7 @@ const { createControlSettingsRouter } = require('./settings/controlRoutes');
 const { createRetiredLeftoversRouter } = require('./settings/retiredLeftoversRoutes');
 const { createRecruitingHoursRouter } = require('./settings/recruitingHoursRoutes');
 const { createFinanceSettingsRouter } = require('./settings/financeRoutes');
+const { createSafetyApprovalSettingsRouter } = require('./settings/safetyApprovalRoutes');
 
 function createSettingsRouter({ authMiddleware, telegram = null }) {
   const router = express.Router();
@@ -58,6 +60,7 @@ function createSettingsRouter({ authMiddleware, telegram = null }) {
   router.use(createRetiredLeftoversRouter(deps));
   router.use(createRecruitingHoursRouter(deps));
   router.use(createFinanceSettingsRouter(deps));
+  router.use(createSafetyApprovalSettingsRouter(deps));
 
   return router;
 }

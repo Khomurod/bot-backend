@@ -180,6 +180,19 @@ anywhere else, and nothing it stores feeds a decision. See
 [`finance-monitor-page.md`](finance-monitor-page.md) for the one screen that
 reads the text out.
 
+### 5b. Safety Approvals Module
+
+| Concern | Current files |
+|---|---|
+| A Telegram message as stored; why a forum-topic message is not a reply | `lib/safetyApprovals/messageShape.js` (pure) |
+| Which messages are the post, and which are Safety's answer | `lib/safetyApprovals/bundle.js` (pure) |
+| A model's reading cut down to what the messages prove | `lib/safetyApprovals/reading.js` (pure: `verifyReading`, `documentsFor`) |
+| The caption, the topic link, the link to the post | `lib/safetyApprovals/announcement.js` (pure) |
+| Settings, captured messages, the review queue, what was posted | `database/safetyApprovals/{settings,messages,reviews}.js`, migration 0069 |
+| Capture and the bot seam above it | `services/safetyApprovals/captureService.js`, `bot/handlers/safetyApprovalHandlers.js` (thin) |
+| Reading a reply and posting the decision | `services/safetyApprovals/{reviewer,aiReading,announcer}.js`; worker `services/safetyApprovals/worker.js`, key `safety_approvals`, capability `safety_approval_reading` |
+| Settings → Safety Approvals | `server/routes/settings/safetyApprovalRoutes.js`, admin `settings/SafetyApprovalsTab.jsx`, `admin/src/api/safetyApprovals.js` |
+
 ### 6. AI / Insights Module
 
 | Concern | Current files |

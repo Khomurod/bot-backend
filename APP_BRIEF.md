@@ -174,7 +174,7 @@ unchanged, so a reference to "§7" still means the same section.
 |---|---|
 | [§4. Features and workflows](docs/brief/features.md) | You are touching any feature: driver comms, dispatch, payroll-adjacent flows, the Finance Monitor, fuel, the Groups page, the presenter remote, the Gross Grand Prix displays |
 | [§4b. Home time](docs/brief/home-time.md) | You are touching home time: the home/road state machine, the three manager notices, request detection, automatic return-to-road detection, the cycle invariant |
-| [§4c. Recruiting and leads](docs/brief/recruiting.md) | The Facebook lead chain, whose number texts a candidate, after-hours answering, Teach Wenze, Customer Inquiries, recruiter KPIs |
+| [§4c. Recruiting and leads](docs/brief/recruiting.md) | The Facebook lead chain, whose number texts a candidate, after-hours answering, Teach Wenze, Customer Inquiries, recruiter KPIs, Safety's hire decisions posted from the recruiting group |
 | [§4a. The system checking itself, and the AI that helps](docs/brief/self-checking-and-ai.md) | Operational findings, tiered corrections, the audit trail |
 | [§4b. The AI routing layer, and what AI is allowed to decide](docs/brief/ai-gateway.md) | The provider roster, per-responsibility switches, what a model may and may not say |
 | [§4c. The AI provider terms watcher](docs/brief/ai-terms-watcher.md) | You are touching the provider terms watcher: its schedule, its diffing, or what may pause a provider |

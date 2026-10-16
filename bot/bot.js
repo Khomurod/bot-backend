@@ -22,6 +22,7 @@ const { registerAnonymousFeedbackHandlers } = require('./anonymousFeedbackHandle
 const { registerDispatchStatusLookupHandlers } = require('./dispatchStatusLookupHandlers');
 const { registerGroupCaptureHandlers } = require('./handlers/groupCaptureHandlers');
 const { registerFinanceCaptureHandlers } = require('./handlers/financeCaptureHandlers');
+const { registerSafetyApprovalHandlers } = require('./handlers/safetyApprovalHandlers');
 const { registerControlReplyHandlers } = require('./controlReplyHandlers');
 const {
   registerDispatchCommands,
@@ -182,6 +183,10 @@ async function startBot() {
     // every chat until a person switches the Finance Monitor on and validates
     // a group. See services/finance/captureService.js.
     registerFinanceCaptureHandlers(bot);
+    // The same kind of observer for the recruiting group: answers no for every
+    // chat until Safety Approvals is switched on and pointed at one. See
+    // services/safetyApprovals/captureService.js.
+    registerSafetyApprovalHandlers(bot);
 
     // AFTER the capture pipeline, so an operator's reply is still recorded as
     // group activity, and BEFORE everything else, so an answer to one of

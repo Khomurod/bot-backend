@@ -208,6 +208,14 @@ not `facebookCrypto` — the poller holds none of this app's secrets.
   and `finance_moneycode_events` is the append-only trail of how each state was
   reached, including whether a model contributed
   (`docs/architecture/finance-monitor.md`).
+- **The Safety Approvals tables also stand apart** (migration 0069):
+  `safety_approval_settings` / `safety_approval_messages` /
+  `safety_approval_reviews` / `safety_approval_announcements` key on the raw
+  Telegram `chat_id` and touch no driver table. Unlike the finance record, the
+  captured recruiting messages are **deleted after 60 days** — they are
+  candidates' names and phones, kept only while a late Safety reply could
+  still need them. What a model made of a reply is never stored, only the
+  verified outcome (`docs/architecture/safety-approvals.md`).
 - **Optimistic locking on roles**: `roles.version` means a custom-role edit
   that sends a stale version gets HTTP 409, never a silent overwrite.
 - **Audit redaction** (`database/adminAudit.js` `redact`) recursively strips
