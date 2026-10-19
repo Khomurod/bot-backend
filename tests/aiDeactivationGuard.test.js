@@ -2,9 +2,9 @@
  * A model reading a chat TITLE cannot see whether a driver is working.
  *
  * `groups.active` is written from that title twice a day, for 168 of 209 groups.
- * Deactivating a working driver drops them out of Live Locations, BOL/POD
- * document routing, the dispatch roster and home-time tracking — and a renamed
- * chat or an unfamiliar spelling is enough to do it.
+ * Deactivating a working driver drops them out of Live Locations, broadcasts
+ * and home-time tracking — and a renamed chat or an unfamiliar spelling is
+ * enough to do it.
  *
  * These are the records that overrule the title.
  */

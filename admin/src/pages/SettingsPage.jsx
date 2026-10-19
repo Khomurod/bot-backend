@@ -31,7 +31,6 @@ const RingCentralTab = lazy(() => import("./settings/RingCentralTab"));
 const TelegramGroupsTab = lazy(() => import("./settings/TelegramGroupsTab"));
 const SamsaraTab = lazy(() => import("./settings/SamsaraTab"));
 const DispatcherBoardTab = lazy(() => import("./settings/DispatcherBoardTab"));
-const BolPodTab = lazy(() => import("./settings/BolPodTab"));
 const AiTab = lazy(() => import("./settings/AiTab"));
 const NotificationsTab = lazy(() => import("./settings/NotificationsTab"));
 const FinanceTab = lazy(() => import("./settings/FinanceTab"));
@@ -42,7 +41,7 @@ const RetiredLeftoversTab = lazy(() => import("./settings/RetiredLeftoversTab"))
 
 const TAB_KEYS = [
   "location", "ringcentral", "groups", "samsara",
-  "board", "bolpod", "finance", "safety", "ai", "notifications", "reactions", "access", "leftovers",
+  "board", "finance", "safety", "ai", "notifications", "reactions", "access", "leftovers",
 ];
 
 /**
@@ -65,7 +64,6 @@ export default function SettingsPage({ initialTab }) {
         <button className={`btn ${tab === "groups" ? "btn-primary" : "btn-ghost"} touch-target`} onClick={() => setTab("groups")}>💬 Telegram Groups</button>
         <button className={`btn ${tab === "samsara" ? "btn-primary" : "btn-ghost"} touch-target`} onClick={() => setTab("samsara")}>🛰️ Samsara</button>
         <button className={`btn ${tab === "board" ? "btn-primary" : "btn-ghost"} touch-target`} onClick={() => setTab("board")}>🗂️ Dispatcher Board</button>
-        <button className={`btn ${tab === "bolpod" ? "btn-primary" : "btn-ghost"} touch-target`} onClick={() => setTab("bolpod")}>📄 BOL / POD</button>
         <button className={`btn ${tab === "finance" ? "btn-primary" : "btn-ghost"} touch-target`} onClick={() => setTab("finance")}>💵 Finance</button>
         <button className={`btn ${tab === "safety" ? "btn-primary" : "btn-ghost"} touch-target`} onClick={() => setTab("safety")}>🛡️ Safety Approvals</button>
         <button className={`btn ${tab === "ai" ? "btn-primary" : "btn-ghost"} touch-target`} onClick={() => setTab("ai")}>🤖 AI</button>
@@ -80,7 +78,6 @@ export default function SettingsPage({ initialTab }) {
         {tab === "groups" && <TelegramGroupsTab />}
         {tab === "samsara" && <SamsaraTab />}
         {tab === "board" && <DispatcherBoardTab />}
-        {tab === "bolpod" && <BolPodTab />}
         {tab === "finance" && <FinanceTab />}
         {tab === "safety" && <SafetyApprovalsTab />}
         {tab === "ai" && <AiTab />}

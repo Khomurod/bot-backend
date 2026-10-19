@@ -24,8 +24,6 @@ async function seeded(t) {
        category_chat_ids = jsonb_build_object('fuel', $1::text, 'finance', $2::text) WHERE id = 1`,
     [OLD, OTHER]
   );
-  await h.query(`INSERT INTO bol_pod_forwarding_settings (id, central_group_id) VALUES (1, $1::bigint)
-                 ON CONFLICT (id) DO UPDATE SET central_group_id = EXCLUDED.central_group_id`, [OLD]);
   await h.query(`INSERT INTO groups (id, telegram_group_id, group_name, group_type, active)
                  VALUES (230835, $1::bigint, 'HR Personnel', 'company', TRUE)`, [OLD]);
   // Three notices: one still pending, one failed yesterday, one failed a week ago.
@@ -50,8 +48,6 @@ test('every setting, the group row and the queued notices move to the new id —
     const ns = (await h.query('SELECT default_chat_id AS d, category_chat_ids AS c FROM operational_notification_settings')).rows[0];
     assert.equal(ns.d, OTHER);
     assert.deepEqual(ns.c, { fuel: NEW, finance: OTHER }, 'only the routing entry naming the old chat moves');
-    const bol = (await h.query('SELECT central_group_id::text AS c FROM bol_pod_forwarding_settings')).rows[0];
-    assert.equal(bol.c, NEW, 'a BIGINT column moves too');
     const g = (await h.query('SELECT telegram_group_id::text AS id FROM groups WHERE id = 230835')).rows[0];
     assert.equal(g.id, NEW);
 

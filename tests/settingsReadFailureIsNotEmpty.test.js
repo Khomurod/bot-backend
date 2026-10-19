@@ -11,13 +11,12 @@
  * migrations before the server listens and before the bot starts, and no boot
  * path reads these settings. So the catch protected against nothing, while
  * costing the one distinction that matters during an outage — and the costs are
- * concrete: BOL/POD forwarding reads as OFF and a driver's paperwork is not
- * delivered; a message category resolves to no destination; the Samsara key
- * falls back to the environment; route geometry reads as switched off.
+ * concrete: a message category resolves to no destination; the Samsara key
+ * falls back to the environment.
  *
  * `database/dispatchBoardSettings.js` already reads this way, with the rule
  * quoted from APP_BRIEF §9: a failure is never rendered as empty data. This
- * holds the other six to the same standard, and holds the SEVENTH to it too so
+ * holds the others to the same standard, and holds the SEVENTH to it too so
  * the precedent cannot quietly regress.
  *
  * Each module is loaded with `database/db.js` replaced by a stub that throws,
@@ -33,7 +32,6 @@ const DB_PATH = require.resolve('../database/db');
 const MODULES = [
   { file: 'samsaraSettings', getter: 'getSamsaraConfig', admin: 'getSamsaraSettingsForAdmin' },
   { file: 'eldSettings', getter: 'getEldConfig', admin: 'getEldSettingsForAdmin' },
-  { file: 'bolPodForwardingSettings', getter: 'getBolPodConfig', admin: 'getBolPodSettingsForAdmin' },
   { file: 'messageRoutingSettings', getter: 'getMessageGroupConfig', admin: 'getMessageGroupSettingsForAdmin' },
   { file: 'safetyEventVideoSettings', getter: 'getSafetyEventVideoConfig', admin: 'getSafetyEventVideoSettingsForAdmin' },
   // The precedent. Included so it cannot regress into the old shape.

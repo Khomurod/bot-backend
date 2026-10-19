@@ -183,7 +183,7 @@ test('an active group the bot has left is serious', () => {
   assert.equal(found[0].subjectId, 51);
 });
 
-test('silence is measured against the threshold, and warns about document routing', () => {
+test('silence is measured against the threshold, and warns what deactivating stops', () => {
   const groups = [
     group(61, 'WENZE UNIT # 9 QUIET', { last_message_seen_at: '2026-05-01T00:00:00Z' }),
     group(62, 'WENZE UNIT # 10 CHATTY', { last_message_seen_at: '2026-09-05T00:00:00Z' }),
@@ -191,7 +191,7 @@ test('silence is measured against the threshold, and warns about document routin
   const found = identity.checkSilentActiveGroups({ groups, now: NOW });
   assert.equal(found.length, 1);
   assert.equal(found[0].subjectId, 61);
-  assert.match(found[0].evidence.sideEffect, /BOL\/POD/);
+  assert.match(found[0].evidence.sideEffect, /home-time tracking/);
 });
 
 test('an admin chat typed as a driver is flagged; a real driver group is not', () => {

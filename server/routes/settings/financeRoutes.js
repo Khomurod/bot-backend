@@ -85,8 +85,8 @@ function createFinanceSettingsRouter({ authMiddleware, telegram }) {
       // person's direct messages is not a thing to point that at.
       const result = await checkChatId(req.body?.chatId, { telegram, getGroupByTelegramId });
       if (!result.ok) {
-        // A VERDICT IS 200, NOT 400 — the house shape, and the same one
-        // `bol-pod/validate-group` uses. The request succeeded; the answer was
+        // A VERDICT IS 200, NOT 400 — the house shape (the removed
+        // `bol-pod/validate-group` used it too). The request succeeded; the answer was
         // no. Returning 400 made the admin client THROW, so the tab's own
         // rendering of the verdict — including "did you mean -5142950669?",
         // the one-click fix for the dropped minus sign this whole check exists

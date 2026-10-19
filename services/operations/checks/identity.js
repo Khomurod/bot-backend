@@ -293,9 +293,9 @@ function checkSilentActiveGroups({ groups, now }) {
         groupName: group.group_name,
         lastMessageSeenAt: group.last_message_seen_at,
         silentDays: silentFor,
-        // Deactivating stops BOL/POD document delivery for this driver — the
-        // approval UI has to say so before anyone clicks it.
-        sideEffect: 'Deactivating also stops BOL/POD document routing for this group.',
+        // Deactivating drops the driver out of the features that follow active
+        // groups — the approval UI has to say so before anyone clicks it.
+        sideEffect: 'Deactivating also drops this group from broadcasts, Live Locations and home-time tracking.',
       },
     });
   }
