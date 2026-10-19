@@ -53,10 +53,6 @@ const {
   stopDatatruckDocumentService,
 } = require('./datatruckDocumentService');
 const {
-  startRaiseApprovalService,
-  stopRaiseApprovalService,
-} = require('./raiseApprovalService');
-const {
   startFuelStopAlertService,
   stopFuelStopAlertService,
 } = require('./fuelStopAlertService');
@@ -191,7 +187,6 @@ function startBackgroundServices({ telegram }) {
   launchUnlessPaused(['group_status_ai'], () => startGroupStatusAiService());
   startMileageBonusService();
   launchUnlessPaused(['datatruck_documents'], () => startDatatruckDocumentService());
-  startRaiseApprovalService();
   launchUnlessPaused(['fuel_stop_alerts'], () => startFuelStopAlertService(telegram));
   startRecruiterCallSyncService();
   startRingCentralTokenRefreshService();
@@ -243,10 +238,9 @@ function startBackgroundServices({ telegram }) {
   // that service keeps running until its checks are folded in.
   startConsistencyService();
   // Reads the Dispatcher Board into a snapshot and stops there. It decides
-  // nothing and sends nothing: linking a board row to a person, and noticing
-  // that the board and Wenze disagree, are later stages with their own
-  // evidence rules. Does nothing at all until an administrator saves an
-  // address and a token in Settings.
+  // nothing and sends nothing: its one reader is the home-time watch above,
+  // which has its own evidence rules. Does nothing at all until an
+  // administrator saves an address and a token in Settings.
   startDispatchBoardPoller();
   // Reads the attachments posted in the finance group, ONE AT A TIME. Stands
   // down entirely — `blocked`, not `failed` — until the Finance Monitor is on
@@ -290,7 +284,6 @@ function stopBackgroundServices() {
   try { stopGroupStatusAiService(); } catch (err) { console.error('[SHUTDOWN] stopGroupStatusAiService failed:', err.message); }
   try { stopMileageBonusService(); } catch (err) { console.error('[SHUTDOWN] stopMileageBonusService failed:', err.message); }
   try { stopDatatruckDocumentService(); } catch (err) { console.error('[SHUTDOWN] stopDatatruckDocumentService failed:', err.message); }
-  try { stopRaiseApprovalService(); } catch (err) { console.error('[SHUTDOWN] stopRaiseApprovalService failed:', err.message); }
   try { stopFuelStopAlertService(); } catch (err) { console.error('[SHUTDOWN] stopFuelStopAlertService failed:', err.message); }
   try { stopRecruiterCallSyncService(); } catch (err) { console.error('[SHUTDOWN] stopRecruiterCallSyncService failed:', err.message); }
   try { stopRingCentralTokenRefreshService(); } catch (err) { console.error('[SHUTDOWN] stopRingCentralTokenRefreshService failed:', err.message); }

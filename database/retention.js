@@ -193,13 +193,13 @@ function mapInputs(row) {
     unpaidBonusCount: Number(row.unpaid_bonus_count || 0),
     emptySince: row.empty_since || null,
     // ALWAYS ZERO TODAY, and the comment that used to sit here said the watcher
-    // filled them from the efficiency classifier. It does not: nothing calls
+    // filled it from the efficiency classifier. It does not: nothing calls
     // that classifier from `services/retention/watch.js`, and even if it did,
     // `classifyCommitment` counts a broken promise only where a request was
     // `approved` -- a status nothing has written since home time stopped being
-    // approved at all. So both signals are structurally dead rather than merely
-    // unwired, and the weights in `lib/retention/signals.js` keep working the
-    // moment somebody supplies them.
+    // approved at all. So the signal is structurally dead rather than merely
+    // unwired, and the weight in `lib/retention/signals.js` keeps working the
+    // moment somebody supplies it.
     //
     // NOT REPLACED BY A REQUEST DATE, deliberately. A request is a driver's
     // plan, not a promise the company made, so scoring a missed request date as
@@ -208,7 +208,6 @@ function mapInputs(row) {
     // took out. Defining what the company now promises is a business decision,
     // not a code change.
     brokenHomeCommitments: 0,
-    raiseNotQualifiedRounds: 0,
   };
 }
 

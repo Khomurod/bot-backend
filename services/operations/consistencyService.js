@@ -22,11 +22,10 @@ const identityLayer = require('./checks/identityLayer');
 const systems = require('./checks/systems');
 const homeTime = require('./checks/homeTime');
 const homeTimeContinuity = require('./checks/homeTimeContinuity');
-const board = require('./checks/board');
-const boardLink = require('./checks/boardLink');
 const telegramIdentity = require('./checks/telegramIdentity');
 const engineering = require('./checks/engineering');
 const roadBonus = require('./checks/roadBonus');
+const retired = require('./checks/retired');
 const { runAutoCorrections } = require('./corrections/autoApply');
 const { withRunRecord } = require('./runLedger');
 const { loadSnapshot } = require('./snapshot/loaders');
@@ -40,11 +39,11 @@ const CHECK_MODULES = [
   { name: 'systems', keys: systems.CHECK_KEYS, run: systems.runSystemChecks },
   { name: 'homeTime', keys: homeTime.CHECK_KEYS, run: homeTime.runHomeTimeChecks },
   { name: 'homeTimeContinuity', keys: homeTimeContinuity.CHECK_KEYS, run: homeTimeContinuity.runHomeTimeContinuityChecks },
-  { name: 'board', keys: board.CHECK_KEYS, run: board.runBoardChecks },
-  { name: 'boardLink', keys: boardLink.CHECK_KEYS, run: boardLink.runBoardLinkChecks },
   { name: 'telegramIdentity', keys: telegramIdentity.CHECK_KEYS, run: telegramIdentity.runTelegramIdentityChecks },
   { name: 'engineering', keys: engineering.CHECK_KEYS, run: engineering.runEngineeringChecks },
   { name: 'roadBonus', keys: roadBonus.CHECK_KEYS, run: roadBonus.runRoadBonusChecks },
+  // Removed features' keys: finds nothing, so the sweep resolves what they left open.
+  { name: 'retired', keys: retired.CHECK_KEYS, run: retired.runRetiredChecks },
 ];
 
 let serviceTimer = null;

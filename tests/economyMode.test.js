@@ -99,7 +99,7 @@ test('WHAT THE OWNER KEPT RUNNING is never on the pause list', () => {
   // money codes, scheduled broadcasts, and the delivery of every notice.
   for (const kept of [
     'scheduler', 'home_time_reminders', 'facebook_webhooks', 'recruiter_logins', 'recruiting_after_hours',
-    'finance_document_reader', 'finance_weekly_report', 'notification_drain', 'raise_approval',
+    'finance_document_reader', 'finance_weekly_report', 'notification_drain',
     'return_to_road', 'dispatch_eta', 'dispatch_board_poll', 'home_time_board_presence',
   ]) {
     assert.equal(isEconomyPausedKey(kept), false, `${kept} must keep running`);
@@ -115,7 +115,7 @@ test('a paused pass gets a reason only while economy mode is on', () => {
   assert.equal(economyPauseReason('scheduler', on), null);
 });
 
-test('THE BOARD IS READ EVERY FOUR HOURS — the Sunday raise review needs one under six', () => {
+test('THE BOARD IS READ EVERY FOUR HOURS — Home Time reads its snapshot', () => {
   const on = resolveEconomy({ env: { ECONOMY_MODE_UNTIL: UNTIL }, now: NOW });
   assert.equal(economyIntervalMs('dispatch_board_poll', 5 * 60 * 1000, on), 4 * 60 * 60 * 1000);
   assert.ok(ECONOMY_SLOW_INTERVAL_MS.dispatch_board_poll < 6 * 60 * 60 * 1000);
@@ -125,7 +125,7 @@ test('THE BOARD IS READ EVERY FOUR HOURS — the Sunday raise review needs one u
     'never faster than an operator configured');
 });
 
-test('A SLOWED PASS THAT FAILED retries at its normal pace — the raise review refuses a failed read', () => {
+test('A SLOWED PASS THAT FAILED retries at its normal pace — a failed read leaves the snapshot ageing', () => {
   const on = resolveEconomy({ env: { ECONOMY_MODE_UNTIL: UNTIL }, now: NOW });
   assert.equal(economyIntervalMs('dispatch_board_poll', 5 * 60 * 1000, on, { failed: true }), 5 * 60 * 1000);
   assert.equal(economyIntervalMs('dispatch_board_poll', 5 * 60 * 1000, on, { failed: false }), 4 * 60 * 60 * 1000);

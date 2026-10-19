@@ -4,7 +4,7 @@ const botUsersDb = require('../../database/botUsers');
 /**
  * Bot Users admin API — every Telegram user the bot has seen: button tappers
  * (interactions) AND anyone who texts in a group the bot is in (message_count),
- * keyed by a stable telegram_user_id and enriched with the linked dispatch team.
+ * keyed by a stable telegram_user_id.
  *  - GET / → users, most recently active first
  *      ?limit=  max rows (default 200)
  *      ?filter= all|admins|dispatch|drivers|unknown|recent
@@ -13,9 +13,8 @@ const botUsersDb = require('../../database/botUsers');
 function createBotUsersRouter({ authMiddleware }) {
   const router = express.Router();
 
-  /** Coarse role for display: a dispatch-team match always wins. */
+  /** Coarse role for display. */
   function deriveSource(u) {
-    if (u.linked_team_id != null) return 'dispatcher';
     if (u.source && ['driver', 'dispatcher', 'admin', 'unknown'].includes(u.source)) return u.source;
     return 'unknown';
   }
@@ -46,8 +45,6 @@ function createBotUsersRouter({ authMiddleware }) {
           last_seen_chat_id: u.last_seen_chat_id != null ? String(u.last_seen_chat_id) : null,
           language_code: u.language_code || null,
           is_bot: Boolean(u.is_bot),
-          linked_team_id: u.linked_team_id != null ? Number(u.linked_team_id) : null,
-          linked_team_name: u.linked_team_name || null,
           source: deriveSource(u),
           first_seen_at: u.first_seen_at || null,
           last_interaction_at: u.last_interaction_at || null,

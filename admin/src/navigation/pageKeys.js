@@ -26,7 +26,6 @@ export const PAGE_KEYS = Object.freeze([
   // Groups
   'groups',
   'mileage_bonus',
-  'raise_approval',
   // Communications
   'communications',
   'company_birthdays',

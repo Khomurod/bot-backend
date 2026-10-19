@@ -12,9 +12,13 @@
  *   - the new column is NOT seeded from the dispatch value. Copying it would
  *     keep posting pay decisions to the dispatch group, which is the behavior
  *     this split removes;
- *   - the real messageRoutingSettings module reads and writes the two columns
- *     independently (a column-name typo between the module and the migration
+ *   - the real messageRoutingSettings module reads and writes its columns
+ *     independently (a column-name typo between the module and the schema
  *     would silently route to the wrong group, or to nowhere).
+ *
+ * The driver-raise review itself was removed in October 2026. Its two columns
+ * stay until the retired-feature cleanup drops them, so the migration tests
+ * stay; the routing module no longer reads them.
  */
 
 const test = require('node:test');
@@ -99,46 +103,34 @@ test('the baseline schema still applies on top of the migration (boot order)', {
   assert.equal(row.raise_results_group_id, '-1003333333333');
 });
 
-test('the real routing module reads and writes the two raise columns independently', { skip: skipWithoutPg(), timeout: 60000 }, async (t) => {
+test('the real routing module reads and writes the two bonus columns independently', { skip: skipWithoutPg(), timeout: 60000 }, async (t) => {
   const harness = await createPgHarness(t);
   await harness.query(MIGRATION_0006);
 
   const { messageRoutingSettings: routing } = harness.loadDataLayer(['messageRoutingSettings']);
 
   // Nothing configured yet: no hidden default, no cross-category fallback.
-  assert.equal(await routing.getGroupId('dispatchReview'), null);
-  assert.equal(await routing.getGroupId('raiseResults'), null);
+  assert.equal(await routing.getGroupId('mileageBonus'), null);
+  assert.equal(await routing.getGroupId('roadBonus'), null);
 
-  // Configure ONLY the dispatch request group.
-  await routing.updateMessageGroupSettings({ dispatchReview: '-1001111111111' });
-  assert.equal(await routing.getGroupId('dispatchReview'), '-1001111111111');
-  assert.equal(await routing.getGroupId('raiseResults'), null,
-    'a configured request group is never a fallback for the results group');
+  await routing.updateMessageGroupSettings({ mileageBonus: '-1001111111111' });
+  assert.equal(await routing.getGroupId('mileageBonus'), '-1001111111111');
+  assert.equal(await routing.getGroupId('roadBonus'), null,
+    'a configured category is never a fallback for another');
 
-  // Configure ONLY the accounting group: the request group is untouched.
-  await routing.updateMessageGroupSettings({ raiseResults: '-1004444444444' });
-  assert.equal(await routing.getGroupId('dispatchReview'), '-1001111111111');
-  assert.equal(await routing.getGroupId('raiseResults'), '-1004444444444');
-
-  // They really are two different columns on the row.
+  await routing.updateMessageGroupSettings({ roadBonus: '-1004444444444' });
   const row = (await harness.query('SELECT * FROM message_group_settings WHERE id = 1')).rows[0];
-  assert.equal(row.dispatch_review_group_id, '-1001111111111');
-  assert.equal(row.raise_results_group_id, '-1004444444444');
+  assert.equal(row.mileage_bonus_group_id, '-1001111111111');
+  assert.equal(row.road_bonus_group_id, '-1004444444444');
 
   // Clearing one leaves the other alone.
-  await routing.updateMessageGroupSettings({ raiseResults: '' });
-  assert.equal(await routing.getGroupId('raiseResults'), null);
-  assert.equal(await routing.getGroupId('dispatchReview'), '-1001111111111');
+  await routing.updateMessageGroupSettings({ roadBonus: '' });
+  assert.equal(await routing.getGroupId('roadBonus'), null);
+  assert.equal(await routing.getGroupId('mileageBonus'), '-1001111111111');
 
-  // The same ID in both is allowed — an admin's deliberate choice.
-  await routing.updateMessageGroupSettings({
-    dispatchReview: '-1005555555555', raiseResults: '-1005555555555',
-  });
-  assert.equal(await routing.getGroupId('dispatchReview'), '-1005555555555');
-  assert.equal(await routing.getGroupId('raiseResults'), '-1005555555555');
-
-  const view = await routing.getMessageGroupSettingsForAdmin();
-  assert.equal(view.dispatchReview.groupId, '-1005555555555');
-  assert.equal(view.raiseResults.groupId, '-1005555555555');
-  assert.equal(view.raiseResults.configured, true);
+  // The removed raise categories are refused, not silently written.
+  await assert.rejects(() => routing.getGroupId('raiseResults'), /Unknown message group category/);
+  await routing.updateMessageGroupSettings({ raiseResults: '-1009999999999' });
+  const after = (await harness.query('SELECT raise_results_group_id FROM message_group_settings WHERE id = 1')).rows[0];
+  assert.equal(after.raise_results_group_id, null, 'a payload key for a removed category writes nothing');
 });

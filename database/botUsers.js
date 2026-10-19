@@ -122,10 +122,7 @@ async function recordBotUserSeen({
 const FILTERS = new Set(['all', 'admins', 'dispatch', 'drivers', 'unknown', 'recent']);
 
 /**
- * Users for the admin Users tab. LEFT JOINs dispatch_team_members on either a
- * case-insensitive username match OR a telegram_user_id match to expose the
- * linked dispatch team; source='dispatcher' is inferred when matched. Supports
- * coarse filters and a free-text search.
+ * Users for the admin Users tab, with coarse filters and a free-text search.
  *
  * @param {{ limit?:number, filter?:string, search?:string }} opts
  */
@@ -136,13 +133,13 @@ async function listBotUsers({ limit = 200, filter = 'all', search = '' } = {}) {
   const where = [];
 
   if (f === 'dispatch') {
-    where.push('dm.id IS NOT NULL');
+    where.push("u.source = 'dispatcher'");
   } else if (f === 'drivers') {
-    where.push("dm.id IS NULL AND (u.source = 'driver' OR u.source IS NULL)");
+    where.push("(u.source = 'driver' OR u.source IS NULL)");
   } else if (f === 'admins') {
     where.push("u.source = 'admin'");
   } else if (f === 'unknown') {
-    where.push("dm.id IS NULL AND (u.source = 'unknown' OR u.source IS NULL)");
+    where.push("(u.source = 'unknown' OR u.source IS NULL)");
   } else if (f === 'recent') {
     where.push("u.last_interaction_at >= NOW() - INTERVAL '24 hours'");
   }
@@ -166,22 +163,8 @@ async function listBotUsers({ limit = 200, filter = 'all', search = '' } = {}) {
   const res = await query(
     `SELECT u.*,
             COALESCE(u.last_group_name,
-                     (SELECT g.group_name FROM groups g WHERE g.id = u.last_group_id)) AS last_group_name,
-            dm.team_id AS linked_team_id,
-            dt.name AS linked_team_name
+                     (SELECT g.group_name FROM groups g WHERE g.id = u.last_group_id)) AS last_group_name
      FROM bot_users u
-     LEFT JOIN LATERAL (
-       SELECT m.team_id, m.id
-       FROM dispatch_team_members m
-       WHERE m.active = TRUE
-         AND (
-           (m.telegram_username IS NOT NULL AND u.username IS NOT NULL
-             AND LOWER(m.telegram_username) = LOWER(u.username))
-           OR (m.telegram_user_id IS NOT NULL AND m.telegram_user_id = u.telegram_user_id)
-         )
-       LIMIT 1
-     ) dm ON TRUE
-     LEFT JOIN dispatch_teams dt ON dt.id = dm.team_id
      ${whereSql}
      ORDER BY u.last_interaction_at DESC
      LIMIT $${limitIdx}`,
@@ -190,28 +173,8 @@ async function listBotUsers({ limit = 200, filter = 'all', search = '' } = {}) {
   return res.rows;
 }
 
-/**
- * Opportunistically backfill dispatch_team_members.telegram_user_id when a
- * member row has a matching username but a NULL id. Safe: only fills nulls and
- * matches on a case-insensitive username. Best-effort; callers ignore failure.
- * @returns {Promise<number>} rows updated
- */
-async function backfillDispatchMemberUserId({ telegramUserId, username }) {
-  if (telegramUserId == null || !username) return 0;
-  const res = await query(
-    `UPDATE dispatch_team_members
-        SET telegram_user_id = $1, updated_at = NOW()
-      WHERE telegram_user_id IS NULL
-        AND telegram_username IS NOT NULL
-        AND LOWER(telegram_username) = LOWER($2)`,
-    [Number(telegramUserId), String(username)]
-  );
-  return res.rowCount || 0;
-}
-
 module.exports = {
   recordBotUserInteraction,
   recordBotUserSeen,
   listBotUsers,
-  backfillDispatchMemberUserId,
 };

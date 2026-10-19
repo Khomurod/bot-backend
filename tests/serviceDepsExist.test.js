@@ -3,7 +3,8 @@
 /**
  * Every method a service calls on its injected dependencies really exists.
  *
- * THE BUG THIS EXISTS FOR. `boardPresenceWatch` and `boardRoster` both called
+ * THE BUG THIS EXISTS FOR. `boardPresenceWatch` and `boardRoster` (the latter
+ * removed with the driver-raise review in October 2026) both called
  * `deps.boardSettings.getDispatchBoardSettings()`. No such function was ever
  * exported — the real one is `getBoardConfig` — but because the call goes
  * through a `deps` object rather than a named import, every static check passed:
@@ -27,7 +28,6 @@ const path = require('node:path');
 /** Services that build their collaborators with a `defaultDeps()` factory. */
 const SERVICES = [
   '../services/homeTime/boardPresenceWatch',
-  '../services/raise/boardRoster',
   '../services/homeTime/returnToRoadWatch',
 ];
 

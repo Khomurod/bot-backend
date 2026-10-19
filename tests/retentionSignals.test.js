@@ -28,7 +28,7 @@ const CALM = {
   baselineMessages: 20, recentMessages: 18,
   roadWeeksOverAllowance: 0, brokenHomeCommitments: 0,
   deniedHomeRequests: 0,
-  unpaidBonusUsd: 0, unpaidBonusCount: 0, raiseNotQualifiedRounds: 0,
+  unpaidBonusUsd: 0, unpaidBonusCount: 0,
   emptySince: null,
 };
 const at = (over) => assess({ ...CALM, ...over }, { now: NOW });
@@ -127,7 +127,7 @@ test('NO SIGNAL IS AN ASSESSMENT OF THE DRIVER', () => {
   const everything = at({
     quitSignals: 2, complaints: 5, avgSentiment: -1.8, baselineMessages: 40, recentMessages: 0,
     roadWeeksOverAllowance: 4, brokenHomeCommitments: 2,
-    deniedHomeRequests: 3, unpaidBonusUsd: 900, raiseNotQualifiedRounds: 2,
+    deniedHomeRequests: 3, unpaidBonusUsd: 900,
     emptySince: '2026-09-01T00:00:00Z',
   });
   const text = JSON.stringify(everything).toLowerCase();
@@ -143,7 +143,7 @@ test('EVERY SUGGESTED ACTION IS SOMETHING THE COMPANY DOES', () => {
   const everything = at({
     quitSignals: 1, complaints: 4, roadWeeksOverAllowance: 3,
     brokenHomeCommitments: 1, unpaidBonusUsd: 500,
-    emptySince: '2026-09-01T00:00:00Z', raiseNotQualifiedRounds: 1,
+    emptySince: '2026-09-01T00:00:00Z',
   });
   assert.ok(everything.actions.length > 0);
   for (const action of everything.actions) {
@@ -154,7 +154,7 @@ test('EVERY SUGGESTED ACTION IS SOMETHING THE COMPANY DOES', () => {
 test('at most three actions — a list of eight is a list nobody starts', () => {
   const out = at({
     quitSignals: 1, complaints: 4, roadWeeksOverAllowance: 3, brokenHomeCommitments: 1,
-    unpaidBonusUsd: 500, raiseNotQualifiedRounds: 2,
+    unpaidBonusUsd: 500,
     emptySince: '2026-09-01T00:00:00Z', baselineMessages: 40, recentMessages: 0,
   });
   assert.ok(out.actions.length <= 3);

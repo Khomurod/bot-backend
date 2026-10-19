@@ -6,7 +6,7 @@
  * deciding about is not simply "active".
  */
 import { describe, expect, test } from "vitest";
-import { groupView, needsReview, boardHint, prepareDisplayProfiles } from "./driverProfileShaping";
+import { groupView, needsReview, prepareDisplayProfiles } from "./driverProfileShaping";
 
 const DRIVER = { group_id: 1, group_type: "driver", status: "active" };
 
@@ -64,27 +64,8 @@ describe("needsReview", () => {
   test("every reason, and nothing else", () => {
     expect(needsReview(DRIVER)).toBe(false);
     expect(needsReview({ ...DRIVER, needs_review: true })).toBe(true);
-    expect(needsReview({ ...DRIVER, open_finding_keys: ["board.person_unmatched"] })).toBe(true);
+    expect(needsReview({ ...DRIVER, open_finding_keys: ["identity.telegram_link"] })).toBe(true);
     expect(needsReview(null)).toBe(false);
-  });
-});
-
-describe("boardHint", () => {
-  test("says what the board says", () => {
-    expect(boardHint({ board: { present: true, status: "HOME", truck: "001" } }))
-      .toBe("Board: HOME · truck 001");
-  });
-
-  test("a vanished row says so, because that is what somebody wants to see", () => {
-    expect(boardHint({ board: { present: false, status: "HOME" } }))
-      .toMatch(/No longer on the dispatcher board/);
-  });
-
-  test("A BOARD THAT IS SWITCHED OFF RENDERS NOTHING", () => {
-    // Not an empty badge beside every driver in the fleet.
-    expect(boardHint({ board: null })).toBeNull();
-    expect(boardHint({})).toBeNull();
-    expect(boardHint({ board: { present: true, status: null } })).toBeNull();
   });
 });
 

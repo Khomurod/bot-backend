@@ -7,7 +7,7 @@
  */
 const express = require('express');
 const { listCanonicalDriverGroups } = require('../../services/driverGroupDirectoryService');
-const { withBoardAndFindings } = require('../../database/driverGroupDirectory');
+const { withOpenFindings } = require('../../database/driverGroupDirectory');
 const { runUnifiedDriverGroupAiSync } = require('../../services/driverGroupAiSyncService');
 const driverProfileAiParser = require('../../services/driverProfileAiParser');
 
@@ -61,7 +61,6 @@ function mapDriverProfileForApi(profile) {
     // question about this chat. None of them is guessed from the title.
     group_type: profile.group_type || null,
     open_finding_keys: profile.open_finding_keys || [],
-    board: profile.board || null,
     created_at: profile.profile_created_at || profile.created_at,
     updated_at: profile.profile_updated_at || profile.updated_at,
   };
@@ -87,7 +86,7 @@ function createDriverProfilesRoutes({ db, authMiddleware }) {
       if (needsReviewOnly) {
         rows = rows.filter((row) => row.needs_review === true || row.duplicate_review_required === true);
       }
-      res.json((await withBoardAndFindings(rows)).map(mapDriverProfileForApi));
+      res.json((await withOpenFindings(rows)).map(mapDriverProfileForApi));
     } catch (err) {
       console.error('[API] Error fetching driver profiles:', err.message);
       res.status(500).json({ error: 'Server error' });

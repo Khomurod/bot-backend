@@ -43,6 +43,9 @@ const express = require('express');
 // Grand Prix dispatchers' race display, a new page, not the Dispatch Center.
 // `/api/dispatch` is NOT retired either: the four ETA-schedule endpoints under
 // it are live and moved to Settings, and the prefixes here are page paths only.
+//
+// `/raise` was the dispatchers' weekly driver-raise review, removed October
+// 2026. Its links were posted to a Telegram group and sit there still.
 const RETIRED_PAGE_PATHS = [
   '/trailers', '/trailers/*',
   '/dispatch/*',
@@ -50,6 +53,7 @@ const RETIRED_PAGE_PATHS = [
   '/questions', '/questions/*',
   '/answers', '/answers/*',
   '/qbq', '/qbq/*',
+  '/raise', '/raise/*',
 ];
 
 const BODY = `<!doctype html>

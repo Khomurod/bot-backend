@@ -218,8 +218,8 @@ test('A FAILED OUTSTANDING COUNT MEANS SILENCE, not permission to ask more', asy
 function memoryDeps(over = {}) {
   const closed = [];
   const target = finding({
-    checkKey: 'board.truck_disagrees_with_profile', tier: 'approval',
-    evidence: { personId: 5, profileUnit: '310', boardTruck: '311' },
+    checkKey: 'identity.stale_unit_assignment', tier: 'approval',
+    evidence: { personId: 5, profileUnit: '310', recordedUnit: '311' },
   });
   const memory = {
     id: 3,
@@ -268,7 +268,7 @@ test('a memory for a DIFFERENT situation does not stop the question', async () =
   const deps = memoryDeps({
     knowledge: {
       findMemoriesFor: async () => [{
-        id: 3, checkKey: 'board.truck_disagrees_with_profile',
+        id: 3, checkKey: 'identity.stale_unit_assignment',
         subjectType: 'group', subjectId: '49',
         answerAction: 'dismiss', answerText: 'old answer',
         evidenceFingerprint: 'a'.repeat(32), revokedAt: null, expiresAt: null,

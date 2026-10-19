@@ -18,7 +18,7 @@ const OTHER = '-1009999999999';
 async function seeded(t) {
   const h = await createPgHarness(t, { extraDdl: ALL_MIGRATIONS });
   await h.query(`UPDATE home_time_settings SET completed_notify_group_id = $1, internal_clarification_group_id = $1 WHERE id = 1`, [OLD]);
-  await h.query(`UPDATE message_group_settings SET raise_results_group_id = $1, mileage_bonus_group_id = $2 WHERE id = 1`, [OLD, OTHER]);
+  await h.query(`UPDATE message_group_settings SET road_bonus_group_id = $1, mileage_bonus_group_id = $2 WHERE id = 1`, [OLD, OTHER]);
   await h.query(
     `UPDATE operational_notification_settings SET default_chat_id = $2,
        category_chat_ids = jsonb_build_object('fuel', $1::text, 'finance', $2::text) WHERE id = 1`,
@@ -45,7 +45,7 @@ test('every setting, the group row and the queued notices move to the new id —
 
     const ht = (await h.query('SELECT completed_notify_group_id AS a, internal_clarification_group_id AS b FROM home_time_settings')).rows[0];
     assert.deepEqual(ht, { a: NEW, b: NEW }, 'the managers\' chat — the production failure');
-    const mg = (await h.query('SELECT raise_results_group_id AS r, mileage_bonus_group_id AS m FROM message_group_settings')).rows[0];
+    const mg = (await h.query('SELECT road_bonus_group_id AS r, mileage_bonus_group_id AS m FROM message_group_settings')).rows[0];
     assert.deepEqual(mg, { r: NEW, m: OTHER }, 'a different chat is left alone');
     const ns = (await h.query('SELECT default_chat_id AS d, category_chat_ids AS c FROM operational_notification_settings')).rows[0];
     assert.equal(ns.d, OTHER);

@@ -19,7 +19,6 @@ const NAV_SECTIONS = [
     items: [
       { key: 'groups', icon: '👷', label: 'Groups' },
       { key: 'mileage_bonus', icon: '🏁', label: 'Mileage Bonuses' },
-      { key: 'raise_approval', icon: '💵', label: 'Driver Raises' },
     ],
   },
   {

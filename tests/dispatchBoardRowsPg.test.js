@@ -168,18 +168,6 @@ test('a row with no usable key is skipped rather than written as junk', {
   assert.deepEqual(await store.listBoardRows(), []);
 });
 
-test('the snapshot reader gives the checks what they need and no phone number', {
-  skip: skipWithoutPg(),
-}, async (t) => {
-  const { store } = await setup(t);
-  await store.upsertBoardRows(board([SMITH]));
-  const [row] = await store.getBoardRowsForSnapshot();
-  assert.equal(row.truckNorm, '001');
-  assert.equal(row.fleetType, 'company');
-  assert.equal(row.present, true);
-  assert.ok(!('phone' in row), 'a check has no use for it');
-});
-
 test('the summary groups by whatever status the board actually used', {
   skip: skipWithoutPg(),
 }, async (t) => {
@@ -244,8 +232,6 @@ test('two lines that reduce to one key are stored once and SAY so', {
   const rows = await store.listBoardRows();
   assert.equal(rows.length, 1, 'one key is one row — that is the defect being reported');
   assert.equal(rows[0].keyCollision, true, 'and the row must carry the fact');
-  const snapshot = await store.getBoardRowsForSnapshot();
-  assert.equal(snapshot[0].keyCollision, true, 'so the check can see it');
 });
 
 test('a pass that fails halfway leaves the snapshot exactly as it was', {
@@ -291,21 +277,4 @@ test('a pass that succeeds applies the upserts and the absences together', {
   const present = await store.listBoardRows({ presentOnly: true });
   assert.equal(present.length, 1);
   assert.equal(present[0].truckNorm, '001');
-});
-
-test('the sweep reads the board through the one reader, on the db it was given', {
-  skip: skipWithoutPg(),
-}, async (t) => {
-  const { h, store } = await setup(t);
-  await store.upsertBoardRows(board([SMITH]));
-
-  // The sweep's loader must go through `getBoardRowsForSnapshot` rather than
-  // repeat the column list: the two copies had already drifted once, and a
-  // column the checks rely on going missing is silent.
-  const { loadBoardSnapshot } = require('../services/operations/snapshot/loaders');
-  const rows = await loadBoardSnapshot({ query: h.query });
-  assert.equal(rows.length, 1);
-  assert.equal(rows[0].truckNorm, '001');
-  assert.equal(rows[0].keyCollision, false);
-  assert.ok(!('phone' in rows[0]), 'a check has no use for it');
 });

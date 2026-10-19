@@ -123,6 +123,8 @@ test('the API mounts no removed router, and still mounts the surviving ones', ()
     'sosRoutes', 'qbqRoutes', 'createQbqPageRoutes', 'mountFleet',
     // Route Control (October 2026).
     'createRouteControlRouter', 'createRouteScreenshotMediaRouter', 'getRouteMediaEditClient',
+    // Driver raises and the Dispatcher Board (October 2026).
+    'raisePublicRouter', 'createRaiseRouter', 'raiseRoutes',
   ]) {
     assert.ok(!api.includes(gone), `server/api.js must not mount ${gone}`);
   }
@@ -130,7 +132,7 @@ test('the API mounts no removed router, and still mounts the surviving ones', ()
     'createRemoteRoutes', 'createHealthRoutes', 'createLiveLocationsRouter',
     'createHomeTimeRouter', 'createFuelMonitorRouter',
     'createSettingsRouter', 'createRecruiterRouter', 'createQuestionsRoutes',
-    'createBroadcastRoutes', 'createMileageBonusRoutes', 'raisePublicRouter',
+    'createBroadcastRoutes', 'createMileageBonusRoutes',
     'createLeadsProxyRoutes',
   ]) {
     assert.ok(api.includes(kept), `server/api.js must still mount ${kept}`);
@@ -161,12 +163,13 @@ test('the admin SPA has no page, nav entry or API client for a removed feature',
   const sidebar = read('admin/src/components/AdminSidebar.jsx');
   for (const gone of ['TrailerTrackingPage', 'TrailerDepartmentShell', 'SosAdminPage',
     'SosQuestionsPage', 'SosAnswersPage', 'trailer_tracking', 'trailer_department', 'sos_admin',
-    'RouteControlPage', 'route_control']) {
+    'RouteControlPage', 'route_control', 'RaiseApprovalPage', 'RaisePublicPage', 'raise_approval',
+    'raise_public']) {
     assert.ok(!app.includes(gone), `App.jsx must not reference ${gone}`);
     assert.ok(!sidebar.includes(gone), `AdminSidebar.jsx must not reference ${gone}`);
   }
   for (const gone of ['api/trailerTracking', 'api/trailerDepartment', 'api/trailerAgreements', 'api/sos',
-    'api/routeControl']) {
+    'api/routeControl', 'api/raise']) {
     assert.ok(!read('admin/src/api.js').includes(gone), `the API façade must not re-export ${gone}`);
     assert.equal(exists(`admin/src/${gone}.js`), false, `admin/src/${gone}.js must stay removed`);
   }
@@ -183,6 +186,30 @@ test('Route Control stays removed: no handler, no monitor, no settings tab', () 
   }
   assert.ok(!read('bot/bot.js').includes('registerRouteControlHandlers'), 'the bot must not listen for route links');
   assert.ok(!read('services/backgroundServices.js').includes('startRouteControlService'), 'no route monitor runs');
+});
+
+test("the driver-raise review and the Dispatcher Board's identity checks stay removed", () => {
+  // Removed at the owner's request, October 2026: the company no longer raises
+  // rates. The Board itself STAYS, read only for Home Time's home-in/home-out;
+  // the checks, person links and panels built on it went.
+  for (const gone of [
+    'services/raiseApprovalService.js', 'services/raise', 'services/otpService.js',
+    'database/raiseApproval.js', 'database/raiseApproval', 'lib/raise',
+    'server/routes/raiseRoutes.js', 'admin/src/pages/RaiseApprovalPage.jsx',
+    'admin/src/pages/RaisePublicPage.jsx', 'admin/src/pages/raiseApproval',
+    'services/operations/checks/board.js', 'services/operations/checks/boardLink.js',
+    'services/operations/corrections/boardActions.js',
+  ]) {
+    assert.equal(exists(gone), false, `${gone} must stay removed`);
+  }
+  const roster = read('services/backgroundServices.js');
+  assert.ok(!roster.includes('startRaiseApproval'), 'the raise round must not be started');
+  // What Home Time still needs from the Board is still running.
+  for (const kept of ['startDispatchBoardPoller', 'startBoardPresenceWatch']) {
+    assert.ok(roster.includes(kept), `${kept} must still be started`);
+  }
+  // The page-level path is answered with 410, not served the admin shell.
+  assert.ok(read('server/routes/retiredRoutes.js').includes("'/raise'"), '/raise is a retired route');
 });
 
 test('the baseline schema creates no removed feature table, and still creates the shared ones', () => {
@@ -208,7 +235,7 @@ test('the whole index.js module graph loads with no application env', () => {
     'services/birthdayService.js', 'services/groupStatusAiService.js',
     'services/employeeBirthdayWishService.js', 'services/facebookWebhookService.js',
     'services/dispatchEtaUpdateService.js', 'services/mileageBonusService.js',
-    'services/datatruckDocumentService.js', 'services/raiseApprovalService.js',
+    'services/datatruckDocumentService.js',
     'services/fuelStopAlertService.js', 'services/recruiterCallSyncService.js',
     'services/ringCentralTokenRefreshService.js', 'services/roadBonusNotifierService.js',
     'services/homeTimeReminderService.js',

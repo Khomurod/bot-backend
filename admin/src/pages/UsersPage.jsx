@@ -18,7 +18,7 @@ const SOURCE_LABEL = {
 const FILTERS = [
   { key: "all", label: "All" },
   { key: "admins", label: "Admins" },
-  { key: "dispatch", label: "Dispatch team" },
+  { key: "dispatch", label: "Dispatchers" },
   { key: "drivers", label: "Drivers" },
   { key: "unknown", label: "Unknown" },
   { key: "recent", label: "Recently seen" },
@@ -58,7 +58,6 @@ export default function UsersPage() {
         || name.toLowerCase().includes(q)
         || String(u.telegram_user_id).includes(q)
         || (u.last_group_name || "").toLowerCase().includes(q)
-        || (u.linked_team_name || "").toLowerCase().includes(q)
       );
     });
   }, [users, search]);
@@ -69,8 +68,7 @@ export default function UsersPage() {
         <h2>👤 Users</h2>
         <p>
           Everyone the bot has seen: anyone who texts in a group the bot is in, plus users who tap
-          the bot's inline buttons. Keyed by a stable Telegram user ID and linked to a dispatch team
-          when their username or ID matches one. No message text is stored.
+          the bot's inline buttons. Keyed by a stable Telegram user ID. No message text is stored.
         </p>
       </div>
 
@@ -95,7 +93,7 @@ export default function UsersPage() {
       <div style={{ display: "flex", gap: "12px", alignItems: "center", marginBottom: "16px", flexWrap: "wrap" }}>
         <input
           type="text"
-          placeholder="Search by name, @username, user ID, group or team…"
+          placeholder="Search by name, @username, user ID or group…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           style={{ maxWidth: "340px" }}
@@ -125,7 +123,6 @@ export default function UsersPage() {
                 <th style={{ padding: "10px 12px" }}>Last seen group</th>
                 <th style={{ padding: "10px 12px" }}>Last seen</th>
                 <th style={{ padding: "10px 12px" }}>Messages</th>
-                <th style={{ padding: "10px 12px" }}>Dispatch team</th>
                 <th style={{ padding: "10px 12px" }}>Source</th>
               </tr>
             </thead>
@@ -140,7 +137,6 @@ export default function UsersPage() {
                     <td style={{ padding: "8px 12px" }}>{u.last_group_name || "—"}</td>
                     <td style={{ padding: "8px 12px" }}>{formatDateTime(u.last_interaction_at)}</td>
                     <td style={{ padding: "8px 12px" }}>{u.message_count ?? 0}</td>
-                    <td style={{ padding: "8px 12px" }}>{u.linked_team_name || "—"}</td>
                     <td style={{ padding: "8px 12px" }}>{SOURCE_LABEL[u.source] || u.source || "—"}</td>
                   </tr>
                 );

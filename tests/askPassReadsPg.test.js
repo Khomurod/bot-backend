@@ -22,7 +22,7 @@ const { fingerprintFor, memoryApplies } = require('../lib/control/fingerprint');
 
 const ALL_MIGRATIONS = allMigrationsSql();
 const STALE_UNIT = 'identity.stale_unit_assignment';
-const TRUCKS = 'board.truck_disagrees_with_profile';
+const TRUCKS = STALE_UNIT;
 
 async function setup(t, modules) {
   const h = await createPgHarness(t, { extraDdl: ALL_MIGRATIONS });
@@ -95,7 +95,7 @@ test('ONLY WHAT WAS ANSWERED, and only from the same first page the full read wo
   await addFinding(h, { subjectId: 'c', daysOld: 7 }); // first page, answer taken back
   await addFinding(h, { subjectId: 'd', daysOld: 1 }); // answered, but not on the first page
   await remember('a');
-  await remember('b', TRUCKS);
+  await remember('b', 'identity.telegram_link');
   await controlKnowledge.revokeMemory((await remember('c')).id);
   await remember('d');
   await remember('no-finding');
@@ -115,7 +115,7 @@ test('ONE READ OF MEMORIES finds what findMemory found, subject by subject — a
   const { controlKnowledge } = await setup(t, ['controlKnowledge']);
   const finding = {
     checkKey: TRUCKS, subjectType: 'group', subjectId: 49, status: 'open',
-    evidence: { profileUnit: '310', boardTruck: '311' },
+    evidence: { profileUnit: '310', recordedUnit: '311' },
   };
   const answer = (subjectId, patch = {}) => controlKnowledge.rememberAnswer({
     checkKey: TRUCKS, subjectType: 'group', subjectId, answerAction: 'dismiss',
@@ -180,7 +180,7 @@ test('A TICK THAT CANNOT ASK still closes the answered finding on the real schem
   skip: skipWithoutPg(),
 }, async (t) => {
   const { h, ...loaded } = await setup(t, LAYER);
-  const evidence = { profileUnit: '310', boardTruck: '311' };
+  const evidence = { profileUnit: '310', recordedUnit: '311' };
   const answeredId = await addFinding(h, { checkKey: TRUCKS, subjectId: '49', tier: 'approval', evidence });
   const otherId = await addFinding(h, { checkKey: TRUCKS, subjectId: '50', tier: 'approval', evidence });
   await loaded.controlKnowledge.rememberAnswer({

@@ -118,30 +118,3 @@ test('a request can be closed, and closing it is not evidence about anybody', as
   assert.equal(counted.rows[0].n, 0);
   assert.equal(await homeTimeExpiry.closeOutdatedHomeTimeRequest(req), null, 'closing twice is a no-op');
 });
-
-test('the board snapshot remembers when the STATUS changed, not when an ETA was retyped', async (t) => {
-  if (skipWithoutPg(t)) return;
-  const { h } = await setup(t);
-  const { dispatchBoard } = h.loadDataLayer(['dispatchBoard']);
-  const row = {
-    rowKey: '310|JOHN SMITH', driverNameRaw: 'JOHN SMITH (COMPANY DRIVER)', cleanName: 'JOHN SMITH',
-    fleetType: 'company', truckNorm: '310', truckDigits: '310', status: 'HOME',
-  };
-  await dispatchBoard.upsertBoardRows([row]);
-  const first = (await h.query("SELECT status_changed_at, last_changed_at FROM dispatch_board_rows WHERE row_key = $1", [row.rowKey])).rows[0];
-  assert.ok(first.status_changed_at);
-
-  // An ETA edit moves last_changed_at and must NOT restart the home-time
-  // confirmation window.
-  await dispatchBoard.upsertBoardRows([{ ...row, etaText: 'Tue 14:00' }]);
-  const afterEta = (await h.query("SELECT status_changed_at, last_changed_at FROM dispatch_board_rows WHERE row_key = $1", [row.rowKey])).rows[0];
-  assert.equal(afterEta.status_changed_at.getTime(), first.status_changed_at.getTime(),
-    'an ETA edit must not restart the confirmation window');
-  assert.ok(afterEta.last_changed_at.getTime() > first.last_changed_at.getTime(),
-    'the ETA edit is still a real change to the row');
-
-  await dispatchBoard.upsertBoardRows([{ ...row, etaText: 'Tue 14:00', status: 'READY' }]);
-  const afterStatus = (await h.query("SELECT status_changed_at FROM dispatch_board_rows WHERE row_key = $1", [row.rowKey])).rows[0];
-  assert.ok(afterStatus.status_changed_at.getTime() > first.status_changed_at.getTime(),
-    'a status change DOES restart it');
-});

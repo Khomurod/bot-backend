@@ -183,8 +183,8 @@ test('PAST THE DAILY LIMIT: two counts, the settings and one look for answered q
 });
 
 test('A TICK THAT CANNOT ASK still closes what the owner already answered — reading only that', async () => {
-  const answered = findingRow({ id: 11, check_key: 'board.truck_disagrees_with_profile', tier: 'approval',
-    evidence_json: { personId: 5, profileUnit: '310', boardTruck: '311' } });
+  const answered = findingRow({ id: 11, check_key: 'identity.stale_unit_assignment', tier: 'approval',
+    evidence_json: { personId: 5, profileUnit: '310', recordedUnit: '311' } });
   setWorld({
     outstanding: 5,
     findings: [answered, findingRow({ id: 12, subject_id: '50' })],
@@ -208,7 +208,7 @@ test('A FULL TICK reads no whole rows of findings, decisions or memories', async
   });
   const truck = findingRow({ id: 22 });
   setWorld({
-    findings: [bonus, truck, findingRow({ id: 23, check_key: 'board.truck_disagrees_with_profile', subject_id: '52' })],
+    findings: [bonus, truck, findingRow({ id: 23, check_key: 'identity.stale_unit_assignment', subject_id: '52' })],
     // A memory about a DIFFERENT situation: it is read, it does not apply.
     memories: [memoryRow(truck, { evidence_fingerprint: 'a'.repeat(32) })],
     holds: [{ check_key: 'home_time.road_bonus_review', subject_type: 'road_history', subject_id: '7', verdict: 'hold', reason: 'confidence 60 below the floor of 70' }],

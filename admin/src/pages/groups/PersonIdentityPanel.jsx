@@ -121,29 +121,6 @@ export default function PersonIdentityPanel({ personId }) {
               </ul>
             </div>
           )}
-          {person.board?.length > 0 && (
-            <div>
-              <span style={{ color: "var(--text-muted)" }}>Dispatcher board:</span>
-              <ul style={{ margin: "4px 0 0 16px", padding: 0 }}>
-                {person.board.map((b) => (
-                  <li key={b.rowKey}>
-                    Truck <code>{b.truck || "—"}</code>
-                    {b.trailer ? <> · trailer <code>{b.trailer}</code></> : null}
-                    {b.status ? ` · ${b.status}` : ""}
-                    {!b.present && " · no longer on the board"}
-                    {b.etaText ? (
-                      <div style={{ color: "var(--text-muted)" }}>{b.etaText}</div>
-                    ) : null}
-                    <div style={{ color: "var(--text-muted)" }}>
-                      {b.dispatcher ? `Dispatcher ${b.dispatcher} · ` : ""}
-                      linked {b.linkSource === "board" ? "automatically" : "by hand"}
-                      {b.linkConfidence != null ? ` (${b.linkConfidence}%)` : ""}
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
           <div>
             <span style={{ color: "var(--text-muted)" }}>Trucks:</span>
             {person.units.length === 0 ? (

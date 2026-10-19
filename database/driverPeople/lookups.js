@@ -15,7 +15,7 @@ const { query } = require('../pool');
 /** Group-keyed tables that carry a `person_id` (migration 0026). */
 const GROUP_KEYED_TABLES = [
   'driver_road_history', 'driver_home_status', 'home_time_requests',
-  'fuel_stop_alerts', 'dispatch_team_drivers',
+  'fuel_stop_alerts',
 ];
 
 /**
@@ -203,7 +203,7 @@ async function stampAllFromAssociations(client = null) {
 async function getPersonIdentity(personId) {
   const person = await query('SELECT * FROM driver_people WHERE id = $1', [personId]);
   if (!person.rows[0]) return null;
-  const [groups, units, mergedFrom, boardRows, telegramRows] = await Promise.all([
+  const [groups, units, mergedFrom, telegramRows] = await Promise.all([
     query(
       `SELECT pg.id, pg.group_id, pg.started_at, pg.ended_at, pg.association_source, pg.confidence,
               g.group_name, g.active AS group_active, g.telegram_group_id
@@ -220,21 +220,8 @@ async function getPersonIdentity(personId) {
       [personId]
     ),
     query('SELECT id, display_name FROM driver_people WHERE merged_into_person_id = $1 ORDER BY id', [personId]),
-    // WHAT THE BOARD SAYS ABOUT THIS PERSON TODAY. Not authoritative about who
-    // they are — that is this table's job — but it is the one place an
-    // administrator can see the two systems side by side and notice they
-    // disagree. Wrapped: a deploy that has not applied 0046 yet must not take
-    // the person panel down with it.
-    query(
-      `SELECT row_key, truck_norm, board_trailer, status, eta_text, dispatcher,
-              link_source, link_confidence, present, last_seen_at
-         FROM dispatch_board_rows WHERE person_id = $1
-        ORDER BY present DESC, last_seen_at DESC`,
-      [personId]
-    ).catch(() => ({ rows: [] })),
-    // Which Telegram accounts this person has held. Wrapped for the same
-    // reason the board read above is: a deploy that has not applied 0049 must
-    // not take the person panel down.
+    // Which Telegram accounts this person has held. Wrapped: a deploy that has
+    // not applied 0049 must not take the person panel down.
     query(
       `SELECT telegram_user_id, username_at_link, link_source, confidence,
               started_at, ended_at, ended_reason
@@ -275,9 +262,6 @@ async function getPersonIdentity(personId) {
       endedAt: r.ended_at,
       source: r.source,
     })),
-    // NO PHONE NUMBER. The board row carries one and this panel has no use for
-    // it; publishing it here would put a driver's number on a screen that
-    // exists to answer "is this the right person".
     // THE ACCOUNT ID IS SHOWN. This panel exists to answer "is this the right
     // person", an administrator is already authenticated to see it, and the id
     // is what they check against Telegram. It never leaves through /api/health
@@ -290,18 +274,6 @@ async function getPersonIdentity(personId) {
       startedAt: r.started_at,
       endedAt: r.ended_at,
       endedReason: r.ended_reason || null,
-    })),
-    board: boardRows.rows.map((r) => ({
-      rowKey: r.row_key,
-      truck: r.truck_norm,
-      trailer: r.board_trailer,
-      status: r.status,
-      etaText: r.eta_text,
-      dispatcher: r.dispatcher,
-      linkSource: r.link_source,
-      linkConfidence: r.link_confidence,
-      present: r.present === true,
-      lastSeenAt: r.last_seen_at,
     })),
   };
 }
@@ -319,14 +291,6 @@ async function summariseIdentityCoverage() {
        (SELECT COUNT(*) FROM home_time_requests WHERE person_id IS NULL) AS unstamped_requests,
        (SELECT COUNT(*) FROM mileage_bonus_progress WHERE person_id IS NULL) AS unstamped_mileage`
   );
-  // THE BOARD'S OWN COVERAGE, asked separately and allowed to fail. Folding it
-  // into the query above would mean a deploy that has not applied 0046 takes
-  // the whole Identity tab down over a table it does not need.
-  const board = await query(
-    `SELECT COUNT(*)::int AS present,
-            COUNT(*) FILTER (WHERE person_id IS NOT NULL)::int AS linked
-       FROM dispatch_board_rows WHERE present = TRUE`
-  ).catch(() => ({ rows: [] }));
   const row = res.rows[0] || {};
   const n = (v) => Number(v) || 0;
   return {
@@ -339,13 +303,6 @@ async function summariseIdentityCoverage() {
       requests: n(row.unstamped_requests),
       mileage: n(row.unstamped_mileage),
     },
-    // How much of today's board Wenze can put a name to. `present` minus
-    // `linked` is what is still waiting on a decision — and on a board with
-    // team pairs it is never expected to reach zero, since the second member of
-    // a team row is decided separately.
-    board: board.rows[0]
-      ? { present: n(board.rows[0].present), linked: n(board.rows[0].linked) }
-      : null,
   };
 }
 

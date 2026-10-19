@@ -3,9 +3,8 @@
  *
  * This is the scenario the Phase 3 brief asked to be proven rather than
  * described: a driver is seen, goes on the road, comes home, changes truck (and
- * therefore chat), goes back out; their old truck gets a new driver; Raise finds
- * them by a truck they no longer drive; the watchdog places a quiet driver by
- * itself once allowed; and a restart changes nothing. Every step goes through
+ * therefore chat), goes back out; their old truck gets a new driver; the
+ * watchdog places a quiet driver by itself once allowed; and a restart changes nothing. Every step goes through
  * the real modules bound to a throwaway database — no stubs below the service
  * layer.
  */
@@ -20,7 +19,7 @@ const ALL_MIGRATIONS = allMigrationsSql();
 const SERVICE_PATHS = [
   '../services/identity/personResolver', '../services/identity/personBackfillService',
   '../services/homeTimeService', '../services/roadBonusNotifierService', '../services/roadBonusPoster',
-  '../services/driverGroupDirectoryService', '../services/raise/teamRoster',
+  '../services/driverGroupDirectoryService',
   '../services/operations/consistencyService', '../services/operations/corrections/actions',
   '../services/operations/corrections/identityActions', '../services/operations/corrections/homeTimeActions',
   '../services/operations/corrections/alertActions', '../services/operations/corrections/apply',
@@ -40,14 +39,13 @@ function bind(harness) {
     const profiles = require('../database/driverProfiles');
     const resolver = require('../services/identity/personResolver');
     const homeTime = require('../services/homeTimeService');
-    const roster = require('../services/raise/teamRoster');
     const autoApply = require('../services/operations/corrections/autoApply');
     const { runConsistencySweep } = require('../services/operations/consistencyService');
     resolver.resetResolverCache();
     // What index.js wires at boot.
     profiles.setProfileSavedHook(resolver.onProfileSaved);
     return {
-      ht, profiles, resolver, homeTime, roster, store,
+      ht, profiles, resolver, homeTime, store,
       sweep: () => runConsistencySweep({ db, store }),
       autoApply: (o = {}) => autoApply.runAutoCorrections({ ...o, db, store }),
     };
@@ -136,16 +134,7 @@ test('a driver is seen, works, comes home, changes truck, goes back out — one 
   const { findings } = await bound.sweep();
   assert.ok(findings.some((f) => f.checkKey === 'identity.unit_contested' && f.subjectId === d.group.id), 'the contest is a finding for a person');
 
-  // ── 6. Raise finds the driver by a truck they no longer drive ──────────────
-  const found = await roster.listAssignableDrivers({ companyOnly: true, includeInactive: false, search: '320' });
-  const names = found.map((r) => r.driver_name).sort();
-  assert.deepEqual(names, ['RUSLAN ABDULLAEV', 'STARKS DAYMON'], 'the current holder AND the driver who moved on');
-  const ruslan = found.find((r) => r.driver_name === 'RUSLAN ABDULLAEV');
-  assert.equal(ruslan.person_id, personId);
-  assert.equal(ruslan.unit_number, '322');
-  assert.equal(ruslan.person_unit_history, '320 322');
-
-  // ── 7. A quiet driver is placed by the watchdog once allowed ───────────────
+  // ── 6. A quiet driver is placed by the watchdog once allowed ───────────────
   const quiet = await harness.query(
     `INSERT INTO groups (telegram_group_id, group_name, group_type, active) VALUES (-99, 'WENZE UNIT # 12 QUIET DRIVER', 'driver', TRUE) RETURNING id`
   );
@@ -164,7 +153,7 @@ test('a driver is seen, works, comes home, changes truck, goes back out — one 
   const audit = await harness.query(`SELECT COUNT(*)::int AS n FROM admin_audit_log`);
   assert.ok(audit.rows[0].n >= 1, 'and the audit log says so');
 
-  // ── 8. Restart: nothing is lost, nothing is repeated ───────────────────────
+  // ── 7. Restart: nothing is lost, nothing is repeated ───────────────────────
   assert.equal((await ht.ensureOpenStayIndex()).status, 'created', 'boot creates the index once the data obeys it');
   await harness.query(ALL_MIGRATIONS); // the next boot re-applies every migration
   assert.equal((await ht.ensureOpenStayIndex()).status, 'present');

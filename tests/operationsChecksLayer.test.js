@@ -18,8 +18,8 @@ const snapshotOf = (over = {}) => {
   const groups = over.groups || [];
   return {
     groups, groupsById: new Map(groups.map((g) => [g.id, g])),
-    profiles: [], people: [], personGroups: [], units: [], boardRows: [],
-    fuelAlerts: [], teamDrivers: [], mileageProgress: [],
+    profiles: [], people: [], personGroups: [], units: [],
+    fuelAlerts: [], mileageProgress: [],
     ...over,
   };
 };
@@ -99,8 +99,7 @@ test('every person-layer check runs over one snapshot and declares its keys', ()
   // A TRIPWIRE, not bookkeeping: `resolveClearedFindings` only clears keys this
   // list declares, so a check that files under an undeclared key leaves rows
   // open for ever. Adding a check means adding it here on purpose.
-  assert.equal(layer.CHECK_KEYS.length, 5);
-  assert.ok(layer.CHECK_KEYS.includes('board.truck_disagrees_with_profile'));
+  assert.equal(layer.CHECK_KEYS.length, 4);
 });
 
 // ─── the systems around it ───────────────────────────────────────────────────
@@ -135,22 +134,6 @@ test('a fuel watch on an inactive or missing chat is reported; on an active chat
   assert.deepEqual(systems.checkFuelWatchOnInactiveGroup(snapshot).map((f) => f.subjectId), [2, 3]);
 });
 
-test("a team seat on the chat a driver left proposes the driver's current chat — and only when there is one", () => {
-  const findings = systems.checkTeamDriverOnInactiveGroup(snapshotOf({
-    groups: [group(49, 'OLD', { active: false }), group(541877, 'NEW'), group(8, 'GONE', { active: false })],
-    personGroups: [{ person_id: 7, group_id: 541877 }],
-    teamDrivers: [
-      { id: 1, team_id: 3, group_id: 49, person_id: 7, driver_name: 'RUSLAN ABDULLAEV', active: true },
-      { id: 2, team_id: 3, group_id: 8, person_id: 9, driver_name: 'LEFT', active: true },
-      { id: 3, team_id: 3, group_id: 541877, person_id: 7, driver_name: 'FINE', active: true },
-    ],
-  }));
-  assert.equal(findings.length, 1);
-  assert.equal(findings[0].subjectId, 1);
-  assert.equal(findings[0].tier, 'approval', 'which team a driver sits on is a decision');
-  assert.deepEqual(findings[0].proposedChange, { table: 'dispatch_team_drivers', id: 1, field: 'group_id', from: 49, to: 541877 });
-});
-
 test('mileage rows without a person are ONE finding, not one per driver', () => {
   const findings = systems.checkMileageWithoutPerson(snapshotOf({
     mileageProgress: [{ id: 1, driver_normalized_name: 'OMAR ALAWAD', person_id: null },
@@ -167,7 +150,7 @@ test('every system check runs over one snapshot and declares its keys', () => {
   // stands down when there is no row to read (a deploy in progress is not a
   // misconfiguration), so a healthy fleet still files nothing.
   assert.deepEqual(systems.runSystemChecks(snapshotOf()), []);
-  assert.equal(systems.CHECK_KEYS.length, 7);
+  assert.equal(systems.CHECK_KEYS.length, 5);
   // Every key a check can emit must be declared, or `resolveClearedFindings`
   // will not clear it when the condition goes away.
   const emitted = new Set(
@@ -278,7 +261,7 @@ test('a stale assignment is not blocked by a holder in another fleet', () => {
   assert.equal(found[0].proposedChange.to, '002');
 });
 
-// ─── the dispatcher board as a second opinion on the truck ───────────────────
+// ─── the stale-unit sync, with the Dispatcher Board gone ─────────────────────
 
 const STALE = {
   groups: [{ id: 1, group_name: 'WENZE UNIT # 322 RUSLAN (COMPANY DRIVER)', group_type: 'driver', active: true }],
@@ -287,62 +270,22 @@ const STALE = {
   units: [{ person_id: 10, unit_number: '320', fleet_type: 'company', seat: 1 }],
 };
 
-function boardRow(over = {}) {
-  return {
-    rowKey: '322|RUSLAN', present: true, personId: 10, truckNorm: '322',
-    lastSeenAt: '2026-09-12T10:00:00Z', ...over,
-  };
-}
-
-test('with no board at all, the stale-unit sync is unchanged', () => {
+test('the stale-unit sync stands on the profile alone', () => {
+  // The board used to lift or veto this. It was removed in October 2026, and a
+  // snapshot that still carries board rows must not change the answer.
   const [found] = layer.checkStaleUnitAssignment(snapshotOf(STALE));
   assert.equal(found.checkKey, 'identity.stale_unit_assignment');
-  assert.equal(found.confidence, 90);
-  assert.equal(found.evidence.boardAgrees, false);
-});
-
-test('the board agreeing is corroboration — a small lift, not a different answer', () => {
-  const [found] = layer.checkStaleUnitAssignment(snapshotOf({ ...STALE, boardRows: [boardRow()] }));
-  assert.equal(found.checkKey, 'identity.stale_unit_assignment');
   assert.equal(found.tier, 'auto');
-  assert.equal(found.confidence, 95);
-  assert.equal(found.evidence.boardAgrees, true);
-  assert.equal(found.evidence.boardTruck, '322');
-});
-
-test('THE BOARD DISAGREEING SUPPRESSES THE AUTOMATIC SYNC AND ASKS INSTEAD', () => {
-  // Letting the auto finding stand would have Wenze quietly sync to the profile
-  // while the board said something else.
-  const found = layer.checkStaleUnitAssignment(snapshotOf({
-    ...STALE, boardRows: [boardRow({ truckNorm: '415' })],
-  }));
-  assert.deepEqual(keysOf(found), ['board.truck_disagrees_with_profile']);
-  assert.equal(found[0].tier, 'approval');
-  assert.equal(found[0].proposedChange, null, 'neither source is evidence about the other');
-  assert.equal(found[0].evidence.profileUnit, '322');
-  assert.equal(found[0].evidence.boardTruck, '415');
-});
-
-test('a board row that is no longer present is not an opinion', () => {
-  const [found] = layer.checkStaleUnitAssignment(snapshotOf({
-    ...STALE, boardRows: [boardRow({ truckNorm: '415', present: false })],
-  }));
-  assert.equal(found.checkKey, 'identity.stale_unit_assignment');
-  assert.equal(found.evidence.boardAgrees, false);
-});
-
-test('a board row belonging to somebody else says nothing about this driver', () => {
-  const [found] = layer.checkStaleUnitAssignment(snapshotOf({
-    ...STALE, boardRows: [boardRow({ truckNorm: '415', personId: 99 })],
-  }));
-  assert.equal(found.checkKey, 'identity.stale_unit_assignment');
   assert.equal(found.confidence, 90);
+  const [withRows] = layer.checkStaleUnitAssignment(snapshotOf({
+    ...STALE, boardRows: [{ rowKey: '322|RUSLAN', present: true, personId: 10, truckNorm: '415' }],
+  }));
+  assert.deepEqual(withRows, found);
 });
 
-test('an unlinked board row says nothing either', () => {
-  const [found] = layer.checkStaleUnitAssignment(snapshotOf({
-    ...STALE, boardRows: [boardRow({ truckNorm: '415', personId: null })],
-  }));
-  assert.equal(found.checkKey, 'identity.stale_unit_assignment');
-  assert.equal(found.confidence, 90);
+test('the layer no longer declares a board key — retired.js owns its resolution', () => {
+  assert.equal(layer.CHECK_KEYS.some((k) => k.startsWith('board.')), false);
+  const retired = require('../services/operations/checks/retired');
+  assert.ok(retired.CHECK_KEYS.includes('board.truck_disagrees_with_profile'));
+  assert.deepEqual(retired.runRetiredChecks(), []);
 });
