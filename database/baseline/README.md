@@ -68,7 +68,7 @@ migrations has shipped everywhere.
 | 010 | `dispatch_teams` | dispatch_teams(+drivers/members) — retired, read by nothing |
 | 011 | `raise_approval` | raise_settings/rounds/submissions/picks/otp — retired, read by nothing |
 | 012 | `home_time` | home_time_settings, driver_home_status, driver_road_history, home_time_requests |
-| 013 | `bot_access_and_datatruck_docs` | bot_access_settings, datatruck_document_deliveries |
+| 013 | `bot_access_and_datatruck_docs` | bot_access_settings, datatruck_document_deliveries (retired, read by nothing) |
 | 014 | `fuel_monitoring` | fuel_stop_alerts, fuel_monitor_inbox |
 | 015 | `driver_location` | driver_location_monitors, driver_location_checkins |
 | 016 | `bot_users_and_reactions` | bot_users, auto_reaction_rules |
@@ -76,7 +76,7 @@ migrations has shipped everywhere.
 | 018 | `ringcentral` | ringcentral_settings, recruiters, ringcentral_calls |
 | 019 | `gmaps_and_route_control` | gmaps_settings, route_assignments(+attachments), route_monitor_events, duplicate_unit_reports |
 | 020 | `safety_events` | safety_event_music_assets, safety_event_video_settings/jobs |
-| 021 | `bol_pod_forwarding` | bol_pod_forwarding_settings |
+| 021 | `bol_pod_forwarding` | bol_pod_forwarding_settings — retired, read by nothing |
 | 022 | `rbac_and_admin_users` | permissions, roles, admin_user_roles, role_permissions, admin_audit_log, the `admins` lifecycle columns |
 
 > Segments 021-025 used to be the Trailer Department and Trailer Tracking. That
@@ -94,3 +94,9 @@ migrations has shipped everywhere.
 > runs those after the baseline. Dropping them is a separate step with a backup —
 > see `docs/architecture/retired-driver-raise.md` and
 > `docs/architecture/retired-route-control.md`.
+
+> BOL/POD forwarding was removed in October 2026. `datatruck_document_deliveries`
+> (013) and `bol_pod_forwarding_settings` (021) are still created and read by
+> nothing; the removal touched no schema, and taking them out of the baseline
+> belongs with the backed-up step that drops them — see
+> `docs/architecture/retired-bol-pod.md`.

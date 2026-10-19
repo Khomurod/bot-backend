@@ -16,17 +16,18 @@ repository-wide working rules. The highest-consequence items:
 
 1. **Media goes to Telegram by URL, not as bytes from this process.** Direct
    multipart uploads from the host repeatedly stalled in production (Route
-   Control's screenshots, removed October 2026, were the first case).
-   BOL/POD forwarding follows the rule for that reason plus bandwidth:
-   `datatruckDocumentService` passes the Datatruck URL to `Input.fromURL(url)`,
-   which in Telegraf 4.x is *literally* `url.toString()` — a plain string form
-   field, so **Telegram's servers** fetch the file and the bytes never enter this
+   Control's screenshots, removed October 2026, were the first case). BOL/POD
+   forwarding, also removed in October 2026
+   (`docs/architecture/retired-bol-pod.md`), followed the rule for that reason
+   plus bandwidth, and is where the trap was learned: `Input.fromURL(url)` in
+   Telegraf 4.x is *literally* `url.toString()` — a plain string form field, so
+   **Telegram's servers** fetch the file and the bytes never enter this
    process. `Input.fromURLStream(url, filename)` is the near-identical-looking
-   trap: it returns `{url, filename}`, which makes Telegraf fetch the file itself
-   and pipe it through Render. Never swap it in. The download-and-upload fallback
-   (over Telegram's ~20MB URL limit, expired presigned links, URLs needing the
-   Datatruck token) must stay — delivery reliability wins there.
-   Guarded by `tests/bolPodDirectFetch.test.js`.
+   trap: it returns `{url, filename}`, which makes Telegraf fetch the file
+   itself and pipe it through this process. Whatever next sends a third-party
+   file to Telegram should use the first, keep a download-and-upload fallback
+   only for what Telegram cannot fetch (over its ~20MB URL limit, expired
+   links), and add a test; the old guard went with forwarding.
 2. **AI transcript fencing** stays (§6).
 3. **IPv4 Telegram agent** stays (§2).
 4. **The webhook raw-body proxy must stay mounted before `express.json()`** or

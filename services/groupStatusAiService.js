@@ -56,8 +56,7 @@ async function runClassificationRun() {
     }
 
     // A DEACTIVATION NEEDS MORE THAN A TITLE. Marking a working driver inactive
-    // takes them out of Live Locations, document routing, the dispatch roster
-    // and home-time tracking — and a renamed chat or an unfamiliar spelling is
+    // takes them out of Live Locations, broadcasts and home-time tracking — and a renamed chat or an unfamiliar spelling is
     // enough to cause it. Turning a driver back ON is never blocked.
     if (nextActive === false) {
       const guard = mayDeactivate({

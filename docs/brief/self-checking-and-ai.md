@@ -234,7 +234,7 @@ feature it belongs to.
   stopped.
 - **A model reading a chat title can no longer deactivate a working driver.**
   `groups.active` is written from that title twice a day for most of the fleet,
-  and an inactive group drops out of Live Locations, document routing and
+  and an inactive group drops out of Live Locations, broadcasts and
   home-time tracking. A deactivation is now refused when the
   records show the driver working — a recent message, home-time tracking having
   seen them, an open cycle, a recent road leg, a truck assigned

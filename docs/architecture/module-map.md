@@ -125,13 +125,13 @@ organization should converge toward.
 |---|---|
 | Feedback surveys (multilingual) | `bot/anonymousFeedbackHandlers.js`, questions/options/responses in `database/db.js`, `services/translationService.js`, admin `pages/communications/SurveysTab.jsx` |
 | Broadcasts & scheduled messages | `services/schedulerService.js`, `scheduledMessageUtils.js`, `broadcastTargetService.js`, `broadcastTemplateService.js`, `bot/creatorMessageManager.js`, admin `pages/communications/{SendMessageTab,ScheduledTab,EditByLinkTab}.jsx` (+ `communications/broadcast/*`) |
-| BOL/POD document delivery (idempotent) | `services/datatruckDocumentService.js` (which document goes where), `datatruckDocumentSender.js` (how one file reaches a group — Telegram fetches the URL; the bytes are relayed only as a fallback), `datatruckDocumentHelpers.js`, `database/datatruckDocuments.js` (`datatruck_document_deliveries`) |
 | Fuel-stop reminders | `services/fuelStopAlertService.js`, `server/routes/fuelMonitorRoutes.js`, `fuel_stop_alerts` + `fuel_monitor_inbox`, admin `FuelMonitorPage.jsx` |
 | Home-time tracking | `services/homeTimeService.js`, `homeTimeRequestService.js`, `homeTimeImportService.js`, `homeTimeConstants.js`, `bot/homeTimeRequestHandlers.js`, `server/routes/homeTimeRoutes.js`, `database/homeTime.js`, admin `HomeTimePage.jsx` |
 | Birthdays (driver + employee) | `services/birthdayService.js`, `employeeBirthdayWishService.js`, `employeeBirthdayMessage.js`, `utils/birthdaySort.js`, `birthdays.csv`, `scripts/import-birthdays.js`, admin `CompanyBirthdaysPage.jsx` |
 | Group auto-registration & status | `database/groups.js` (`upsertGroup` / `reactivateGroupOnBotJoin` / `deactivateGroup`, re-exported by `database/db.js`), `database/groupRowCache.js` (the message path's 5-minute copy of a `groups` row — every `groups` write clears it), `bot/handlers/captureWriteMemo.js` (identity writes that would change nothing are not re-sent), `services/groupStatusAiService.js`, `groupStatusAiClassifier.js`, `driverGroupAiSyncService.js`, `driverGroupDirectoryService.js`, `driverProfileParse.js`, `driverProfileAiParser.js` |
 | Location check-ins | `services/driverLocationMonitorService.js`, `bot/locationCheckinHandlers.js`, `server/routes/locationMonitorRoutes.js`, `database/driverLocationMonitors.js`, admin `LocationMonitorPage.jsx` |
 | Central bot wiring & helpers | `bot/bot.js`, `services/recentMessageBuffer.js`, `telegramMention.js`, `telegramHtml.js`, `telegramUrl.js` |
+| **Retired** | BOL/POD document forwarding from Datatruck (October 2026): the `datatruck_documents` worker, Settings → BOL / POD and `/api/settings/bol-pod*`. Tables `bol_pod_forwarding_settings` and `datatruck_document_deliveries` remain, unread; `services/datatruckApiService.js` stays for its other users. `docs/architecture/retired-bol-pod.md` |
 
 > **Driver of the Week voting — REMOVED.** The employee "Driver of the Week"
 > voting feature was retired. Its code (bot handlers, API routes, DB helper,
@@ -230,7 +230,7 @@ reads the text out.
 |---|---|
 | DB pool/connection | `database/pool.js` is the **single** place the `pg.Pool` is created (`max=5`, idle connections kept 10 minutes with TCP keepalive — a reconnect through the hosted pooler is metered egress — SSL auto-detect, `query()`, `ping()`); per-feature `database/*.js` modules require it directly so the module graph stays acyclic. Being the single query boundary, it also does two things for every query: feeds the transfer meter (below) and tags an infrastructure failure with `dbFailure` so a route can name the cause. Neither can fail a query, and the error object is rethrown unchanged (`err.code` stays the SQLSTATE). `database/db.js` re-exports pool/query/ping for the legacy `require('./db')` seam and owns `initializeDatabase()` (baseline `schema.sql`, then forward migrations via `database/migrate/`). |
 | Migration system | `database/migrate/` (runner + `schema_migrations` ledger), `database/baseline/*.sql` (baseline segments → generated `schema.sql`), `database/migrations/*.sql` (versioned run-once). See `docs/database/migration-notes.md`. |
-| Per-feature DB helpers | 51 focused modules under `database/` (one per table family, each requiring `pool.js` directly) — e.g. `database/botUsers.js`, `mileageBonus.js`, `homeTime.js`, `eldSettings.js`, `datatruckDocuments.js`, `driverLocationMonitors.js`, `ringcentral.js` |
+| Per-feature DB helpers | Focused modules under `database/` (one per table family, each requiring `pool.js` directly) — e.g. `database/botUsers.js`, `mileageBonus.js`, `homeTime.js`, `eldSettings.js`, `driverLocationMonitors.js`, `ringcentral.js` |
 | External API clients | Telegram (`bot/bot.js`), RingCentral (`services/ringCentralSmsService.js`, `ringCentralCallService.js`, `leads-bot/sms.py`, `leads-bot/rc_inbound_subscription.py`), Bitrix24 (`services/bitrix24Service.js`), Samsara GPS (`services/samsaraLocationService.js`), Drive HoS/Factor/Leader ELD (`services/driveHosEldService.js`), Datatruck (`services/datatruckApiService.js`, `datatruckLoadService.js`), Meta Graph (`services/facebookGraphService.js`, `leads-bot/graph.py`), Groq/Gemini clients |
 | **Idempotency ledger** — sent-message registry | `services/botSentMessageRegistry.js` (monkey-patches `telegram.callApi` → records every send/edit/copy/forward into `bot_sent_messages`). Comment: *"Never turn a successful Telegram send into a retry and duplicate."* |
 | Retry / backoff / circuit breaker | `index.js` (child restart backoff + `isCircuitBroken`), `services/liveLocationResolver.js` (`withTransientRetries`), `services/ai/router.js` + `lib/ai/{classify,cooldown}.js` (AI retry-after, failure classification and per-provider cooldown), safe-send wrapper in `bot/bot.js` |
@@ -257,7 +257,7 @@ repository exceeds 500 lines (`npm run lint:filesize`, no baseline).
 | `database/homeTime.js` | `database/homeTime/{settings,driverState,roadHistory,requests}.js` |
 | `database/facebookLeads.js` | `database/facebookLeads/{connectSessions,pageConnections,webhookEvents,autoMessages,recruiterMessages,smsMirrors}.js` |
 | `database/ringcentral.js` | `database/ringcentral/{kpiMath,secrets,leaderboardCache,settings,recruiters,recruiterRosters,calls,kpiQueries,connectSessions}.js` — **explicit key list**, so the package's internal helpers (and the leaderboard cache's read-through and invalidation) stay private |
-| `server/routes/settingsRoutes.js` | `server/routes/settings/{eld,ringcentral,messageGroup,samsara,safetyEvent,bolPod,bitrix,retiredLeftovers}Routes.js` |
+| `server/routes/settingsRoutes.js` | `server/routes/settings/{eld,ringcentral,messageGroup,samsara,safetyEvent,bitrix,retiredLeftovers}Routes.js` |
 | `server/routes/homeTimeRoutes.js` | `server/routes/homeTime/{rowShaping,tracker,import,settings,groupAccess}Routes.js` — registration ORDER is load-bearing |
 | `server/routes/facebookConnectRoutes.js` | `server/routes/facebookConnect/{connectPages,internal,oauth,inspection}Routes.js` — one guard per file, three different auth models |
 | `server/services/dispatchParserService.js` | `server/services/dispatchParser/{constants,textExtraction}.js` — was 9 modules; the seven that read a rate confirmation with a model went with the Dispatch Center |
@@ -286,7 +286,6 @@ over `admin/src/pages/<area>/` holding data hooks and presentational sections:
 | `facebook_webhook_events` (key `leadgen:<pageId>:<leadgen_id>`) | Duplicate lead creation from Meta webhook |
 | `facebook_seen_senders` | Duplicate Messenger sender handling |
 | `facebook_lead_sms_mirrors` | Two-way SMS reply mis-routing / duplicates |
-| `datatruck_document_deliveries` (UNIQUE signature) | Duplicate BOL/POD delivery |
 | `service_runs` | Duplicate scheduled runs (e.g. the weekly finance report) |
 | `fuel_monitor_inbox` (`ON CONFLICT (group_id, message_id) DO NOTHING`) | Duplicate fuel-monitor intake |
 | `responses` (`ON CONFLICT (driver_id, question_id) DO NOTHING`) | Duplicate survey answers |

@@ -46,9 +46,20 @@
     },
     "bol_pod_monitor_settings": {
       "purpose": "Single-row (id=1) config for the SILENT BOL/POD test monitor: enable flag, test Telegram group id (default -5289094495 = Automatic updating (Test)), and send-unrelated / send-unclear / send-files toggles, plus last_report_at / report_count audit stats. When enabled the bot watches active driver groups, classifies + matches documents, and posts a diagnostic report (and optionally files) to the test group ONLY — never replies in the driver group and NEVER uploads to Datatruck. Values are not secrets.",
-      "status": "active",
-      "service": "admin (Settings → BOL/POD Monitor), documentIntakeHandlers (silent monitor), bolPodTestMonitorService",
-      "sourceOfTruth": "This table (DB is authoritative — no Render env vars for these values)."
+      "status": "retired",
+      "service": "none — the silent monitor and its Settings tab were removed with the BOL/POD intake (docs/architecture/retired-bol-pod.md). No longer created by the baseline; an existing database keeps the row."
+    },
+    "bol_pod_forwarding_settings": {
+      "purpose": "Single-row (id=1) routing for BOL/POD forwarding from Datatruck to Telegram: master switch (default off), delivery mode (driver_group / central_group / both), the validated central group, document-type mode and the uncertain-document policy. No secrets.",
+      "status": "retired",
+      "service": "none — BOL/POD forwarding and Settings → BOL / POD were removed in October 2026 (docs/architecture/retired-bol-pod.md). Still created by the baseline (021); read and written by nothing, and `central_group_id` is no longer followed when a group is upgraded.",
+      "danger": "Drop only in a deliberate cleanup with a backup first, together with removing it from the baseline."
+    },
+    "datatruck_document_deliveries": {
+      "purpose": "BOL/POD forwarding's idempotency ledger: one row per Datatruck document (UNIQUE `signature` = order + file type + upload time), with per-destination status, Telegram message ids and attempt counts for the driver group and the central group.",
+      "status": "retired",
+      "service": "none — BOL/POD forwarding was removed in October 2026 (docs/architecture/retired-bol-pod.md). Still created by the baseline (013); read and written by nothing.",
+      "danger": "The only record of which documents were forwarded to which group. Drop only in a deliberate cleanup with a backup first."
     },
     "gmaps_settings": {
       "purpose": "Single-row (id=1) Google Maps Platform config for Route Control. Server key encrypted at rest.",
@@ -172,22 +183,20 @@
     },
     "telegram_document_batches": {
       "purpose": "Smart BOL/POD intake: one row per batch of related PDF/image attachments a driver sends in their Telegram group. Tracks pipeline lifecycle, AI-detected doc type + confidence, matched Datatruck order/load + match confidence, the inline-confirmation message, and who decided. Restart-safe and idempotent.",
-      "status": "active",
-      "service": "bot (intake handler), admin (status view)",
-      "sourceOfTruth": "This table (mastered here).",
+      "status": "retired",
+      "service": "none — the BOL/POD intake was removed (PR #97; docs/architecture/retired-bol-pod.md). No longer created by the baseline; an existing database keeps its rows.",
       "danger": "No destructive migrations. A batch's files cascade-delete with it."
     },
     "telegram_document_files": {
       "purpose": "Smart BOL/POD intake: one row per attached file in a batch. UNIQUE telegram_file_unique_id is the dedup guard; sha256 is the content hash for duplicate-upload prevention and loop detection; sort_order preserves Telegram message order for merged PDFs.",
-      "status": "active",
-      "service": "bot (intake handler)",
+      "status": "retired",
+      "service": "none — the BOL/POD intake was removed (PR #97; docs/architecture/retired-bol-pod.md). No longer created by the baseline; an existing database keeps its rows.",
       "danger": "Cascade-deletes with its parent batch."
     },
     "datatruck_upload_attempts": {
       "purpose": "Smart BOL/POD intake: one row per attempt to upload a confirmed BOL/POD to Datatruck. Records dry-run vs live, returned Datatruck document id, and content hash — used for duplicate-upload prevention and so the Datatruck->Telegram forwarding poller can recognise a bot-originated upload and suppress re-forwarding (loop prevention).",
-      "status": "active",
-      "service": "bot (intake handler), datatruckDocumentService (loop-prevention read)",
-      "sourceOfTruth": "This table (mastered here)."
+      "status": "retired",
+      "service": "none — the BOL/POD intake was removed (PR #97), and the forwarding poller that read it in October 2026 (docs/architecture/retired-bol-pod.md). No longer created by the baseline; an existing database keeps its rows."
     },
     "database_transfer_usage": {
       "purpose": "One row per UTC month recording this application's ESTIMATE of the bytes it has read from the database, so the admin panel can warn at 80/90/95% of the hosted monthly transfer allowance instead of discovering the ceiling when reads start failing. Written by database/transferUsage.js from the in-memory counters in database/transferMeter.js (sampled result sizes, extrapolated); read once at boot so a Render restart does not reset the month.",

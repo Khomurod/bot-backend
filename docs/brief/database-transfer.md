@@ -85,11 +85,12 @@ until a date.
   every notice, birthdays, mileage and road bonuses, ETA updates and
   return-to-road detection.
 - **Stood down** (`ECONOMY_PAUSED_KEYS`, `lib/operations/economyMode.js`):
-  BOL/POD forwarding, load control, the consistency sweep and everything that
-  rides it (contradictions, owner questions, the daily digest), self-healing,
-  the learning pass, the duplicate-unit scan, decision grading, fuel risk and
+  load control, the consistency sweep and everything that rides it
+  (contradictions, owner questions, the daily digest), self-healing, the
+  learning pass, the duplicate-unit scan, decision grading, fuel risk and
   fuel-stop reminders, retention and chat annotation, and the AI checks (group
-  status, model maintenance, the terms watcher, the safety coach).
+  status, model maintenance, the terms watcher, the safety coach). BOL/POD
+  forwarding headed the owner's list; it has since been removed outright.
 - **Slowed, not stopped:** the Dispatcher Board is read every **4 hours**,
   because Home Time's home-in / home-out reads its snapshot, and that pass
   follows the read. A failed read retries at the normal pace.
@@ -173,11 +174,11 @@ there, each pinned by `tests/perMessageQueries.test.js`:
 - **The legacy home-time clarification lookup** runs only after the home-time
   candidate filter.
 
-**BOL/POD**, paused in economy mode, is cheap again before it resumes. A scan
-reads where every document in its window stands in ONE narrow statement and
-skips the settled ones (`docs/architecture/bol-pod-forwarding.md`). Before, it
-upserted and read back a full row for each of ~430 documents on every pass,
-about 100 MB a day.
+**BOL/POD forwarding**, once ~100 MB a day and the first item on the owner's
+economy-mode list, was made cheap (one narrow read per pass instead of an upsert
+and a full read-back for each of ~430 documents) and then removed outright in
+October 2026 (`docs/architecture/retired-bol-pod.md`). It no longer spends
+anything.
 
 **Load control**, also paused in economy mode, was the largest consumer
 measured: about 110 MB a day. It now costs one read of each table per pass,

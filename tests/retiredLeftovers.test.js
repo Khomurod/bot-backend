@@ -18,7 +18,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const leftovers = require('../database/retiredLeftovers');
 
-// Tables that belong to features that are still running. If any of these ever
+// Tables that belong to features that are still running, or to removed
+// features whose tables the baseline still creates. If any of these ever
 // appears in the allow-list, the cleanup action becomes a way to delete live
 // data, so this is the single most important assertion in the file.
 const SURVIVING_TABLES = [

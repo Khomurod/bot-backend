@@ -56,7 +56,9 @@ application. Each was moved out **before** anything was deleted:
    across — additively, so the trail is continuous rather than split.
 3. **BOL/POD forwarding settings**, which were created at the end of the
    trailer-tracking baseline segment and are now
-   `database/baseline/021_bol_pod_forwarding.sql`.
+   `database/baseline/021_bol_pod_forwarding.sql`. (BOL/POD forwarding was
+   itself removed in October 2026; the table stays, unread — see
+   [`retired-bol-pod.md`](retired-bol-pod.md).)
 
 And two test files whose names were misleading:
 

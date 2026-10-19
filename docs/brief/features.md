@@ -366,7 +366,8 @@ by Home Time now; see
 
 **Retyping a chat is `identity.set_group_type`, approval tier, applied only by
 a person.** The check that proposes it reads a TITLE at 65% confidence, and the
-consequences are real — BOL/POD routing and broadcasts stop for that chat — so
+consequences are real — broadcasts stop for that chat and its profile stops
+being indexed as a driver's — so
 the finding spells them out and a human clicks. It refuses outright when the
 person layer has a driver placed in the chat: that is stronger evidence about
 what the room is for than any reading of its name.
