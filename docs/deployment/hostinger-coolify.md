@@ -45,7 +45,8 @@ Copy every variable from the old Render service (Environment → Export), then:
   Render set it automatically; Coolify does not. The code keys off it for
   CORS (startup fails in production without an origin), the Facebook and
   RingCentral OAuth redirects, the RingCentral inbound-SMS subscription
-  (`/rc-webhook`), route screenshot links and raise-approval links.
+  (`/rc-webhook`). (Route screenshot and raise-approval links used it too;
+  both features were removed in October 2026.)
 - Drop `NODE_OPTIONS=--max-old-space-size=256` or raise it.
 
 ## When the public URL changes

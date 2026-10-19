@@ -66,7 +66,7 @@ fallback, and files a finding whenever it is the one that answered.
 **The Dispatcher Board snapshot (`dispatch_board_settings` 0045,
 `dispatch_board_rows` 0046) sits BESIDE both, and outranks neither.** It records
 what an external spreadsheet says about today — truck, trailer, status, ETA,
-dispatcher — and is keyed by `row_key` (normalised truck + normalised person)
+dispatcher — and is read only for Home Time's home-in / home-out. It is keyed by `row_key` (normalised truck + normalised person)
 because the board has no stable row id: a spreadsheet row number changes the
 moment somebody sorts the sheet. Three rules:
 
@@ -77,9 +77,11 @@ moment somebody sorts the sheet. Three rules:
   `present = false` plus `first_seen_at` / `last_seen_at` is the only history of
   an assignment the board itself does not keep, and "we could not read the
   board" is the opposite fact from "nobody is on the board".
-- **`person_id`, `link_source` and `link_confidence` exist and are never
-  written yet.** They were created with the table so the linking stage adds no
-  migration; until that stage ships, a board row is matched to nobody.
+- **`person_id`, `link_source` and `link_confidence` are no longer written.**
+  The `board.link_person` correction that wrote them was removed in October
+  2026; links it made stay and are still honoured. The one reader, Home Time's
+  board watch, decides which person a row is about at read time
+  (`services/dispatchBoard/rowPeople.js`) and writes nothing back.
 
 **The person layer (`driver_people`, `driver_person_groups`, `driver_units`,
 migration 0015) sits ABOVE `groups` and fixes that additively.** No foreign key
@@ -136,7 +138,8 @@ as a candidate and never merged. Guarded by `tests/personBackfillPlan.test.js`,
 - **Every operational fact names its person (migration 0026).** Nullable
   `person_id` on `driver_road_history`, `driver_home_status`,
   `home_time_requests`, `fuel_stop_alerts`, `route_assignments`,
-  `dispatch_team_drivers` and `mileage_bonus_progress`, stamped **at write time**
+  `dispatch_team_drivers` and `mileage_bonus_progress` (the route and
+  dispatch-team tables are now retired and unwritten), stamped **at write time**
   by a subquery on the group's open association (NULL when the layer has not met
   the group — never an error), filled once for existing rows, and mileage only
   where exactly one canonical person normalizes to the name. `group_id` is
@@ -144,8 +147,8 @@ as a candidate and never merged. Guarded by `tests/personBackfillPlan.test.js`,
 - **Read by** the Driver Groups directory (`listGroupDirectorySourceRows` joins
   the open association: `person_id`, `person_display_name`, `person_group_count`,
   `person_unit_number`, `person_unit_history`), the Driver Groups detail modal
-  (every chat and truck in time), and Raise's assignable-driver search, which now
-  finds a driver by their name and **every truck they have driven**.
+  (every chat and truck in time). (Raise's assignable-driver search, which found a
+  driver by **every truck they have driven**, went with the driver-raise review.)
 - **Populated from the admin**: Needs Attention → Identity previews and applies
   the Stage 1 backfill (`POST /api/operations/identity/backfill`, on the
   `operations.corrections.apply` gate) and then stamps every pre-existing row —

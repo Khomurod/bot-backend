@@ -10,6 +10,14 @@
   Settings → Retired Leftovers is what clears them, on an administrator's
   explicit confirmation. See `docs/architecture/retired-trailers-qbq-sos.md`
   and `docs/ARCHIVED_FEATURES.md`.
+- **Route Control and the driver-raise review were removed (2026-10)**, and
+  their tables were kept and are **still created by the baseline**, because
+  later forward migrations alter them. They are read by nothing and are not in
+  Settings → Retired Leftovers' list yet; clearing them is a separate step with
+  a backup. `/raise` answers 410. The Dispatcher Board stays, read only for Home
+  Time. See `docs/architecture/retired-route-control.md`,
+  `docs/architecture/retired-driver-raise.md` and
+  `docs/architecture/dispatcher-board.md`.
 - **FleetView is archived, not present.** No `fleet/`, no `server/fleet/`, no
   `/update` SPA, no `/api/v1/*`. It is preserved at the git tag
   `archive/fleetview-disabled`, its tables were deliberately **not** dropped, and
@@ -50,8 +58,8 @@
   clean and shipped the token as visible page text. `npm run lint:undef` is
   what catches it, which is one more reason it runs in CI.
 - **Admin navigation is state-based**, not URL-router-based, except for the
-  special-cased public paths (`/raise`, `/recruiters`, `/dispatch`,
-  `/dispatchteam`) which
+  special-cased public paths (`/recruiters`, `/dispatch`, `/dispatchteam`)
+  which
   `App.jsx` reads from `window.location`. Pages are lazy-loaded behind a
   chunk-error boundary.
 - **Committed artifacts, not runtime logic**: `eng.traineddata` (Tesseract OCR

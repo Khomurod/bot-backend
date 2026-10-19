@@ -138,7 +138,8 @@ audit report itself has been retired; the decisions that outlived it are here.
 - **A few Telegram ids are stored as `text`, on purpose**:
   `message_group_settings.{dispatch_review_group_id, raise_results_group_id,
   mileage_bonus_group_id, road_bonus_group_id}` and
-  `raise_rounds.employee_chat_id`. Those fields are
+  `raise_rounds.employee_chat_id` (the two raise columns and `raise_rounds` are
+  retired and unread since October 2026). Those fields are
   admin-editable, allow blanks, and fall back to env vars, so `text` avoids
   cast/empty-string friction. Everywhere else a Telegram id is `bigint`. If this
   is ever normalized, validate that every stored value parses to `bigint` first.

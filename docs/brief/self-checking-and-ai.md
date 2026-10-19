@@ -35,19 +35,15 @@ feature it belongs to.
   is scoped to the checks that actually ran to completion**, so a failed check or
   a provider outage can never be mistaken for "the problem went away".
 - A **dismissal without a reason is refused by the database**, not the route.
-- **The Dispatcher Board checks report; they never propose.**
-  `checks/board.js` runs in the same sweep over the same snapshot and files seven
-  findings — an unreadable fleet label, a label read through a typo, a status
-  outside the board's vocabulary, a team flag that disagrees with the written
-  name, one truck on two rows within one fleet, two board lines that reduce to one
-  row (so one assignment is not in Wenze at all), and a row that left the board
-  in the last seven days. **Every one is `tier: 'warning'` with
-  `proposedChange: null`**, because nothing in a spreadsheet read is evidence
-  about which of two disagreeing records is right. Comparing the Board with
-  Wenze is a later stage with its own rules; this module only reports on the
-  board itself. `board.truck_on_multiple_rows` buckets on `fleetType|truck`,
-  never on the bare number — Company 001, Owner-Operator 001 and Lease 001 are
-  three trucks. Guarded by `tests/boardChecks.test.js`.
+- **Checks whose feature was removed find nothing, and still resolve.**
+  `checks/retired.js` owns every key of a removed check — Route Control's, the
+  Dispatcher Board's identity and person-link checks (`board.*`), the two
+  board-vs-Home-Time contradictions, and the driver-raise review's
+  (`raise.driver_unplaced`, `raise.roster_not_rebuilt`,
+  `dispatch.team_driver_on_inactive_group`). A finding resolves only when a sweep
+  completes the module owning its key, so deleting a check with its feature
+  would leave its open findings open for ever. The Board itself is now read only
+  by Home Time ([`dispatcher-board.md`](../architecture/dispatcher-board.md)).
 - **The watchdog covers the systems, not just Home Time and the chat/profile pair
   (Phase 3-F).** Two more pure modules run in the same sweep over the same
   snapshot: `checks/identityLayer.js` compares the person layer with the chats
@@ -58,11 +54,9 @@ feature it belongs to.
   only when nobody else holds it), `identity.person_on_two_active_groups` and
   `identity.unit_contested` (a human decides). `checks/systems.js` reads across
   features: `samsara.vehicle_on_two_active_groups`, `samsara.vehicle_link_disagrees`,
-  `fuel.watch_on_inactive_group`, `dispatch.team_driver_on_inactive_group`
-  (**approval**, proposing the driver's current chat from the person layer),
-  `raise.progress_without_person` (one aggregated finding) and
-  `route_control.assignment_on_inactive_group` (retired with Route Control in
-  October 2026; its key stays so open findings resolve). The two auto actions live in
+  `fuel.watch_on_inactive_group` and `raise.progress_without_person` (one
+  aggregated finding about mileage-bonus rows — the name predates the raise
+  review's removal and outlived it). The two auto actions live in
   `corrections/identityActions.js`, re-derive under lock, refuse when stale, and
   revert without deleting (a created person row stays; a previous truck is
   reopened as a new row). Both ship **disabled** like every other check. Guarded
@@ -240,8 +234,8 @@ feature it belongs to.
   stopped.
 - **A model reading a chat title can no longer deactivate a working driver.**
   `groups.active` is written from that title twice a day for most of the fleet,
-  and an inactive group drops out of Live Locations, document routing, the
-  dispatch roster and home-time tracking. A deactivation is now refused when the
+  and an inactive group drops out of Live Locations, document routing and
+  home-time tracking. A deactivation is now refused when the
   records show the driver working — a recent message, home-time tracking having
   seen them, an open cycle, a recent road leg, a truck assigned
   (`lib/drivers/deactivationGuard.js`). Turning a driver back ON is never

@@ -149,12 +149,12 @@ after deploy on the live service.
 | # | What / Why | How to check |
 |---|---|---|
 | G1 | Mileage bonus milestone logic works. | **[AUTO]** `mileageBonus.test.js`, `mileageBonusService.test.js`, `mileageBonusHandlers.test.js`. |
-| G2 | 75¢ raise approval workflow works. | **[AUTO]** `raiseApproval.test.js`; **[MANUAL]** run one round on staging. |
-| G3 | OTP verification works. | **[MANUAL]** Trigger OTP (Gmail/RingCentral channel); confirm code accepted/expiry. |
-| G4 | Approval result is logged (audit trail). | **[MANUAL]** Check `raise_round_picks` / audit rows record who decided. |
+| G2 | ~~75¢ raise approval workflow works.~~ **REMOVED** — driver-raise review retired October 2026 (`docs/architecture/retired-driver-raise.md`). | **[MANUAL]** Confirm no "Driver Raises" page in admin and that `/raise` answers 410. |
+| G3 | ~~OTP verification works.~~ **REMOVED** with the driver-raise review. | — |
+| G4 | Approval result is logged (audit trail). | **[MANUAL]** Check a mileage-bonus Paid/Rejected decision records who decided (`decided_by_username` / `decided_by_user_id`). |
 | G5 | **No duplicate approval messages.** | **[AUTO]** `service_runs` idempotency; **[MANUAL]** re-trigger does not double-send. |
 | G6 | **No unauthorized approval is possible.** | **[AUTO]** accounting-only guard in `mileageBonusHandlers`; **[MANUAL]** non-authorized user is rejected. |
-| G7 | **Raise review request and result go to their OWN groups.** The request belongs to dispatch, the pay decision to accounting — and neither falls back to the other. | **[AUTO]** `raiseApproval.test.js` (wrong-destination + missing-config cases), `messageRoutingSettings.test.js`, `messageGroupSettingsPg.test.js`; **[MANUAL]** after deploy, set **both** fields in Settings → Telegram Groups — the new *Driver Raise Results → ACCOUNTING* field starts empty on purpose, and until it is filled in a submitted review is saved but not posted anywhere (a `[RAISE] … not configured` log line). |
+| G7 | ~~Raise review request and result go to their OWN groups.~~ **REMOVED** with the driver-raise review: Settings → Telegram Groups shows only the mileage and road bonus groups, each its own setting with no fallback. | **[AUTO]** `messageRoutingSettings.test.js`, `messageGroupSettingsPg.test.js`. |
 
 ---
 

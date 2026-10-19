@@ -1872,9 +1872,9 @@ CREATE TABLE IF NOT EXISTS message_group_settings (
   -- Extra Week / Road Bonus summary posted when a driver comes home over the
   -- road allowance (services/roadBonusNotifierService).
   road_bonus_group_id TEXT NULL,
-  -- 72–75 CPM / Dispatch Rate Review REQUEST only — the weekly (or "Send now")
-  -- message with the tokenized link asking a dispatch team to fill in the
-  -- review (services/raiseApprovalService).
+  -- RETIRED (October 2026) with the driver-raise review, and read by nothing:
+  -- it held the group asked to fill in the weekly 72–75 CPM review. Kept until
+  -- the retired-feature cleanup drops it (docs/architecture/retired-driver-raise.md).
   dispatch_review_group_id TEXT NULL,
   -- The submitted RESULT of that review (who qualifies for the higher rate, who
   -- stays at the lower one) goes to accounting, NOT back to dispatch. Column

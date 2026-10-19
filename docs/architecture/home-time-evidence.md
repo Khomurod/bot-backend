@@ -106,7 +106,8 @@ different questions:
 * `boardSaysWorking` — DISPATCHED, ENROUTE. **READY is deliberately not here**:
   a truck marked available proves nothing about whether its driver is driving,
   and folding it in would make Wenze accuse a resting driver of contradicting
-  their own home-time record. The contradiction checks read this one.
+  their own home-time record. The contradiction checks that read this one were
+  removed in October 2026; nothing reads it today.
 * `boardEndsHomeStay` — READY, RESERVED, DISPATCHED, ENROUTE. Asked **only** of
   a driver Wenze already has at home: dispatch has put the truck back in the
   pool, so the stay is over.

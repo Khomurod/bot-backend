@@ -258,10 +258,4 @@ module.exports = {
   // metadata. OFF by default — a genuinely-uncertain document otherwise
   // follows the admin's uncertain_document_policy without any AI call.
   bolPodAiFallbackEnabled: process.env.BOL_POD_AI_FALLBACK_ENABLED === 'true',
-  // Gmail App Password channel for driver-raise OTP delivery (no third party).
-  // GMAIL_USER is the full address; GMAIL_APP_PASSWORD is a 16-char App Password
-  // created at https://myaccount.google.com/apppasswords (2FA required).
-  gmailUser: normalizeOptionalEnv(process.env.GMAIL_USER),
-  gmailAppPassword: String(process.env.GMAIL_APP_PASSWORD || '').replace(/\s+/g, ''),
-  gmailFrom: normalizeOptionalEnv(process.env.GMAIL_FROM) || normalizeOptionalEnv(process.env.GMAIL_USER),
 };

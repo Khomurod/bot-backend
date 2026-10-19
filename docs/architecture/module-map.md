@@ -79,9 +79,9 @@ organization should converge toward.
 |---|---|
 | **Telegram identity** — which account is which human | the rule: `lib/identity/telegramResolution.js`; the table: `database/driverPeople/telegramIdentities.js` (migration 0049); the check: `services/operations/checks/telegramIdentity.js`; the write: `services/operations/corrections/telegramActions.js` |
 | Unit-number & driver-name parsing from group titles | `lib/drivers/driverGroupTitle.js` (central parser, reused widely) |
-| **The Dispatcher Board** — the authority on today's assignment | pure: `lib/board/{parse,truck,rowKey}.js`, `lib/drivers/fleetType.js`; settings: `database/dispatchBoardSettings.js`, `server/routes/settings/dispatchBoardRoutes.js`, `admin/src/pages/settings/DispatcherBoardTab.jsx` + `settings/dispatcherBoard/FeedCard.jsx` (and `EtaTrackingCard.jsx`, which arrived with the Dispatch Center's removal rather than by design); transport: `services/dispatchBoard/client.js`; the snapshot and its ONE writer: `database/dispatchBoard.js`, `services/dispatchBoard/poller.js`; checks: `services/operations/checks/board.js`; person linking: `lib/identity/boardResolution.js` (the rule, pure), `services/operations/checks/boardLink.js`, `services/operations/corrections/boardActions.js`; what a status MEANS: `lib/board/statusSemantics.js`, read by `lib/drivers/context.js` and `database/driverContext.js readBoard` |
+| **The Dispatcher Board** — read only for Home Time's home-in / home-out | pure: `lib/board/{parse,truck,rowKey,statusSemantics}.js`, `lib/drivers/fleetType.js`, `lib/identity/boardResolution.js` (which person a row names); settings: `database/dispatchBoardSettings.js`, `server/routes/settings/dispatchBoardRoutes.js`, `admin/src/pages/settings/DispatcherBoardTab.jsx` + `settings/dispatcherBoard/FeedCard.jsx` (and `EtaTrackingCard.jsx`, which arrived with the Dispatch Center's removal rather than by design); transport: `services/dispatchBoard/client.js`; the snapshot and its ONE writer: `database/dispatchBoard.js`, `services/dispatchBoard/poller.js`; rows to people at read time: `services/dispatchBoard/rowPeople.js`; the one reader: `lib/homeTime/boardPresence.js` + `services/homeTime/boardPresenceWatch.js`. The board checks, person-link correction and board-vs-Home-Time contradictions were removed in October 2026 (keys in `services/operations/checks/retired.js`; `docs/architecture/dispatcher-board.md`) |
 | **The control channel** — answering Wenze in Telegram | pure: `lib/control/{intent,askable,fingerprint,buttons}.js`; data: `database/{controlSettings,controlOperators,controlReplies,controlKnowledge}.js` + the question columns and health counts in `database/operationalNotifications.js` → `operationalNotificationHealth.js`; asking: `services/control/askPass.js` (on the consistency timer); the morning summary: `services/control/dailyDigest.js` → `lib/control/digest.js` + `database/controlDigest.js`; answering: `bot/controlReplyHandlers.js` → `services/control/replyHandler.js` (a typed reply) or `services/control/buttonHandler.js` (a tap on a question's buttons) → `services/control/answerQuestion.js` (shared) → `services/control/actions.js` (the ONLY writer; a choice question's Working / Not working goes to `services/operations/corrections/statusActions.js`); reading a reply the rules could not: `services/control/aiIntent.js` (the one AI seam, reached only on `unclear`); remembering: `services/control/memory.js`; admin: `server/routes/settings/controlRoutes.js`, `admin/src/pages/settings/control/{ControlChannelCard,RememberedAnswers}.jsx` |
-| **The Groups page** — five views over one list | the classifier: `admin/src/pages/groups/driverProfileShaping.js groupView`; the page: `admin/src/pages/GroupsPage.jsx` + `groups/*`; the board and open questions beside each row: `database/driverGroupDirectory.js`; retyping a chat: `services/operations/corrections/groupActions.js` |
+| **The Groups page** — five views over one list | the classifier: `admin/src/pages/groups/driverProfileShaping.js groupView`; the page: `admin/src/pages/GroupsPage.jsx` + `groups/*`; the open questions beside each row: `database/driverGroupDirectory.js`; retyping a chat: `services/operations/corrections/groupActions.js` |
 | Driver/unit fuzzy lookup vs group titles | `services/driverStatusLookupService.js` |
 | Truck GPS fallback chain (Samsara → Factor ELD → Leader ELD) | `services/liveLocationResolver.js` (orchestrator, `withTransientRetries`) |
 | Samsara GPS lookup | `services/samsaraLocationService.js` |
@@ -147,10 +147,8 @@ organization should converge toward.
 | Concern | Current files |
 |---|---|
 | Mileage bonus milestone payouts | `services/mileageBonusService.js`, `mileageBonusConstants.js`, `mileageBonusMessages.js`, `roadBonusNotifierService.js`, `bot/mileageBonusHandlers.js` (accounting-only Paid/Rejected buttons), `database/mileageBonus.js`, admin `MileageBonusPage.jsx` |
-| 75¢/mile raise approval workflow | `services/raiseApprovalService.js` (round lifecycle + weekly schedule + public surface) over `services/raise/` (`notifications.js` = the two Telegram destinations, `dispatcherFlow.js` = the tokenized link flow, `teamRoster.js` = team drivers/members, `errors.js`), `server/routes/raiseRoutes.js` (public + admin), `database/raiseApproval.js`, admin `RaiseApprovalPage.jsx`, public `RaisePublicPage.jsx` |
-| OTP verification (Gmail SMTP or RingCentral SMS) | `services/otpService.js`, `raise_otp` table |
-| Approval audit trail / dispatch teams | tables `dispatch_teams`, `dispatch_team_drivers`, `raise_rounds`, `raise_round_submissions`, `raise_round_picks`, `raise_settings` |
-| Raise Telegram routing (two audiences) | `database/messageRoutingSettings.js` categories `dispatchReview` (the review REQUEST → dispatch) and `raiseResults` (the submitted RESULT → accounting), admin `settings/TelegramGroupsTab.jsx` |
+| Bonus Telegram routing | `database/messageRoutingSettings.js` categories `mileageBonus` and `roadBonus`, admin `settings/TelegramGroupsTab.jsx` |
+| **Retired** | The 75¢/mile driver-raise review, its OTP, dispatch teams and the two raise routing categories (October 2026). Tables `dispatch_teams`, `dispatch_team_drivers`, `dispatch_team_members` and `raise_*` remain, unread. `docs/architecture/retired-driver-raise.md` |
 
 ### 5a. Finance Monitor Module
 
@@ -232,7 +230,7 @@ reads the text out.
 |---|---|
 | DB pool/connection | `database/pool.js` is the **single** place the `pg.Pool` is created (`max=5`, idle connections kept 10 minutes with TCP keepalive — a reconnect through the hosted pooler is metered egress — SSL auto-detect, `query()`, `ping()`); per-feature `database/*.js` modules require it directly so the module graph stays acyclic. Being the single query boundary, it also does two things for every query: feeds the transfer meter (below) and tags an infrastructure failure with `dbFailure` so a route can name the cause. Neither can fail a query, and the error object is rethrown unchanged (`err.code` stays the SQLSTATE). `database/db.js` re-exports pool/query/ping for the legacy `require('./db')` seam and owns `initializeDatabase()` (baseline `schema.sql`, then forward migrations via `database/migrate/`). |
 | Migration system | `database/migrate/` (runner + `schema_migrations` ledger), `database/baseline/*.sql` (baseline segments → generated `schema.sql`), `database/migrations/*.sql` (versioned run-once). See `docs/database/migration-notes.md`. |
-| Per-feature DB helpers | 51 focused modules under `database/` (one per table family, each requiring `pool.js` directly) — e.g. `database/botUsers.js`, `mileageBonus.js`, `raiseApproval.js`, `homeTime.js`, `eldSettings.js`, `datatruckDocuments.js`, `driverLocationMonitors.js`, `ringcentral.js` |
+| Per-feature DB helpers | 51 focused modules under `database/` (one per table family, each requiring `pool.js` directly) — e.g. `database/botUsers.js`, `mileageBonus.js`, `homeTime.js`, `eldSettings.js`, `datatruckDocuments.js`, `driverLocationMonitors.js`, `ringcentral.js` |
 | External API clients | Telegram (`bot/bot.js`), RingCentral (`services/ringCentralSmsService.js`, `ringCentralCallService.js`, `leads-bot/sms.py`, `leads-bot/rc_inbound_subscription.py`), Bitrix24 (`services/bitrix24Service.js`), Samsara GPS (`services/samsaraLocationService.js`), Drive HoS/Factor/Leader ELD (`services/driveHosEldService.js`), Datatruck (`services/datatruckApiService.js`, `datatruckLoadService.js`), Meta Graph (`services/facebookGraphService.js`, `leads-bot/graph.py`), Groq/Gemini clients |
 | **Idempotency ledger** — sent-message registry | `services/botSentMessageRegistry.js` (monkey-patches `telegram.callApi` → records every send/edit/copy/forward into `bot_sent_messages`). Comment: *"Never turn a successful Telegram send into a retry and duplicate."* |
 | Retry / backoff / circuit breaker | `index.js` (child restart backoff + `isCircuitBroken`), `services/liveLocationResolver.js` (`withTransientRetries`), `services/ai/router.js` + `lib/ai/{classify,cooldown}.js` (AI retry-after, failure classification and per-provider cooldown), safe-send wrapper in `bot/bot.js` |
@@ -258,7 +256,6 @@ repository exceeds 500 lines (`npm run lint:filesize`, no baseline).
 |---|---|
 | `database/homeTime.js` | `database/homeTime/{settings,driverState,roadHistory,requests}.js` |
 | `database/facebookLeads.js` | `database/facebookLeads/{connectSessions,pageConnections,webhookEvents,autoMessages,recruiterMessages,smsMirrors}.js` |
-| `database/raiseApproval.js` | `database/raiseApproval/{settings,teams,teamMembers,teamDrivers,rounds,otp}.js` |
 | `database/ringcentral.js` | `database/ringcentral/{kpiMath,secrets,leaderboardCache,settings,recruiters,recruiterRosters,calls,kpiQueries,connectSessions}.js` — **explicit key list**, so the package's internal helpers (and the leaderboard cache's read-through and invalidation) stay private |
 | `server/routes/settingsRoutes.js` | `server/routes/settings/{eld,ringcentral,messageGroup,samsara,safetyEvent,bolPod,bitrix,retiredLeftovers}Routes.js` |
 | `server/routes/homeTimeRoutes.js` | `server/routes/homeTime/{rowShaping,tracker,import,settings,groupAccess}Routes.js` — registration ORDER is load-bearing |
@@ -276,7 +273,7 @@ repository exceeds 500 lines (`npm run lint:filesize`, no baseline).
 Admin pages follow the same shape — a container that only lays out and wires,
 over `admin/src/pages/<area>/` holding data hooks and presentational sections:
 `dispatch/`, `homeTime/`, `broadcast/`, `liveLocations/`,
-`groups/`, `facebookLeads/`, `raiseApproval/`, plus
+`groups/`, `facebookLeads/`, plus
 `admin/src/components/shared/` for the message-composer pieces.
 
 ---
@@ -290,7 +287,7 @@ over `admin/src/pages/<area>/` holding data hooks and presentational sections:
 | `facebook_seen_senders` | Duplicate Messenger sender handling |
 | `facebook_lead_sms_mirrors` | Two-way SMS reply mis-routing / duplicates |
 | `datatruck_document_deliveries` (UNIQUE signature) | Duplicate BOL/POD delivery |
-| `service_runs` | Duplicate scheduled runs (e.g. weekly raise auto-send) |
+| `service_runs` | Duplicate scheduled runs (e.g. the weekly finance report) |
 | `fuel_monitor_inbox` (`ON CONFLICT (group_id, message_id) DO NOTHING`) | Duplicate fuel-monitor intake |
 | `responses` (`ON CONFLICT (driver_id, question_id) DO NOTHING`) | Duplicate survey answers |
 | `dispatch_eta_updates` / `fuel_stop_alerts` (`processing` claim + `FOR UPDATE SKIP LOCKED`) | Double-processing across instances |

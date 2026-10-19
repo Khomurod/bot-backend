@@ -216,39 +216,29 @@ repository-wide working rules. The highest-consequence items:
   never act (`lib/board/truck.js`). `unknown` is a real fleet type and never
   wins a match. A team pair is two people on one truck, not a duplicate. See
   `docs/architecture/dispatcher-board.md`.
-- **The Dispatcher Board is the authority on today's assignment; Wenze is the
-  authority on who a person is.** A disagreement between them is a finding, not
-  a correction — Wenze does not pick a side on "which truck is this driver in".
-  Joining the two is the most careful decision in the application, because a
-  wrong join moves somebody's truck, their home-time clock and their bonus onto
-  another human: **two independent facts must agree** — the truck by its exact
-  spelling as `(fleet_type, unit_number)`, and the name STRICTLY, not by the
-  fuzzy matcher that treats a shared surname as a match. One fact alone is a
-  suggestion a person approves; two facts that disagree is a question, never a
-  tie-break. The apply re-derives the whole decision under lock and refuses
-  unless it still names the same person. A team pair that resolves to one
-  person links neither. And when the two disagree about where a driver IS, that
-  is a warning with nothing proposed — a board status means `home`, `working` or
-  NEITHER (`lib/board/statusSemantics.js`), since a driver at REST or a truck in
-  SHOP contradicts nothing, and a board snapshot over two hours old reads as
-  `unknown` rather than as a side: a poller that stopped must never be quoted as
-  evidence against Home Time.
-  Its token travels in a query string, so every message about it leaves through
-  `lib/security/redactUrls.stripUrls` and `last_error` may never hold a URL.
-- **A dispatch team's drivers are derived from the Board, and never guessed.**
-  The roster is rebuilt from the Dispatcher Board's dispatcher column before the
-  Sunday review round exists, keyed on the permanent person (never a truck
-  number, because trucks change). Two pure rules decide it and both refuse
-  rather than approximate: `lib/identity/boardResolution.js` for which person a
-  row names, `lib/raise/dispatcherTeam.js` for which team a dispatcher is on —
-  spelling, case, accents and `TEAM`/`DISPATCH` prefixes are tolerated, near
-  matches are not (`steve` never becomes `Steven`). An unresolved driver is left
-  off a roster and filed as `raise.driver_unplaced`. A Board that is off,
-  unread, failed or over six hours stale STOPS the round and files
-  `raise.roster_not_rebuilt`, because a review built on a stale roster looks
-  exactly like a correct one. A human override (`assignment_source = 'manual'`)
-  is reported and never overwritten. `raise_round_picks` are never rewritten.
-  See `docs/architecture/driver-raise-roster.md`.
+- **The Dispatcher Board is read only for Home Time's home-in / home-out;
+  Wenze is the authority on who a person is.** Nothing else reads the Board
+  since October 2026: its identity checks, the `board.link_person` correction,
+  the board-vs-Home-Time contradictions and its panels were removed (keys in
+  `services/operations/checks/retired.js`). Which person a row is about is
+  decided at read time and written nowhere (`services/dispatchBoard/rowPeople.js`),
+  by the same pure rule as before (`lib/identity/boardResolution.js`): a wrong
+  join would move somebody's home-time clock and bonus onto another human, so
+  **two independent facts must agree** — the truck by its exact spelling as
+  `(fleet_type, unit_number)`, and the name STRICTLY, not by the fuzzy matcher
+  that treats a shared surname as a match. Anything less, two rows about one
+  person, or a team pair that resolves to one person, leaves that driver alone.
+  A board status means `home`, `working` or NEITHER
+  (`lib/board/statusSemantics.js`), since a driver at REST or a truck in SHOP
+  says nothing about home. Its token travels in a query string, so every
+  message about it leaves through `lib/security/redactUrls.stripUrls` and
+  `last_error` may never hold a URL. See
+  `docs/architecture/dispatcher-board.md`.
+- **The driver-raise review and its dispatch teams are retired** (October 2026,
+  the owner's decision). Do not rebuild a roster from the Board or post a review
+  link. Its tables and two `message_group_settings` columns stay, read by
+  nothing, until a backed-up cleanup; `/raise` answers 410. See
+  `docs/architecture/retired-driver-raise.md`.
 - **A home-time request is never evidence that a driver went home**, and its
   absence of an answer is never evidence of anything at all. Nobody approves a
   request; a request whose dates pass is `closed` as housekeeping, nothing is
@@ -352,8 +342,11 @@ rules as working instructions.
   write path, so finding nothing means *unknown origin*, not *nobody*.
 - **One put-back per subject, then a person.** Two is two systems arguing.
 - **Ambiguity ends at `requires_human_review`, never at an undo.**
-- Exactly one action is armed: `board.link_person`. See
-  [`decisions.md`](../architecture/decisions.md) for the argument.
+- **No action is armed today**: `autoRevert` is false on every action in
+  `services/decisions/verifyPass.js`. The only one ever armed,
+  `board.link_person`, was removed with the Board's person links in October
+  2026. See [`decisions.md`](../architecture/decisions.md) for the argument an
+  action has to win before it is armed.
 
 ## Learning proposals
 

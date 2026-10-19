@@ -21,7 +21,7 @@
       "danger": "Contains driver PII."
     },
     "bot_users": {
-      "purpose": "Everyone the bot sees — button tappers (interactions) and anyone who texts in a group the bot is in (message_count). Keyed by a stable Telegram user id; enriched with last-seen group/chat, language, source, and linked dispatch team. No message text stored.",
+      "purpose": "Everyone the bot sees — button tappers (interactions) and anyone who texts in a group the bot is in (message_count). Keyed by a stable Telegram user id; enriched with last-seen group/chat, language and source. (The linked dispatch team was dropped with the driver-raise review, October 2026.) No message text stored.",
       "status": "active",
       "service": "bot, admin"
     },
@@ -33,9 +33,9 @@
       "danger": "`token_encrypted` is an AES-256-GCM credential and the board authenticates by putting it in a QUERY STRING. Never log a board URL; `last_error` is written through lib/security/redactUrls.stripUrls and may never contain one."
     },
     "dispatch_board_rows": {
-      "purpose": "Wenze's snapshot of the Dispatcher Board — one row per board row, keyed by `row_key` (normalised truck + normalised person, because the board has no stable row id). Written ONLY by services/dispatchBoard/poller.js. `person_id`/`link_source`/`link_confidence` are written ONLY by the `board.link_person` correction, never by the poller — and only when the truck and the name independently agree.",
+      "purpose": "Wenze's snapshot of the Dispatcher Board — one row per board row, keyed by `row_key` (normalised truck + normalised person, because the board has no stable row id). Written ONLY by services/dispatchBoard/poller.js, and read ONLY by Home Time's board watch (home-in / home-out). `person_id`/`link_source`/`link_confidence` are no longer written: the `board.link_person` correction was removed in October 2026 (docs/architecture/dispatcher-board.md); links it made are still honoured, and which person a row is about is otherwise decided at read time.",
       "status": "active",
-      "service": "bot (poller, consistency sweep, admin feed card)",
+      "service": "bot (poller, home-time board watch, admin feed card)",
       "sourceOfTruth": "The external Dispatcher Board, as of `last_seen_at`. Wenze remains the source of truth for who a person permanently is.",
       "danger": "Contains driver names and phone numbers. A row is NEVER deleted and never marked absent on a failed read — `present=false` plus first/last_seen_at is the only history of an assignment the board itself does not keep. `status_changed_at` is NARROWER than `last_changed_at` on purpose: it moves only when the status word itself changes, because Home Time waits for a status to hold before acting on it and an edited ETA must not restart that wait."
     },
@@ -55,10 +55,58 @@
       "status": "retired",
       "service": "none — Route Control and Settings → GMaps were removed in October 2026 (docs/architecture/retired-route-control.md). Still created by the baseline; read by nothing."
     },
+    "dispatch_teams": {
+      "purpose": "Dispatch teams for the weekly driver-raise review, named after the dispatchers who run them (`Aaron / Jack`).",
+      "status": "retired",
+      "service": "none — the driver-raise review was removed in October 2026 (docs/architecture/retired-driver-raise.md). Still created by the baseline; read and written by nothing.",
+      "danger": "Drop only in a deliberate cleanup with a backup first; later migrations alter dispatch_team_drivers, so the baseline must keep creating the family until then."
+    },
+    "dispatch_team_drivers": {
+      "purpose": "Which drivers each dispatch team reviewed, rebuilt every Sunday from the Dispatcher Board's dispatcher column; `assignment_source` / `manual_override_at` marked a human override. 49 rows in production at removal.",
+      "status": "retired",
+      "service": "none — the driver-raise review was removed in October 2026 (docs/architecture/retired-driver-raise.md). Still created by the baseline; read and written by nothing.",
+      "danger": "Drop only in a deliberate cleanup with a backup first; later migrations alter dispatch_team_drivers, so the baseline must keep creating the family until then."
+    },
+    "dispatch_team_members": {
+      "purpose": "Dispatchers on each team, by Telegram username / user id. Empty in production at removal.",
+      "status": "retired",
+      "service": "none — the driver-raise review was removed in October 2026 (docs/architecture/retired-driver-raise.md). Still created by the baseline; read and written by nothing.",
+      "danger": "Drop only in a deliberate cleanup with a backup first; later migrations alter dispatch_team_drivers, so the baseline must keep creating the family until then."
+    },
+    "raise_settings": {
+      "purpose": "Single-row (id=1) settings for the driver-raise review: the two per-mile rates, schedule, OTP channel and Gmail sender.",
+      "status": "retired",
+      "service": "none — the driver-raise review was removed in October 2026 (docs/architecture/retired-driver-raise.md). Still created by the baseline; read and written by nothing.",
+      "danger": "May hold an AES-256-GCM-encrypted Gmail App Password (`gmail_app_password_encrypted`). Never log it; clear it with the table."
+    },
+    "raise_rounds": {
+      "purpose": "One row per weekly review round, with its expiring public access token.",
+      "status": "retired",
+      "service": "none — the driver-raise review was removed in October 2026 (docs/architecture/retired-driver-raise.md). Still created by the baseline; read and written by nothing.",
+      "danger": "`access_token` values were posted to a Telegram group; the `/raise` page now answers 410, so they open nothing."
+    },
+    "raise_round_submissions": {
+      "purpose": "One submission per dispatch team per round: who submitted and their verified contact.",
+      "status": "retired",
+      "service": "none — the driver-raise review was removed in October 2026 (docs/architecture/retired-driver-raise.md). Still created by the baseline; read and written by nothing.",
+      "danger": "Contains dispatcher contact details. The only record of past reviews, with raise_round_picks."
+    },
+    "raise_round_picks": {
+      "purpose": "The drivers a team moved to the higher rate or kept at the lower one, snapshotted at submission time. Historical pay decisions.",
+      "status": "retired",
+      "service": "none — the driver-raise review was removed in October 2026 (docs/architecture/retired-driver-raise.md). Still created by the baseline; read and written by nothing.",
+      "danger": "The only record of past raise decisions; nothing rewrote them."
+    },
+    "raise_otp": {
+      "purpose": "One-time codes (stored hashed) sent to dispatchers for the public review page.",
+      "status": "retired",
+      "service": "none — the driver-raise review was removed in October 2026 (docs/architecture/retired-driver-raise.md). Still created by the baseline; read and written by nothing.",
+      "danger": "Contains dispatcher emails / phone numbers."
+    },
     "message_group_settings": {
-      "purpose": "Single-row (id=1) map of message category → destination Telegram group id (stored as text). Telegram group ids are not secrets. The driver-raise workflow uses TWO independent categories: dispatch_review_group_id for the review REQUEST, raise_results_group_id for the submitted RESULT sent to accounting. No category falls back to another.",
+      "purpose": "Single-row (id=1) map of message category → destination Telegram group id (stored as text). Telegram group ids are not secrets. No category falls back to another. Live columns: mileage_bonus_group_id, road_bonus_group_id. dispatch_review_group_id and raise_results_group_id are RETIRED with the driver-raise review (October 2026, docs/architecture/retired-driver-raise.md): read by nothing, not rewritten on a supergroup upgrade, kept until the retired-feature cleanup.",
       "status": "active",
-      "service": "admin (Settings → Telegram Groups), bonus/review senders"
+      "service": "admin (Settings → Telegram Groups), mileage and road bonus senders"
     },
     "ringcentral_settings": {
       "purpose": "Single-row (id=1) RingCentral call-KPI credentials + thresholds. Secrets encrypted.",

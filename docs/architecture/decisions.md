@@ -395,16 +395,22 @@ Two more refusals sit on top: a correction already reverted once, and a subject
 whose oscillation budget is spent. One put-back is a correction; two is two
 systems arguing, and a person is asked instead.
 
-### The one action that is armed, and why
+### No action is armed today
 
-`board.link_person` — and nothing else. It links a Dispatcher Board snapshot row
-to a person. Clearing that link changes no employment, pay, home time or truck
-assignment; the Board is an external authority re-read by its own poller, so a
-changed name on a row is the Board saying so rather than a person arguing; the
-revert restores the previous value exactly; and leaving it wrong feeds every
-screen that reads the Board. Its `stillJustified` asks the one question the link
-was made on — do the names still agree — using the same matcher the linker used.
-A vanished row, an absent person or a blank name all answer "holds", because *we
-cannot see the reason* and *the reason is gone* are different sentences and only
-the second may undo anything.
+`autoRevert` is false on every action in `services/decisions/verifyPass.js`.
+The machinery above stays: an action is armed only when somebody argues the
+case for it, with the comment in front of them.
+
+The one action that was ever armed, `board.link_person`, was removed in October
+2026 with the Dispatcher Board's person links
+([`dispatcher-board.md`](dispatcher-board.md)). Its case is the template for the
+next one: it linked a Board snapshot row to a person; clearing that link changed
+no employment, pay, home time or truck assignment; the Board was an external
+source re-read by its own poller, so a changed name on a row was the Board
+saying so rather than a person arguing; the revert restored the previous value
+exactly; and its `stillJustified` asked only the one question the link was made
+on — do the names still agree — with the same matcher the linker used. A
+vanished row, an absent person or a blank name all answered "holds", because
+*we cannot see the reason* and *the reason is gone* are different sentences and
+only the second may undo anything.
 

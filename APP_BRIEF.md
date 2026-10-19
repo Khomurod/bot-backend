@@ -70,8 +70,8 @@ Business problems it solves:
 - Communicate with drivers at scale, in their own language (EN/RU/UZ), through
   the Telegram groups they already live in.
 - Give dispatch real-time truck location, load and ETA information.
-- Automate recurring operations work: bonuses, raises, home-time, fuel stops,
-  document forwarding, off-route warnings, birthday wishes.
+- Automate recurring operations work: bonuses, home-time, fuel stops,
+  document forwarding, birthday wishes.
 - Capture and convert recruiting leads (Facebook/Meta, Indeed) and measure
   recruiter performance.
 
@@ -87,7 +87,7 @@ October 2026, and `render.yaml` still describes that layout.
 | `driver-feedback-bot` | this repo | `index.js` — the whole Node app: Telegram bot + Express API + admin SPA + all background jobs |
 | `facebook-leads-engine` | this repo (`leads-bot/`) | Python FastAPI lead worker. In the main deployment `index.js` **spawns it as a child process**; it can also run standalone |
 | Samsara safety poller | **separate repo** `Khomurod/samsara-integration` | Polls Samsara safety events → dashcam alerts to Telegram |
-| Dispatcher Board | **not a service of ours** — an external Google Apps Script web app over the dispatchers' spreadsheet | Read-only, polled. **The authority on a driver's current assignment**; Wenze stays the authority on who a person permanently is. Off until a URL and token are saved in Settings |
+| Dispatcher Board | **not a service of ours** — an external Google Apps Script web app over the dispatchers' spreadsheet | Read-only, polled. **Read only for Home Time's home-in / home-out** (a dispatcher's `HOME` opens a home stay, the truck back in the pool closes it); Wenze stays the authority on who a person is and whether they are home. Off until a URL and token are saved in Settings |
 
 The three cooperate in **two different ways** — do not confuse them:
 
@@ -156,10 +156,10 @@ Hard constraints of this deployment:
 
 | User type | How they use it |
 |---|---|
-| **Drivers** | Their Telegram driver group is the whole interface: answer surveys, post `Status: Home/Ready/Rolling`, request home time, receive broadcasts, bonuses, route/off-route warnings, BOL/POD documents, fuel reminders. Also anonymous feedback in the bot's private chat. |
-| **Dispatchers** | `/load`, `/location`, `/status`, `/update` inside driver groups; receive automatic ETA updates; submit their team's weekly driver-raise picks through the public raise link. |
-| **Admins / office staff** | The admin SPA at `/admin`: broadcasts, surveys, groups, leads, live map, home time, fuel, mileage bonuses, raises, recruiter KPIs, settings. |
-| **Accounting** | Mileage-bonus Paid/Rejected buttons in Telegram (allow-listed accounting users — see §5); the driver-raise results group. |
+| **Drivers** | Their Telegram driver group is the whole interface: answer surveys, post `Status: Home/Ready/Rolling`, request home time, receive broadcasts, bonuses, BOL/POD documents, fuel reminders. Also anonymous feedback in the bot's private chat. |
+| **Dispatchers** | `/load`, `/location`, `/status`, `/update` inside driver groups; receive automatic ETA updates; keep the Dispatcher Board current, which Home Time reads. |
+| **Admins / office staff** | The admin SPA at `/admin`: broadcasts, surveys, groups, leads, live map, home time, fuel, mileage bonuses, recruiter KPIs, settings. |
+| **Accounting** | Mileage-bonus Paid/Rejected buttons in Telegram (allow-listed accounting users — see §5). |
 | **Recruiters** | Measured, not users: RingCentral call logs feed KPIs and the public `/recruiters` leaderboard. |
 | **The owner ("creator")** | A Telegram-only messaging panel in the bot's private chat, gated on one numeric user ID (`CREATOR_USER_ID` in `bot/creatorMessageManager.js`). Also **steers Wenze from the notifications group**: it asks one plain question per open finding it could fix but has not been permitted to, and a reply — *yes*, *no* and why, or *later* — applies, closes or postpones it, and a "no" is remembered so the same situation is not asked about again. Only accounts on the `control_operators` allow-list are obeyed. |
 
@@ -229,6 +229,7 @@ by a number on every stage does not belong in the file everything else fits in.
 | How to work in this repo (rules, safety, testing) | `CLAUDE.md` |
 | The implementation workflow | `.claude/skills/implement/SKILL.md` (`/implement`) |
 | Route Control's removal (October 2026) | `docs/architecture/retired-route-control.md` |
+| The driver-raise review's removal, and the Dispatcher Board's identity checks (October 2026) | `docs/architecture/retired-driver-raise.md`, `docs/architecture/dispatcher-board.md` |
 | Whose number texts a lead, WHICH message they send, and the RingCentral/TCR prerequisites | `docs/architecture/recruiter-sms-sender.md` |
 | The Gross Grand Prix displays (`/dispatch`, `/dispatchteam`): the Datatruck read budget, and what a public page may show | `docs/architecture/gross-race.md` |
 | Samsara settings (the shared `samsara_settings` row, the shared-secret envelope for its API key) and missing-video recovery | `docs/architecture/samsara-settings-and-video-recovery.md` |

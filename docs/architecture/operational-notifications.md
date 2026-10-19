@@ -11,7 +11,7 @@ Every feature that needed to reach staff invented its own way:
 |---|---|
 | Home time clarifications | `home_time_settings.internal_clarification_group_id` |
 | Home time manager notices | `home_time_settings.completed_notify_group_id` |
-| Mileage bonus, road bonus, dispatch review, raise results | four columns on `message_group_settings`, each with an env fallback |
+| Mileage bonus, road bonus, dispatch review, raise results | four columns on `message_group_settings`, each with an env fallback (two since the driver-raise review was removed in October 2026 — [`retired-driver-raise.md`](retired-driver-raise.md)) |
 | AI provider terms | `ai_policy_watcher_settings.notify_chat_id` |
 | Broadcast and question summaries | `MANAGEMENT_GROUP_ID`, read from the environment at module load |
 | Employee announcements | `EMPLOYEE_GROUP_ID` |
