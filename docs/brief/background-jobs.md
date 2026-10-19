@@ -58,7 +58,7 @@ without any timer firing), `tests/jobQueueScheduler.test.js` and
 | `dispatchBoard/poller` | settings-driven, default 5 min (60–3600s), first read +60s | reads the Dispatcher Board into `dispatch_board_rows` and stops there — **the only writer of the snapshot**. Decides nothing, sends nothing, and **never marks a row absent on a pass that failed**: "we could not read the board" and "nobody is on the board" are opposite facts. `blocked` while it is switched off or unconfigured |
 | `recruiterCallSyncService` | self-rescheduling `setTimeout` | RingCentral call-log sync |
 | `ringCentralTokenRefreshService` | daily, plus once at boot | renews each recruiter's RingCentral OAuth login (refresh tokens expire in 7 days and rotate on use) and flags a dead grant as `rc_auth_error` |
-| `facebookWebhookService` worker | drains on arrival; retry wakes on `next_retry_at`; 15 min idle sweep (was a 5s poll) | verified Meta webhook events with retry |
+| `facebookWebhookService` worker | drains on arrival; retry wakes on `next_retry_at`; 15 min idle sweep (was a 5s poll) | verified Meta webhook events with retry — five attempts (1/5/15/60 min apart), then `abandoned` and one notice to the leads group |
 | `databaseUsageService` | 60s flush | persists the estimated monthly database transfer and logs once at 80/90/95% of the budget |
 | `memoryWatchdog` | **off by default**; 15 min when on | heap/RSS pressure logging. Requires `MEMORY_WATCHDOG_ENABLED='true'`; `MEMORY_WATCHDOG_INTERVAL_MS` is clamped to ≥60s |
 | Python leads child | supervised process; **liveness probed every 10 min** (first probe +60s) | Meta + RingCentral webhook intake. The probe GETs the child's own `/health` on loopback and records the answer in the run ledger — a spawn is a lifecycle event, not a heartbeat, and before the probe existed a healthy child read `stale_stopped` after an hour |
@@ -116,7 +116,7 @@ retry.**
 | `mileage_bonus_notifications` UNIQUE `(driver_normalized_name, threshold_miles)` | the same milestone being announced twice |
 | `mileage_bonus_runs` (leased, unique `run_key`) | a weekly **run** overlapping or replaying itself |
 | `service_runs` | a scheduled service firing twice for one due window |
-| `facebook_webhook_events` (`leadgen:<pageId>:<leadgen_id>`) | a re-delivered Meta lead being posted twice |
+| `facebook_webhook_events` (`leadgen:<pageId>:<leadgen_id>`) | a re-delivered Meta lead being posted twice; `telegram_posted_at` stops a RETRIED event posting it again |
 | `facebook_lead_sms_mirrors` | an SMS reply being mirrored twice |
 | `datatruck_document_deliveries` | the same BOL/POD being forwarded twice |
 | `fuel_monitor_inbox` | one fuel-stop post creating several watches |

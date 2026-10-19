@@ -61,7 +61,8 @@ export function mapPreviewResult(result) {
 export function statusPillClass(status) {
   switch ((status || "").toLowerCase()) {
     case "processed": return "status-pill status-pill--success";
-    case "failed": return "status-pill status-pill--danger";
+    case "failed":
+    case "abandoned": return "status-pill status-pill--danger";
     case "pending": return "status-pill status-pill--warning";
     default: return "status-pill status-pill--neutral";
   }

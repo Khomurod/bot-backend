@@ -11,7 +11,9 @@
  * down explicitly — one owner for shared mutable state (CLAUDE.md).
  */
 const db = require('../database/db');
+const config = require('../config/config');
 const { decryptText } = require('../lib/security/facebookCrypto');
+const { stripUrls } = require('../lib/security/redactUrls');
 const { safeSend } = require('./telegramHtml');
 const { fetchSenderProfile } = require('./facebookGraphService');
 const { formatMessengerMessage } = require('./facebookLeadFormatter');
@@ -90,9 +92,24 @@ function extractFacebookWebhookEvents(payload) {
   return out;
 }
 
+/**
+ * How many times an event is tried before it is abandoned.
+ *
+ * An event that fails five times in a row — spread over about an hour and a
+ * half, so a short Telegram or Meta outage is ridden out — will not succeed on
+ * its own: a missing Page connection, a deleted lead, an expired token. Before
+ * this cap a test lead from May was retried every fifteen minutes for five
+ * months (9,041 attempts). Abandoning it tells the leads group once; Retry in
+ * the admin puts it back with a fresh budget.
+ */
+const MAX_EVENT_ATTEMPTS = 5;
+
+/** Wait after the Nth failed attempt: 1, 5, 15, then 60 minutes. */
+const RETRY_DELAYS_MS = [60_000, 5 * 60_000, 15 * 60_000, 60 * 60_000];
+
 function getRetryDelayMs(attemptCount) {
-  const cappedAttempt = Math.max(1, Math.min(8, Number(attemptCount) || 1));
-  return Math.min(30_000 * (2 ** (cappedAttempt - 1)), 15 * 60 * 1000);
+  const index = Math.max(1, Number(attemptCount) || 1) - 1;
+  return RETRY_DELAYS_MS[Math.min(index, RETRY_DELAYS_MS.length - 1)];
 }
 
 async function sendTelegramMessage(chatId, text) {
@@ -144,6 +161,44 @@ async function processMessagingEvent(eventRow) {
   await db.recordFacebookSenderSeen(pageId, senderId, eventRow.event_key);
 }
 
+/** The one message the leads group gets when an event is abandoned. */
+function buildAbandonedNotice(eventRow, errorMessage) {
+  const kind = eventRow.event_type === 'leadgen' ? 'A Facebook lead' : 'A Facebook message';
+  const id = eventRow.payload?.leadgenId || eventRow.event_key;
+  // A group chat is no place for a URL out of an error: a Graph request URL
+  // carries the Page's access token.
+  const reason = stripUrls(String(errorMessage || 'Unknown error')).slice(0, 300);
+  return `⚠️ ${kind} could not be processed after ${MAX_EVENT_ATTEMPTS} attempts and was stopped.\n`
+    + `ID: ${id}\n`
+    + `Last error: ${reason}\n`
+    + 'Press Retry on the admin Facebook Leads page once the cause is fixed.';
+}
+
+/**
+ * Stop retrying an event and say so once. Never throws: the drain must go on
+ * to the next event whatever happens here.
+ */
+async function abandonEvent(eventRow, errorMessage) {
+  try {
+    await db.abandonFacebookWebhookEvent(eventRow.id, errorMessage);
+  } catch (err) {
+    console.error(`[WebhookWorker] Could not abandon event ${eventRow.id}:`, err.message);
+    return;
+  }
+  console.warn(`[WebhookWorker] Event ${eventRow.event_key} abandoned after `
+    + `${eventRow.attempt_count} attempts: ${errorMessage}`);
+  let chatId = config.leadsTelegramChatId;
+  try {
+    const connection = await db.getFacebookPageConnectionByPageId(String(eventRow.page_id));
+    if (connection?.telegram_group_id) chatId = connection.telegram_group_id;
+  } catch (_) { /* the default leads group still hears about it */ }
+  try {
+    await sendTelegramMessage(chatId, buildAbandonedNotice(eventRow, errorMessage));
+  } catch (err) {
+    console.error(`[WebhookWorker] Could not report abandoned event ${eventRow.id}:`, err.message);
+  }
+}
+
 async function processFacebookWebhookEvent(eventRow) {
   if (eventRow.event_type === 'leadgen') {
     ensureTelegramConfigured();
@@ -185,8 +240,12 @@ async function drainFacebookWebhookQueue() {
           await processFacebookWebhookEvent(eventRow);
           await db.completeFacebookWebhookEvent(eventRow.id);
         } catch (err) {
-          const retryAt = new Date(Date.now() + getRetryDelayMs(eventRow.attempt_count));
-          await db.failFacebookWebhookEvent(eventRow.id, err.message, retryAt);
+          if (Number(eventRow.attempt_count) >= MAX_EVENT_ATTEMPTS) {
+            await abandonEvent(eventRow, err.message);
+          } else {
+            const retryAt = new Date(Date.now() + getRetryDelayMs(eventRow.attempt_count));
+            await db.failFacebookWebhookEvent(eventRow.id, err.message, retryAt);
+          }
         }
       }
     }
@@ -269,11 +328,14 @@ async function startFacebookWebhookWorker() {
       SET status = 'pending', attempt_count = LEAST(attempt_count, 4)
       WHERE status = 'processing'
     `);
+    // An event that already spent its budget — including any left over from
+    // before the cap existed — is abandoned, not retried. Quietly: these are
+    // old, and announcing each one at every boot would be noise.
     await db.query(`
       UPDATE facebook_webhook_events
-      SET status = 'failed'
-      WHERE status = 'pending' AND attempt_count >= 5
-    `);
+      SET status = 'abandoned', updated_at = NOW()
+      WHERE status IN ('pending', 'failed') AND attempt_count >= $1
+    `, [MAX_EVENT_ATTEMPTS]);
   } catch (err) {
     console.error('[WebhookWorker] Recovery error:', err.message);
   }
@@ -314,4 +376,7 @@ module.exports = {
   getFacebookWebhookLog,
   extractFacebookWebhookEvents,
   buildAutoMessageNotification,
+  buildAbandonedNotice,
+  getRetryDelayMs,
+  MAX_EVENT_ATTEMPTS,
 };
