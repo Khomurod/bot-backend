@@ -242,7 +242,6 @@ test('a component nobody could read is dropped before it can start a failure cou
     rc: { async listRecruiters() { throw new Error('no such table'); }, recruiterCanSendSms: () => false },
     ai: { async getProvidersForRouter() { throw new Error('no such table'); } },
     notifications: { async summariseNotifications() { throw new Error('no such table'); } },
-    fuelReadings: { async summariseFuelReadings() { throw new Error('no such table'); } },
   };
   const obs = await healing.gatherObservations(deps);
   assert.deepEqual(obs, [],
@@ -436,7 +435,6 @@ test('a pass that could read nothing is a FAILED pass, not a quiet one', async (
       rc: { async listRecruiters() { throw new Error('permission denied'); } },
       ai: { async getProvidersForRouter() { throw new Error('permission denied'); } },
       notifications: { async summariseNotifications() { throw new Error('permission denied'); } },
-      fuelReadings: { async summariseFuelReadings() { throw new Error('permission denied'); } },
     },
   });
 

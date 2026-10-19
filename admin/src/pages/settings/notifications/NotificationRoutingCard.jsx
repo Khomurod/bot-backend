@@ -243,7 +243,7 @@ export default function NotificationRoutingCard({ flash }) {
 
       {/* Chats this deployment ALREADY messages, so setting a destination does
           not mean going to find a Telegram chat id. Offered, never applied:
-          which audience receives safety escalations and fuel risks is a
+          which audience receives safety escalations and retention signals is a
           decision, and picking one here goes through the same validation as a
           typed id. */}
       {!defaultConfigured && candidates.length > 0 && (

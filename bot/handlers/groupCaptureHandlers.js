@@ -3,8 +3,8 @@
  *   - my_chat_member: activate/deactivate a group when the bot is added/removed;
  *   - middleware: auto-register the group and every user an update touches;
  *   - group message pipeline: supergroup migration, pinned-message snapshots,
- *     bot-visibility diagnostics, home-time status tracking, fuel-stop watch,
- *     the rolling chat buffer, and approver-mention / date-reply detection.
+ *     bot-visibility diagnostics, home-time status tracking, the rolling chat
+ *     buffer, and approver-mention / date-reply detection.
  *
  * Moved verbatim from bot/bot.js. Registration order (relative to the other
  * handler modules) is owned by bot.js::startBot(). None of the modules
@@ -14,7 +14,6 @@ const db = require('../../database/db');
 const chatMigration = require('../../services/telegramChatMigration');
 const { notify: notifyOps } = require('../../services/notifications/send');
 const botUsers = require('../../database/botUsers');
-const { handleFuelStopMessage } = require('../../services/fuelStopAlertService');
 const { handleDriverGroupStatus } = require('../../services/homeTimeService');
 const recentMessageBuffer = require('../../services/recentMessageBuffer');
 const { processHomeTimeMessage } = require('../../services/homeTimeRequestService');
@@ -301,15 +300,6 @@ function registerGroupCaptureHandlers(bot) {
           // machine). Returns transition metadata for the conversational flow.
           // Never throws.
           const statusResult = await handleDriverGroupStatus(bot.telegram, group, ctx.message);
-
-          // Fuel Monitor: if this is a gas-station location, start watching the
-          // truck and remind the driver when within range. Detached + never
-          // throws; cheap pre-filter means most messages exit immediately.
-          if (group.active) {
-            handleFuelStopMessage(bot.telegram, group, ctx.message).catch((err) => {
-              console.error('[BOT] handleFuelStopMessage failed:', err.message);
-            });
-          }
 
           // Keep a short rolling buffer of this group's chat so the home-time
           // request feature has ~30 min of context for the AI.

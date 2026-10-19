@@ -50,7 +50,7 @@ async function getNotificationSettings({ fresh = false } = {}) {
  * Save. Omitted fields keep their stored value — the repo's omit-means-keep
  * rule, so a form that renders one section cannot blank another.
  *
- * A category override is set by passing `{ fuel: '-100…' }` and CLEARED by
+ * A category override is set by passing `{ retention: '-100…' }` and CLEARED by
  * passing an empty string or null for that key. Keys the catalogue does not
  * know are refused rather than stored: a typo'd category would otherwise sit in
  * the JSON forever, routing nothing and explaining nothing.

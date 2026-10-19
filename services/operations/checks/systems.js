@@ -3,13 +3,11 @@
  *
  * Each feature keeps its own idea of who a driver is and which truck they are
  * in; these compare them. None is auto-correctable: every disagreement here is
- * either a decision (which chat gets the alerts, which seat the driver keeps)
- * or a state change with consequences (expiring a fuel watch, cancelling a
- * route), and the registry's rule is that those belong to a person.
+ * either a decision (which chat gets the alerts) or a state change with
+ * consequences, and the registry's rule is that those belong to a person.
  *
  *   Samsara — the same vehicle linked to two active chats, or a chat's vehicle
  *   disagreeing with the truck recorded for its driver.
- *   Fuel monitor — a watch still running on a chat nobody is in.
  *   Raise / mileage — progress rows the person layer could not place.
  */
 
@@ -79,25 +77,6 @@ function checkSamsaraLinkDisagrees({ groups, personGroups, units }) {
   return findings;
 }
 
-/** A fuel-stop watch still running for a chat that is inactive or gone. */
-function checkFuelWatchOnInactiveGroup({ groupsById, fuelAlerts }) {
-  return (fuelAlerts || [])
-    .filter((a) => a.status === 'watching')
-    .filter((a) => { const g = groupsById.get(a.group_id); return !g || g.active !== true; })
-    .map((a) => {
-      const g = groupsById.get(a.group_id);
-      return {
-        checkKey: 'fuel.watch_on_inactive_group',
-        subjectType: 'fuel_stop_alert',
-        subjectId: a.id,
-        title: `A fuel-stop watch is still running for ${label(g)}, which is inactive`,
-        severity: 'warning',
-        tier: 'warning',
-        evidence: { alertId: a.id, groupId: a.group_id, groupName: g?.group_name || null, createdAt: a.created_at },
-      };
-    });
-}
-
 /** Mileage progress rows the person layer could not place — one finding, not one per row. */
 function checkMileageWithoutPerson({ mileageProgress }) {
   const unplaced = (mileageProgress || []).filter((m) => m.person_id == null);
@@ -123,7 +102,6 @@ function checkMileageWithoutPerson({ mileageProgress }) {
 const CHECKS = [
   checkSamsaraVehicleOnTwoGroups,
   checkSamsaraLinkDisagrees,
-  checkFuelWatchOnInactiveGroup,
   checkMileageWithoutPerson,
   // Declared below; function declarations hoist, so the reference is live.
   checkNotificationDestination,
@@ -145,9 +123,9 @@ const CHECKS = [
  * error, and told nobody, and 101 staff alerts were lost over several months.
  *
  * So the absence is made LOUD rather than repaired by guessing. A chat id
- * invented from another feature's settings would put fuel risks and retention
- * signals into a room chosen for a different audience, which is a decision for
- * a person. This check puts it on the one screen an operator already reads.
+ * invented from another feature's settings would put safety escalations and
+ * retention signals into a room chosen for a different audience, which is a
+ * decision for a person. This check puts it on the one screen an operator already reads.
  */
 function checkNotificationDestination({ notificationSettings }) {
   // Absent settings means the table is not there yet — a deploy in progress,
@@ -175,8 +153,8 @@ function checkNotificationDestination({ notificationSettings }) {
       defaultChatId: null,
       configuredCategories: Object.keys(notificationSettings.categoryChatIds || {})
         .filter((k) => String(notificationSettings.categoryChatIds[k] || '').trim()),
-      whatIsLost: 'automatic corrections, fuel risks, safety escalations, retention '
-        + 'signals, self-healing notices and learning suggestions',
+      whatIsLost: 'automatic corrections, safety escalations, retention signals, '
+        + 'self-healing notices and learning suggestions',
       where: 'Settings → Telegram Groups → AI & Operations notifications',
     },
   }];
@@ -185,7 +163,6 @@ function checkNotificationDestination({ notificationSettings }) {
 const CHECK_KEYS = [
   'samsara.vehicle_on_two_active_groups',
   'samsara.vehicle_link_disagrees',
-  'fuel.watch_on_inactive_group',
   'raise.progress_without_person',
   'ops.no_notification_destination',
 ];
@@ -199,7 +176,6 @@ module.exports = {
   runSystemChecks,
   checkSamsaraVehicleOnTwoGroups,
   checkSamsaraLinkDisagrees,
-  checkFuelWatchOnInactiveGroup,
   checkMileageWithoutPerson,
   checkNotificationDestination,
 };

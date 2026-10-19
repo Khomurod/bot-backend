@@ -167,7 +167,7 @@ test('a shutdown cancels the release — nothing starts in a process that is goi
   withEnv(t, new Date(Date.now() + 60_000).toISOString());
   const economy = freshEconomy();
   let started = 0;
-  economy.launchUnlessPaused(['fuel_risk'], () => { started += 1; });
+  economy.launchUnlessPaused(['retention_watch'], () => { started += 1; });
   economy.scheduleEconomyEnd();
   economy.cancelEconomyEnd();
   process.env.ECONOMY_MODE_UNTIL = 'off';

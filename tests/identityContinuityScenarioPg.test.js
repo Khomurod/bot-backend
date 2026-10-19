@@ -3,7 +3,7 @@
  *
  * THE SCENARIO THIS REPOSITORY WAS BUILT AROUND. A driver runs unit 123. They
  * move to 456. Somebody else is given 123. Everything the newer features record
- * — fuel readings, safety events, loads, retention — must follow the human, and
+ * — safety events, loads, retention — must follow the human, and
  * the new driver of 123 must start with an empty history rather than inheriting
  * a stranger's.
  *
@@ -26,7 +26,7 @@ const ALL_MIGRATIONS = allMigrationsSql();
 async function setup(t) {
   const h = await createPgHarness(t, { extraDdl: ALL_MIGRATIONS });
   const layer = h.loadDataLayer([
-    'driverPeople', 'truckFuelReadings', 'driverSafety', 'retentionAssessments',
+    'driverPeople', 'driverSafety', 'retentionAssessments',
   ]);
   return { h, ...layer };
 }
@@ -48,47 +48,27 @@ async function personOnUnit(h, driverPeople, { name, key, unit, telegramId, grou
 
 const T = (h) => new Date(Date.parse('2026-09-01T06:00:00Z') + h * 3600000).toISOString();
 
-test('a driver who changes truck keeps their fuel history, and the new driver of the '
-  + 'old truck inherits none of it', { skip: skipWithoutPg() }, async (t) => {
-  const { h, driverPeople, truckFuelReadings } = await setup(t);
-  const john = await personOnUnit(h, driverPeople, {
-    name: 'JOHN DOE', key: 'john doe', unit: '123', telegramId: -1001, groupId: 71,
-  });
+test('after a truck change, the truck answers with its new driver and the driver with their new truck',
+  { skip: skipWithoutPg() }, async (t) => {
+    const { h, driverPeople } = await setup(t);
+    const john = await personOnUnit(h, driverPeople, {
+      name: 'JOHN DOE', key: 'john doe', unit: '123', telegramId: -1001, groupId: 71,
+    });
 
-  // John runs 123 for a while.
-  await truckFuelReadings.recordAndCompare({
-    unitNumber: '123', personId: john.id, groupId: 71,
-    fuelPercent: 90, odometerMiles: 100000, recordedAt: T(0),
-  });
-  await truckFuelReadings.recordAndCompare({
-    unitNumber: '123', personId: john.id, groupId: 71,
-    fuelPercent: 60, odometerMiles: 100300, recordedAt: T(6),
-  });
+    // He moves to 456, and somebody else is given 123.
+    await driverPeople.closeUnitAssignment({ personId: john.id, unitNumber: '123' });
+    await driverPeople.openUnitAssignment({ personId: john.id, unitNumber: '456', source: 'manual' });
+    const mary = await personOnUnit(h, driverPeople, {
+      name: 'MARY LEE', key: 'mary lee', unit: '123', telegramId: -1002, groupId: 72,
+    });
 
-  // He moves to 456, and somebody else is given 123.
-  await driverPeople.closeUnitAssignment({ personId: john.id, unitNumber: '123' });
-  await driverPeople.openUnitAssignment({ personId: john.id, unitNumber: '456', source: 'manual' });
-  const mary = await personOnUnit(h, driverPeople, {
-    name: 'MARY LEE', key: 'mary lee', unit: '123', telegramId: -1002, groupId: 72,
+    // THE BATCHED LOOKUP THE LOAD WATCH USES must now answer with the new
+    // driver for 123 and John for 456. Getting this wrong would put John's name
+    // on somebody else's load.
+    const byUnit = await driverPeople.getOpenPeopleForUnits(['123', '456']);
+    assert.equal(byUnit.get('123'), mary.id);
+    assert.equal(byUnit.get('456'), john.id);
   });
-
-  // THE BATCHED LOOKUP THE FUEL WATCH USES must now answer with the new driver
-  // for 123 and John for 456. Getting this wrong would put John's name on
-  // somebody else's fuel alerts.
-  const byUnit = await driverPeople.getOpenPeopleForUnits(['123', '456']);
-  assert.equal(byUnit.get('123'), mary.id);
-  assert.equal(byUnit.get('456'), john.id);
-
-  // Mary's first reading on 123 replaces the person on the truck's row — the
-  // row is about the TANK — but John's history is not attributed to her.
-  await truckFuelReadings.recordAndCompare({
-    unitNumber: '123', personId: mary.id, groupId: 72,
-    fuelPercent: 95, odometerMiles: 100310, recordedAt: T(30),
-  });
-  const truck = await truckFuelReadings.getReading('123');
-  assert.equal(truck.personId, mary.id, 'the truck now reports to its current driver');
-  assert.equal(truck.groupId, 72);
-});
 
 test('safety events follow the PERSON across the truck change', { skip: skipWithoutPg() }, async (t) => {
   const { h, driverPeople, driverSafety } = await setup(t);

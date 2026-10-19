@@ -49,10 +49,6 @@ const {
   stopMileageBonusService,
 } = require('./mileageBonusService');
 const {
-  startFuelStopAlertService,
-  stopFuelStopAlertService,
-} = require('./fuelStopAlertService');
-const {
   startRecruiterCallSyncService,
   stopRecruiterCallSyncService,
 } = require('./recruiterCallSyncService');
@@ -80,10 +76,6 @@ const {
   startLoadLifecycleWatch,
   stopLoadLifecycleWatch,
 } = require('./loads/lifecycleWatch');
-const {
-  startFuelRiskWatch,
-  stopFuelRiskWatch,
-} = require('./fuelStop/riskWatch');
 const {
   startSafetyCoach,
   stopSafetyCoach,
@@ -182,7 +174,6 @@ function startBackgroundServices({ telegram }) {
   startEmployeeBirthdayWishService();
   launchUnlessPaused(['group_status_ai'], () => startGroupStatusAiService());
   startMileageBonusService();
-  launchUnlessPaused(['fuel_stop_alerts'], () => startFuelStopAlertService(telegram));
   startRecruiterCallSyncService();
   startRingCentralTokenRefreshService();
   startRoadBonusNotifierService(telegram);
@@ -197,10 +188,6 @@ function startBackgroundServices({ telegram }) {
   // Works out what each load is actually doing from where the truck is, because
   // a board status is a plan and is routinely days out of date.
   launchUnlessPaused(['load_lifecycle'], () => startLoadLifecycleWatch());
-  // Fuel RISK, beside the existing fuel-stop reminder: can the truck reach the
-  // stop, did it go past, is the instruction from last trip. Reports to the
-  // operations chat only while it is new — never to a driver.
-  launchUnlessPaused(['fuel_risk'], () => startFuelRiskWatch());
   // Reads safety events as a PATTERN rather than one incident at a time, and
   // says one useful thing to a driver who has a habit. Whether to speak is
   // arithmetic; a model only words the sentence.
@@ -278,7 +265,6 @@ function stopBackgroundServices() {
   try { stopEmployeeBirthdayWishService(); } catch (err) { console.error('[SHUTDOWN] stopEmployeeBirthdayWishService failed:', err.message); }
   try { stopGroupStatusAiService(); } catch (err) { console.error('[SHUTDOWN] stopGroupStatusAiService failed:', err.message); }
   try { stopMileageBonusService(); } catch (err) { console.error('[SHUTDOWN] stopMileageBonusService failed:', err.message); }
-  try { stopFuelStopAlertService(); } catch (err) { console.error('[SHUTDOWN] stopFuelStopAlertService failed:', err.message); }
   try { stopRecruiterCallSyncService(); } catch (err) { console.error('[SHUTDOWN] stopRecruiterCallSyncService failed:', err.message); }
   try { stopRingCentralTokenRefreshService(); } catch (err) { console.error('[SHUTDOWN] stopRingCentralTokenRefreshService failed:', err.message); }
   try { stopRoadBonusNotifierService(); } catch (err) { console.error('[SHUTDOWN] stopRoadBonusNotifierService failed:', err.message); }
@@ -286,7 +272,6 @@ function stopBackgroundServices() {
   try { stopReturnToRoadWatch(); } catch (err) { console.error('[SHUTDOWN] stopReturnToRoadWatch failed:', err.message); }
   try { stopBoardPresenceWatch(); } catch (err) { console.error('[SHUTDOWN] stopBoardPresenceWatch failed:', err.message); }
   try { stopLoadLifecycleWatch(); } catch (err) { console.error('[SHUTDOWN] stopLoadLifecycleWatch failed:', err.message); }
-  try { stopFuelRiskWatch(); } catch (err) { console.error('[SHUTDOWN] stopFuelRiskWatch failed:', err.message); }
   try { stopSafetyCoach(); } catch (err) { console.error('[SHUTDOWN] stopSafetyCoach failed:', err.message); }
   try { stopRetentionWatch(); } catch (err) { console.error('[SHUTDOWN] stopRetentionWatch failed:', err.message); }
   try { stopChatAnnotator(); } catch (err) { console.error('[SHUTDOWN] stopChatAnnotator failed:', err.message); }

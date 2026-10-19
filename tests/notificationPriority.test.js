@@ -7,7 +7,7 @@
  * `info` cannot be escalated to `now` by circumstance, because that was their
  * decision about their business and overriding it is how a notification system
  * becomes one people mute. And ONLY ESTABLISHED FACTS MOVE IT: a distance, a
- * percentage, a count. Never an opinion.
+ * date, a count. Never an opinion.
  */
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -16,28 +16,7 @@ const { LEVELS, priorityFor, shouldSuppress } = require('../lib/notifications/pr
 
 // ── urgency comes from the numbers ──────────────────────────────────────────
 
-test('a truck that CANNOT reach the next stop is "now"', () => {
-  const out = priorityFor({ severity: 'serious', facts: { rangeMiles: 80, milesToStation: 200 } });
-  assert.equal(out.level, LEVELS.NOW);
-  assert.match(out.reasons.join(' '), /cannot reach the next stop/);
-  assert.match(out.reasons.join(' '), /200 miles to go/);
-});
-
-test('a thin margin is "today", not "now"', () => {
-  const out = priorityFor({ severity: 'serious', facts: { rangeMiles: 230, milesToStation: 200 } });
-  assert.equal(out.level, LEVELS.TODAY);
-  assert.match(out.reasons.join(' '), /30 miles of margin/);
-});
-
-test('a comfortable margin is "whenever" — the same category, a different day', () => {
-  const out = priorityFor({ severity: 'serious', facts: { rangeMiles: 600, milesToStation: 20 } });
-  assert.equal(out.level, LEVELS.WHENEVER);
-  // Which is the whole point: `fuel` is a warning whether the truck is twenty
-  // miles out with half a tank or four hundred miles out at eight percent, and
-  // sending both as the same thing teaches people the word means nothing.
-});
-
-test('something already overdue is "now"; something due soon is "today"', () => {
+test('something already overdue is "now"; something due soon is "today" — the same category, a different day', () => {
   assert.equal(priorityFor({ severity: 'serious', facts: { hoursUntilDue: -5 } }).level, LEVELS.NOW);
   assert.equal(priorityFor({ severity: 'serious', facts: { hoursUntilDue: 6 } }).level, LEVELS.TODAY);
   assert.equal(priorityFor({ severity: 'serious', facts: { hoursUntilDue: 90 } }).level, LEVELS.WHENEVER);
@@ -62,7 +41,7 @@ test('no facts at all is "whenever" rather than a guess', () => {
 // ── the owner's severity is a ceiling ───────────────────────────────────────
 
 test('AN `info` CATEGORY CANNOT BE ESCALATED TO "now" BY CIRCUMSTANCE', () => {
-  const out = priorityFor({ severity: 'info', facts: { rangeMiles: 10, milesToStation: 500 } });
+  const out = priorityFor({ severity: 'info', facts: { hoursUntilDue: -100 } });
   assert.equal(out.level, LEVELS.WHENEVER);
   assert.match(out.reasons.join(' '), /held at "whenever" because this category is marked info/,
     'they said this kind of thing is never urgent — that was their decision '
@@ -70,7 +49,7 @@ test('AN `info` CATEGORY CANNOT BE ESCALATED TO "now" BY CIRCUMSTANCE', () => {
 });
 
 test('a `warning` category tops out at "today" however bad the numbers', () => {
-  const out = priorityFor({ severity: 'warning', facts: { rangeMiles: 10, milesToStation: 500 } });
+  const out = priorityFor({ severity: 'warning', facts: { hoursUntilDue: -100 } });
   assert.equal(out.level, LEVELS.TODAY);
   assert.match(out.reasons.join(' '), /held at "today"/);
 });

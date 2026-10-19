@@ -14,7 +14,7 @@ const { getServiceEntry } = require('../../../lib/operations/backgroundServiceCa
 const { classifyRun, RUN_STATES } = require('../../../lib/operations/runHealth');
 const { afterHoursReadiness } = require('../../../lib/recruiting/readiness');
 const {
-  ELD_STALE_MINUTES, NOTICE_STUCK_MINUTES, minutesSince, integration,
+  NOTICE_STUCK_MINUTES, minutesSince, integration,
 } = require('./shape');
 const { safetyEventsLost, managerNoticeObservation } = require('./deliveryTruth');
 
@@ -92,30 +92,6 @@ async function integrationObservations(deps, nowMs) {
     }
   } catch (_) {
     out.push(integration('ai_providers', { ok: true, state: RUN_STATES.UNKNOWN, reason: 'could not read' }));
-  }
-
-  // THE ELD FEED, answered by the fuel watch's own readings. Every pass writes
-  // one row per truck it could locate, so the age of the newest row is the age
-  // of the fleet's freshest position — and a feed that stopped answering shows
-  // up here rather than as silence from four separate features.
-  try {
-    const fuel = await deps.fuelReadings.summariseFuelReadings();
-    const age = minutesSince(fuel?.newestReading, nowMs);
-    if (!fuel || fuel.trucks === 0 || age === null) {
-      out.push(integration('eld_location_freshness', {
-        ok: true, state: RUN_STATES.UNKNOWN,
-        reason: 'no position has been recorded yet',
-      }));
-    } else {
-      out.push(integration('eld_location_freshness', {
-        ok: age <= ELD_STALE_MINUTES,
-        detail: age > ELD_STALE_MINUTES
-          ? `the newest truck position is ${Math.round(age / 60)} hours old`
-          : null,
-      }));
-    }
-  } catch (_) {
-    out.push(integration('eld_location_freshness', { ok: true, state: RUN_STATES.UNKNOWN, reason: 'could not read' }));
   }
 
   // TELEGRAM, answered by the outbox. A notice that has been pending for an

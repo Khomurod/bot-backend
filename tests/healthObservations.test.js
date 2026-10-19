@@ -27,7 +27,7 @@ const run = (over = {}) => ({
 });
 
 function deps({
-  runMap = new Map(), recruiters = [], providers = [], notifications = {}, fuel = null,
+  runMap = new Map(), recruiters = [], providers = [], notifications = {},
   routing = { enabled: true, defaultChatId: '-1001', categoryChatIds: {} },
   discards = { total: 0, byCategory: {} },
 } = {}) {
@@ -46,7 +46,6 @@ function deps({
       async summariseDiscards() { return discards; },
     },
     notificationSettings: { async getNotificationSettings() { return routing; } },
-    fuelReadings: { async summariseFuelReadings() { return fuel; } },
     retention: {
       async chatSignalsAvailable() {
         return { available: true, rows: 1, reason: 'driver messages are being recorded' };
@@ -68,16 +67,16 @@ test('every catalogued worker is observed, not only the three that used to be', 
 
 test('a worker nobody has ever heard from is "cannot determine", not healthy', async () => {
   const all = await obs.gatherAllObservations(deps({}), { now: NOW });
-  const fuel = find(all, 'fuel_risk');
-  assert.equal(fuel.state, 'cannot_determine');
-  assert.equal(fuel.unknown, true,
+  const watch = find(all, 'retention_watch');
+  assert.equal(watch.state, 'cannot_determine');
+  assert.equal(watch.unknown, true,
     'and it is marked so the announcer drops it — "I could not check" must '
     + 'never start a failure count');
 });
 
 test('a worker that stopped is separated from one that found nothing', async () => {
   const runMap = new Map([
-    ['fuel_risk', run()],
+    ['retention_watch', run()],
     ['load_lifecycle', run({ lastFinishedAt: minutesAgo(400) })],
   ]);
   // The boot time is pinned to the same clock as `now`. It used to be the real
@@ -85,8 +84,8 @@ test('a worker that stopped is separated from one that found nothing', async () 
   // passed NOW and failed every CI run after 2026-09-20.
   const all = await obs.gatherAllObservations(deps({ runMap }), { now: NOW, bootedAt: NOW - 24 * 3600 * 1000 });
 
-  assert.equal(find(all, 'fuel_risk').state, 'healthy');
-  assert.equal(find(all, 'fuel_risk').ok, true);
+  assert.equal(find(all, 'retention_watch').state, 'healthy');
+  assert.equal(find(all, 'retention_watch').ok, true);
 
   const stopped = find(all, 'load_lifecycle');
   assert.equal(stopped.state, 'stale_stopped');
@@ -119,27 +118,12 @@ test('one failed pass is degraded and does NOT raise anything', async () => {
 
 // ── the integrations ─────────────────────────────────────────────────────────
 
-test('a stale ELD feed is one answer, not four features going quiet separately', async () => {
-  const fresh = await obs.gatherAllObservations(
-    deps({ fuel: { trucks: 110, withFuel: 100, comparable: 40, newestReading: minutesAgo(25) } }),
-    { now: NOW }
-  );
-  assert.equal(find(fresh, 'eld_location_freshness').ok, true);
-
-  const stale = await obs.gatherAllObservations(
-    deps({ fuel: { trucks: 110, withFuel: 100, comparable: 40, newestReading: minutesAgo(60 * 9) } }),
-    { now: NOW }
-  );
-  const eld = find(stale, 'eld_location_freshness');
-  assert.equal(eld.ok, false);
-  assert.match(eld.detail, /9 hours old/);
-});
-
-test('no position recorded yet is unknown, not a stale feed', async () => {
-  const all = await obs.gatherAllObservations(
-    deps({ fuel: { trucks: 0, withFuel: 0, comparable: 0, newestReading: null } }), { now: NOW }
-  );
-  assert.equal(find(all, 'eld_location_freshness').state, 'cannot_determine');
+test('the ELD feed is no longer observed here — its readings went with the fuel watch', async () => {
+  // `eld_location_freshness` was answered from `truck_fuel_readings`, which only
+  // the fuel risk watch wrote. Both were removed in October 2026; reporting it
+  // from nothing would be a permanent "cannot determine" on the Systems tab.
+  const all = await obs.gatherAllObservations(deps({}), { now: NOW });
+  assert.equal(find(all, 'eld_location_freshness'), undefined);
 });
 
 test('a notice stuck in the queue for hours means Telegram is not taking them', async () => {
@@ -207,11 +191,9 @@ test('one broken recruiter login is a person’s problem; all of them is an outa
 test('a data layer that throws costs that one answer, never the whole pass', async () => {
   const broken = deps({});
   broken.rc.listRecruiters = async () => { throw new Error('no such table'); };
-  broken.fuelReadings.summariseFuelReadings = async () => { throw new Error('no such table'); };
 
   const all = await obs.gatherAllObservations(broken, { now: NOW });
   assert.equal(find(all, 'recruiter_logins').state, 'cannot_determine');
-  assert.equal(find(all, 'eld_location_freshness').state, 'cannot_determine');
   assert.ok(find(all, 'notifications'), 'and the rest still answered');
 });
 
@@ -238,7 +220,7 @@ test('NO DESTINATION NEEDS A PERSON, and says how many notices that has cost', a
 
 test('an override with no default still counts as reachable', async () => {
   const all = await obs.gatherAllObservations(deps({
-    routing: { enabled: true, defaultChatId: '', categoryChatIds: { fuel: '-1002' } },
+    routing: { enabled: true, defaultChatId: '', categoryChatIds: { load_lifecycle: '-1002' } },
   }), { now: NOW });
   assert.equal(find(all, 'notification_destination').state, 'healthy');
 });

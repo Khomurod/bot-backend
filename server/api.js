@@ -173,9 +173,6 @@ app.use('/api/facebook-leads', createFacebookLeadsRouter({ authMiddleware: legac
 const { createHomeTimeRouter } = require('./routes/homeTimeRoutes');
 app.use('/api/home-time', createHomeTimeRouter({ authMiddleware: legacyAuthMiddleware, telegram: bot.telegram }));
 
-const { createFuelMonitorRouter } = require('./routes/fuelMonitorRoutes');
-app.use('/api/fuel-monitor', createFuelMonitorRouter({ authMiddleware: legacyAuthMiddleware, telegram: bot.telegram }));
-
 const { createLiveLocationsRouter } = require('./routes/liveLocationsRoutes');
 app.use('/api/live-locations', createLiveLocationsRouter({ authMiddleware: legacyAuthMiddleware }));
 

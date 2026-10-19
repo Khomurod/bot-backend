@@ -3,10 +3,10 @@
 /**
  * Assembling everything known about one driver, from the tables that know it.
  *
- * SIX READS, NOT SIX ROUND TRIPS PER CALLER. Each section is one small query
+ * FIVE READS, NOT FIVE ROUND TRIPS PER CALLER. Each section is one small query
  * against an indexed column, and they run together. The pattern being avoided
- * is the one the fuel watch had: a per-driver lookup inside a loop over the
- * fleet, about a hundred round trips every pass to answer a question a single
+ * is the one the removed fuel watch had: a per-driver lookup inside a loop over
+ * the fleet, about a hundred round trips every pass to answer a question a single
  * query settles. A caller wanting the whole fleet should ask the features
  * directly rather than calling this a hundred times.
  *
@@ -85,23 +85,6 @@ async function readLoads(personId) {
   );
   const row = res.rows[0];
   return { movingPhase: row ? row.phase : null, orderId: row ? row.order_id : null };
-}
-
-async function readFuel(personId) {
-  const res = await query(
-    `SELECT fuel_percent, odometer_miles, recorded_at
-       FROM truck_fuel_readings
-      WHERE person_id = $1
-      ORDER BY recorded_at DESC NULLS LAST
-      LIMIT 1`,
-    [personId]
-  );
-  const row = res.rows[0];
-  return {
-    fuelPercent: row ? row.fuel_percent : null,
-    odometerMiles: row ? row.odometer_miles : null,
-    newestReadingAt: row ? row.recorded_at : null,
-  };
 }
 
 async function readSafety(personId, { windowDays = 30 } = {}) {
@@ -233,17 +216,15 @@ async function listContradictionCandidates({ limit = 200, activeWithinHours = 12
       WHERE r.person_id IS NOT NULL
         AND r.signals::text ILIKE '%quiet%'
         AND (
-          EXISTS (SELECT 1 FROM truck_fuel_readings f
-                   WHERE f.person_id = r.person_id
-                     AND f.recorded_at > NOW() - ($1 || ' hours')::interval)
-          OR EXISTS (SELECT 1 FROM driver_safety_events e
+          EXISTS (SELECT 1 FROM driver_safety_events e
                       WHERE e.person_id = r.person_id
                         AND e.occurred_at > NOW() - ($1 || ' hours')::interval)
           -- A MOVING LOAD IS ACTIVITY TOO, and the evaluator has always counted
-          -- it. Screening on fuel and safety alone meant a quiet-marked driver
-          -- whose truck is plainly in transit — no recent fuel reading, no
-          -- safety event — was never read, so the contradiction the screen
-          -- exists to surface was the one it could not see.
+          -- it. Screening on safety alone meant a quiet-marked driver whose
+          -- truck is plainly in transit was never read, so the contradiction
+          -- the screen exists to surface was the one it could not see. (Fuel
+          -- readings were a third kind of activity until the fuel watch was
+          -- removed in October 2026.)
           OR EXISTS (SELECT 1 FROM load_lifecycle l
                        JOIN driver_person_groups pg
                          ON pg.group_id = l.group_id AND pg.ended_at IS NULL
@@ -275,15 +256,14 @@ async function listContradictionCandidates({ limit = 200, activeWithinHours = 12
  */
 async function getDriverContext(personId) {
   if (!personId) return describeContext({});
-  const [identity, homeTime, loads, fuel, safety, retention] = await Promise.all([
+  const [identity, homeTime, loads, safety, retention] = await Promise.all([
     safely(() => readIdentity(personId)),
     safely(() => readHomeTime(personId)),
     safely(() => readLoads(personId)),
-    safely(() => readFuel(personId)),
     safely(() => readSafety(personId)),
     safely(() => readRetention(personId)),
   ]);
-  return describeContext({ personId, identity, homeTime, loads, fuel, safety, retention });
+  return describeContext({ personId, identity, homeTime, loads, safety, retention });
 }
 
 module.exports = { getDriverContext, listContradictionCandidates };

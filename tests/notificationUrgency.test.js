@@ -73,50 +73,50 @@ function harness({ recentCount = 0, recentThrows = false, heldCount = 0 } = {}) 
   return { deps, calls };
 }
 
-/** A truck that cannot reach its stop: 200 miles to go, about 80 in the tank. */
+/** A load that was due five hours ago and has not arrived. */
 const UNREACHABLE = {
-  category: 'fuel',
-  title: 'JOHN DOE (Unit 310): may not reach Pilot 442',
+  category: 'load_lifecycle',
+  title: 'JOHN DOE (Unit 310): load 442 is overdue',
   subjectType: 'group',
   subjectId: 7,
   personId: 11,
-  facts: { rangeMiles: 80, milesToStation: 200 },
+  facts: { hoursUntilDue: -5 },
 };
 
 // ── urgency comes from the facts, and from the caller who knows the event ────
 
-test('a truck that cannot reach its stop is "now", not the category default', async () => {
+test('a load already overdue is "now", not the category default', async () => {
   const { deps, calls } = harness();
   const out = await notify({ ...UNREACHABLE, severity: 'serious' }, deps);
 
   assert.equal(out.priority, LEVELS.NOW);
   assert.equal(calls.enqueued[0].evidence.priority, LEVELS.NOW,
     'and it is recorded with the notice, so a screen can show WHY it was urgent');
-  assert.match(calls.sent[0].body, /cannot reach the next stop/,
+  assert.match(calls.sent[0].body, /it was due 5 hours ago/,
     'a "now" says what makes it one — that is the justification for the interruption');
 });
 
-test('THE SAME CATEGORY, A CALMER TRUCK, AND NO ESCALATION', async () => {
-  // The whole argument for a per-event severity: `fuel` is catalogued as a
-  // warning, and for this truck that is exactly right.
+test('THE SAME CATEGORY, A CALMER LOAD, AND NO ESCALATION', async () => {
+  // The whole argument for a per-event severity: `load_lifecycle` is
+  // catalogued as a warning, and for this load that is exactly right.
   const { deps, calls } = harness();
   const out = await notify({
     ...UNREACHABLE,
     severity: 'warning',
-    facts: { rangeMiles: 600, milesToStation: 100 },
+    facts: { hoursUntilDue: 90 },
   }, deps);
 
   assert.equal(out.priority, LEVELS.WHENEVER);
-  assert.doesNotMatch(calls.sent[0].body, /cannot reach/);
+  assert.doesNotMatch(calls.sent[0].body, /hours ago/);
 });
 
 test('AN UNRECOGNISED SEVERITY FALLS BACK TO THE CATEGORY, NOT TO THE LOUDEST', async () => {
-  // A typo must not be a way to page somebody. `fuel` is a warning, so the
+  // A typo must not be a way to page somebody. `load_lifecycle` is a warning, so the
   // ceiling is "today" even though the facts on their own say "now".
   const { deps } = harness();
   const out = await notify({ ...UNREACHABLE, severity: 'catastrophic' }, deps);
   assert.equal(out.priority, LEVELS.TODAY,
-    'held at the fuel category\'s own ceiling, exactly as if no severity was given');
+    'held at the load category\'s own ceiling, exactly as if no severity was given');
 
   const { deps: bare } = harness();
   const noSeverity = await notify(UNREACHABLE, bare);
@@ -126,7 +126,7 @@ test('AN UNRECOGNISED SEVERITY FALLS BACK TO THE CATEGORY, NOT TO THE LOUDEST', 
 test('no facts means no escalation — a notice cannot argue itself urgent', async () => {
   const { deps } = harness();
   const out = await notify({
-    category: 'fuel', title: 'something', subjectType: 'group', subjectId: 7, severity: 'serious',
+    category: 'load_lifecycle', title: 'something', subjectType: 'group', subjectId: 7, severity: 'serious',
   }, deps);
   assert.equal(out.priority, LEVELS.WHENEVER);
 });
@@ -218,7 +218,7 @@ test('a store that cannot count held rows loses the stagger, not the hold', asyn
 });
 
 test('SUPPRESSION IS SCOPED TO THE CHAT THIS NOTICE IS GOING TO', async () => {
-  // Three fuel notices in the fuel team's chat must not hold the first safety
+  // Three load notices in the dispatch chat must not hold the first safety
   // notice in a dedicated safety chat — nobody reading that chat saw the burst.
   const { deps, calls } = harness({ recentCount: 0 });
   await notify({ ...UNREACHABLE, severity: 'warning' }, deps);

@@ -174,7 +174,7 @@ async function startBot() {
     // also avoids running the schema SQL twice on hot reloads.
 
     // Group join/leave + user/group capture middleware + group message
-    // pipeline (migration, pinned snapshots, home-time, fuel, chat buffer).
+    // pipeline (migration, pinned snapshots, home-time, chat buffer).
     registerGroupCaptureHandlers(bot);
 
     // Right after it, and an OBSERVER: it never consumes a message, so

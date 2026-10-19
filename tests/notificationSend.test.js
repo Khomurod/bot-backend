@@ -72,7 +72,7 @@ function harness({
 }
 
 const FUEL = {
-  category: 'fuel', title: 'Unit 310 may not reach its fuel stop',
+  category: 'load_lifecycle', title: 'Unit 310 may not reach its fuel stop',
   lines: ['Range about 120 mi, stop 180 mi ahead'],
   subjectType: 'group', subjectId: 7, discriminator: 'stop-442',
 };
@@ -91,7 +91,7 @@ test('a notice is recorded and delivered to the default group', async () => {
 });
 
 test('a category override sends to its own group, and records which one', async () => {
-  const { deps, calls } = harness({ overrides: { fuel: '-100222' } });
+  const { deps, calls } = harness({ overrides: { load_lifecycle: '-100222' } });
   await notify(FUEL, deps);
   assert.equal(calls.sent[0].chatId, '-100222');
   assert.equal(calls.enqueued[0].routedVia, 'override');
@@ -274,9 +274,9 @@ test('the same load on a NEW day is a new thing unheard', async () => {
 test('the notice key travels to the counter, so the dedup is the store\'s to make', async () => {
   const { deps, calls } = harness({ defaultChatId: '' });
   await notify({
-    category: 'fuel', title: 't', subjectType: 'truck', subjectId: '305', discriminator: 'low',
+    category: 'load_lifecycle', title: 't', subjectType: 'truck', subjectId: '305', discriminator: 'low',
   }, deps);
-  assert.equal(calls.discards[0].noticeKey, 'fuel:truck:305:low',
+  assert.equal(calls.discards[0].noticeKey, 'load_lifecycle:truck:305:low',
     'a counter given only a category cannot tell two trucks apart');
 });
 

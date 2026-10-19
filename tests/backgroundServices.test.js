@@ -78,7 +78,7 @@ test('the roster names what each service may send, not just that it runs', () =>
   // The comments are the point of the file: several of these can message a
   // driver or spend money, and reordering them without knowing which is how a
   // fleet gets texted at three in the morning.
-  for (const phrase of ['never to a driver', 'no employment decision', 'DIFFERENT token']) {
+  for (const phrase of ['no employment decision', 'DIFFERENT token']) {
     assert.ok(SOURCE.includes(phrase), `the roster should still say: ${phrase}`);
   }
 });

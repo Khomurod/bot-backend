@@ -31,7 +31,6 @@ const ICONS = Object.freeze({
   needs_attention: '👀',
   system_errors: '🚨',
   self_healing: '🩹',
-  fuel: '⛽',
   safety_escalation: '🛑',
   retention: '💬',
   load_lifecycle: '📦',

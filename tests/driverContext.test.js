@@ -35,7 +35,7 @@ test('A SECTION THAT COULD NOT BE READ IS known:false, NOT EMPTY', () => {
 
 test('every section is present even when nothing was read', () => {
   const ctx = describeContext({});
-  for (const k of ['identity', 'homeTime', 'loads', 'fuel', 'safety', 'retention']) {
+  for (const k of ['identity', 'homeTime', 'loads', 'safety', 'retention']) {
     assert.equal(ctx[k].known, false, `${k} is accounted for`);
   }
 });
@@ -44,8 +44,8 @@ test('coverage says how much of the picture we have', () => {
   const ctx = describeContext({ personId: 1, homeTime: { state: 'road' }, loads: { movingPhase: null } });
   const c = coverage(ctx);
   assert.equal(c.known, 2);
-  assert.equal(c.total, 6);
-  assert.deepEqual(c.missing.sort(), ['fuel', 'identity', 'retention', 'safety']);
+  assert.equal(c.total, 5);
+  assert.deepEqual(c.missing.sort(), ['identity', 'retention', 'safety']);
   // Three sections unreadable and no contradictions found is not a clean bill
   // of health, it is a mostly-blank page — and a caller needs to tell those
   // apart.
@@ -57,23 +57,22 @@ test('GONE QUIET WHILE PLAINLY WORKING IS A BROKEN FEED, NOT A RETENTION SIGNAL'
   const ctx = describeContext({
     personId: 1,
     retention: { goneQuiet: true, goneQuietSince: hoursAgo(200) },
-    fuel: { newestReadingAt: hoursAgo(4) },
     safety: { newestEventAt: hoursAgo(6) },
+    loads: { movingPhase: 'in_transit' },
   });
   const found = findContradictions(ctx, { now: NOW });
   const quiet = found.find((c) => c.kind === 'quiet_but_active');
   assert.ok(quiet, 'a driver who was driving this morning has not gone quiet');
   assert.match(quiet.summary, /source that stopped reporting/);
-  assert.match(quiet.summary, /fuel reading 4h ago/);
   assert.match(quiet.summary, /safety event 6h ago/);
+  assert.match(quiet.summary, /a load in_transit/);
 });
 
 test('gone quiet with nothing else moving is NOT contradicted — it may be real', () => {
   const ctx = describeContext({
     personId: 1,
     retention: { goneQuiet: true },
-    fuel: { newestReadingAt: hoursAgo(400) },
-    safety: { newestEventAt: null },
+    safety: { newestEventAt: hoursAgo(400) },
   });
   assert.deepEqual(findContradictions(ctx, { now: NOW }), [],
     'the module reports disagreement, and silence everywhere is agreement');
@@ -83,13 +82,13 @@ test('activity older than the window does not rescue a quiet driver', () => {
   const ctx = describeContext({
     personId: 1,
     retention: { goneQuiet: true },
-    fuel: { newestReadingAt: hoursAgo(50) },
+    safety: { newestEventAt: hoursAgo(50) },
   });
   assert.deepEqual(findContradictions(ctx, { now: NOW, activeWithinMinutes: 720 }), []);
 });
 
-test('an unreadable fuel section cannot be mistaken for activity', () => {
-  const ctx = describeContext({ personId: 1, retention: { goneQuiet: true }, fuel: null });
+test('an unreadable safety section cannot be mistaken for activity', () => {
+  const ctx = describeContext({ personId: 1, retention: { goneQuiet: true }, safety: null });
   assert.deepEqual(findContradictions(ctx, { now: NOW }), []);
 });
 
@@ -146,7 +145,7 @@ test('NOTHING HERE RESOLVES A CONTRADICTION — it only describes one', () => {
     homeTime: { state: 'home', stateSince: hoursAgo(72) },
     loads: { movingPhase: 'in_transit' },
     retention: { goneQuiet: true },
-    fuel: { newestReadingAt: hoursAgo(2) },
+    safety: { newestEventAt: hoursAgo(2) },
     identity: { openUnits: ['1', '2'] },
   });
   const found = findContradictions(ctx, { now: NOW });

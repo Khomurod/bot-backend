@@ -93,8 +93,8 @@ export default function IdentityTab({ flash }) {
         <p style={{ color: "var(--text-muted)" }}>
           Gives every active driver group a permanent person, joins two chats only when the same
           Telegram account texts in both, reports a shared name instead of merging it, and leaves a
-          truck claimed by two drivers to nobody. Then every road leg, home stay, request, fuel watch,
-          route and team seat already on record is stamped with its person. Re-running is safe: a
+          truck claimed by two drivers to nobody. Then every road leg, home stay and request already
+          on record is stamped with its person. Re-running is safe: a
           group that already belongs to somebody is skipped.
         </p>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>

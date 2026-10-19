@@ -8,7 +8,7 @@
  *     async function tick() {
  *       if (tickRunning) return;
  *       tickRunning = true;
- *       try { await withRunRecord('fuel_risk', () => runFuelRiskCheck({})); }
+ *       try { await withRunRecord('retention_watch', () => runRetentionWatch({})); }
  *       finally { tickRunning = false; }
  *     }
  *

@@ -106,7 +106,7 @@ export function DriverDetailModal({
           )}
           <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
             Selecting a member stores their Telegram user id + username as the source of truth
-            for tagging (Fuel Monitor, check-ins) — drivers without an @username are tagged via
+            for tagging (home-time reminders) — drivers without an @username are tagged via
             an inline mention. Telegram bots cannot list all group members, so only people the
             bot has seen interact here appear; a silent member shows up after their first
             message in the group.

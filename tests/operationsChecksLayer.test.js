@@ -3,8 +3,7 @@
  *
  * Every fixture is a disagreement between two things the database believes:
  * a chat with no person, a person on two chats, a truck two people claim, a
- * Samsara vehicle on two chats, a fuel watch or a route on a chat nobody is in,
- * a team seat pointing at the chat a driver left.
+ * Samsara vehicle on two chats, mileage rows nobody could place.
  */
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -19,7 +18,7 @@ const snapshotOf = (over = {}) => {
   return {
     groups, groupsById: new Map(groups.map((g) => [g.id, g])),
     profiles: [], people: [], personGroups: [], units: [],
-    fuelAlerts: [], mileageProgress: [],
+    mileageProgress: [],
     ...over,
   };
 };
@@ -125,15 +124,6 @@ test("a chat's vehicle disagreeing with the driver's recorded truck is a warning
   assert.equal(findings[0].evidence.unitVehicleId, 'v-9');
 });
 
-test('a fuel watch on an inactive or missing chat is reported; on an active chat it is not', () => {
-  const snapshot = snapshotOf({
-    groups: [group(1, 'A'), group(2, 'B', { active: false })],
-    fuelAlerts: [{ id: 1, group_id: 1, status: 'watching' }, { id: 2, group_id: 2, status: 'watching' },
-      { id: 3, group_id: 99, status: 'watching' }, { id: 4, group_id: 2, status: 'expired' }],
-  });
-  assert.deepEqual(systems.checkFuelWatchOnInactiveGroup(snapshot).map((f) => f.subjectId), [2, 3]);
-});
-
 test('mileage rows without a person are ONE finding, not one per driver', () => {
   const findings = systems.checkMileageWithoutPerson(snapshotOf({
     mileageProgress: [{ id: 1, driver_normalized_name: 'OMAR ALAWAD', person_id: null },
@@ -150,7 +140,7 @@ test('every system check runs over one snapshot and declares its keys', () => {
   // stands down when there is no row to read (a deploy in progress is not a
   // misconfiguration), so a healthy fleet still files nothing.
   assert.deepEqual(systems.runSystemChecks(snapshotOf()), []);
-  assert.equal(systems.CHECK_KEYS.length, 5);
+  assert.equal(systems.CHECK_KEYS.length, 4);
   // Every key a check can emit must be declared, or `resolveClearedFindings`
   // will not clear it when the condition goes away.
   const emitted = new Set(

@@ -5,7 +5,7 @@
  * independent places — the sidebar's item list and App.jsx's page map — and
  * NOTHING asserted they agreed. A typo in either one produced no error: the
  * lookup missed, the `|| groups` fallback fired, and clicking "Fuel Monitor"
- * silently opened Driver Groups. `pageKeys.test.jsx` now holds the three lists
+ * (since removed) silently opened Driver Groups. `pageKeys.test.jsx` now holds the three lists
  * to each other, and `PAGE_KEYS` below is the vocabulary they are held to.
  *
  * A KEY IS NOT A COMPONENT. Several keys deliberately open the same component
@@ -20,7 +20,6 @@ export const PAGE_KEYS = Object.freeze([
   // Operations
   'operations',
   'live_locations',
-  'fuel_monitor',
   'home_time',
   'system_health',
   // Groups
@@ -105,7 +104,7 @@ export function isLivePageKey(raw) {
 }
 
 /**
- * `/admin#fuel_monitor` → `fuel_monitor`.
+ * `/admin#home_time` → `home_time`.
  *
  * Everything after the first `/` is ignored: `#communications/scheduled` is a
  * page key and a hint at a tab within it, and only the page half is this
@@ -118,7 +117,7 @@ export function pageKeyFromHash(hash) {
   return resolvePageKey(raw.split('/')[0]);
 }
 
-/** `fuel_monitor` → `#fuel_monitor`. The inverse of the page half above. */
+/** `home_time` → `#home_time`. The inverse of the page half above. */
 export function hashForPageKey(key) {
   return `#${resolvePageKey(key)}`;
 }

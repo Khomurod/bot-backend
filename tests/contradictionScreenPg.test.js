@@ -158,7 +158,7 @@ test('THE SCREEN FINDS EVERY REPRESENTABLE KIND, and leaves the ordinary driver 
        VALUES ('L1', 7501, 'in_transit', 'high', NOW())`
     );
 
-    // 2 — called quiet while the fleet shows them fuelling this morning.
+    // 2 — called quiet while Samsara recorded them driving this morning.
     const quiet = await aDriver(h, people, { name: 'QUIET BUSY', unit: '503', groupId: 7503 });
     await h.query(
       `INSERT INTO driver_retention_assessments
@@ -168,8 +168,8 @@ test('THE SCREEN FINDS EVERY REPRESENTABLE KIND, and leaves the ordinary driver 
       [quiet.id, JSON.stringify(quietSignals())]
     );
     await h.query(
-      `INSERT INTO truck_fuel_readings (unit_number, person_id, fuel_percent, odometer_miles, recorded_at)
-       VALUES ('503', $1, 61, 200000, NOW() - INTERVAL '2 hours')`,
+      `INSERT INTO driver_safety_events (samsara_event_id, behavior, occurred_at, person_id)
+       VALUES ('ev-503', 'harsh_brake', NOW() - INTERVAL '2 hours', $1)`,
       [quiet.id]
     );
 
@@ -207,8 +207,8 @@ test('a quiet driver with NO recent activity is not screened in — that is just
       [person.id, JSON.stringify(quietSignals())]
     );
     await h.query(
-      `INSERT INTO truck_fuel_readings (unit_number, person_id, fuel_percent, odometer_miles, recorded_at)
-       VALUES ('505', $1, 61, 200000, NOW() - INTERVAL '9 days')`,
+      `INSERT INTO driver_safety_events (samsara_event_id, behavior, occurred_at, person_id)
+       VALUES ('ev-505', 'harsh_brake', NOW() - INTERVAL '9 days', $1)`,
       [person.id]
     );
     const candidates = await ctx.listContradictionCandidates({});
@@ -255,7 +255,7 @@ test('A QUIET DRIVER WHOSE TRUCK IS IN TRANSIT IS SCREENED IN, on the load alone
       `INSERT INTO load_lifecycle (order_id, group_id, phase, confidence, updated_at)
        VALUES ('L9', 7601, 'in_transit', 'high', NOW())`
     );
-    // Deliberately NO fuel reading and NO safety event.
+    // Deliberately NO safety event.
 
     const candidates = await ctx.listContradictionCandidates({});
     assert.ok(candidates.includes(person.id),

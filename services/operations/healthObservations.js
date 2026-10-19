@@ -36,7 +36,7 @@
 const { CATALOG } = require('../../lib/operations/backgroundServiceCatalog');
 const { classifyRun, RUN_STATES } = require('../../lib/operations/runHealth');
 const {
-  CUSTOM_INTEGRATIONS, BOOTED_AT, ELD_STALE_MINUTES, NOTICE_STUCK_MINUTES, integration,
+  CUSTOM_INTEGRATIONS, BOOTED_AT, NOTICE_STUCK_MINUTES, integration,
 } = require('./observations/shape');
 const { integrationObservations } = require('./observations/integrations');
 
@@ -47,7 +47,6 @@ function defaultDeps() {
     rc: require('../../database/ringcentral'),
     ai: require('../../database/aiProviders'),
     notifications: require('../../database/operationalNotifications'),
-    fuelReadings: require('../../database/truckFuelReadings'),
     notificationSettings: require('../../database/operationalNotificationSettings'),
     retention: require('../../database/retention'),
     recruitingHours: require('../../database/recruitingHours'),
@@ -185,7 +184,6 @@ async function gatherAllObservations(deps = defaultDeps(), { now = Date.now(), b
 
 module.exports = {
   BOOTED_AT,
-  ELD_STALE_MINUTES,
   NOTICE_STUCK_MINUTES,
   defaultDeps,
   workerObservations,

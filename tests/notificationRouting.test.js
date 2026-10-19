@@ -37,25 +37,25 @@ test('keys are unique — two categories sharing one would silently merge traffi
 test('an unknown category is null rather than a guess', () => {
   assert.equal(getCategory('nope'), null);
   assert.equal(isKnownCategory('nope'), false);
-  assert.equal(isKnownCategory('fuel'), true);
+  assert.equal(isKnownCategory('load_lifecycle'), true);
 });
 
 // ── routing ──────────────────────────────────────────────────────────────────
 
 test('a category with no override goes to the default group', () => {
-  const r = resolveDestination('fuel', { defaultChatId: '-100111' });
+  const r = resolveDestination('load_lifecycle', { defaultChatId: '-100111' });
   assert.deepEqual(r, { chatId: '-100111', via: 'default' });
 });
 
 test('an override wins over the default', () => {
-  const r = resolveDestination('fuel', {
-    defaultChatId: '-100111', overrides: { fuel: '-100222' },
+  const r = resolveDestination('load_lifecycle', {
+    defaultChatId: '-100111', overrides: { load_lifecycle: '-100222' },
   });
   assert.deepEqual(r, { chatId: '-100222', via: 'override' });
 });
 
 test('an override for ANOTHER category does not capture this one', () => {
-  const r = resolveDestination('fuel', {
+  const r = resolveDestination('load_lifecycle', {
     defaultChatId: '-100111', overrides: { retention: '-100222' },
   });
   assert.equal(r.chatId, '-100111');
@@ -65,14 +65,14 @@ test('a CLEARED override means "use the default", not "send nowhere"', () => {
   // The admin form writes an empty string when a field is emptied. Treating
   // that as a destination is how a feature goes quiet without anyone noticing.
   for (const blank of ['', '   ', null, undefined]) {
-    const r = resolveDestination('fuel', { defaultChatId: '-100111', overrides: { fuel: blank } });
+    const r = resolveDestination('load_lifecycle', { defaultChatId: '-100111', overrides: { load_lifecycle: blank } });
     assert.equal(r.chatId, '-100111', `${JSON.stringify(blank)} must fall through`);
     assert.equal(r.via, 'default');
   }
 });
 
 test('no default and no override is reported as "none", never as a silent drop', () => {
-  const r = resolveDestination('fuel', { defaultChatId: '  ' });
+  const r = resolveDestination('load_lifecycle', { defaultChatId: '  ' });
   assert.deepEqual(r, { chatId: null, via: 'none' });
 });
 
@@ -159,18 +159,18 @@ test('an ordinary unit number or chat id is NOT mistaken for a secret', () => {
 // ── saying a thing once ──────────────────────────────────────────────────────
 
 test('the same event produces the same key, so a repeat check cannot resend', () => {
-  const a = noticeKeyFor('fuel', 'group', 7, 'stop-442');
-  const b = noticeKeyFor('fuel', 'group', 7, 'stop-442');
+  const a = noticeKeyFor('load_lifecycle', 'group', 7, 'stop-442');
+  const b = noticeKeyFor('load_lifecycle', 'group', 7, 'stop-442');
   assert.equal(a, b);
 });
 
 test('a different event on the same subject is a different key', () => {
   assert.notEqual(
-    noticeKeyFor('fuel', 'group', 7, 'stop-442'),
-    noticeKeyFor('fuel', 'group', 7, 'stop-901')
+    noticeKeyFor('load_lifecycle', 'group', 7, 'stop-442'),
+    noticeKeyFor('load_lifecycle', 'group', 7, 'stop-901')
   );
   assert.notEqual(
-    noticeKeyFor('fuel', 'group', 7),
+    noticeKeyFor('load_lifecycle', 'group', 7),
     noticeKeyFor('retention', 'group', 7)
   );
 });

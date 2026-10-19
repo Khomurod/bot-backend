@@ -30,7 +30,7 @@ async function seed(t) {
 const load = (h) => h.loadDataLayer(['operationalNotifications', 'operationalNotificationSettings']);
 
 const BASE = {
-  category: 'fuel', chatId: '-100111', routedVia: 'default',
+  category: 'load_lifecycle', chatId: '-100111', routedVia: 'default',
   body: 'Unit 310 may not reach its stop', subjectType: 'group', subjectId: '7',
 };
 
@@ -51,15 +51,15 @@ test('a category override is stored, and clearing it REMOVES the key',
     const harness = await seed(t);
     const { operationalNotificationSettings: s } = load(harness);
 
-    await s.updateNotificationSettings({ defaultChatId: '-100111', categoryChatIds: { fuel: '-100222' } });
+    await s.updateNotificationSettings({ defaultChatId: '-100111', categoryChatIds: { load_lifecycle: '-100222' } });
     let cfg = await s.getNotificationSettings({ fresh: true });
-    assert.equal(cfg.categoryChatIds.fuel, '-100222');
+    assert.equal(cfg.categoryChatIds.load_lifecycle, '-100222');
 
     // Clearing must DELETE rather than store an empty string: an empty string
     // read back as a destination would send this category nowhere.
-    await s.updateNotificationSettings({ categoryChatIds: { fuel: '' } });
+    await s.updateNotificationSettings({ categoryChatIds: { load_lifecycle: '' } });
     cfg = await s.getNotificationSettings({ fresh: true });
-    assert.equal('fuel' in cfg.categoryChatIds, false);
+    assert.equal('load_lifecycle' in cfg.categoryChatIds, false);
     assert.equal(cfg.defaultChatId, '-100111', 'the other fields were untouched');
   });
 
@@ -67,13 +67,13 @@ test('a patch touching one section does not blank another', { skip: skipWithoutP
   const harness = await seed(t);
   const { operationalNotificationSettings: s } = load(harness);
   await s.updateNotificationSettings({
-    defaultChatId: '-100111', categoryChatIds: { fuel: '-100222' }, repeatAfterHours: 24,
+    defaultChatId: '-100111', categoryChatIds: { load_lifecycle: '-100222' }, repeatAfterHours: 24,
   });
   await s.updateNotificationSettings({ categoryChatIds: { retention: '-100333' } });
   const cfg = await s.getNotificationSettings({ fresh: true });
   assert.equal(cfg.defaultChatId, '-100111');
   assert.equal(cfg.repeatAfterHours, 24);
-  assert.deepEqual(cfg.categoryChatIds, { fuel: '-100222', retention: '-100333' });
+  assert.deepEqual(cfg.categoryChatIds, { load_lifecycle: '-100222', retention: '-100333' });
 });
 
 test('an unknown category is refused rather than stored forever', { skip: skipWithoutPg() }, async (t) => {
@@ -101,9 +101,9 @@ test('the same notice enqueued twice is stored once', { skip: skipWithoutPg() },
   const harness = await seed(t);
   const { operationalNotifications: n } = load(harness);
 
-  const first = await n.enqueueNotification({ ...BASE, noticeKey: 'fuel:group:7:stop-442' });
+  const first = await n.enqueueNotification({ ...BASE, noticeKey: 'load_lifecycle:group:7:stop-442' });
   const second = await n.enqueueNotification({
-    ...BASE, noticeKey: 'fuel:group:7:stop-442', body: 'different words, same event',
+    ...BASE, noticeKey: 'load_lifecycle:group:7:stop-442', body: 'different words, same event',
   });
 
   assert.ok(first);
@@ -116,8 +116,8 @@ test('the same notice enqueued twice is stored once', { skip: skipWithoutPg() },
 test('a different event on the same driver is its own notice', { skip: skipWithoutPg() }, async (t) => {
   const harness = await seed(t);
   const { operationalNotifications: n } = load(harness);
-  await n.enqueueNotification({ ...BASE, noticeKey: 'fuel:group:7:stop-442' });
-  await n.enqueueNotification({ ...BASE, noticeKey: 'fuel:group:7:stop-901' });
+  await n.enqueueNotification({ ...BASE, noticeKey: 'load_lifecycle:group:7:stop-442' });
+  await n.enqueueNotification({ ...BASE, noticeKey: 'load_lifecycle:group:7:stop-901' });
   const rows = await harness.query('SELECT COUNT(*)::int AS c FROM operational_notifications');
   assert.equal(rows.rows[0].c, 2);
 });
@@ -128,7 +128,7 @@ test('an enqueue inside a transaction rolls back with it', { skip: skipWithoutPg
   const client = await harness.connect();
   try {
     await client.query('BEGIN');
-    await n.enqueueNotification({ ...BASE, noticeKey: 'fuel:group:7:rolled-back' }, client);
+    await n.enqueueNotification({ ...BASE, noticeKey: 'load_lifecycle:group:7:rolled-back' }, client);
     await client.query('ROLLBACK');
   } finally { client.release(); }
   const rows = await harness.query('SELECT COUNT(*)::int AS c FROM operational_notifications');
@@ -228,14 +228,14 @@ test('the repeat window lets a condition that is STILL true be said again later'
   { skip: skipWithoutPg() }, async (t) => {
     const harness = await seed(t);
     const { operationalNotifications: n } = load(harness);
-    const row = await n.enqueueNotification({ ...BASE, noticeKey: 'fuel:group:7:day1' });
+    const row = await n.enqueueNotification({ ...BASE, noticeKey: 'load_lifecycle:group:7:day1' });
     await n.claimNotificationById(row.id);
     await n.markNotificationDelivered(row.id, {});
-    assert.equal(await n.noticeSentWithin('fuel:group:7', 168), true);
+    assert.equal(await n.noticeSentWithin('load_lifecycle:group:7', 168), true);
     await harness.query(
       "UPDATE operational_notifications SET delivered_at = NOW() - INTERVAL '9 days'"
     );
-    assert.equal(await n.noticeSentWithin('fuel:group:7', 168), false,
+    assert.equal(await n.noticeSentWithin('load_lifecycle:group:7', 168), false,
       'a week later the same risk is worth mentioning again');
   });
 
@@ -299,12 +299,12 @@ test('two overlapping override saves BOTH survive', { skip: skipWithoutPg() }, a
   await s.updateNotificationSettings({ defaultChatId: '-100111' });
 
   await Promise.all([
-    s.updateNotificationSettings({ categoryChatIds: { fuel: '-100222' } }),
+    s.updateNotificationSettings({ categoryChatIds: { load_lifecycle: '-100222' } }),
     s.updateNotificationSettings({ categoryChatIds: { retention: '-100333' } }),
   ]);
 
   const cfg = await s.getNotificationSettings({ fresh: true });
-  assert.equal(cfg.categoryChatIds.fuel, '-100222', 'the first change survived');
+  assert.equal(cfg.categoryChatIds.load_lifecycle, '-100222', 'the first change survived');
   assert.equal(cfg.categoryChatIds.retention, '-100333', 'and so did the second');
 });
 
@@ -312,14 +312,14 @@ test('a clear and a set in flight together both land', { skip: skipWithoutPg() }
   const harness = await seed(t);
   const { operationalNotificationSettings: s } = load(harness);
   await s.updateNotificationSettings({
-    categoryChatIds: { fuel: '-100222', retention: '-100333' },
+    categoryChatIds: { load_lifecycle: '-100222', retention: '-100333' },
   });
   await Promise.all([
-    s.updateNotificationSettings({ categoryChatIds: { fuel: '' } }),
+    s.updateNotificationSettings({ categoryChatIds: { load_lifecycle: '' } }),
     s.updateNotificationSettings({ categoryChatIds: { safety_escalation: '-100444' } }),
   ]);
   const cfg = await s.getNotificationSettings({ fresh: true });
-  assert.equal('fuel' in cfg.categoryChatIds, false, 'the clear landed');
+  assert.equal('load_lifecycle' in cfg.categoryChatIds, false, 'the clear landed');
   assert.equal(cfg.categoryChatIds.safety_escalation, '-100444', 'the set landed');
   assert.equal(cfg.categoryChatIds.retention, '-100333', 'and the untouched one is intact');
 });
@@ -368,12 +368,12 @@ test('a repeat does not move `last_discarded_at` — it answers "when did '
   + 'something go unheard"', { skip: skipWithoutPg() }, async (t) => {
   const harness = await seed(t);
   const { operationalNotifications: n } = load(harness);
-  const key = 'fuel:truck:305:low';
-  await n.recordDiscard('fuel', 'no_destination', key);
+  const key = 'load_lifecycle:truck:305:low';
+  await n.recordDiscard('load_lifecycle', 'no_destination', key);
   const first = (await n.summariseDiscards()).since;
   await harness.query("UPDATE notification_discards SET last_discarded_at = NOW() - INTERVAL '1 hour'");
   const moved = (await harness.query('SELECT last_discarded_at FROM notification_discards')).rows[0];
-  await n.recordDiscard('fuel', 'no_destination', key);
+  await n.recordDiscard('load_lifecycle', 'no_destination', key);
   const after = (await harness.query('SELECT last_discarded_at FROM notification_discards')).rows[0];
   assert.deepEqual(after.last_discarded_at, moved.last_discarded_at,
     're-checking Tuesday\'s truck is not something going unheard today');
@@ -395,7 +395,7 @@ test('the key table holds no body, no driver and no chat id',
   { skip: skipWithoutPg() }, async (t) => {
     const harness = await seed(t);
     const { operationalNotifications: n } = load(harness);
-    await n.recordDiscard('fuel', 'no_destination', 'fuel:truck:305:low');
+    await n.recordDiscard('load_lifecycle', 'no_destination', 'load_lifecycle:truck:305:low');
     const cols = (await harness.query(
       `SELECT column_name FROM information_schema.columns
         WHERE table_name = 'notification_discard_keys' ORDER BY column_name`
@@ -418,10 +418,10 @@ test('the summary says WHY a category was discarded, not only how many',
     const harness = await seed(t);
     const { operationalNotifications: n } = load(harness);
     await n.recordDiscard('load_lifecycle', 'disabled', 'load_lifecycle:load:1:a');
-    await n.recordDiscard('fuel', 'no_destination', 'fuel:truck:2:b');
+    await n.recordDiscard('retention', 'no_destination', 'retention:truck:2:b');
 
     const out = await n.summariseDiscards();
     assert.equal(out.byReason.load_lifecycle, 'disabled');
-    assert.equal(out.byReason.fuel, 'no_destination');
+    assert.equal(out.byReason.retention, 'no_destination');
     assert.equal(out.total, 2);
   });

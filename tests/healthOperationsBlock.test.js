@@ -149,9 +149,6 @@ test('the summary is counts and timestamps, and a capped check is named with its
   assert.deepEqual(s.workers.attention.map((a) => a.component).sort(),
     ['ai_providers', 'retention_watch'],
     'and each is NAMED — "2 needing attention" is a number nobody can act on');
-  assert.equal(s.fuel.comparable, 61,
-    'how many trucks Smart Fuel can actually compare — zero here would mean the '
-    + 'abnormal-consumption engine is blind, which is what it silently was');
   const gemini = s.aiModels.find((p) => p.provider === 'gemini');
   assert.deepEqual(gemini, { provider: 'gemini', enabled: true, chain: 1, discovered: 2, refreshedAt: '2026-09-10T06:00:00.000Z', refreshError: null });
 });

@@ -37,6 +37,8 @@ const RETIRED_CHECK_KEYS = Object.freeze([
   // resolves only the keys it still owns, so these two close here.
   'context.board_home_while_road',
   'context.wenze_home_while_board_working',
+  // The fuel monitor, removed October 2026.
+  'fuel.watch_on_inactive_group',
   // The driver-raise review and its dispatch teams, removed October 2026.
   'raise.driver_unplaced',
   'raise.roster_not_rebuilt',
