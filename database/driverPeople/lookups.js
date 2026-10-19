@@ -15,7 +15,7 @@ const { query } = require('../pool');
 /** Group-keyed tables that carry a `person_id` (migration 0026). */
 const GROUP_KEYED_TABLES = [
   'driver_road_history', 'driver_home_status', 'home_time_requests',
-  'fuel_stop_alerts', 'route_assignments', 'dispatch_team_drivers',
+  'fuel_stop_alerts', 'dispatch_team_drivers',
 ];
 
 /**

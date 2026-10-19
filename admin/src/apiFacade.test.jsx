@@ -73,7 +73,7 @@ describe("a sample of calls from every domain still resolves", () => {
     "getDispatchTestingGroups", "getScheduledMessages", "getLeads", "getAiReports",
     "getEmployeeBirthdays", "getFacebookLeadPages", "getMileageBonusOverview",
     "getRaiseSettings", "getHomeTimeOverview", "getGroupAccess", "getFuelMonitor",
-    "getBotUsers", "getGmapsSettings", "getRouteAssignments", "getRecruiters",
+    "getBotUsers", "getRecruiters",
     "getLiveLocationsConfig", "getSafetyEventSettings",
   ];
   test.each(samples)("api.%s is a function", (name) => {

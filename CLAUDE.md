@@ -153,9 +153,8 @@ npm run build:schema:check                         # schema.sql in sync with bas
 - Database schema snapshots or generated migrations may be excluded only when
   splitting them would break their tooling.
 - Prefer a small compatibility façade plus focused internal modules when an
-  existing import path must be preserved. `services/routeControlService.js` →
-  `services/routeControl/*` is the reference example; `database/homeTime.js` →
-  `database/homeTime/*` follows the same shape. The same idea applies to a
+  existing import path must be preserved. `database/homeTime.js` →
+  `database/homeTime/*` is the reference example. The same idea applies to a
   static page: `server/public/remote.html` is a document plus `remote.css`,
   `remote-mqtt.js` and `remote-app.js`, and `server/presentation/index.html` a
   document plus a stylesheet and three scripts — both served through an
@@ -241,7 +240,7 @@ that area**, and run the tests it names.
 
 | Area | Read first |
 |---|---|
-| Route Control, route screenshots, Telegram media transport | [`docs/architecture/route-control.md`](docs/architecture/route-control.md) |
+| Route Control's removal, and the tables it left | [`docs/architecture/retired-route-control.md`](docs/architecture/retired-route-control.md) |
 | Which recruiter's number texts a lead, which MESSAGE they send, the E.164 `from` rule, per-recruiter RingCentral credentials, inbound-SMS subscriptions | [`docs/architecture/recruiter-sms-sender.md`](docs/architecture/recruiter-sms-sender.md) |
 | The Dispatcher Board feed, which system is the authority on a driver's current assignment, fleet types, and why a truck number alone is not unique | [`docs/architecture/dispatcher-board.md`](docs/architecture/dispatcher-board.md) |
 | The Gross Grand Prix displays: why the Datatruck token never reaches the page, what Datatruck may be asked and how often, which names may be public | [`docs/architecture/gross-race.md`](docs/architecture/gross-race.md) |

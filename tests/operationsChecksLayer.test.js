@@ -19,7 +19,7 @@ const snapshotOf = (over = {}) => {
   return {
     groups, groupsById: new Map(groups.map((g) => [g.id, g])),
     profiles: [], people: [], personGroups: [], units: [], boardRows: [],
-    fuelAlerts: [], teamDrivers: [], mileageProgress: [], routeAssignments: [],
+    fuelAlerts: [], teamDrivers: [], mileageProgress: [],
     ...over,
   };
 };
@@ -126,16 +126,13 @@ test("a chat's vehicle disagreeing with the driver's recorded truck is a warning
   assert.equal(findings[0].evidence.unitVehicleId, 'v-9');
 });
 
-test('a fuel watch or an active route on an inactive or missing chat is reported; on an active chat it is not', () => {
+test('a fuel watch on an inactive or missing chat is reported; on an active chat it is not', () => {
   const snapshot = snapshotOf({
     groups: [group(1, 'A'), group(2, 'B', { active: false })],
     fuelAlerts: [{ id: 1, group_id: 1, status: 'watching' }, { id: 2, group_id: 2, status: 'watching' },
       { id: 3, group_id: 99, status: 'watching' }, { id: 4, group_id: 2, status: 'expired' }],
-    routeAssignments: [{ id: 5, group_id: 1, status: 'active' }, { id: 6, group_id: 2, status: 'active' },
-      { id: 7, group_id: 2, status: 'completed' }],
   });
   assert.deepEqual(systems.checkFuelWatchOnInactiveGroup(snapshot).map((f) => f.subjectId), [2, 3]);
-  assert.deepEqual(systems.checkRouteOnInactiveGroup(snapshot).map((f) => f.subjectId), [6]);
 });
 
 test("a team seat on the chat a driver left proposes the driver's current chat — and only when there is one", () => {

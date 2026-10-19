@@ -121,15 +121,17 @@ test('the API mounts no removed router, and still mounts the surviving ones', ()
     'createTrailerRoutes', 'createTrailerDepartmentRoutes', 'createTrailerMediaRouter',
     'createTrailerMasterListRoutes', 'createTrailerAgreementRoutes',
     'sosRoutes', 'qbqRoutes', 'createQbqPageRoutes', 'mountFleet',
+    // Route Control (October 2026).
+    'createRouteControlRouter', 'createRouteScreenshotMediaRouter', 'getRouteMediaEditClient',
   ]) {
     assert.ok(!api.includes(gone), `server/api.js must not mount ${gone}`);
   }
   for (const kept of [
     'createRemoteRoutes', 'createHealthRoutes', 'createLiveLocationsRouter',
-    'createRouteControlRouter', 'createHomeTimeRouter', 'createFuelMonitorRouter',
+    'createHomeTimeRouter', 'createFuelMonitorRouter',
     'createSettingsRouter', 'createRecruiterRouter', 'createQuestionsRoutes',
     'createBroadcastRoutes', 'createMileageBonusRoutes', 'raisePublicRouter',
-    'createRouteScreenshotMediaRouter', 'createLeadsProxyRoutes',
+    'createLeadsProxyRoutes',
   ]) {
     assert.ok(api.includes(kept), `server/api.js must still mount ${kept}`);
   }
@@ -158,14 +160,29 @@ test('the admin SPA has no page, nav entry or API client for a removed feature',
   const app = read('admin/src/App.jsx');
   const sidebar = read('admin/src/components/AdminSidebar.jsx');
   for (const gone of ['TrailerTrackingPage', 'TrailerDepartmentShell', 'SosAdminPage',
-    'SosQuestionsPage', 'SosAnswersPage', 'trailer_tracking', 'trailer_department', 'sos_admin']) {
+    'SosQuestionsPage', 'SosAnswersPage', 'trailer_tracking', 'trailer_department', 'sos_admin',
+    'RouteControlPage', 'route_control']) {
     assert.ok(!app.includes(gone), `App.jsx must not reference ${gone}`);
     assert.ok(!sidebar.includes(gone), `AdminSidebar.jsx must not reference ${gone}`);
   }
-  for (const gone of ['api/trailerTracking', 'api/trailerDepartment', 'api/trailerAgreements', 'api/sos']) {
+  for (const gone of ['api/trailerTracking', 'api/trailerDepartment', 'api/trailerAgreements', 'api/sos',
+    'api/routeControl']) {
     assert.ok(!read('admin/src/api.js').includes(gone), `the API façade must not re-export ${gone}`);
     assert.equal(exists(`admin/src/${gone}.js`), false, `admin/src/${gone}.js must stay removed`);
   }
+});
+
+test('Route Control stays removed: no handler, no monitor, no settings tab', () => {
+  for (const gone of [
+    'bot/routeControlHandlers.js', 'services/routeControlService.js', 'services/routeControl',
+    'services/routeMessageDetection.js', 'services/googleMapsClient.js', 'database/routeControl.js',
+    'database/gmapsSettings.js', 'server/routes/routeControlRoutes.js',
+    'server/routes/settings/gmapsRoutes.js', 'admin/src/pages/settings/GmapsTab.jsx',
+  ]) {
+    assert.equal(exists(gone), false, `${gone} must stay removed`);
+  }
+  assert.ok(!read('bot/bot.js').includes('registerRouteControlHandlers'), 'the bot must not listen for route links');
+  assert.ok(!read('services/backgroundServices.js').includes('startRouteControlService'), 'no route monitor runs');
 });
 
 test('the baseline schema creates no removed feature table, and still creates the shared ones', () => {
@@ -194,7 +211,7 @@ test('the whole index.js module graph loads with no application env', () => {
     'services/datatruckDocumentService.js', 'services/raiseApprovalService.js',
     'services/fuelStopAlertService.js', 'services/recruiterCallSyncService.js',
     'services/ringCentralTokenRefreshService.js', 'services/roadBonusNotifierService.js',
-    'services/homeTimeReminderService.js', 'services/routeControlService.js',
+    'services/homeTimeReminderService.js',
     'services/duplicateUnitCheckService.js', 'services/memoryWatchdog.js',
     'services/leadsTelegramClient.js', 'database/retiredLeftovers.js',
   ];

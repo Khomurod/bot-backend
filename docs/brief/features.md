@@ -69,17 +69,10 @@ and every API client function is exactly what it was.
   it is the only UI for those schedules, which is why it outlived the page.
 - **Live Locations** — authenticated admin map (`liveLocationsService.js`); map
   tile URL is served only to logged-in admins, never baked into the bundle.
-- **Route Control** (`services/routeControl/`) — a dispatcher pastes a Google
-  Maps directions link into a driver group; the app parses it, computes route
-  geometry (Google Routes API), posts a route message (with an optional
-  screenshot), then compares live GPS to the route:
-  - **Destination auto-completion** runs for **every** lifecycle-active route
-    (including tracking-pending) and does **not** require Google Maps to be
-    enabled. Completion is silent and atomic.
-  - **Off-route warnings** require Settings → GMaps `enabled` **and**
-    tracking-active.
-  - See `CLAUDE.md` for the full invariant, including the signed-URL screenshot
-    transport that must never become a direct byte upload.
+- **Route Control was removed** (October 2026, the owner's decision): no
+  Google Maps route links in driver groups, no off-route warnings, no Settings →
+  GMaps. Its tables are still there, read by nothing. See
+  [`retired-route-control.md`](../architecture/retired-route-control.md).
 - **Duplicate unit check** — every 15 minutes, scans active driver groups for
   duplicate unit numbers and Samsara driver-name mismatches, and stores findings
   in `duplicate_unit_reports`. It **deliberately never messages driver groups.**

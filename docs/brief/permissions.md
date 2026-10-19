@@ -75,7 +75,6 @@ prefixed key and may never claim a reserved key or `super_`/`admin_` prefix
 | `/ringcentral/connect/:sessionToken`, `/ringcentral/oauth/*` | Session token — single-use, 30-minute `ringcentral_connect_sessions` row; `oauth_state` binds the redirect to the callback. Public because a recruiter has no admin session |
 | `ALL /webhook`, `ALL /rc-webhook` | Raw-body proxied to the Python worker; signature verified there |
 | `/api/internal/*` | `internalSharedSecretGuard` (`LEADS_INTERNAL_SHARED_SECRET`) |
-| `/api/route-screenshot-media/:id` | Short-lived HMAC-signed URLs (Telegram has no session) |
 | `POST /api/dat-ui/inspect` | Loopback only |
 | `/`, `/health`, `/api/health`, Meta compliance pages (`/privacy-policy.html`, `/terms-of-use`, `/user-data-deletion`) | Public |
 | `/presentation`, `/presentation/*.css`, `/presentation/*.js` | Public — the **owner-facing product deck**, served from an explicit asset allow-list in `healthRoutes.js` |

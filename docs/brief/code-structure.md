@@ -31,7 +31,7 @@ working instructions, and this is the brief's record of WHY each exists.
   at. Covered by `tests/checkImports.test.js`, including the false-positive
   classes that nearly made it useless.
 - Prefer a **re-export-only façade plus focused modules** when an import path must
-  be preserved. `services/routeControlService.js` → `services/routeControl/*` is
+  be preserved. `database/homeTime.js` → `database/homeTime/*` is
   the reference example: 18 lines, pure re-export, nothing of its own.
   (`database/db.js` is a *partial* version of the same idea — it re-exports, but
   it also still owns live code: `initializeDatabase()`, the `admins` queries, the

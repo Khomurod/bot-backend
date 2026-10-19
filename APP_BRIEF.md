@@ -135,7 +135,7 @@ Hard constraints of this deployment:
 
 | Bot | Token env | Role | Owner |
 |---|---|---|---|
-| Wenze Support / feedback bot | `BOT_TOKEN` | Main bot: feedback, broadcasts, dispatch commands, Route Control, home time, bonuses, creator panel | this repo, `bot/` |
+| Wenze Support / feedback bot | `BOT_TOKEN` | Main bot: feedback, broadcasts, dispatch commands, home time, bonuses, creator panel | this repo, `bot/` |
 | Wenze lead bot | `TELEGRAM_BOT_TOKEN` | Facebook/Indeed leads, auto-SMS, RingCentral replies | `leads-bot/` + `services/leadsTelegramClient.js` |
 | Samsara notification bot | `SAMSARA_BOT_TOKEN` (in the other repo) | Dashcam safety alerts | `samsara-integration` |
 
@@ -157,7 +157,7 @@ Hard constraints of this deployment:
 | User type | How they use it |
 |---|---|
 | **Drivers** | Their Telegram driver group is the whole interface: answer surveys, post `Status: Home/Ready/Rolling`, request home time, receive broadcasts, bonuses, route/off-route warnings, BOL/POD documents, fuel reminders. Also anonymous feedback in the bot's private chat. |
-| **Dispatchers** | `/load`, `/location`, `/status`, `/update` inside driver groups; assign Google Maps routes (Route Control) by pasting a directions link; receive automatic ETA updates; submit their team's weekly driver-raise picks through the public raise link. |
+| **Dispatchers** | `/load`, `/location`, `/status`, `/update` inside driver groups; receive automatic ETA updates; submit their team's weekly driver-raise picks through the public raise link. |
 | **Admins / office staff** | The admin SPA at `/admin`: broadcasts, surveys, groups, leads, live map, home time, fuel, mileage bonuses, raises, recruiter KPIs, settings. |
 | **Accounting** | Mileage-bonus Paid/Rejected buttons in Telegram (allow-listed accounting users — see §5); the driver-raise results group. |
 | **Recruiters** | Measured, not users: RingCentral call logs feed KPIs and the public `/recruiters` leaderboard. |
@@ -228,7 +228,7 @@ by a number on every stage does not belong in the file everything else fits in.
 | Any brief section not in this file | `docs/brief/` (see the index above) |
 | How to work in this repo (rules, safety, testing) | `CLAUDE.md` |
 | The implementation workflow | `.claude/skills/implement/SKILL.md` (`/implement`) |
-| Route Control + media-transport invariants | `docs/architecture/route-control.md` |
+| Route Control's removal (October 2026) | `docs/architecture/retired-route-control.md` |
 | Whose number texts a lead, WHICH message they send, and the RingCentral/TCR prerequisites | `docs/architecture/recruiter-sms-sender.md` |
 | The Gross Grand Prix displays (`/dispatch`, `/dispatchteam`): the Datatruck read budget, and what a public page may show | `docs/architecture/gross-race.md` |
 | Samsara settings (the shared `samsara_settings` row, the shared-secret envelope for its API key) and missing-video recovery | `docs/architecture/samsara-settings-and-video-recovery.md` |

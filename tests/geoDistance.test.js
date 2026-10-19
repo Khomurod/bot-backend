@@ -58,14 +58,3 @@ test('antipodal points do not produce NaN through the sqrt clamp', () => {
 test('order does not matter', () => {
   assert.equal(haversineMeters(ORD, DFW), haversineMeters(DFW, ORD));
 });
-
-test('route control and the shared module use one meters-per-mile constant', () => {
-  const routeControl = require('../services/routeControl/constants');
-  assert.equal(routeControl.METERS_PER_MILE, METERS_PER_MILE);
-});
-
-test('routeGeometry still exposes haversineMeters for its own consumers', () => {
-  const geometry = require('../services/routeGeometry');
-  assert.equal(typeof geometry.haversineMeters, 'function');
-  assert.equal(geometry.haversineMeters(ORD, DFW), haversineMeters(ORD, DFW));
-});

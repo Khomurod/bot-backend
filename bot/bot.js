@@ -13,7 +13,6 @@ const { telegramClientOptions } = require('../services/telegramAgent');
 const db = require('../database/db');
 const { registerHomeTimeRequestHandlers } = require('./homeTimeRequestHandlers');
 const { registerDatatruckPeerHandlers } = require('./datatruckPeerHandlers');
-const { registerRouteControlHandlers } = require('./routeControlHandlers');
 const { registerMileageBonusHandlers } = require('./mileageBonusHandlers');
 const { registerLocationCheckinHandlers } = require('./locationCheckinHandlers');
 const { registerCreatorMessageManager } = require('./creatorMessageManager');
@@ -196,10 +195,6 @@ async function startBot() {
     registerControlReplyHandlers(bot);
 
     registerDatatruckPeerHandlers(bot);
-    // Detect Google Maps route links from authorized dispatchers in driver
-    // groups → create/update the Route Control assignment. Registered before the
-    // callback_query catch-all so its Replace/Ignore buttons are handled.
-    registerRouteControlHandlers(bot);
     registerCreatorMessageManager(bot);
     // Creator-only (user id 2117922421) messaging panel, restricted to the
     // bot's private chat: "Send Broadcast Message" (pick an audience) and

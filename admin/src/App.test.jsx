@@ -103,8 +103,8 @@ describe("a hash opens the page it names", () => {
 describe("the URL follows the navigation", () => {
   test("clicking a nav item writes a hash that names the destination", async () => {
     await renderShell();
-    await userEvent.click(screen.getByRole("button", { name: /Route Control/i }));
-    await waitFor(() => expect(window.location.hash).toBe("#route_control"));
+    await userEvent.click(screen.getByRole("button", { name: /Live Locations/i }));
+    await waitFor(() => expect(window.location.hash).toBe("#live_locations"));
     expect(window.location.pathname).toBe("/admin");
   });
 

@@ -2,8 +2,7 @@
  * Pure helpers for the mileage bonus run.
  *
  * Extracted from services/mileageBonusService.js to keep that orchestrator
- * under the file-size limit, following the services/routeControl/* pattern:
- * decisions and shaping live here as plain functions, while the database
+ * under the file-size limit: decisions and shaping live here as plain functions, while the database
  * writes and Telegram sends stay in the orchestrator. Nothing in this module
  * performs I/O, so every rule below is testable directly.
  */

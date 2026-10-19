@@ -10,6 +10,16 @@ git so they can be recovered.
 
 ---
 
+## Route Control
+
+Removed 2026-10 at the owner's request: Google Maps route links pasted into
+driver groups, the route monitor (off-route warnings, auto-completion), route
+screenshots, the admin Route Control page and Settings → GMaps. The pre-removal
+commit, what was removed, what was kept (ETA's Google key, the tables) and why
+are in [`architecture/retired-route-control.md`](architecture/retired-route-control.md).
+
+---
+
 ## The "is home!" post to the employee group
 
 Removed 2026-10-06 at the owner's request. When a company driver came home after

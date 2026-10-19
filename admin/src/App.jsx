@@ -27,7 +27,6 @@ const RecruiterKpiPage = lazy(() => import("./pages/RecruiterKpiPage"));
 const RecruitersPublicPage = lazy(() => import("./pages/RecruitersPublicPage"));
 const GrossRacePage = lazy(() => import("./pages/grossRace/GrossRacePage"));
 const LiveLocationsPage = lazy(() => import("./pages/LiveLocationsPage"));
-const RouteControlPage = lazy(() => import("./pages/RouteControlPage"));
 const OperationsPage = lazy(() => import("./pages/OperationsPage"));
 
 const pageLoadingFallback = (
@@ -139,7 +138,6 @@ const PAGE_COMPONENTS = {
   settings_access: <SettingsPage initialTab="access" />,
   recruiter_kpis: <RecruiterKpiPage />,
   live_locations: <LiveLocationsPage />,
-  route_control: <RouteControlPage />,
   operations: <OperationsPage />,
   // "Is everything running?" is a question about the whole system, not a
   // sub-question of Needs Attention, so it gets its own sidebar entry onto the

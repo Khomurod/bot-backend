@@ -61,7 +61,8 @@ feature it belongs to.
   `fuel.watch_on_inactive_group`, `dispatch.team_driver_on_inactive_group`
   (**approval**, proposing the driver's current chat from the person layer),
   `raise.progress_without_person` (one aggregated finding) and
-  `route_control.assignment_on_inactive_group`. The two auto actions live in
+  `route_control.assignment_on_inactive_group` (retired with Route Control in
+  October 2026; its key stays so open findings resolve). The two auto actions live in
   `corrections/identityActions.js`, re-derive under lock, refuse when stale, and
   revert without deleting (a created person row stays; a previous truck is
   reopened as a new row). Both ship **disabled** like every other check. Guarded

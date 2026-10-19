@@ -16,12 +16,11 @@ do", the other answers "how would I know whether it ran, and what did it cost".
 and base — never the key itself, which must not sit in a map key that could be
 logged or dumped.
 
-Route Control resolves each active assignment's GPS separately and each
-resolution fetched the **entire paginated fleet**: ten active assignments meant
-ten complete fetches every check interval, roughly fourteen thousand a day for a
-hundred trucks whose positions were identical in all ten. The duplicate-unit
-scan, the fuel watch and the load watch ask for the same snapshot on their own
-timers as well.
+Route Control (removed October 2026) resolved each active assignment's GPS
+separately, and each resolution fetched the **entire paginated fleet** — about
+fourteen thousand fetches a day for a hundred trucks. The duplicate-unit scan,
+the fuel watch and the load watch still ask for the same snapshot on their own
+timers.
 
 Sixty seconds is shorter than every caller's interval, and the data is already
 treated as approximate — nothing decides anything from a position without

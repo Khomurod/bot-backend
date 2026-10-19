@@ -52,8 +52,8 @@
     },
     "gmaps_settings": {
       "purpose": "Single-row (id=1) Google Maps Platform config for Route Control. Server key encrypted at rest.",
-      "status": "active",
-      "service": "admin (Settings → GMaps), routeControlService"
+      "status": "retired",
+      "service": "none — Route Control and Settings → GMaps were removed in October 2026 (docs/architecture/retired-route-control.md). Still created by the baseline; read by nothing."
     },
     "message_group_settings": {
       "purpose": "Single-row (id=1) map of message category → destination Telegram group id (stored as text). Telegram group ids are not secrets. The driver-raise workflow uses TWO independent categories: dispatch_review_group_id for the review REQUEST, raise_results_group_id for the submitted RESULT sent to accounting. No category falls back to another.",

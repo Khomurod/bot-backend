@@ -45,7 +45,6 @@ function bind(harness) {
       driverState: require('../database/homeTime/driverState'),
       requests: require('../database/homeTime/requests'),
       fuel: require('../database/fuelMonitoring'),
-      routes: require('../database/routeControl/assignments'),
       teams: require('../database/raiseApproval/teamDrivers'),
       mileage: require('../database/mileageBonus'),
     };
@@ -143,13 +142,6 @@ test('every operational write carries the person from now on — and NULL, never
     groupId: group.id, telegramGroupId: -102, sourceMessageId: 5, stationLat: 41.8, stationLng: -87.6,
   });
   assert.equal(alert.person_id, personId, 'fuel_stop_alerts');
-
-  const route = await bound.routes.createRouteAssignment({
-    groupId: group.id, driverProfileId: null, driverLabel: 'RUSLAN', unitNumber: '27',
-    originalUrl: 'https://maps.example/x', originText: 'A', destinationText: 'B', waypoints: [],
-    encodedPolyline: 'abc', distanceMeters: 1000, durationSeconds: 60, assignedBy: 'admin',
-  });
-  assert.equal(route.person_id, personId, 'route_assignments');
 
   const team = await harness.query(`INSERT INTO dispatch_teams (name) VALUES ('Team A') RETURNING id`);
   const { assignment } = await bound.teams.assignDriverToTeam({
