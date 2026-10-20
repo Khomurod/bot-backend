@@ -38,7 +38,6 @@ without any timer firing), `tests/jobQueueScheduler.test.js` and
 | `employeeBirthdayWishService` | sleeps to the configured send time, re-checks hourly (was 60s) | wishes at the `send_hour` / `send_minute` / `timezone` from `employee_birthday_settings` |
 | `groupStatusAiService` | 60s | AI classification of group activity |
 | `mileageBonusService` | sleeps to the next Wed 07:00, capped 1h (was 60s) | milestone detection → bonus notification |
-| `fuelStopAlertService` | 150s | fuel-stop proximity replies |
 | `homeTimeReminderService` | 5 min (first tick +30s) | housekeeping: closing a request whose window passed (nobody is told), plus the retry ride for the internal-alert and manager-notice outboxes. The reminder loop it is named after is gone. |
 | `services/homeTime/returnToRoadWatch.js` (`startReturnToRoadWatch`) | 12 min, first tick 4 min | Watches drivers who are at home and decides whether they went back to work — Datatruck load + truck movement. No driver at home means no provider call at all. Files a finding; the corrections pass applies the high-confidence ones. **Each driver is checked inside its own try**: one that throws is counted and its error KIND recorded, and the pass is a failure only when every watched driver failed. Every timestamp it stores comes from a provider or from Datatruck and goes through `lib/database/timestampValue.js` first — an unreadable one becomes null rather than aborting the write |
 | `services/homeTime/boardPresenceWatch.js` (`startBoardPresenceWatch`) | 15 min, first tick 2 min | The other half of the same question: WHEN A DRIVER GOES HOME. Reads the Dispatcher Board snapshot somebody else's poller already fetched — no second integration and no extra network call — and opens a cycle when the board has said `HOME`/`VACATION` for twenty minutes, or closes one when the truck is back in the dispatch pool. Writes only through `applyStateTransition`. Three rules keep it from flapping (settle / dwell / hold), so a board a few minutes behind a driver's own message produces silence; only a twelve-hour disagreement files `home_time.board_disagrees_with_state`. Capped at 25 transitions a pass, so a board that suddenly claims the whole fleet went home is a slow problem somebody notices. `blocked` while the board is switched off |
@@ -63,15 +62,14 @@ without any timer firing), `tests/jobQueueScheduler.test.js` and
 
 Event-driven (no timer) but equally live: the driver-group message pipeline
 (`bot/handlers/groupCaptureHandlers.js`) fans a single incoming message out to
-home-time detection, fuel-stop capture, auto-reactions,
-pinned-context snapshots, and the recent-message buffer.
+home-time detection, auto-reactions, pinned-context snapshots, and the
+recent-message buffer.
 
 **None of this depends on a browser.** Every job above is started by
 `index.js` at boot and stopped only by the shutdown coordinator; no route, no
-login and no admin page starts, feeds or keeps one alive. Fuel monitoring,
-birthdays, Samsara/ELD reads, dispatch ETA and the alert queues all continue
-with the admin panel closed — the
-panel is a viewer, never the engine. (Nothing in `server/routes/**` calls a
+login and no admin page starts, feeds or keeps one alive. Birthdays,
+Samsara/ELD reads, dispatch ETA and the alert queues all continue with the
+admin panel closed — the panel is a viewer, never the engine. (Nothing in `server/routes/**` calls a
 `start*Service`, and no route module holds an interval at all.)
 
 ### The database transfer budget, and economy mode
@@ -115,8 +113,7 @@ retry.**
 | `service_runs` | a scheduled service firing twice for one due window |
 | `facebook_webhook_events` (`leadgen:<pageId>:<leadgen_id>`) | a re-delivered Meta lead being posted twice |
 | `facebook_lead_sms_mirrors` | an SMS reply being mirrored twice |
-| `fuel_monitor_inbox` | one fuel-stop post creating several watches |
-| `dispatch_eta_updates` / `fuel_stop_alerts` claim pattern (`FOR UPDATE SKIP LOCKED`) | two ticks working the same row |
+| `dispatch_eta_updates` claim pattern (`FOR UPDATE SKIP LOCKED`) | two ticks working the same row |
 | `driver_road_history.bonus_posted_at` (atomic claim) | a completed road leg being announced twice |
 | `responses` UNIQUE `(driver_id, question_id)` | a driver answering one question twice |
 
@@ -242,72 +239,14 @@ Visible on `/api/health` → `operations.loads`: how many loads are CURRENT, in
 what phase, how many are unclear, how many have a board disagreement, and how
 many are retired.
 
-## Fuel risk watch (every 20 minutes, first pass 7 minutes after boot)
+## Fuel (removed October 2026)
 
-`services/fuelStop/riskWatch.js`, beside the existing fuel-stop reminder rather
-than replacing it. That one answers a single question — has the truck reached
-the station dispatch named? — and answers it well. This one asks the questions a
-person actually asks: can it *get* there, did it drive past, is the instruction
-from last trip, and is it burning fuel faster than usual.
-
-**A missing reading is not a low one.** Most of this fleet does not report fuel
-at all, so every threshold in `lib/fuel/risk.js` requires an actual number and
-absence produces silence. The danger is specific and was caught in review of
-this very module: `Number(null)` is `0`, so any threshold written with a
-coercion reads "does not report fuel" as "empty tank" and alerts on the whole
-fleet on its first pass. A genuine `0` IS a reading, and a serious one.
-
-**Distance alone never means "passed."** A truck 200 miles short of a station
-looks identical to one 200 miles beyond it, so the rule needs the previous
-reading — it has to have been closer before.
-
-**Two deliberate limits while this is new.** Nothing messages a driver group;
-every finding goes to the configured operations chat. A fuel alert to a driver
-is an instruction, and an instruction from a rule nobody has watched running yet
-is how a fleet learns to ignore the bot. And nothing changes a record: a fuel
-risk is an observation, not a correction.
-
-Each risk kind has its own quiet window — a passed stop is settled history
-within a day, a low tank matters again after a shift — so one condition cannot
-fill the channel.
-
-**30% IS THE OPERATIONAL LOW-FUEL THRESHOLD.** It is the business rule and it
-had silently become 15% in `lib/fuel/risk.js`'s defaults, which made the feature
-stricter than the thing it was built to enforce: a truck at 28%, the case an
-operator wants to hear about while there is still time to route it, produced
-nothing at all. There are now three bands under ONE `low_fuel` risk kind —
-`low` at 30%, `short` at 15%, `critical` at 8% — rather than three risk kinds,
-because the quiet window is keyed on the kind and a truck sliding from 28% to
-12% would otherwise reset its own timer by crossing a band and say it twice.
-
-**Abnormal consumption needs a memory, and for the life of the feature it had
-none.** `assessFuelRisk` has always carried the branch; its only caller handed
-it `fuelPercent: null, odometerMiles: null` HARD-CODED, so the branch could not
-run. `database/truckFuelReadings.js` and `truck_fuel_readings` (migration 0038)
-close that: ONE ROW PER TRUCK, updated in place — about 110 rows forever, not a
-position history, which this application deliberately does not keep.
-
-The row carries a `baseline_*` triple that the comparison is made against, and
-it advances only once real distance has accumulated. Comparing consecutive
-20-minute samples measures noise; a 1% drop over 4 miles is a 25%-per-100-miles
-burn rate made of rounding error. Three things RESET the baseline instead of
-advancing it, and each is a case where burn measured across it would be a lie: a
-refuel (fuel used across a fill-up is two different tanks), an odometer that
-went backwards or jumped implausibly (a different vehicle now answers to this
-unit number), and a baseline gone stale (parked, or the feed was down). The
-comparison is therefore null far more often than not, and that is the design.
-
-`/api/health → operations.fuel` publishes `comparable`: how many trucks have a
-usable window. **Zero comparable trucks and zero findings are the same silence
-and mean opposite things** — the first is a blind engine, the second a healthy
-fleet — and before this block there was no way to tell them apart.
-
-**New telemetry.** Samsara is now asked for `fuelPercents` and
-`obdOdometerMeters` alongside `gps`, on the request that was already being made.
-Factor and Leader have returned `fuel_level` and `odometer` in their documented
-payload all along and nothing ever read them; both are now mapped through
-`services/liveLocations/providers.js`. A vehicle that does not report them has
-`null`, never `0`.
+The fuel-stop reminder (`fuelStopAlertService`, 150 s) and the fuel risk watch
+(`fuel_risk`, 20 min) were removed at the owner's request, together with
+`truck_fuel_readings`'s writer and `/api/health → operations.fuel`. Samsara is
+still asked for `fuelPercents` and `obdOdometerMeters` on the same GPS request,
+and the Live Locations providers still map them; nothing reads them now.
+`docs/architecture/retired-fuel.md`.
 
 ## Safety coach (every 6 hours, first pass 20 minutes after boot)
 

@@ -4,7 +4,7 @@
  * THE QUESTION NO OTHER SCREEN COULD ANSWER. Every other page in this admin
  * shows what a feature FOUND. None of them shows whether the feature ran. A
  * pass that finds nothing writes nothing, so an empty Needs Attention list and
- * a fuel watch whose timer died since the last deploy look exactly the same
+ * a load watch whose timer died since the last deploy look exactly the same
  * from the outside — and this application has already lost weeks of staff
  * alerts to precisely that ambiguity.
  *

@@ -179,7 +179,8 @@ async function getOpenHoldersForUnit(unitNumber) {
 /**
  * Many units at once — one person per unit, batched.
  *
- * The fuel watch asked it once per truck inside a loop over the whole fleet:
+ * The (since removed) fuel watch asked it once per truck inside a loop over
+ * the whole fleet:
  * about 110 round trips every twenty minutes to answer one question that a
  * single `= ANY` settles. Behaviour is deliberately identical, including the
  * silence about a unit two open rows claim — that contradiction is

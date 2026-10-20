@@ -59,7 +59,6 @@ true.
 | **Home-time dates** from a reply — `home_time_dates` | Dates on an open request | Normalised and policy-checked server-side; an unreasonable window is re-asked, never stored | **Remains automatic** |
 | **Home-time screenshot import** — `home_time_import` | Home-time records in bulk | Operator-initiated, reviewed on screen before applying | **Remains automatic**, because a person is already looking at it |
 | **Returned to Road** — `home_time_return_to_road` (`returnReasoning`) | Nothing directly | Consulted only on an already-ambiguous case; may raise it to confident **only when the coordinates already proved movement**, and may always stand one down | **Suggestion only, by construction.** The state change is a governed correction, capped and revertible |
-| **Fuel station** from a message — `fuel_stop_detection` | Creates a fuel watch, messages the driver | Regex fallback; no address means no watch | **Remains automatic.** A wrong watch costs one reminder |
 | **Pinned load details** — `dispatch_load_extraction` | Cached load context behind driver ETA messages | Deterministic destination inference beneath it; with too little, the driver is told there is no current load info rather than a wrong one | **Remains automatic** |
 | **Chat message labels** — `chat_annotation` | `chat_message_annotations` | None needed — gap-filling was removed, so an unlabelled message stays unlabelled instead of being invented | **Remains automatic** |
 | **Provider terms interpretation** — `policy_reading` | An AI policy finding | A provider is suspended only by an enumerated deterministic rule that never sees the model's output | **Remains automatic for the words; the suspension stays deterministic** |
@@ -72,14 +71,17 @@ true.
 | **A second opinion on a load alarm** (`load_alarm_review`) | Nothing stored — it decides only whether the CHAT is told, and adds one sentence | Reached only for a disagreement the rules already found (`lib/loads/lifecycle.js`), once per load per day. Given statuses, distances, speeds and GPS age — no name, address or coordinate. Only `likely_bad_data` at confidence ≥ 80 holds the notice back; the finding is filed regardless, with the review in its evidence. Unavailable, switched off or malformed: the notice goes out unchanged | **Filtering and wording only.** Whether a load is in conflict, and its phase, are the rules' — a model can make the chat quieter, never a load's record different |
 | **Wording a retention notice** (`retention_summary`) | Nothing — the notice body only | Refused twice if it reaches for an employment decision: as the router's validator, so a straying provider loses its turn, and again on the finished body. Given counts and reason phrases only — no name, no message text | **Wording only.** Which drivers are flagged, and why, is arithmetic in `lib/retention/signals.js` with no model in it |
 
+Reading a gas station's address out of a fuel post (`fuel_stop_detection`),
+which created a fuel watch and messaged the driver, went with fuel in October
+2026 ([retired-fuel.md](retired-fuel.md)).
+
 ## Text only — no record changes
 
 Safety coaching notes to a driver (the fixed sentence is a good sentence, and a
 model reaching for a consequence is refused), the one-line summary on a
-self-healing or learning notice, home-time replies to drivers, the fuel reminder
-wording, insight-card narration, the morning summary's "most important today"
-(`daily_priorities` — it chooses among problems the rules ranked and cannot add
-one)
+self-healing or learning notice, home-time replies to drivers, insight-card
+narration, the morning summary's "most important today" (`daily_priorities` —
+it chooses among problems the rules ranked and cannot add one)
 (the card and its severity stand without it), drafted reports (a person edits and
 sends), broadcast translation (a person sends), birthday and banter messages.
 Each has a fixed sentence to fall back on, except reports and translation, which

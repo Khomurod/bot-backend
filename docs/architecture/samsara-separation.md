@@ -30,9 +30,10 @@ reintroduce `startSamsaraBot` or any equivalent child process here.**
 ## What stayed, and must keep working
 
 The main app still uses Samsara for a **different, much smaller thing**: looking
-up a truck's live GPS location (city/state) for the dispatch, fuel and location
-features. That is not the camera-alert poller, was never the memory problem, and
-must not be removed while cleaning up Samsara references.
+up a truck's live GPS location (city/state) for the dispatch and location
+features (and, until fuel was removed in October 2026, the fuel features).
+That is not the camera-alert poller, was never the memory problem, and must not
+be removed while cleaning up Samsara references.
 
 ## How the two services still work together
 

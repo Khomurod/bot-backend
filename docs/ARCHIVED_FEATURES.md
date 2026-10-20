@@ -10,6 +10,22 @@ git so they can be recovered.
 
 ---
 
+## Fuel: stop reminders, the risk watch, readings and the Fuel Monitor
+
+Removed 2026-10 at the owner's request ("полностью все, что связано с топливом,
+убираем" — everything to do with fuel goes): the gas-station address
+recognition in driver groups and its proximity reminders, the fuel risk watch,
+the truck fuel readings store, the admin Fuel Monitor page
+(`/api/fuel-monitor` now 404), the `fuel_stop_alerts` and `fuel_risk`
+background services, the `fuel` notification category, the two fuel AI
+capabilities, the fuel consistency check, the driver context's fuel section,
+and the `eld_location_freshness` health line that was computed from fuel
+readings. What was removed, what was kept (the Samsara request, the three
+tables) and why are in
+[`architecture/retired-fuel.md`](architecture/retired-fuel.md).
+
+---
+
 ## BOL/POD document forwarding
 
 Removed 2026-10 at the owner's request ("BOL и POD… полностью отключай" —

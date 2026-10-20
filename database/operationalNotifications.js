@@ -112,7 +112,7 @@ async function enqueueNotification({
  *
  * THE QUESTION THE NOTICE KEY CANNOT ANSWER. That column stops the same notice
  * being sent twice and does its job perfectly; it has nothing to say about a
- * fuel risk, a load contradiction and a retention signal about ONE driver
+ * safety escalation, a load contradiction and a retention signal about ONE driver
  * arriving within minutes of each other, each correctly deduplicated against
  * itself, together reading as three problems rather than one bad morning.
  *
@@ -129,7 +129,7 @@ async function enqueueNotification({
 /**
  * SCOPED TO THE DESTINATION, because the flood is something a person SEES.
  *
- * Without the chat, three fuel notices delivered to the fuel team could hold
+ * Without the chat, three load notices delivered to dispatch could hold
  * the first safety notice in a dedicated safety chat — nobody reading that chat
  * had seen the burst it was held for. The chat is already resolved by the time
  * this is asked, so scoping costs nothing. A null chat means "wherever it
@@ -210,8 +210,8 @@ async function countHeldNoticesAbout({
 /**
  * A PENDING ROW COUNTS, because it will still be said.
  *
- * This looked only at `delivered`, and the fuel watch's discriminator carries
- * the hour. So a notice HELD at 10:30 was invisible here, the key changed at
+ * This looked only at `delivered`, and the (since removed) fuel watch's
+ * discriminator carried the hour. So a notice HELD at 10:30 was invisible here, the key changed at
  * 11:00, a second copy of the same risk was enqueued, and both eventually
  * arrived inside a repeat window set to 6-48 hours — the hold created the
  * duplicate it exists to prevent.

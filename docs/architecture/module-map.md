@@ -125,13 +125,12 @@ organization should converge toward.
 |---|---|
 | Feedback surveys (multilingual) | `bot/anonymousFeedbackHandlers.js`, questions/options/responses in `database/db.js`, `services/translationService.js`, admin `pages/communications/SurveysTab.jsx` |
 | Broadcasts & scheduled messages | `services/schedulerService.js`, `scheduledMessageUtils.js`, `broadcastTargetService.js`, `broadcastTemplateService.js`, `bot/creatorMessageManager.js`, admin `pages/communications/{SendMessageTab,ScheduledTab,EditByLinkTab}.jsx` (+ `communications/broadcast/*`) |
-| Fuel-stop reminders | `services/fuelStopAlertService.js`, `server/routes/fuelMonitorRoutes.js`, `fuel_stop_alerts` + `fuel_monitor_inbox`, admin `FuelMonitorPage.jsx` |
 | Home-time tracking | `services/homeTimeService.js`, `homeTimeRequestService.js`, `homeTimeImportService.js`, `homeTimeConstants.js`, `bot/homeTimeRequestHandlers.js`, `server/routes/homeTimeRoutes.js`, `database/homeTime.js`, admin `HomeTimePage.jsx` |
 | Birthdays (driver + employee) | `services/birthdayService.js`, `employeeBirthdayWishService.js`, `employeeBirthdayMessage.js`, `utils/birthdaySort.js`, `birthdays.csv`, `scripts/import-birthdays.js`, admin `CompanyBirthdaysPage.jsx` |
 | Group auto-registration & status | `database/groups.js` (`upsertGroup` / `reactivateGroupOnBotJoin` / `deactivateGroup`, re-exported by `database/db.js`), `database/groupRowCache.js` (the message path's 5-minute copy of a `groups` row — every `groups` write clears it), `bot/handlers/captureWriteMemo.js` (identity writes that would change nothing are not re-sent), `services/groupStatusAiService.js`, `groupStatusAiClassifier.js`, `driverGroupAiSyncService.js`, `driverGroupDirectoryService.js`, `driverProfileParse.js`, `driverProfileAiParser.js` |
 | Location check-ins | `services/driverLocationMonitorService.js`, `bot/locationCheckinHandlers.js`, `server/routes/locationMonitorRoutes.js`, `database/driverLocationMonitors.js`, admin `LocationMonitorPage.jsx` |
 | Central bot wiring & helpers | `bot/bot.js`, `services/recentMessageBuffer.js`, `telegramMention.js`, `telegramHtml.js`, `telegramUrl.js` |
-| **Retired** | BOL/POD document forwarding from Datatruck (October 2026): the `datatruck_documents` worker, Settings → BOL / POD and `/api/settings/bol-pod*`. Tables `bol_pod_forwarding_settings` and `datatruck_document_deliveries` remain, unread; `services/datatruckApiService.js` stays for its other users. `docs/architecture/retired-bol-pod.md` |
+| **Retired** | BOL/POD document forwarding from Datatruck (October 2026): the `datatruck_documents` worker, Settings → BOL / POD and `/api/settings/bol-pod*`. Tables `bol_pod_forwarding_settings` and `datatruck_document_deliveries` remain, unread; `services/datatruckApiService.js` stays for its other users. `docs/architecture/retired-bol-pod.md`. Everything fuel (October 2026): fuel-stop reminders, the fuel risk watch, `lib/fuel/*`, `database/{fuelMonitoring,truckFuelReadings}.js`, `/api/fuel-monitor` and the Fuel Monitor page. Tables `fuel_stop_alerts`, `fuel_monitor_inbox` and `truck_fuel_readings` remain, unread. `docs/architecture/retired-fuel.md` |
 
 > **Driver of the Week voting — REMOVED.** The employee "Driver of the Week"
 > voting feature was retired. Its code (bot handlers, API routes, DB helper,
@@ -215,7 +214,7 @@ reads the text out.
 | Concern | Current files |
 |---|---|
 | React admin panel (Vite) | `admin/` → `admin/src/App.jsx`, `api.js`, `pages/*.jsx`, `components/Shared.jsx`; built to `admin/build/`, served at `/admin` |
-| **Which page the panel is on** | `admin/src/navigation/pageKeys.js` (pure) owns the vocabulary: `PAGE_KEYS`, `LEGACY_PAGE_KEYS` for keys that became tabs, `resolvePageKey`, and the hash helpers. `App.jsx` `PAGE_COMPONENTS` says what each key renders; `components/AdminSidebar.jsx` `NAV_SECTIONS` says where each key appears. **Those three lists are the same vocabulary authored three times and `navigation/pageKeys.test.jsx` holds them to each other** — a typo used to miss the lookup and render Driver Groups in silence. The admin page is the URL HASH (`/admin#fuel_monitor`); the path only chooses between the admin shell and the two public pages. |
+| **Which page the panel is on** | `admin/src/navigation/pageKeys.js` (pure) owns the vocabulary: `PAGE_KEYS`, `LEGACY_PAGE_KEYS` for keys that became tabs, `resolvePageKey`, and the hash helpers. `App.jsx` `PAGE_COMPONENTS` says what each key renders; `components/AdminSidebar.jsx` `NAV_SECTIONS` says where each key appears. **Those three lists are the same vocabulary authored three times and `navigation/pageKeys.test.jsx` holds them to each other** — a typo used to miss the lookup and render Driver Groups in silence. The admin page is the URL HASH (`/admin#home_time`); the path only chooses between the admin shell and the two public pages. |
 | Settings (ELD creds, RingCentral, integrations) | `server/routes/settingsRoutes.js` (`/api/settings`), `database/eldSettings.js` |
 | Permissions / feature toggles | `services/groupAccessService.js`, `groupAccessConstants.js`, `bot_access_settings` table, admin `GroupAccessPage.jsx`; env flags via `isEnabled()` in `index.js` |
 | Logs / sent-message browser | `server/routes/botMessagesRoutes.js` (`/api/bot-messages`), `services/botMessageAdminService.js`, `admin/src/pages/communications/HistoryTab.jsx` — database-backed; it does not read any log file |
@@ -264,7 +263,6 @@ repository exceeds 500 lines (`npm run lint:filesize`, no baseline).
 | `services/dispatchPinnedContextService.js` | `services/pinnedContext/*.js` |
 | `services/liveLocationsService.js` | `services/liveLocations/*.js` |
 | `services/aiInsightsService.js` | `services/aiInsights/*.js` |
-| `services/fuelStopAlertService.js` | `services/fuelStop/*.js` — `telegramClient.js` is the single owner of the shared client |
 | `services/mileageBonusService.js` | `services/mileageBonus/*.js` — `runState.js` owns the run lock |
 | `bot/senders.js` | `bot/senders/{messageText,mediaSender,questionSenders,broadcastSenders,confirmationSenders}.js` |
 | `services/operations/healthObservations.js` | `services/operations/observations/{shape,integrations}.js` — the façade keeps the ledger-driven worker half and `gatherAllObservations`; `shape.js` owns the one shape every observation takes, so a component cannot answer two different things in one payload |
@@ -287,9 +285,8 @@ over `admin/src/pages/<area>/` holding data hooks and presentational sections:
 | `facebook_seen_senders` | Duplicate Messenger sender handling |
 | `facebook_lead_sms_mirrors` | Two-way SMS reply mis-routing / duplicates |
 | `service_runs` | Duplicate scheduled runs (e.g. the weekly finance report) |
-| `fuel_monitor_inbox` (`ON CONFLICT (group_id, message_id) DO NOTHING`) | Duplicate fuel-monitor intake |
 | `responses` (`ON CONFLICT (driver_id, question_id) DO NOTHING`) | Duplicate survey answers |
-| `dispatch_eta_updates` / `fuel_stop_alerts` (`processing` claim + `FOR UPDATE SKIP LOCKED`) | Double-processing across instances |
+| `dispatch_eta_updates` (`processing` claim + `FOR UPDATE SKIP LOCKED`) | Double-processing across instances |
 | `mileage_bonus_runs` | Double milestone runs |
 | `finance_messages` (`ON CONFLICT (chat_id, message_id) DO NOTHING`) and `finance_moneycodes` (`ON CONFLICT (message_ref_id, code_normalized)`) | A redelivered or replayed finance message becoming a second row, or a re-read double-counting a code |
 | `finance_documents` (UNIQUE `(chat_id, message_id, file_unique_id)`; claimed with `FOR UPDATE SKIP LOCKED` + attempts counted at claim) | The same attachment queued twice, two readers taking one document, and a crash loop retrying a poisoned row forever |

@@ -15,7 +15,7 @@
  *   minutes and Render restarts this process several times a day, so the
  *   guarantee is a UNIQUE column, not a set in memory.
  *
- *   A SEND FAILURE NEVER BREAKS THE CALLER. Detecting a fuel risk and telling
+ *   A SEND FAILURE NEVER BREAKS THE CALLER. Detecting a problem and telling
  *   somebody about it are different jobs; the second failing must not undo the
  *   first. Every function here returns a result object and none of them throws.
  */
@@ -100,10 +100,10 @@ function resolveTelegram(deps) {
  * @param {object} [notice.evidence]
  * @param {string} [notice.severity]  how serious THIS event is, when the caller
  *   knows better than its category does. A category's severity is a constant —
- *   `fuel` is `warning` whether the truck is twenty miles from a station with
- *   half a tank or four hundred miles out at eight percent — and the second of
- *   those is the one that costs money. An unrecognised value falls back to the
- *   category's rather than to the most alarming one.
+ *   `load_lifecycle` is `warning` whether a load is due next week or was due
+ *   yesterday — and the second of those is the one that costs money. An
+ *   unrecognised value falls back to the category's rather than to the most
+ *   alarming one.
  * @param {object} [notice.facts]  established numbers that move the urgency —
  *   a distance, a percentage, a count, an hours-until-due. NEVER an opinion:
  *   `lib/notifications/priority.js` has no parameter a model could reach.
@@ -186,7 +186,7 @@ async function notify(notice, deps = defaultDeps()) {
   // ── has this person been told enough about this driver already? ───────────
   //
   // Not the same question as the notice key, which stops the SAME notice being
-  // sent twice and is already answered below. This one is about a fuel risk, a
+  // sent twice and is already answered below. This one is about a safety escalation, a
   // load contradiction and a retention signal about ONE driver arriving within
   // minutes, each correctly deduplicated against itself.
   //
@@ -203,8 +203,8 @@ async function notify(notice, deps = defaultDeps()) {
   const recent = await Promise.resolve(
     deps.store.listRecentNoticesAbout?.({
       personId, groupId, subjectType, subjectId,
-      // SCOPED TO WHERE THIS ONE IS GOING. Three fuel notices in the fuel
-      // team's chat must not hold the first safety notice in a safety chat:
+      // SCOPED TO WHERE THIS ONE IS GOING. Three load notices in the dispatch
+      // chat must not hold the first safety notice in a safety chat:
       // nobody reading that chat saw the burst it would be held for.
       chatId,
       withinMinutes: SUPPRESSION_WINDOW_MINUTES,

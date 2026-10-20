@@ -74,8 +74,8 @@ function createNotificationSettingsRouter({ authMiddleware, telegram = null }) {
       // The key a field is checked under is the label an operator READS in the
       // error, because `checkChatIdColumns` builds its sentence as
       // "&lt;column&gt; &lt;reason&gt;". So the keys are the category labels, not the
-      // JSON paths: "Fuel risks does not match any known chat" is a sentence;
-      // "categoryChatIds.fuel does not match any known chat" is a stack trace.
+      // JSON paths: "Load status does not match any known chat" is a sentence;
+      // "categoryChatIds.load_lifecycle does not match any known chat" is a stack trace.
       const toCheck = {};
       const fieldFor = new Map();
       if (patch.defaultChatId !== undefined) {

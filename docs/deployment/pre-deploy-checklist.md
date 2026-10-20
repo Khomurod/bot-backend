@@ -48,7 +48,7 @@ after deploy on the live service.
 | A5 | **Telegram bot connects.** | **[PROD]** Logs show the bot launched; send a command in the test group (see B). |
 | A6 | **Admin panel loads.** | **[AUTO]** admin build succeeds (`npm run build --prefix admin`); **[PROD]** `/admin` returns the SPA. The build keeps its own heap limit (`admin/package.json`): Render's `NODE_OPTIONS` cap also applies to builds, and a build that outgrows it fails the deploy while production stays on the previous build. |
 | A7 | **Logs show no critical errors.** | **[PROD]** No `[FATAL]`, no `uncaughtException`, no repeated `[LEADS] CIRCUIT BREAKER OPEN`. |
-| A8 | **Scheduled jobs still run.** | **[PROD]** After boot, logs show the schedulers starting (dispatch ETA, birthday, mileage bonus, fuel, recruiter sync, etc. — all started from `index.js`). They must run with **no admin panel open**; nothing in `server/routes/**` starts one. |
+| A8 | **Scheduled jobs still run.** | **[PROD]** After boot, logs show the schedulers starting (dispatch ETA, birthday, mileage bonus, recruiter sync, etc. — all started from `index.js`). They must run with **no admin panel open**; nothing in `server/routes/**` starts one. |
 | A9 | **No undefined identifier or missing import shipped.** A build is not a scope check: 26 of these once passed `vite build` and broke the admin panel at runtime. | **[AUTO]** `npm run lint:undef` and `npm run lint:imports` (both also run in `npm test` and CI). |
 | A10 | **Database transfer allowance is not about to run out.** Exhausting it makes reads fail, and the app cannot tell that from an outage. | **[AUTO]** `GET /api/system/database-usage` reports `level: "ok"`; **[PROD]** no `[DB-USAGE]` threshold warning in the logs, and the panel shows no usage banner. Cross-check the provider dashboard — the app's figure is a sampled estimate. |
 | A11 | **The presenter remote still loads.** It is used live, in front of a room, from a phone — a 404 here is discovered at the worst possible moment. | **[AUTO]** `tests/remoteRoute.test.js`; **[PROD]** `curl -I https://<host>/remote` returns 200 `text/html`. |
@@ -138,7 +138,7 @@ after deploy on the live service.
 | F2 | Broadcast works. | **[AUTO]** `broadcastTargetService.test.js`; **[MANUAL]** test send. |
 | F3 | ~~Driver of the Week voting~~ **REMOVED** — feature retired. | **[MANUAL]** Confirm no "Driver Polls" tab in admin and no `/voting` endpoints. |
 | F4 | ~~BOL/POD delivery works (idempotent).~~ **REMOVED** — BOL/POD forwarding retired October 2026 (`docs/architecture/retired-bol-pod.md`). | **[AUTO]** `removedFeaturesStayRemoved.test.js`; **[MANUAL]** confirm no "BOL / POD" tab in Settings. |
-| F5 | Fuel-stop reminder works. | **[AUTO]** `fuelStopAlertService.test.js`. |
+| F5 | ~~Fuel-stop reminder works.~~ **REMOVED** — everything fuel retired October 2026 (`docs/architecture/retired-fuel.md`). | **[AUTO]** `removedFeaturesStayRemoved.test.js`; **[MANUAL]** confirm no "Fuel Monitor" page in the admin sidebar. |
 | F6 | Home-time policy tracking works. | **[AUTO]** `homeTime*.test.js` (service, request, import, status). |
 | F7 | Birthday notification works. | **[AUTO]** `birthdayService.test.js`, `employeeBirthdayWishService.test.js`. |
 
