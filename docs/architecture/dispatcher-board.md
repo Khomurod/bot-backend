@@ -7,21 +7,32 @@ The Dispatcher Board is an external Google Apps Script web app in front of the
 dispatchers' own spreadsheet. It is not part of this application and nobody here
 controls its shape.
 
-## Who is the authority on what
+## What it is for now: Home Time's home-in and home-out
 
-This is the rule the whole integration exists to express. Nothing may quietly
-invert it.
+Since October 2026 the Board has **one reader**: the home-time board watch
+(`services/homeTime/boardPresenceWatch.js`, background service
+`home_time_board_presence`). When dispatch marks a driver `HOME` or `VACATION`
+and it holds, Wenze opens a home stay; when the line moves back into the
+dispatch pool, Wenze closes it. The rule is `lib/homeTime/boardPresence.js`, and
+[`home-time-evidence.md`](home-time-evidence.md) owns it. In production over the
+60 days before the change, the Board opened 40 of about 104 home stays and
+closed 34 of about 92.
+
+Everything else that used to be built on the Board is gone — see
+[What was removed](#what-was-removed-in-october-2026) at the end.
+
+## Who is the authority on what
 
 | Question | Authority | Why |
 |---|---|---|
-| Which truck, trailer, status, ETA, dispatcher, and whether it is a team — **right now** | **the Board** | It is what the dispatchers actually work from, and they update it all day |
-| Who a person permanently **is**, and everything that has happened to them | **Wenze** (`driver_people` and its associations) | A truck changes; a person does not |
+| What dispatch says a driver is doing **right now** (the status word) | **the Board** | It is what the dispatchers actually work from, and they update it all day |
+| Whether a driver is at home | **Home Time** | The Board's status is one source; the driver's own message outranks a fresh disagreement — see `home-time-evidence.md` |
+| Who a person permanently **is**, and their truck | **Wenze** (`driver_people` and its associations) | A truck changes; a person does not. The Board never changes either |
 | Where the truck physically is, hours of service, load documents | Samsara / ELD / Datatruck | Supporting evidence, never identity |
 | Talking to a driver | Telegram | A channel. Never an authority on anything |
 
-A disagreement between the Board and Wenze is a **finding**, not a correction.
-Wenze does not pick a side on "which truck is this driver in" — it says the two
-systems disagree and lets a person answer.
+A Board status that disagrees with Home Time for half a day is a **finding**
+(`home_time.board_disagrees_with_state`, filed by the watch), not a correction.
 
 ## A truck number is not globally unique
 
@@ -53,16 +64,18 @@ is the only place that reads it:
 | `(COMPNAY DRIVER)` | `company`, and the row is marked `normalised: true` |
 | anything else | `unknown` |
 
-A misspelling is accepted **and said so**. "We guessed" is a fact the finding
-has to carry; silently normalising it would hide a column somebody is editing
-by hand.
+A misspelling is accepted **and said so**: the stored row carries
+`fleet_label_normalised`, because silently normalising it would hide a column
+somebody is editing by hand. (Until October 2026 a check filed it as a finding;
+the column stays.)
 
 ## A team row is two people
 
 `is_team`, or a ` / ` in the name. The two signals are allowed to disagree and a
-disagreement is reported rather than resolved — the flag says the dispatcher
-meant a team, the separator says they typed one, and which is right is a human
-question. **A composite person is never split automatically.**
+disagreement is recorded (`team_flag_mismatch`) rather than resolved — the flag
+says the dispatcher meant a team, the separator says they typed one, and which
+is right is a human question. **A composite person is never split
+automatically.**
 
 ## The token travels in the query string
 
@@ -115,8 +128,9 @@ come back. `APP_BRIEF.md` §9 states the rule; the route turns the throw into a
 
 `lib/board/parse.js` looks for the row array under several keys, reads each
 field through a list of aliases, and records anything it could not place in
-`problems`. It **never throws** — the poller that reads the Board is how Wenze
-learns today's assignment, and a renamed column must degrade that, not stop it.
+`problems`. It **never throws** — the poller that reads the Board is how Home
+Time learns that dispatch marked a driver home, and a renamed column must degrade
+that, not stop it.
 
 ## Naming
 
@@ -189,113 +203,48 @@ pass — so "this driver's assignment changed at 11:04" stays true.
 says so** (`key_collision`). Wenze does not invent a key to separate them: a
 made-up identity would not survive the sheet being sorted, so the same driver
 would appear to change identity every time somebody reordered the board. It
-reports that it cannot tell them apart, and a person fixes the board.
-
-## What the board checks report, and what they never do
-
-`services/operations/checks/board.js` files six findings, and **every one of
-them is `tier: 'warning'` with `proposedChange: null`**. Nothing in a
-spreadsheet read is evidence about which of two disagreeing records is right, so
-a board finding is always a question for a person:
-
-| Key | Severity | What it says |
-|---|---|---|
-| `board.unknown_fleet_label` | warning | a label Wenze cannot place — the row is silently inert downstream, which is why this is not `info` |
-| `board.fleet_label_typo` | info | a label read *through* a misspelling, so nobody later wonders what else is interpreted |
-| `board.unknown_status` | info | a status outside the board's own vocabulary |
-| `board.team_flag_mismatch` | warning | the team column and the written name disagree, so Wenze cannot tell how many humans the row is about |
-| `board.truck_on_multiple_rows` | warning | one truck, two rows, **within one fleet** |
-| `board.duplicate_row_key` | warning | two board lines reduce to one row, so one assignment is not in Wenze at all |
-| `board.row_vanished` | info | a driver left the board, for seven days only |
-
-`board.truck_on_multiple_rows` buckets on `fleetType|truck`, never on the bare
-number. Company 001, Owner-Operator 001 and Lease 001 are three trucks, and a
-check that reported all three would train an operator to ignore the page inside
-a week. A row whose fleet is `unknown` is compared against *every* bucket
-sharing its number — "we cannot tell them apart" is exactly when a person
-should look.
+records that it cannot tell them apart. Nothing reports it any more — the
+check that did (`board.duplicate_row_key`) went in October 2026 — so the
+column is the only trace, and the home-time watch treats two rows about one
+person as no answer at all.
 
 ## The Feed card reads Wenze, not the board
 
 `GET /api/settings/dispatch-board/feed` answers from `dispatch_board_rows`, and
 never contacts the board. "The board has 102 rows" and "Wenze knows about 102
-rows" are different claims, and only the second is what every other feature will
-answer from. Counts only — no name, no phone, no truck — and the status
-histogram is grouped rather than enumerated, so a word dispatch invents appears
-instead of vanishing into "other".
+rows" are different claims, and only the second is what Home Time answers from.
+Counts only — no name, no phone, no truck — and the status histogram is grouped
+rather than enumerated, so a word dispatch invents appears instead of vanishing
+into "other". Its "Matched to a person" count is rows whose `person_id` is set;
+nothing sets that column any more (see below), so it only counts links made
+before October 2026.
 
-## Linking a Board row to a person
+## Which person a row is about — decided at read time
 
-`person_id`, `link_source` and `link_confidence` are now written — by the
-correction registry, never by the poller. The poller still only reads the
-spreadsheet, because a poller that also decided would put "the spreadsheet has
-a typo" and "the two systems disagree about a driver" behind one switch.
+`services/dispatchBoard/rowPeople.js` answers it for the home-time watch, on
+every pass, and **writes nothing**. It indexes the person layer once
+(`indexLayer`, `holdersFor` — moved here from the deleted
+`checks/boardLink.js`) and asks the pure rule in
+`lib/identity/boardResolution.js` about each present row.
 
-**The rule lives in `lib/identity/boardResolution.js` and is pure.** Linking a
-row to the wrong person moves that person's truck, their home-time clock and
-their bonus, so it is the most careful decision in the application, and it can
-be read and tested as plain values.
-
-**Two independent facts must agree before anything is written:** the truck (as
-`(fleet_type, unit_number)`, by its EXACT spelling) and the name (strictly). One
-fact alone is a suggestion for a person to approve. Two facts that disagree is a
-question, never a tie-break.
-
-There are deliberately **two name tests**, and this is not duplication:
+**The rule is unchanged, and it refuses more often than it answers.** Putting a
+row on the wrong person would move that person's home-time clock and their
+bonus. Two independent facts must agree: the truck (by its EXACT spelling) and
+the name (strictly). There are deliberately **two name tests**:
 
 | | may | accepts |
 |---|---|---|
-| `namesAgreeStrictly` (this module) | **act** | exact after normalisation, or every word of the shorter name inside the longer, with at least two words |
+| `namesAgreeStrictly` (`boardResolution.js`) | **act** | exact after normalisation, or every word of the shorter name inside the longer, with at least two words |
 | `driverNamesMatch` (`lib/drivers/`) | only **suggest** | a shared surname, two shared 3-letter tokens — two brothers match |
 
-Acting on a shared surname is how two brothers become one person, so the strict
-test is the only one the auto tier may use.
+Only `link` (both facts agree) or a link somebody already made that still fits
+counts as settled. A name-only match, a digits-only truck match, two holders, or
+a row whose linked person no longer holds the truck all come back unresolved, and
+the watch leaves that driver alone. **Two rows about one person disqualify
+both.** A team row is two people: `decideTeamBoardLink` asks about each member
+separately and refuses both when the two names resolve to one stored person.
 
-### The findings, and their tiers
-
-| Check | Tier | When |
-|---|---|---|
-| `board.person_link` | `auto` | truck AND name agree |
-| `board.person_link_suggested` | `approval` | the name alone |
-| `board.person_link_conflict` | `warning` | the board says this truck, Wenze has somebody else in it |
-| `board.person_link_ambiguous` | `warning` | two holders, two name matches, or a digits-only truck match |
-| `board.person_unmatched` | `warning` / `info` | nobody matches — ordinary on a board ahead of its records |
-| `board.team_person_needs_split` | `approval` | two team names resolve to one person row |
-
-**Every one of them except the link itself proposes nothing.** A disagreement
-between two systems is not evidence about which one is right.
-
-**It ships in `suggest` mode.** Nothing links until the owner switches
-`board.person_link` to autopilot, and shadow mode is available first.
-
-### What the apply re-derives
-
-`board.link_person` does NOT trust the sweep's payload. Minutes pass between a
-sweep and an apply, so it re-runs the whole decision from the live rows under
-`FOR UPDATE` — the holders included, since they are the evidence — and refuses
-unless the answer is still `link` AND still the **same person**. "Still
-linkable" is not good enough: linkable to somebody else is the exact case worth
-refusing.
-
-The revert clears the link only while it still holds what the correction set. A
-row somebody has since repointed by hand is their decision, not ours.
-
-### A team is two people, never a duplicate
-
-Each member is decided separately and they must land on **different** people. A
-team whose two names resolve to one person is a composite `A / B` row stored
-years ago; splitting it is a judgement about two humans, so the decision is to
-link **neither** and say so. Linking one of them would silently pick a winner.
-
-## When the Board and Wenze disagree
-
-The Board is the authority on today's assignment and **still does not win here**.
-It is authoritative about which truck somebody is dispatched in, not about
-whether they are at home — that is Home Time's, built from what the driver said
-and what the truck did. So a disagreement is reported and neither side is
-corrected.
-
-### What a board status MEANS
+## What a board status MEANS
 
 `lib/board/statusSemantics.js`, and it is the one place to change it:
 
@@ -305,48 +254,41 @@ corrected.
 | **working** | `DISPATCHED`, `ENROUTE` | the driver is on the road right now |
 | **neutral** | `READY`, `RESERVED`, `REST`, `SHOP` | **neither may be concluded** |
 
-**`neutral` is the important one.** A driver at REST is not at home and not
-driving; a truck in SHOP says nothing about where its driver is. The temptation
-is to fold those into "working" because they are not HOME — and that is exactly
-how a driver legitimately resting gets reported as contradicting their own
-home-time record. An unknown status is never a conclusion either.
+`boardEndsHomeStay` (READY, RESERVED, DISPATCHED, ENROUTE) is a separate
+question, asked only of a driver Wenze already has at home. REST and SHOP end
+nothing: a driver can rest at home, and a truck can sit in a shop while its
+driver is on their couch. An unknown status is never a conclusion. These
+defaults are the owner's to confirm.
 
-These defaults are the owner's to confirm. A wrong mapping here does not produce
-a wrong correction; it produces a false accusation that two systems disagree,
-which costs somebody an afternoon.
+## What was removed in October 2026
 
-### The two contradictions
+The Board used to be "the authority on today's assignment" for the whole
+application. With the driver-raise review gone
+([`retired-driver-raise.md`](retired-driver-raise.md)) nothing needed that, and
+everything built on it was removed:
 
-`context.board_home_while_road` and `context.wenze_home_while_board_working`,
-both **warning**, both proposing nothing. They are ordinary on a fleet where
-dispatch updates a spreadsheet and a driver texts a group — the two are minutes
-or hours apart by nature — so filing them as `serious` would put a routine lag
-beside "one person is in two trucks".
+| Removed | Was |
+|---|---|
+| `services/operations/checks/board.js` | seven findings about the spreadsheet itself (`board.unknown_fleet_label`, `board.fleet_label_typo`, `board.unknown_status`, `board.team_flag_mismatch`, `board.truck_on_multiple_rows`, `board.duplicate_row_key`, `board.row_vanished`) |
+| `services/operations/checks/boardLink.js` | linking a row to a person: `board.person_link`, `_suggested`, `_conflict`, `_ambiguous`, `board.person_unmatched`, `board.team_person_needs_split` |
+| `services/operations/corrections/boardActions.js` | the `board.link_person` correction that wrote `person_id` / `link_source` / `link_confidence`. It was the **only** action armed for automatic rollback in `services/decisions/verifyPass.js`; now no action is, and `autoRevert` is false everywhere |
+| The Board's say on the stale-unit sync (`checks/identityLayer.js`) | agreeing raised `identity.stale_unit_assignment` from 90 to 95; disagreeing suppressed it and filed `board.truck_disagrees_with_profile`. Confidence is now fixed at 90 |
+| Board-vs-Home-Time contradictions (`lib/drivers/context.js`, `database/driverContext.js` `readBoard`, `BOARD_FRESH_HOURS`) | `context.board_home_while_road`, `context.wenze_home_while_board_working`. The watch's own `home_time.board_disagrees_with_state` is the one remaining disagreement |
+| Board rows in the consistency snapshot (`snapshot/loaders.js`, `database/dispatchBoard.js getBoardRowsForSnapshot`) | the checks above were their only readers |
+| Board entries in `lib/control/{askable,fingerprint,priority}.js` | Wenze no longer asks the owner about board findings in Telegram |
+| The board badge on Groups (`database/driverGroupDirectory.js`, now `withOpenFindings` over `identity.` / `home_time.` prefixes), the board block on the person identity panel and in `getPersonIdentity` / `summariseIdentityCoverage` (`database/driverPeople/lookups.js`), the "Board rows matched" tile on Operations → Identity | |
 
-**A stale board is not a side.** `readBoard` takes only a row still `present`
-whose snapshot is under two hours old; anything older reads as `unknown`. A
-poller that stopped must never be quoted as evidence against Home Time —
-`unknown` and `hold` are opposites here exactly as they are in the decision
-journal. The fleet-wide screen cuts at the same two hours, because a screen that
-offered rows the reader then refuses would cost six queries per driver per tick
-to produce nothing.
+Every removed check key is listed in `services/operations/checks/retired.js`, a
+check module that finds nothing, so a sweep resolves any finding still open
+under it. `dispatch_board_rows.person_id`, `link_source` and `link_confidence`
+stay as columns; links already made are still honoured by the read-time rule,
+and nothing writes new ones.
 
-### The Board as a second opinion on the truck
-
-`identity.stale_unit_assignment` proposes copying a profile's truck onto the
-person's record. The Board now weighs in:
-
-- **it agrees** → confidence 90 → 95. Small on purpose: corroboration is not
-  proof, and a jump large enough to change what the journal permits would make a
-  spreadsheet the thing that unlocked an automatic write.
-- **it disagrees** → the automatic finding is **suppressed** for that group and
-  `board.truck_disagrees_with_profile` (approval, proposes nothing) is filed in
-  its place. Letting the auto finding stand would have Wenze quietly sync to the
-  profile while the Board said something else; letting the Board win would make
-  a spreadsheet the authority on permanent identity, which it is not.
-
-## What is not built yet
-
-Nothing from Section 1 of the program. The Board's own presence is not yet
-compared against `groups.active` — that needs the owner's decision about whether
-leaving the board means leaving the company.
+**Kept:** `services/dispatchBoard/{client,poller,rowPeople}.js`,
+`database/dispatchBoard.js`, `database/dispatchBoardSettings.js`,
+`server/routes/settings/dispatchBoardRoutes.js`, `lib/board/*`,
+`lib/identity/boardResolution.js`, the home-time pair above, Settings →
+Dispatcher Board (feed settings, the Feed card, and the automatic ETA updates
+card that lives on the same tab), and the background services
+`dispatch_board_poll` and `home_time_board_presence` — both slowed, never paused,
+in economy mode ([`economy-mode.md`](economy-mode.md)).

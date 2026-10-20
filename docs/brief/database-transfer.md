@@ -82,17 +82,17 @@ until a date.
 - **Kept running:** driver chats and home-time requests (with their
   reminders), Samsara alerts (a separate service), Facebook and SMS leads and
   the after-hours answers, money codes, scheduled broadcasts, the delivery of
-  every notice, birthdays, the weekly raise review, mileage and road bonuses,
-  route control, ETA updates and return-to-road detection.
+  every notice, birthdays, mileage and road bonuses, ETA updates and
+  return-to-road detection.
 - **Stood down** (`ECONOMY_PAUSED_KEYS`, `lib/operations/economyMode.js`):
   BOL/POD forwarding, load control, the consistency sweep and everything that
   rides it (contradictions, owner questions, the daily digest), self-healing,
   the learning pass, the duplicate-unit scan, decision grading, fuel risk and
   fuel-stop reminders, retention and chat annotation, and the AI checks (group
   status, model maintenance, the terms watcher, the safety coach).
-- **Slowed, not stopped:** the Dispatcher Board is read every **4 hours** —
-  the Sunday raise review refuses a Board older than 6 — and the home-in /
-  home-out pass follows it. A failed read retries at the normal pace.
+- **Slowed, not stopped:** the Dispatcher Board is read every **4 hours**,
+  because Home Time's home-in / home-out reads its snapshot, and that pass
+  follows the read. A failed read retries at the normal pace.
 - **The health endpoint skips its `operations` block** and says
   `economy: { active, until }` instead; the cron pinger was building it about
   150 times a day.

@@ -99,60 +99,13 @@ and every API client function is exactly what it was.
   threshold_miles)` (`claimBonusNotification()` relies on it as *the*
   idempotency guard), while `mileage_bonus_runs` only makes the weekly service
   **run** itself leased and retryable.
-- **Driver raise review** — decides whether a company driver earns `rate_high`
-  instead of `rate_low` for a pay period (defaults 0.750 / 0.720 per mile, both
-  configurable in `raise_settings`). **This is a dispatcher workflow, not a driver
-  one:**
-  - One open round at a time. Each round mints **one** `raise_rounds.access_token`
-    (default 48h TTL) and the service posts that single link to the configured
-    Dispatch Rate Review Telegram group.
-  - **TWO independent Telegram destinations, two audiences** — both admin-set in
-    Settings → Telegram Groups, and **neither is a fallback for the other**:
-    the review **request** (weekly and "Send now") goes only to
-    `dispatch_review_group_id`; the **submitted result** — who moves to
-    `rate_high`, who stays at `rate_low`, with team, submitter and pay period —
-    goes only to `raise_results_group_id` (accounting). Posting a pay decision
-    back to the dispatch group was the old behavior and must not return. An admin
-    *may* enter the same ID in both; the application must never do it for them.
-    A missing **request** group is a hard error: no round is opened, nothing is
-    sent. A missing **results** group never costs a submission — the response is
-    saved, one clear `[RAISE]` configuration error is logged, `submitResponse`
-    reports `results_posted: false` with a `results_notice`, and nothing is
-    re-sent or retried (a retry could duplicate the notification).
-  - A **dispatcher** opens the link, selects their dispatch team, enters their own
-    contact, and verifies an OTP (channel is `raise_settings.otp_channel`: Gmail
-    App Password or RingCentral SMS) before submitting their team's picks.
-  - **One submission per team per round** (a second attempt gets 409). Drivers
-    never open this page and never receive an OTP.
-  - An admin closes the round from `/api/raise/admin/*`.
-  - **Which drivers a team reviews is rebuilt from the Dispatcher Board, not
-    typed.** Every Sunday, as the FIRST thing `openRoundAndPost` does — before
-    the round row exists and before the link is posted — every team's roster is
-    reconciled from the Board's dispatcher column, so the form a dispatcher
-    opens shows who is actually theirs that week. Send now does it too.
-    **A Board that is off, unread, failed or more than six hours stale stops the
-    round** rather than producing a confidently wrong one, and files
-    `raise.roster_not_rebuilt` (serious) so the missing review is visible.
-    A driver whose dispatcher maps to no team, or to more than one, is left OFF
-    a roster and filed as `raise.driver_unplaced` — never placed on a plausible
-    team. Dispatch teams are NAMED after the people who run them (`Aaron /
-    Jack`, `Franky / Sam / Ali`) and `dispatch_team_members` is empty, so every
-    name inside a team's name is an alias for that team — without it only the
-    first name in each would ever resolve.
-    The matcher reads the two shapes the real Board writes — a leading
-    sorting marker (`x Franky`, `zAaron/Jack`) and two dispatchers on one row —
-    but only as FALLBACKS on a label that otherwise matched nothing, so the
-    tolerance can rescue a Needs Review and can never redirect a correct
-    placement. Several names must be unanimous: `Franky/Steven` and
-    `Aaron/Nobody` both stay Needs Review.
-    `POST /api/raise/admin/roster/reconcile` rebuilds the roster **without**
-    minting or sending a round, and `{"dryRun": true}` reports the plan without
-    writing anything — so the roster can be checked without a review link
-    reaching a dispatch group. Manual assignment survives only as an explicit, recorded override that
-    the rebuild reports and never overwrites, with a "Hand back to board" action
-    to retire it. Normal operation needs no manual assignment at all. Historical
-    `raise_round_picks` are untouched by any rebuild. See
-    `docs/architecture/driver-raise-roster.md`.
+- **The driver-raise review was removed** (October 2026, the owner's
+  decision: the company no longer raises rates, and dispatchers are no longer
+  asked). No weekly round, no public `/raise` page (it answers 410), no Driver
+  Raises page, no dispatch-team roster rebuilt from the Dispatcher Board, and no
+  *Dispatch Rate Review* / *Driver Raise Results* Telegram groups. Its tables are
+  still there, read by nothing. See
+  [`retired-driver-raise.md`](../architecture/retired-driver-raise.md).
 - **Road / extra-week bonus** — posted as **one summary at the road→home
   transition**, never week-by-week. Company drivers only (owner-operators earn
   $0). Claimed atomically per completed leg in `driver_road_history`, with a
@@ -395,7 +348,7 @@ counts above the tabs cannot disagree with what opening one shows:
 | **Active Drivers** | a driver chat that is switched on |
 | **Inactive Drivers** | a driver chat that is switched off |
 | **Company Chats** | `group_type !== 'driver'` — an office or admin room |
-| **Needs Review** | Wenze flagged it, a duplicate needs a decision, or an open `identity.*` / `board.*` / `home_time.*` finding names it |
+| **Needs Review** | Wenze flagged it, a duplicate needs a decision, or an open `identity.*` / `home_time.*` finding names it |
 
 The precedence is the rule. **Company is first**: a chat that is not a driver's
 is not an inactive driver, it is a different kind of thing, and showing it among
@@ -407,12 +360,10 @@ this row IS" outranks "it is switched on".
 looking for the word in the chat name, which disagreed with the server the
 moment a title was edited. `group_type` is a stored fact and the only input.
 
-Each row also carries what the Dispatcher Board says about that driver — the
-status and truck, or "no longer on the dispatcher board". A board that is
-switched off renders nothing rather than a grey box beside every driver, and no
-phone number or ETA text reaches this screen: it is a list of chats, and the
-board's per-driver detail belongs on the person panel somebody opened
-deliberately.
+Rows no longer carry a Dispatcher Board badge, and the person identity panel
+no longer has a board block (both removed October 2026 — the Board is read only
+by Home Time now; see
+[`dispatcher-board.md`](../architecture/dispatcher-board.md)).
 
 **Retyping a chat is `identity.set_group_type`, approval tier, applied only by
 a person.** The check that proposes it reads a TITLE at 65% confidence, and the

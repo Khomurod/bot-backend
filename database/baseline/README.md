@@ -65,8 +65,8 @@ migrations has shipped everywhere.
 | 007 | `birthdays_and_service_runs` | employee_birthdays(+settings), service_runs |
 | 008 | `dispatch_eta_and_loads` | dispatch_eta_*, group_recent_loads, annotations, ai_insights |
 | 009 | `mileage_bonus_and_leads` | mileage_bonus_*, leads |
-| 010 | `dispatch_teams` | dispatch_teams(+drivers/members) |
-| 011 | `raise_approval` | raise_settings/rounds/submissions/picks/otp |
+| 010 | `dispatch_teams` | dispatch_teams(+drivers/members) — retired, read by nothing |
+| 011 | `raise_approval` | raise_settings/rounds/submissions/picks/otp — retired, read by nothing |
 | 012 | `home_time` | home_time_settings, driver_home_status, driver_road_history, home_time_requests |
 | 013 | `bot_access_and_datatruck_docs` | bot_access_settings, datatruck_document_deliveries |
 | 014 | `fuel_monitoring` | fuel_stop_alerts, fuel_monitor_inbox |
@@ -86,3 +86,11 @@ migrations has shipped everywhere.
 > themselves are no longer created; a database that already has them keeps its
 > rows until an administrator clears them from Settings → Retired feature
 > leftovers.
+
+> Segments 010 and 011 belong to the driver-raise review, removed in October
+> 2026, and 019's route tables to Route Control. They are still created because
+> later forward migrations alter them (0026, 0058 and 0062 touch
+> `dispatch_team_drivers`; 0026 touches `route_assignments`) and a fresh database
+> runs those after the baseline. Dropping them is a separate step with a backup —
+> see `docs/architecture/retired-driver-raise.md` and
+> `docs/architecture/retired-route-control.md`.

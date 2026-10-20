@@ -15,10 +15,10 @@ const {
 const { QUESTIONS } = require('../lib/control/askable');
 
 const FINDING = {
-  checkKey: 'board.truck_disagrees_with_profile',
+  checkKey: 'identity.stale_unit_assignment',
   subjectType: 'group',
   subjectId: 49,
-  evidence: { groupId: 49, personId: 8, profileUnit: '310', boardTruck: '311', boardSeenAt: '2026-09-12T10:00:00Z' },
+  evidence: { groupId: 49, personId: 8, profileUnit: '310', recordedUnit: '311', observedAt: '2026-09-12T10:00:00Z' },
 };
 
 function memoryFor(finding, patch = {}) {
@@ -41,13 +41,13 @@ test('the same condition fingerprints the same, whatever moved around it', () =>
     ...FINDING,
     // A NEW FINDING ROW, a new sweep, a new timestamp — the situation is the
     // same one the owner looked at.
-    evidence: { ...FINDING.evidence, boardSeenAt: '2026-09-14T02:00:00Z', groupName: 'renamed' },
+    evidence: { ...FINDING.evidence, observedAt: '2026-09-14T02:00:00Z', groupName: 'renamed' },
   };
   assert.strictEqual(fingerprintFor(FINDING), fingerprintFor(later));
 });
 
 test('A CHANGED CONDITION IS A NEW QUESTION', () => {
-  const moved = { ...FINDING, evidence: { ...FINDING.evidence, boardTruck: '404' } };
+  const moved = { ...FINDING, evidence: { ...FINDING.evidence, recordedUnit: '404' } };
   assert.notStrictEqual(fingerprintFor(FINDING), fingerprintFor(moved));
 });
 
@@ -91,7 +91,7 @@ test('a memory applies only to its own subject AND its own condition', () => {
   assert.strictEqual(memoryApplies(otherDriver, memoryFor(FINDING)), false);
 
   // Same driver, different condition.
-  const newProblem = { ...FINDING, evidence: { ...FINDING.evidence, boardTruck: '999' } };
+  const newProblem = { ...FINDING, evidence: { ...FINDING.evidence, recordedUnit: '999' } };
   assert.strictEqual(memoryApplies(newProblem, memoryFor(FINDING)), false);
 });
 

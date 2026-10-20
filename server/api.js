@@ -169,13 +169,6 @@ app.use(mediaUploadRouter);
 app.use('/api/dispatch', legacyAuthMiddleware, dispatchEtaRoutes);
 app.use('/api/facebook-leads', createFacebookLeadsRouter({ authMiddleware: legacyAuthMiddleware }));
 
-// ─── Driver Raise Approval (75¢/mile) ───
-// Admin router is mounted on the more specific path FIRST so /api/raise/admin/*
-// is never captured by the public router's /:token route.
-const { publicRouter: raisePublicRouter, adminRouter: raiseAdminRouter } = require('./routes/raiseRoutes');
-app.use('/api/raise/admin', legacyAuthMiddleware, raiseAdminRouter);
-app.use('/api/raise', raisePublicRouter);
-
 // ─── Driver Home-Time Tracking ───
 const { createHomeTimeRouter } = require('./routes/homeTimeRoutes');
 app.use('/api/home-time', createHomeTimeRouter({ authMiddleware: legacyAuthMiddleware, telegram: bot.telegram }));
@@ -310,7 +303,7 @@ app.use(createRetiredRoutes());
 // shell.
 // Asset URLs are absolute (/admin/assets/… via Vite's `base`), so the same
 // index.html works under either prefix.
-app.get(['/admin', '/admin/*', '/raise', '/raise/*', '/recruiters', '/recruiters/*', '/dispatch', '/dispatchteam'], (req, res) => {
+app.get(['/admin', '/admin/*', '/recruiters', '/recruiters/*', '/dispatch', '/dispatchteam'], (req, res) => {
   if (!fs.existsSync(adminSpaIndexPath)) {
     return res.status(503).type('text/plain').send(
       'Admin UI build is missing (admin/build/index.html). '

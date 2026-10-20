@@ -20,7 +20,6 @@
 const { compareWritten, OUTCOMES } = require('../../lib/decisions/verification');
 const { classifyOrigin, assessRollback } = require('../../lib/decisions/rollbackSafety');
 const decisions = require('../../database/operationalDecisions');
-const { driverNamesMatch } = require('../../lib/drivers/driverGroupTitle');
 
 /**
  * How to re-read the subject of each action, and whether it may be undone
@@ -154,77 +153,6 @@ const SUBJECTS = Object.freeze({
         [Number(subjectId)]
       );
       return res.rows[0] || null;
-    },
-  },
-
-  // The subject is the board row's KEY, not an integer id — `board_row` is the
-  // one subject type in this table that is not numeric, and `Number(subjectId)`
-  // on it would read NaN and find nothing.
-  'board.link_person': {
-    impact: 'operational',
-    // THE ONE ACTION WHERE AN AUTOMATIC UNDO IS PROVABLY SAFER THAN A NOTICE,
-    // and it earns that on four counts:
-    //
-    //   it costs nobody anything    the link is a pointer on a snapshot row of
-    //                               an external feed. Clearing it changes no
-    //                               employment, pay, home time or truck
-    //                               assignment, and the next sweep re-links from
-    //                               whatever the Board says now
-    //   the evidence is external    the Dispatcher Board is the authority on who
-    //                               is driving what, re-read by its own poller.
-    //                               A changed name on a row is the Board saying
-    //                               so, not a person arguing with us
-    //   it is exactly reversible    `revert` restores the previous person_id
-    //   leaving it wrong is worse   a Board row pointing at the wrong human
-    //                               feeds every screen that reads the Board
-    //
-    // Everything else in this registry stays `false`. See the note at the top:
-    // that is a decision, and this is the single case that has been argued.
-    autoRevert: true,
-    table: 'dispatch_board_rows',
-    async read(client, subjectId) {
-      const res = await client.query(
-        `SELECT person_id AS "personId", link_source AS "linkSource"
-           FROM dispatch_board_rows WHERE row_key = $1`,
-        [String(subjectId)]
-      );
-      return res.rows[0] || null;
-    },
-
-    /**
-     * Does the Board still show the person we linked?
-     *
-     * READ-ONLY, and narrow on purpose. It asks the one question the link was
-     * made on — do the names still agree — using the same matcher the linker
-     * used. It does not re-run the decision, re-rank candidates or form a new
-     * opinion; a general re-derivation here would be a second decision engine.
-     *
-     * MISSING EVIDENCE IS NEVER A ROLLBACK. A vanished row, an absent person or
-     * a blank name all answer `holds: true`, because "we cannot see the reason"
-     * and "the reason is gone" are different sentences and only the second one
-     * may undo anything.
-     */
-    async stillJustified(client, subjectId) {
-      const res = await client.query(
-        `SELECT b.driver_name_clean AS "boardName", b.present, p.display_name AS "personName"
-           FROM dispatch_board_rows b
-           LEFT JOIN driver_people p ON p.id = b.person_id
-          WHERE b.row_key = $1`,
-        [String(subjectId)]
-      );
-      const row = res.rows[0];
-      if (!row) return { holds: true, reason: 'the board row is gone, so there is nothing to judge' };
-      if (!row.personName || !row.boardName) {
-        return { holds: true, reason: 'no name to compare, so the link is left alone' };
-      }
-      if (driverNamesMatch(row.boardName, row.personName)) {
-        return { holds: true, reason: 'the board still names the person this row is linked to' };
-      }
-      return {
-        holds: false,
-        reason: `the Dispatcher Board now names "${row.boardName}" on this row, not `
-          + `"${row.personName}", so the link this made is no longer what the Board says`,
-      };
     },
   },
 

@@ -10,8 +10,6 @@
  *   Samsara — the same vehicle linked to two active chats, or a chat's vehicle
  *   disagreeing with the truck recorded for its driver.
  *   Fuel monitor — a watch still running on a chat nobody is in.
- *   Dispatch teams — a team seat pointing at a chat the driver has left, when
- *   the person layer knows where they are now.
  *   Raise / mileage — progress rows the person layer could not place.
  */
 
@@ -100,43 +98,6 @@ function checkFuelWatchOnInactiveGroup({ groupsById, fuelAlerts }) {
     });
 }
 
-/**
- * A dispatch-team seat on a chat the driver has left, when the person layer
- * knows the chat they are on now. The move is proposed, not made: which team a
- * driver sits on is a payroll-adjacent decision.
- */
-function checkTeamDriverOnInactiveGroup({ groups, groupsById, personGroups, teamDrivers }) {
-  const currentGroupOfPerson = new Map();
-  for (const a of personGroups || []) {
-    const g = groupsById.get(a.group_id);
-    if (g && g.active === true && g.group_type === 'driver') currentGroupOfPerson.set(a.person_id, g);
-  }
-  const findings = [];
-  for (const seat of teamDrivers || []) {
-    if (seat.active === false || !seat.group_id) continue;
-    const g = groupsById.get(seat.group_id);
-    if (g && g.active === true) continue;
-    const current = seat.person_id ? currentGroupOfPerson.get(seat.person_id) : null;
-    if (!current) continue; // nowhere to move it to — the driver may simply have left
-    findings.push({
-      checkKey: 'dispatch.team_driver_on_inactive_group',
-      subjectType: 'dispatch_team_driver',
-      subjectId: seat.id,
-      title: `${seat.driver_name || 'A driver'}'s team seat points at ${label(g)}; they are now on ${current.group_name}`,
-      severity: 'warning',
-      tier: 'approval',
-      confidence: 85,
-      evidence: {
-        seatId: seat.id, teamId: seat.team_id, personId: seat.person_id,
-        fromGroupId: seat.group_id, fromGroupName: g?.group_name || null,
-        toGroupId: current.id, toGroupName: current.group_name,
-      },
-      proposedChange: { table: 'dispatch_team_drivers', id: seat.id, field: 'group_id', from: seat.group_id, to: current.id },
-    });
-  }
-  return findings;
-}
-
 /** Mileage progress rows the person layer could not place — one finding, not one per row. */
 function checkMileageWithoutPerson({ mileageProgress }) {
   const unplaced = (mileageProgress || []).filter((m) => m.person_id == null);
@@ -163,7 +124,6 @@ const CHECKS = [
   checkSamsaraVehicleOnTwoGroups,
   checkSamsaraLinkDisagrees,
   checkFuelWatchOnInactiveGroup,
-  checkTeamDriverOnInactiveGroup,
   checkMileageWithoutPerson,
   // Declared below; function declarations hoist, so the reference is live.
   checkNotificationDestination,
@@ -226,11 +186,7 @@ const CHECK_KEYS = [
   'samsara.vehicle_on_two_active_groups',
   'samsara.vehicle_link_disagrees',
   'fuel.watch_on_inactive_group',
-  'dispatch.team_driver_on_inactive_group',
   'raise.progress_without_person',
-  // Route Control was removed (October 2026). The key stays so a sweep that
-  // completes this module resolves any finding still open under it.
-  'route_control.assignment_on_inactive_group',
   'ops.no_notification_destination',
 ];
 
@@ -244,7 +200,6 @@ module.exports = {
   checkSamsaraVehicleOnTwoGroups,
   checkSamsaraLinkDisagrees,
   checkFuelWatchOnInactiveGroup,
-  checkTeamDriverOnInactiveGroup,
   checkMileageWithoutPerson,
   checkNotificationDestination,
 };

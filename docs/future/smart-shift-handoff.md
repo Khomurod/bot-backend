@@ -131,9 +131,11 @@ late rather than never.
 ## 4. The gap that has to be closed first
 
 **Nothing records who was on shift.** `admin_audit_log` records which admin made
-a change, and `dispatch_teams` / `dispatch_team_drivers` record which dispatcher
-owns which drivers, but neither answers "who was covering operations between
-18:00 and 06:00".
+a change, but nothing answers "who was covering operations between 18:00 and
+06:00". (`dispatch_teams` / `dispatch_team_drivers` once recorded which
+dispatcher owned which drivers; they were retired, unread, with the driver-raise
+review in October 2026, and the Dispatcher Board's dispatcher column is no
+longer read either.)
 
 Without it a handoff can say *what happened* but not *who it is for*, and the
 "promises made to people" item cannot be attributed. Two options:

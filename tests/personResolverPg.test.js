@@ -45,7 +45,6 @@ function bind(harness) {
       driverState: require('../database/homeTime/driverState'),
       requests: require('../database/homeTime/requests'),
       fuel: require('../database/fuelMonitoring'),
-      teams: require('../database/raiseApproval/teamDrivers'),
       mileage: require('../database/mileageBonus'),
     };
   } finally {
@@ -142,12 +141,6 @@ test('every operational write carries the person from now on — and NULL, never
     groupId: group.id, telegramGroupId: -102, sourceMessageId: 5, stationLat: 41.8, stationLng: -87.6,
   });
   assert.equal(alert.person_id, personId, 'fuel_stop_alerts');
-
-  const team = await harness.query(`INSERT INTO dispatch_teams (name) VALUES ('Team A') RETURNING id`);
-  const { assignment } = await bound.teams.assignDriverToTeam({
-    teamId: team.rows[0].id, groupId: group.id, driverName: 'RUSLAN ABDULLAEV', driverNormalizedName: 'RUSLAN ABDULLAEV',
-  });
-  assert.equal(assignment.person_id, personId, 'dispatch_team_drivers');
 
   // Mileage is keyed on a NAME. One canonical person with that name → stamped.
   const progress = await bound.mileage.upsertDriverProgress({

@@ -22,7 +22,6 @@ export * from './api/aiReports';
 export * from './api/birthdays';
 export * from './api/facebookLeads';
 export * from './api/mileageBonus';
-export * from './api/raise';
 export * from './api/homeTime';
 export * from './api/groupAccess';
 export * from './api/fuelMonitor';

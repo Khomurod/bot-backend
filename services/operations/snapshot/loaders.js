@@ -19,7 +19,6 @@
  */
 const defaultDb = require('../../../database/pool');
 const engineeringStore = require('../../../database/engineeringRequests');
-const { getBoardRowsForSnapshot } = require('../../../database/dispatchBoard');
 const { STAFF_GROUP_COUNT } = require('../../../lib/identity/telegramResolution');
 
 /**
@@ -54,7 +53,7 @@ const MEMBERS_WHO_COULD_BE_DRIVERS = `
 
 /** Everything the checks need, read once. */
 async function loadSnapshot(db = defaultDb) {
-  const [groups, profiles, roadHistory, homeStatus, settings, exhausted, layer, boardRows] = await Promise.all([
+  const [groups, profiles, roadHistory, homeStatus, settings, exhausted, layer] = await Promise.all([
     db.query(
       `SELECT id, group_name, group_type, active, status_source, status_updated_at,
               bot_member_status, bot_access_checked_at, last_message_seen_at, samsara_vehicle_id
@@ -95,7 +94,6 @@ async function loadSnapshot(db = defaultDb) {
         ORDER BY requested_at ASC`
     ),
     loadLayerSnapshot(db),
-    loadBoardSnapshot(db),
   ]);
   // WHAT A PERSON STILL HAS TO BUILD.
   //
@@ -143,7 +141,6 @@ async function loadSnapshot(db = defaultDb) {
       requestIds: exhausted.rows.map((r) => r.id),
       lastError: exhausted.rows[0]?.internal_alert_last_error || null,
     },
-    boardRows,
     engineeringRequests,
     roadBonusReviews,
     ...layer,
@@ -157,7 +154,7 @@ async function loadSnapshot(db = defaultDb) {
 async function loadLayerSnapshot(db) {
   const [
     people, personGroups, units, fuelAlerts, groupMembers, botUsers, telegramIdentities,
-    teamDrivers, mileageProgress,
+    mileageProgress,
     personGroupHistory, notificationSettings,
   ] = await Promise.all([
     db.query('SELECT id, display_name, merged_into_person_id FROM driver_people'),
@@ -184,10 +181,6 @@ async function loadLayerSnapshot(db) {
     db.query(
       'SELECT person_id, telegram_user_id, ended_at FROM driver_person_telegram_identities'
     ).catch(() => ({ rows: [] })),
-    db.query(
-      `SELECT id, team_id, group_id, driver_profile_id, person_id, driver_name, active
-         FROM dispatch_team_drivers WHERE active = TRUE`
-    ),
     db.query('SELECT id, driver_normalized_name, person_id FROM mileage_bonus_progress WHERE is_active = TRUE'),
     // Open AND closed: the continuity check needs to know which chat a person
     // was on BEFORE the one they are on now.
@@ -211,7 +204,6 @@ async function loadLayerSnapshot(db) {
     linkedTelegramUserIds: new Set(
       telegramIdentities.rows.filter((r) => r.ended_at == null).map((r) => String(r.telegram_user_id))
     ),
-    teamDrivers: teamDrivers.rows,
     mileageProgress: mileageProgress.rows,
     notificationSettings: notificationSettings.rows[0]
       ? {
@@ -223,30 +215,4 @@ async function loadLayerSnapshot(db) {
   };
 }
 
-/**
- * The Dispatcher Board snapshot.
- *
- * The query itself belongs to `database/dispatchBoard.js`, which owns that
- * table; this passes the sweep's own `db` into it so every check still reads one
- * database at one moment. Writing the SELECT again here would be a second copy
- * of a column list that has to stay in step with the checks, and the two had
- * already drifted once.
- *
- * A MISSING TABLE IS NOT AN OUTAGE, and is the only failure swallowed here.
- * Migrations run inside `initializeDatabase()` at boot, so the only way
- * `dispatch_board_rows` is absent is a deploy that has not applied 0046 yet —
- * during which the board checks should stand down rather than take the whole
- * sweep with them. Every OTHER error (a permission problem, a dead connection)
- * propagates, because those are real and hiding them is how a sweep reports
- * "nothing wrong" about a database it cannot read.
- */
-async function loadBoardSnapshot(db) {
-  try {
-    return await getBoardRowsForSnapshot(db);
-  } catch (err) {
-    if (err && err.code === '42P01') return [];
-    throw err;
-  }
-}
-
-module.exports = { loadSnapshot, loadLayerSnapshot, loadBoardSnapshot };
+module.exports = { loadSnapshot, loadLayerSnapshot };

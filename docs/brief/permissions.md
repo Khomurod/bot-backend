@@ -67,7 +67,7 @@ prefixed key and may never claim a reserved key or `super_`/`admin_` prefix
 
 | Path | Gate |
 |---|---|
-| `/raise/*`, `/api/raise/:token/*` | Per-**round** token (expiring) + per-team OTP, used by dispatchers |
+| `/raise`, `/raise/*` | **Retired** (October 2026): answers 410 Gone from `server/routes/retiredRoutes.js`; `/api/raise/*` is unmounted and 404s |
 | `/recruiters`, `GET /api/recruiters/public-stats` | Public; names + KPI numbers only |
 | `/dispatch`, `/dispatchteam`, `GET /api/gross-race` | Public; dispatcher and team names + race numbers only. A driver's name only on the teams' board and only once their truck has hit its weekly target; never the Datatruck token (`docs/architecture/gross-race.md`) |
 | `/employee-birthday-form`, `POST /api/submit-employee-birthday` | Public form |

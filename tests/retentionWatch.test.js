@@ -29,7 +29,7 @@ const CALM = {
   daysOnRoad: 10, roadWeeksOverAllowance: 0,
   deniedHomeRequests: 0,
   unpaidBonusUsd: 0, unpaidBonusCount: 0,
-  emptySince: null, brokenHomeCommitments: 0, raiseNotQualifiedRounds: 0,
+  emptySince: null, brokenHomeCommitments: 0,
 };
 // score 10 → urgent: a broken promise, weeks over the allowance and unpaid money.
 const AT_RISK = {

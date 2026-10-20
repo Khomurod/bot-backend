@@ -3,12 +3,12 @@
 /**
  * Which PERSON each Dispatcher Board row is about.
  *
- * ONE MATCHER, TWO READERS. The raise roster rebuild and the home-time watch
- * both need this answer, and the worst possible outcome is two slightly
- * different rules: a driver who is Charles's on one screen and Steven's on
- * another, or home in one feature and on the road in the next. So the rule lives
- * here once, and it is not a new rule — it is `lib/identity/boardResolution.js`,
- * the same pure decision the board-link check files findings from.
+ * ITS ONE READER IS THE HOME-TIME WATCH, which moves a driver home or back on
+ * the road when the Board says so. The rule is not new — it is
+ * `lib/identity/boardResolution.js`. The raise roster rebuild that shared it,
+ * and the board-link check that filed findings from it, were removed in October
+ * 2026; the two index helpers that check owned now live here, with the only
+ * code that still calls them.
  *
  * IT REFUSES MORE OFTEN THAN IT ANSWERS, and that is the design. Only a row the
  * rule settles (`link`, or a link somebody already made) is returned. A
@@ -21,13 +21,13 @@
  * toss against operational state.
  *
  * A TEAM ROW IS TWO PEOPLE, AND BOTH OF THEM COUNT. One board line reading
- * "A / B" on truck 310 is two drivers, each with their own dispatch team and
- * their own home-time cycle. Handing the combined name to the single-person
- * resolver asks an unanswerable question — two holders on one truck read as
- * ambiguous — and the answer "nobody" would quietly drop both of them off
- * every roster. `decideTeamBoardLink` asks about each member separately, and
- * still refuses BOTH when the two names resolve to one stored person, because
- * that is a composite row somebody has to split by hand.
+ * "A / B" on truck 310 is two drivers, each with their own home-time cycle.
+ * Handing the combined name to the single-person resolver asks an unanswerable
+ * question — two holders on one truck read as ambiguous — and the answer
+ * "nobody" would quietly drop both of them. `decideTeamBoardLink` asks about
+ * each member separately, and still refuses BOTH when the two names resolve to
+ * one stored person, because that is a composite row somebody has to split by
+ * hand.
  *
  * Plain SELECTs rather than the data-layer helpers, for the same reason
  * `services/operations/snapshot/loaders.js` uses them: several of those helpers
@@ -35,7 +35,57 @@
  */
 
 const { decideBoardLink, decideTeamBoardLink } = require('../../lib/identity/boardResolution');
-const { indexLayer, holdersFor } = require('../operations/checks/boardLink');
+const { digitsOnlyTruck } = require('../../lib/board/truck');
+
+/**
+ * Index the person layer once per sweep rather than per row.
+ *
+ * A hundred board rows against two hundred open units is twenty thousand
+ * comparisons done the naive way, every fifteen minutes, to answer a question
+ * that is mostly "no".
+ */
+function indexLayer(layer) {
+  const nameOf = new Map();
+  for (const p of layer?.people || []) {
+    if (p.merged_into_person_id == null) nameOf.set(p.id, p.display_name || '');
+  }
+  const byUnit = new Map();
+  for (const u of layer?.units || []) {
+    const exact = String(u.unit_number || '').trim().toUpperCase();
+    if (!exact) continue;
+    const entry = {
+      personId: u.person_id,
+      displayName: nameOf.get(u.person_id) || '',
+      fleetType: u.fleet_type || 'unknown',
+      seat: u.seat == null ? 1 : Number(u.seat),
+      exact,
+    };
+    if (!byUnit.has(exact)) byUnit.set(exact, []);
+    byUnit.get(exact).push(entry);
+  }
+  return { nameOf, byUnit };
+}
+
+function holdersFor(row, index) {
+  const exact = String(row.truckNorm || '').trim().toUpperCase();
+  if (!exact) return [];
+  const direct = index.byUnit.get(exact) || [];
+  if (direct.length) return direct.map((h) => ({ ...h, truckExact: true }));
+
+  // NOTHING ON THE EXACT SPELLING. The digits-only form may still find
+  // somebody, and the rule will refuse to act on it — but a match it never saw
+  // is reported as "nobody is in this truck", which is a different and wrong
+  // answer.
+  const digits = String(row.truckDigits || '').trim();
+  if (!digits) return [];
+  const loose = [];
+  for (const [unit, holders] of index.byUnit.entries()) {
+    if (digitsOnlyTruck(unit) === digits) {
+      loose.push(...holders.map((h) => ({ ...h, truckExact: false })));
+    }
+  }
+  return loose;
+}
 
 /** The person layer, in the shape `decideBoardLink` reads. */
 async function loadPersonLayer(db) {

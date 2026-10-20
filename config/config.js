@@ -165,11 +165,6 @@ module.exports = {
   // and a clear configuration error is logged (never a silent old default).
   mileageBonusGroupId: String(process.env.MILEAGE_BONUS_GROUP_CHAT_ID || '').trim(),
   roadBonusGroupId: String(process.env.ROAD_BONUS_GROUP_CHAT_ID || '').trim(),
-  // The driver-raise workflow has TWO independent destinations: the review
-  // REQUEST goes to dispatch, the submitted RESULT goes to accounting. Neither
-  // falls back to the other.
-  dispatchReviewGroupId: String(process.env.DISPATCH_REVIEW_GROUP_CHAT_ID || '').trim(),
-  raiseResultsGroupId: String(process.env.RAISE_RESULTS_GROUP_CHAT_ID || '').trim(),
   // Anonymous Feedback — private-chat flow that asks the sender whether they are
   // an employee or a driver, then relays their complaint / request / inquiry to
   // this group WITHOUT any identifying information (no username, name, or id).
@@ -263,10 +258,4 @@ module.exports = {
   // metadata. OFF by default — a genuinely-uncertain document otherwise
   // follows the admin's uncertain_document_policy without any AI call.
   bolPodAiFallbackEnabled: process.env.BOL_POD_AI_FALLBACK_ENABLED === 'true',
-  // Gmail App Password channel for driver-raise OTP delivery (no third party).
-  // GMAIL_USER is the full address; GMAIL_APP_PASSWORD is a 16-char App Password
-  // created at https://myaccount.google.com/apppasswords (2FA required).
-  gmailUser: normalizeOptionalEnv(process.env.GMAIL_USER),
-  gmailAppPassword: String(process.env.GMAIL_APP_PASSWORD || '').replace(/\s+/g, ''),
-  gmailFrom: normalizeOptionalEnv(process.env.GMAIL_FROM) || normalizeOptionalEnv(process.env.GMAIL_USER),
 };

@@ -21,15 +21,16 @@ group, and the route marked complete near the destination.
 | `getRouteMediaEditClient` in `services/telegramAgent.js` | the dedicated media-edit Telegram client |
 | `lib/routeControl/routeControlConstants.js` | thresholds and the `ROUTE_CONTROL_ADMIN_*` allow-list |
 | Admin: the Route Control page (`#route_control`), Settings → GMaps, `api/routeControl.js`, the screenshot paste helpers | |
-| Background service `route_control` (the monitor) and the check `route_control.assignment_on_inactive_group` | the check key is still listed in `services/operations/checks/systems.js` so a sweep resolves any finding still open under it |
+| Background service `route_control` (the monitor) and the check `route_control.assignment_on_inactive_group` | the check key is listed in `services/operations/checks/retired.js` so a sweep resolves any finding still open under it |
 
 ## What stayed, and why
 
 - **Google Maps for ETA.** `services/etaRoutingService.js` uses
   `GOOGLE_MAPS_API_KEY` from the environment, never the GMaps settings row, so
   ETA updates and Live Locations are untouched.
-- **`admin/src/pages/routeControlGroupSearch.mjs`.** Its `driverTypeLabel` is
-  still imported by the driver-raise panel; it goes when that page goes.
+- **`admin/src/pages/routeControlGroupSearch.mjs`** stayed while the
+  driver-raise panel imported its `driverTypeLabel`; it went with that page
+  ([`retired-driver-raise.md`](retired-driver-raise.md)).
 - **The tables** `route_assignments`, `route_assignment_attachments`,
   `route_monitor_events` and `gmaps_settings` still exist and are still created
   by `database/baseline/019_gmaps_and_route_control.sql`. Nothing reads or

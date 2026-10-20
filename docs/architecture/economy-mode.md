@@ -79,19 +79,19 @@ configuration", never a failure.
 - scheduled broadcasts;
 - the delivery of every notice;
 - birthdays;
-- the weekly raise review;
 - bonuses;
-- route control;
 - ETA updates;
 - return-to-road detection.
 
 **Slowed:** the Dispatcher Board is read every **4 hours**, instead of every 5
-minutes. It is not paused, because the Sunday raise review refuses a Board
-older than 6 hours (`MAX_BOARD_AGE_HOURS`, `services/raise/boardRoster.js`), so
-stopping the read would stop the review. A **failed** read retries at the
-normal pace, because the review also refuses a Board whose last read failed,
-however recent the snapshot before it. The home-in/home-out pass follows the
-read. The Board's own configured interval still wins if it is slower.
+minutes. It is not paused, because Home Time's home-in/home-out pass reads its
+snapshot — stopping the read would leave Home Time with only what drivers
+write. A **failed** read retries at the normal pace, because a failed read
+leaves the snapshot ageing and the home-time pass acts on nothing stale. The
+home-in/home-out pass follows the read. The Board's own configured interval
+still wins if it is slower. (This pace was first set for the Sunday
+driver-raise review, which refused a Board older than six hours; that review
+was removed in October 2026.)
 
 **The health endpoint** skips its `operations` block and reports
 `economy: { active, until }` instead. That block is dozens of reads per build,

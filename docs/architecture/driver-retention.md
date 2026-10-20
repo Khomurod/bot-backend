@@ -40,19 +40,19 @@ word like *performance*, *attitude*, *unreliable* or *discipline*.
 | `road_clock_over` | 3 | `driver_home_status.state_since` vs `road_allowance_weeks` |
 | `bonus_unpaid` | 3 | `driver_road_history.bonus_posted_at IS NULL`; rejected/failed mileage bonuses |
 | `home_request_denied` | 2 | `home_time_requests.status = 'denied'` |
-| `raise_not_qualified` | 2 | `raise_round_picks.qualified = false` |
 | `complaints` | 2 | `intent = 'complaint'`, 2 or more |
 | `gone_quiet` | 2 | volume against **this driver's own** earlier baseline |
 | `sitting_empty` | 2 | `load_lifecycle.phase = 'empty'` for 3+ days, on a load still on the board (`retired_at IS NULL`) |
 | `negative_sentiment` | 1 | mean `sentiment` ≤ −0.5 on the annotator's −2..+2 scale |
 
-**Two of these are structurally dead today, and the table would mislead without
-saying so.** `home_commitment_broken` and `raise_not_qualified` are never
-supplied: `database/retention.js` hard-codes both to `0`, and
-`classifyCommitment` counts a broken promise only where a request reached
-`approved` — a status nothing has written since home time stopped being
-approved. The weights stay because they are right the moment somebody supplies
-the counts; they are not evidence that anything is being scored.
+**One of these is structurally dead today, and the table would mislead without
+saying so.** `home_commitment_broken` is never supplied:
+`database/retention.js` hard-codes it to `0`, and `classifyCommitment` counts a
+broken promise only where a request reached `approved` — a status nothing has
+written since home time stopped being approved. The weight stays because it is
+right the moment somebody supplies the count; it is not evidence that anything
+is being scored. (`raise_not_qualified` was removed with the driver-raise
+review in October 2026 — the company no longer runs raise rounds.)
 
 **`home_request_unanswered` was removed, and must not come back.** It scored a
 request whose dates had simply passed as the company failing the driver. Nobody
@@ -205,11 +205,10 @@ one would be a poor joke.
   so a driver with no person resolved yet contributes nothing from it.
   Under-counting is the right failure: a notice built on a name collision would
   name the wrong driver.
-- **`home_commitment_broken` and `raise_not_qualified` are scored but not yet
-  gathered.** Both need a per-cycle classification rather than a count, so
-  `database/retention.js` returns 0 for them and the scorer handles them the
-  moment a gatherer fills them in. They are in the table and in the tests so the
-  shape cannot drift while they wait.
+- **`home_commitment_broken` is scored but not yet gathered.** It needs a
+  per-cycle classification rather than a count, so `database/retention.js`
+  returns 0 for it and the scorer handles it the moment a gatherer fills it in.
+  It is in the table and in the tests so the shape cannot drift while it waits.
 - There is **no payroll or deductions data** in this repository at all, so an
   unpaid-miles or deduction dispute is only visible through
   `intent = 'complaint'`.

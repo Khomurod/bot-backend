@@ -45,9 +45,13 @@ test('the owner is told in words, without an id', () => {
 // ── the guard: every chat column in a settings table is accounted for ────────
 
 // A settings column that names a chat but must NOT move with a group goes
-// here, with the reason. None does today: the scan finds thirteen columns and
-// all thirteen are destinations.
-const NOT_DESTINATIONS = Object.freeze({});
+// here, with the reason.
+const NOT_DESTINATIONS = Object.freeze({
+  'message_group_settings.dispatch_review_group_id':
+    'the driver-raise review was removed in October 2026; nothing sends there, and the column waits for the retired-feature cleanup',
+  'message_group_settings.raise_results_group_id':
+    'the driver-raise review was removed in October 2026; nothing sends there, and the column waits for the retired-feature cleanup',
+});
 
 test('every chat-id column in a *_settings table is a destination or has a stated reason not to be', () => {
   const dir = path.join(__dirname, '..', 'database');

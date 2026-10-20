@@ -114,13 +114,6 @@ async function captureUsersFromUpdate(ctx, group = null) {
       chatId: chat.id,
       groupName: chat.title || null,
     }).catch(() => {});
-    const dispatchKey = `dispatch:${from.id}`;
-    if (from.username && writeIsDue(dispatchKey, from.username, BACKFILL_RETRY_MS)) {
-      botUsers.backfillDispatchMemberUserId({
-        telegramUserId: from.id,
-        username: from.username,
-      }).catch(() => forgetWrite(dispatchKey));
-    }
     if (from.username) {
       // Backfill the stable numeric id onto a driver profile that the admin
       // linked by @username only, the first time that username actually texts

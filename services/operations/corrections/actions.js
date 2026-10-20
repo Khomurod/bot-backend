@@ -38,7 +38,6 @@ const {
 } = require('./evidence');
 const { abandonExhaustedInternalAlerts } = require('./alertActions');
 const { ensurePerson, syncUnit } = require('./identityActions');
-const { linkBoardRowToPerson } = require('./boardActions');
 const { setGroupType } = require('./groupActions');
 const { setDriverStatus, choiceActionFor } = require('./statusActions');
 const { releaseRoadBonus } = require('./roadBonusActions');
@@ -312,7 +311,6 @@ const ACTIONS = new Map([
   [closeHomeTimeCycle.key, closeHomeTimeCycle],
   [syncProfileStatus.key, syncProfileStatus],
   [abandonExhaustedInternalAlerts.key, abandonExhaustedInternalAlerts],
-  [linkBoardRowToPerson.key, linkBoardRowToPerson],
   [setGroupType.key, setGroupType],
   [setDriverStatus.key, setDriverStatus],
   [releaseRoadBonus.key, releaseRoadBonus],
@@ -342,8 +340,6 @@ const CHECK_TO_ACTION = new Map([
   ['home_time.road_bonus_review', releaseRoadBonus.key],
   ['identity.telegram_link', linkTelegramIdentity.key],
   ['identity.telegram_member_unnamed', linkTelegramIdentity.key],
-  ['board.person_link', linkBoardRowToPerson.key],
-  ['board.person_link_suggested', linkBoardRowToPerson.key],
 ]);
 
 function getAction(actionKey) {

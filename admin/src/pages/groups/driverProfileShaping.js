@@ -69,21 +69,6 @@ export function needsReview(row) {
   return Array.isArray(row.open_finding_keys) && row.open_finding_keys.length > 0;
 }
 
-/**
- * What the dispatcher board says about this driver, in a few words.
- *
- * Returns null when the board has nothing to say — no row, or a row that is no
- * longer on it — so the caller renders nothing rather than an empty badge. A
- * board that is switched off must not put a grey box beside every driver.
- */
-export function boardHint(row) {
-  const board = row?.board;
-  if (!board) return null;
-  if (board.present === false) return "No longer on the dispatcher board";
-  if (!board.status) return null;
-  return `Board: ${board.status}${board.truck ? ` · truck ${board.truck}` : ""}`;
-}
-
 export function prepareDisplayProfiles(allProfiles, activeTab, statusSort) {
   let list = sortBySoonestBirthday(allProfiles, (p) => p.date_of_birth);
 

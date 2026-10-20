@@ -22,12 +22,12 @@ const ALL_MIGRATIONS = allMigrationsSql();
 
 const FINDING = {
   id: 1,
-  checkKey: 'board.truck_disagrees_with_profile',
+  checkKey: 'identity.stale_unit_assignment',
   subjectType: 'group',
   subjectId: 49,
   status: 'open',
   tier: 'approval',
-  evidence: { profileUnit: '310', boardTruck: '311', boardSeenAt: '2026-09-12T10:00:00Z' },
+  evidence: { profileUnit: '310', recordedUnit: '311', observedAt: '2026-09-12T10:00:00Z' },
 };
 
 async function setup(t) {
@@ -72,11 +72,11 @@ test('ANSWERING AGAIN REPLACES — one memory per condition, and the newest wins
   await controlKnowledge.noteApplied(first.id);
 
   const second = await controlKnowledge.rememberAnswer(answer({
-    answerText: 'Actually the board is right, leave it.',
+    answerText: 'Actually the recorded truck is right, leave it.',
     evidenceFingerprint: 'a'.repeat(32),
   }));
   assert.equal(second.id, first.id, 'the same row, not a second one');
-  assert.equal(second.answerText, 'Actually the board is right, leave it.');
+  assert.equal(second.answerText, 'Actually the recorded truck is right, leave it.');
   // THE COUNT BELONGS TO THE ANSWER. Carrying it over would say a brand-new
   // answer had already been acted on four times.
   assert.equal(second.timesApplied, 0);
@@ -180,11 +180,11 @@ test('A NEW PROBLEM ABOUT THE SAME DRIVER IS STILL ASKED', {
   const { applyMemory } = require('../services/control/askPass');
   await controlKnowledge.rememberAnswer(answer());
 
-  // The board now names a THIRD truck. Same driver, same check — a different
+  // The record now names a THIRD truck. Same driver, same check — a different
   // situation, and the one the owner settled has nothing to say about it.
   const different = {
     ...FINDING,
-    evidence: { ...FINDING.evidence, boardTruck: '999' },
+    evidence: { ...FINDING.evidence, recordedUnit: '999' },
   };
   // RECORDED, NOT THROWN. `applyMemory` swallows a failed dismissal on purpose
   // — a memory that cannot be applied must cost the memory, not the pass — so a

@@ -419,10 +419,14 @@ marks the stay closed.
   it. Decided by `lib/homeTime/boardPresence.js` (pure), applied by
   `services/homeTime/boardPresenceWatch.js`, and — like every other path —
   written only through `applyStateTransition`, which owns the state machine, the
-  cycle and the bonus.
-- **`READY` ends a home stay but never means "working".** It stays `neutral` in
-  `boardSaysWorking`, which the contradiction checks read, because a truck
-  marked available says nothing about whether its driver is driving. The third
+  cycle and the bonus. This is the Board's only reader: which person a row is
+  about is decided at read time (`services/dispatchBoard/rowPeople.js`) and
+  stored nowhere. Over the 60 days before October 2026 it opened 40 of about 104
+  home stays and closed 34 of about 92.
+- **`READY` ends a home stay but never means "working".** It stays `neutral`
+  (outside `boardSaysWorking`, which nothing reads since the board-vs-Home-Time
+  contradictions were removed in October 2026), because a truck marked
+  available says nothing about whether its driver is driving. The third
   list, `boardEndsHomeStay`, is asked only of a driver Wenze already has at
   home. `REST` and `SHOP` end nothing: a driver can rest at home, and a truck
   can sit in a shop while its driver is on their couch.

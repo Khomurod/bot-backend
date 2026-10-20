@@ -20,6 +20,26 @@ are in [`architecture/retired-route-control.md`](architecture/retired-route-cont
 
 ---
 
+## The driver-raise review, and the Dispatcher Board's identity checks
+
+Removed 2026-10 at the owner's request ("we no longer raise rates; dispatchers
+are no longer asked"): the weekly 75¢/mile review round, the public `/raise`
+page (now 410) and its one-time codes, the Driver Raises admin page, the Sunday
+dispatch-team roster rebuild from the Dispatcher Board, the *Dispatch Rate
+Review* and *Driver Raise Results* Telegram routing, and the dispatch-team join
+on the Users tab. What was removed, what was kept (the tables, two routing
+columns, the retired check keys) and why are in
+[`architecture/retired-driver-raise.md`](architecture/retired-driver-raise.md).
+
+The **Dispatcher Board stays**, read only for Home Time's home-in / home-out.
+Its identity checks, the `board.link_person` correction (the only action ever
+armed for automatic rollback), the board-vs-Home-Time contradictions and the
+board panels on Groups, the person identity panel and Operations → Identity went
+with the review — see
+[`architecture/dispatcher-board.md`](architecture/dispatcher-board.md).
+
+---
+
 ## The "is home!" post to the employee group
 
 Removed 2026-10-06 at the owner's request. When a company driver came home after

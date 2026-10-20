@@ -127,15 +127,14 @@ test('ONLY OPERATIONAL ACTIONS MAY EVER BE UNDONE AUTOMATICALLY', () => {
 });
 
 /**
- * The auto-revertable set, written out. Adding to it fails this test, which is
- * the point: each one has to be argued, and the argument belongs beside the
- * entry in `verifyPass.js`.
+ * The auto-revertable set, written out. It is EMPTY: the one action that had
+ * been argued safe to undo automatically, `board.link_person`, went with the
+ * Dispatcher Board in October 2026. Arming another fails this test, which is
+ * the point — each one has to be argued beside its entry in `verifyPass.js`.
  */
-test('exactly one action has been argued safe to undo automatically', () => {
+test('no action is armed to be undone automatically', () => {
   const armed = Object.entries(SUBJECTS).filter(([, s]) => s.autoRevert === true).map(([k]) => k);
-  assert.deepEqual(armed, ['board.link_person'],
-    'a board row link costs nobody anything, the Board is an external authority '
-    + 'rather than a person, and the next sweep re-links from whatever it says now');
+  assert.deepEqual(armed, []);
 });
 
 /**
@@ -328,23 +327,37 @@ test('a correction with no recorded ids is expired, not confirmed', async () => 
 });
 
 // ── the path that actually reverts ─────────────────────────────────────────
+//
+// NO REGISTRY ENTRY IS ARMED TODAY, so the machinery is driven through one that
+// is armed for the duration of a test — the same technique the close-cycle case
+// above uses. What is proved is the path itself: the values we wrote are
+// untouched, nobody has been near them, and the evidence that justified the
+// write now says something else.
 
-/**
- * A client that answers the four reads the evidence path makes, so the rollback
- * can be driven end to end rather than asserted from its parts.
- *
- * The generic harness above matches on `operational_corrections` appearing
- * anywhere in the SQL, which the origin and oscillation lookups also do — so
- * this one dispatches on what each query is actually asking for.
- */
-function boardClient({ boardName, personName, present = true, priorReverts = 0, laterBy = null }) {
+const ARMED_KEY = 'home_time.mark_returned_to_road';
+
+/** Arm one subject with an evidence re-read for one test, then put it back. */
+function armed(t, stillJustified) {
+  const subject = SUBJECTS[ARMED_KEY];
+  const saved = {
+    autoRevert: subject.autoRevert, stillJustified: subject.stillJustified, read: subject.read,
+  };
+  const set = (k, v) => Object.defineProperty(subject, k, { value: v, configurable: true, writable: true });
+  set('autoRevert', true);
+  set('stillJustified', stillJustified);
+  set('read', async () => ({ state: 'road', state_since: '2026-09-10T00:00:00Z' }));
+  t.after(() => { for (const [k, v] of Object.entries(saved)) set(k, v); });
+}
+
+/** A client that answers the reads the evidence path makes, dispatched by what each asks. */
+function evidenceClient({ priorReverts = 0, laterBy = null }) {
   const correction = {
-    id: 900, subject_id: 'UNIT7|jane_doe', subject_type: 'board_row',
-    action_key: 'board.link_person', applied_at: '2026-09-10T00:00:00Z', reverted_at: null,
-    new_values: { personId: 42, linkSource: 'board' },
+    id: 900, subject_id: '55', subject_type: 'group',
+    action_key: ARMED_KEY, applied_at: '2026-09-10T00:00:00Z', reverted_at: null,
+    new_values: { state: 'road', state_since: '2026-09-10T00:00:00Z' },
   };
   return {
-    async query(sql, params) {
+    async query(sql) {
       if (/FROM operational_corrections WHERE id/.test(sql)) return { rows: [correction] };
       if (/COUNT\(\*\)::int AS n FROM operational_corrections/.test(sql)) {
         return { rows: [{ n: priorReverts }] };
@@ -352,24 +365,16 @@ function boardClient({ boardName, personName, present = true, priorReverts = 0, 
       if (/SELECT initiator FROM operational_corrections/.test(sql)) {
         return { rows: laterBy ? [{ initiator: laterBy }] : [] };
       }
-      if (/FROM admin_audit_log/.test(sql)) return { rows: [] };
-      if (/driver_people/.test(sql)) {
-        return { rows: [{ boardName, personName, present }] };
-      }
-      // the subject read
-      if (/FROM dispatch_board_rows/.test(sql)) {
-        return { rows: [{ personId: 42, linkSource: 'board' }] };
-      }
       return { rows: [] };
     },
     release() {},
   };
 }
 
-function boardHarness(opts) {
+function evidenceHarness(opts = {}) {
   const graded = [];
   const reverted = [];
-  const client = boardClient(opts);
+  const client = evidenceClient(opts);
   return {
     graded,
     reverted,
@@ -378,8 +383,8 @@ function boardHarness(opts) {
       decisions: {
         async listUnverifiedActions() {
           return [{
-            id: 1, checkKey: 'board.person_link', actionKey: 'board.link_person',
-            subjectId: 'UNIT7|jane_doe', correctionId: 900,
+            id: 1, checkKey: 'home_time.returned_to_road', actionKey: ARMED_KEY,
+            subjectId: '55', correctionId: 900,
           }];
         },
         async recordOutcome(id, outcome, detail) { graded.push({ id, outcome, detail }); return true; },
@@ -391,30 +396,25 @@ function boardHarness(opts) {
   };
 }
 
-/**
- * THE CASE AUTOMATIC ROLLBACK WAS BUILT FOR, and the one it could not previously
- * see: the values we wrote are untouched, nobody has been near them, and the
- * external authority that justified the write now says something else.
- */
-test('THE BOARD NAMING SOMEBODY ELSE UNDOES THE LINK, and says why', async () => {
-  const { db, deps, reverted, graded } = boardHarness({
-    boardName: 'Peter Novak', personName: 'Jane Doe',
-  });
+const GONE = async () => ({ holds: false, reason: 'the truck has not moved since, so the driver is not back on the road' });
+const HOLDS = async () => ({ holds: true, reason: 'the truck is still moving' });
 
+test('EVIDENCE THAT NO LONGER HOLDS UNDOES THE WRITE, and says why', async (t) => {
+  armed(t, GONE);
+  const { db, deps, reverted, graded } = evidenceHarness();
   const out = await runVerificationPass({ db, deps });
 
-  assert.equal(out.rolledBack, 1, 'the link is put back');
+  assert.equal(out.rolledBack, 1, 'the write is put back');
   assert.equal(reverted.length, 1);
   assert.match(reverted[0].reason, /automatic rollback/);
-  assert.match(reverted[0].reason, /Peter Novak/, 'the audit row carries the evidence that changed its mind');
+  assert.match(reverted[0].reason, /has not moved since/, 'the audit row carries the evidence that changed its mind');
   assert.equal(graded[0].outcome, 'reverted');
   assert.match(graded[0].detail, /\[automatically_reverted\]/);
 });
 
-test('the board still naming the same person is simply verified', async () => {
-  const { db, deps, reverted, graded } = boardHarness({
-    boardName: 'Jane Doe', personName: 'Jane Doe',
-  });
+test('evidence that still holds is simply verified', async (t) => {
+  armed(t, HOLDS);
+  const { db, deps, reverted, graded } = evidenceHarness();
   const out = await runVerificationPass({ db, deps });
   assert.equal(out.rolledBack, 0);
   assert.deepEqual(reverted, []);
@@ -422,10 +422,9 @@ test('the board still naming the same person is simply verified', async () => {
 });
 
 /** Oscillation: once is a correction, twice is two systems arguing. */
-test('a row already put back once is left for a person', async () => {
-  const { db, deps, reverted, graded } = boardHarness({
-    boardName: 'Peter Novak', personName: 'Jane Doe', priorReverts: 1,
-  });
+test('a subject already put back once is left for a person', async (t) => {
+  armed(t, GONE);
+  const { db, deps, reverted, graded } = evidenceHarness({ priorReverts: 1 });
   const out = await runVerificationPass({ db, deps });
   assert.equal(out.rolledBack, 0);
   assert.deepEqual(reverted, []);
@@ -433,10 +432,6 @@ test('a row already put back once is left for a person', async () => {
   assert.match(graded[0].detail, /already been put back/);
 });
 
-/** A missing name is missing evidence, and missing evidence never undoes anything. */
-test('a board row with no name leaves the link alone', async () => {
-  const { db, deps, reverted } = boardHarness({ boardName: null, personName: 'Jane Doe' });
-  const out = await runVerificationPass({ db, deps });
-  assert.equal(out.rolledBack, 0);
-  assert.deepEqual(reverted, []);
+test('after the pass, nothing is left armed', () => {
+  assert.notEqual(SUBJECTS[ARMED_KEY].autoRevert, true);
 });

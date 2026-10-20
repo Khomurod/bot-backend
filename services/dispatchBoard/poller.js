@@ -183,10 +183,9 @@ async function tick(deps) {
   } finally {
     tickRunning = false;
     if (!serviceStopped) {
-      // Economy mode reads the Board every four hours instead of stopping: the
-      // Sunday raise review refuses a Board older than six hours
-      // (services/raise/boardRoster.js). A FAILED read retries at the normal
-      // pace, because the review also refuses a Board whose last read failed.
+      // Economy mode reads the Board every four hours instead of stopping:
+      // Home Time's home-in/home-out reads this snapshot. A FAILED read retries
+      // at the normal pace, because a failed read leaves the snapshot ageing.
       serviceTimer = setTimeout(() => tick(deps), economyInterval(SERVICE_KEY, intervalMs, { failed }));
       serviceTimer.unref?.();
     }

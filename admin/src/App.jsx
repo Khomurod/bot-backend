@@ -17,8 +17,6 @@ const FacebookLeadsPage = lazy(() => import("./pages/FacebookLeadsPage"));
 const LeadsPage = lazy(() => import("./pages/LeadsPage"));
 const FinancePage = lazy(() => import("./pages/FinancePage"));
 const MileageBonusPage = lazy(() => import("./pages/MileageBonusPage"));
-const RaiseApprovalPage = lazy(() => import("./pages/RaiseApprovalPage"));
-const RaisePublicPage = lazy(() => import("./pages/RaisePublicPage"));
 const HomeTimePage = lazy(() => import("./pages/HomeTimePage"));
 const FuelMonitorPage = lazy(() => import("./pages/FuelMonitorPage"));
 const UsersPage = lazy(() => import("./pages/UsersPage"));
@@ -85,9 +83,6 @@ function LazyPage({ pageKey, children }) {
 function pageFromLocation(pathname, hash) {
   if (pathname === "/dispatch") return "gross_race_dispatchers";
   if (pathname === "/dispatchteam") return "gross_race_teams";
-  if (pathname === "/raise" || pathname.startsWith("/raise/")) {
-    return "raise_public";
-  }
   if (pathname === "/recruiters" || pathname.startsWith("/recruiters/")) {
     return "recruiters_public";
   }
@@ -121,7 +116,6 @@ const PAGE_COMPONENTS = {
   groups: <GroupsPage />,
   company_birthdays: <CompanyBirthdaysPage />,
   mileage_bonus: <MileageBonusPage />,
-  raise_approval: <RaiseApprovalPage />,
   home_time: <HomeTimePage />,
   fuel_monitor: <FuelMonitorPage />,
   users: <UsersPage />,
@@ -153,7 +147,6 @@ export default function App() {
   const [checking, setChecking] = useState(true);
   const [page, setPage] = useState(() => initialPage());
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const isRaisePublicPage = page === "raise_public";
   const isRecruitersPublicPage = page === "recruiters_public";
   const grossRaceView = { gross_race_teams: "teams", gross_race_dispatchers: "dispatchers" }[page] || null;
 
@@ -219,14 +212,6 @@ export default function App() {
       window.history.replaceState({}, "", "/admin");
     }
   };
-
-  if (isRaisePublicPage) {
-    return (
-      <main className="main-content" style={{ marginLeft: 0 }}>
-        <LazyPage pageKey="raise_public"><RaisePublicPage /></LazyPage>
-      </main>
-    );
-  }
 
   // Full-bleed public leaderboard — no admin chrome, no auth.
   if (isRecruitersPublicPage) {

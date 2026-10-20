@@ -5,7 +5,7 @@
  * enough Postgres upsert semantics (COALESCE keep-existing, counter increment,
  * conflict on the telegram_user_id primary key) to validate the module's
  * behavior without a live database. listBotUsers is exercised for its SQL/param
- * shaping (filters + search + the dispatch-team join).
+ * shaping (filters + search).
  */
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -19,7 +19,7 @@ function loadBotUsersWith(fakeQuery) {
   return require(modPath);
 }
 
-/** In-memory emulator for the bot_users upsert + dispatch backfill + list. */
+/** In-memory emulator for the bot_users upsert + list. */
 function makeFakeDb() {
   const users = new Map(); // id -> row
   const selectCalls = [];
@@ -60,10 +60,6 @@ function makeFakeDb() {
     if (s.startsWith('SELECT') && s.includes('FROM bot_users')) {
       selectCalls.push({ sql: s, params });
       return { rows: Array.from(users.values()), rowCount: users.size };
-    }
-
-    if (s.startsWith('UPDATE dispatch_team_members')) {
-      return { rows: [], rowCount: 1 };
     }
 
     throw new Error(`Unexpected SQL in fake: ${s.slice(0, 60)}`);
@@ -154,15 +150,13 @@ test('a bot user is recorded with is_bot true (rule: caller decides; storage is 
   assert.equal(fake.users.get(999).is_bot, true);
 });
 
-test('listBotUsers builds a dispatch-team join and infers dispatch by username OR id', async () => {
+test('listBotUsers reads bot_users alone — the dispatch-team join went with the teams', async () => {
   const fake = makeFakeDb();
   const db = loadBotUsersWith(fake.query);
   await db.recordBotUserSeen({ telegramUserId: 100, username: 'joe' });
   await db.listBotUsers({ filter: 'all' });
   const call = fake.selectCalls.at(-1);
-  assert.match(call.sql, /LEFT JOIN LATERAL/i);
-  assert.match(call.sql, /LOWER\(m\.telegram_username\) = LOWER\(u\.username\)/i);
-  assert.match(call.sql, /m\.telegram_user_id = u\.telegram_user_id/i);
+  assert.doesNotMatch(call.sql, /dispatch_team/i);
 });
 
 test('listBotUsers applies the dispatch filter and passes a search param', async () => {
@@ -171,25 +165,11 @@ test('listBotUsers applies the dispatch filter and passes a search param', async
   await db.recordBotUserSeen({ telegramUserId: 100, username: 'joe' });
 
   await db.listBotUsers({ filter: 'dispatch' });
-  assert.match(fake.selectCalls.at(-1).sql, /dm\.id IS NOT NULL/);
+  assert.match(fake.selectCalls.at(-1).sql, /u\.source = 'dispatcher'/);
 
   await db.listBotUsers({ filter: 'recent' });
   assert.match(fake.selectCalls.at(-1).sql, /INTERVAL '24 hours'/);
 
   await db.listBotUsers({ filter: 'all', search: 'Joe' });
   assert.ok(fake.selectCalls.at(-1).params.includes('%joe%'));
-});
-
-test('backfillDispatchMemberUserId only runs with both id and username', async () => {
-  let ran = 0;
-  const db = loadBotUsersWith(async (sql) => {
-    if (sql.includes('UPDATE dispatch_team_members')) ran += 1;
-    return { rows: [], rowCount: 1 };
-  });
-  assert.equal(await db.backfillDispatchMemberUserId({ telegramUserId: null, username: 'joe' }), 0);
-  assert.equal(await db.backfillDispatchMemberUserId({ telegramUserId: 5, username: '' }), 0);
-  assert.equal(ran, 0);
-  const updated = await db.backfillDispatchMemberUserId({ telegramUserId: 5, username: 'joe' });
-  assert.equal(updated, 1);
-  assert.equal(ran, 1);
 });

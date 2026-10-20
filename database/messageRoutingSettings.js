@@ -16,9 +16,11 @@
  * There is deliberately NO hardcoded group-id default. When a category resolves
  * to null the caller must NOT send the message and must log a clear
  * configuration error (see MISSING_GROUP_MESSAGES) — never a silent old default.
- * A category is never a fallback for another category either: the driver-raise
- * request (dispatchReview) and its submitted result (raiseResults) are two
- * separate audiences and two separate settings.
+ * A category is never a fallback for another category either.
+ *
+ * The driver-raise review's two categories (`dispatchReview`, `raiseResults`)
+ * were removed with that feature in October 2026. Their columns stay in the
+ * table until the retired-feature cleanup drops them; nothing reads them.
  */
 const { query } = require('./db');
 const config = require('../config/config');
@@ -30,28 +32,18 @@ let cache = null;
 let cacheExpiresAt = 0;
 
 // The message categories. Keys are used across the API + tests.
-//
-// dispatchReview and raiseResults are the two HALVES of the driver-raise
-// workflow and are INDEPENDENT routing settings, deliberately not one shared
-// group: the request to fill in the review goes OUT to dispatch, the finished
-// decision comes BACK to accounting. An admin may enter the same ID in both,
-// but neither is ever a fallback for the other.
-const CATEGORIES = ['mileageBonus', 'roadBonus', 'dispatchReview', 'raiseResults'];
+const CATEGORIES = ['mileageBonus', 'roadBonus'];
 
 // Clear, category-specific errors surfaced/logged when a group ID is missing.
 const MISSING_GROUP_MESSAGES = {
   mileageBonus: 'Mileage bonus group ID is not configured.',
   roadBonus: 'Extra Week bonus group ID is not configured.',
-  dispatchReview: 'Dispatch rate review group ID is not configured.',
-  raiseResults: 'Driver raise results (accounting) group ID is not configured.',
 };
 
 // DB column ↔ category ↔ env fallback (via config, which reads process.env).
 const CATEGORY_META = {
   mileageBonus: { column: 'mileage_bonus_group_id', envKey: 'mileageBonusGroupId' },
   roadBonus: { column: 'road_bonus_group_id', envKey: 'roadBonusGroupId' },
-  dispatchReview: { column: 'dispatch_review_group_id', envKey: 'dispatchReviewGroupId' },
-  raiseResults: { column: 'raise_results_group_id', envKey: 'raiseResultsGroupId' },
 };
 
 function invalidateCache() {
@@ -122,7 +114,7 @@ async function getMessageGroupConfig() {
 
 /**
  * The resolved Telegram group ID for one category, or null when not configured.
- * @param {'mileageBonus'|'roadBonus'|'dispatchReview'|'raiseResults'} category
+ * @param {'mileageBonus'|'roadBonus'} category
  */
 async function getGroupId(category) {
   if (!CATEGORY_META[category]) {
@@ -158,9 +150,8 @@ async function getMessageGroupSettingsForAdmin() {
  * Update the routing settings. For each category:
  *   - a string value (including '' to clear) is written when the key is present
  *   - omitting the key leaves the stored value unchanged
- * Payload keys are the category names (mileageBonus / roadBonus / dispatchReview /
- * raiseResults). Categories are independent: omitting one never clears or
- * mirrors another.
+ * Payload keys are the category names (mileageBonus / roadBonus). Categories
+ * are independent: omitting one never clears or mirrors another.
  */
 async function updateMessageGroupSettings(payload = {}) {
   const sets = [];

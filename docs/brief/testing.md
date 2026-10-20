@@ -32,8 +32,8 @@ npm run build:schema:check                        # schema.sql is in sync with b
   ones to read first when a Phase 3 behaviour is in doubt:
   `tests/driverLifecycleScenarioPg.test.js` walks one driver through every
   system on a real database (seen → road → home → truck change → back out →
-  old truck to a new driver → Raise finds them by the old truck → the watchdog
-  places a quiet driver once allowed → restart), and
+  old truck to a new driver → the watchdog places a quiet driver once allowed →
+  restart), and
   `tests/aiLifecycleScenario.test.js` walks a provider through onboarding, a
   retired model, a dead key and a full outage through the real modules with the
   network replaced. The Python leads
