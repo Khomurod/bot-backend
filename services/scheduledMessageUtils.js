@@ -88,6 +88,55 @@ function describeWeeklySchedule(dayOfWeek, timeOfDay, timezone = DEFAULT_SCHEDUL
   return `Every ${WEEKDAY_LABELS[weekday]} at ${formattedTime} ${normalizeTimezone(timezone)}`;
 }
 
+/**
+ * A message claimed for sending and never released.
+ *
+ * `claimScheduledMessage` flips a row to `processing` before the send and the
+ * send flips it back. A process that dies in between — a deploy, a restart, the
+ * memory watchdog — leaves it `processing` for ever, and nothing else ever
+ * looks at it again. One weekly PTI reminder sat like that from May to October
+ * 2026, never sent once, while the admin screen showed it as in progress.
+ *
+ * TWO HOURS PAST ITS TIME IS DEAD, NOT SLOW. The longest broadcast this fleet
+ * sends takes minutes, so a claim that old belongs to a process that is gone.
+ *
+ * NOTHING IS SENT AGAIN FROM HERE. The dead send may have reached some groups
+ * already, and repeating it would message those drivers twice:
+ *
+ *   weekly, missed at most one run   →  the next weekly occurrence, so the
+ *                                        schedule carries on next week
+ *   weekly, stuck for longer         →  failed: a reminder nobody noticed was
+ *                                        silent for weeks is a person's call to
+ *                                        restart, not a timer's
+ *   one-time                         →  failed, for a person to resend
+ */
+const STALE_CLAIM_MINUTES = 120;
+const WEEKLY_RESUME_WITHIN_DAYS = 8;
+
+/**
+ * @param {object} msg  `schedule_type`, the weekly fields, and `days_overdue`
+ *   (how long past its `scheduled_at` the stuck run is)
+ * @returns {{action: 'reschedule', nextAt: string} | {action: 'fail', reason: string}}
+ */
+function decideStaleClaim(msg, { now = DateTime.now() } = {}) {
+  if ((msg?.schedule_type || 'one_time') !== 'weekly') {
+    return { action: 'fail', reason: 'a one-time message whose send was interrupted' };
+  }
+  const overdue = Number(msg.days_overdue);
+  if (!Number.isFinite(overdue) || overdue > WEEKLY_RESUME_WITHIN_DAYS) {
+    return { action: 'fail', reason: 'a weekly message that has been stuck for more than a week' };
+  }
+  const timezone = msg.schedule_timezone || DEFAULT_SCHEDULE_TIMEZONE;
+  const next = computeNextWeeklyOccurrence({
+    dayOfWeek: msg.weekly_day_of_week,
+    timeOfDay: msg.weekly_time_local,
+    timezone,
+    now: now.setZone(normalizeTimezone(timezone)),
+  });
+  if (!next) return { action: 'fail', reason: 'a weekly message with an unreadable schedule' };
+  return { action: 'reschedule', nextAt: next.toUTC().toISO() };
+}
+
 module.exports = {
   DEFAULT_SCHEDULE_TIMEZONE,
   WEEKDAY_LABELS,
@@ -97,4 +146,7 @@ module.exports = {
   parseTimeOfDay,
   computeNextWeeklyOccurrence,
   describeWeeklySchedule,
+  STALE_CLAIM_MINUTES,
+  WEEKLY_RESUME_WITHIN_DAYS,
+  decideStaleClaim,
 };

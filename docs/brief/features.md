@@ -44,7 +44,8 @@ and every API client function is exactly what it was.
   dropped from every company-driver broadcast — and nothing anywhere reports a
   group a broadcast decided not to message.
 - **Scheduled messages** — one-time or weekly, Central Time (Luxon);
-  `schedulerService.js` claims due rows and reuses the broadcast path.
+  `schedulerService.js` claims due rows and reuses the broadcast path; a claim
+  left stuck by a dead process is released, never re-sent (`decideStaleClaim`).
 - **Creator panel** — private chat, one allow-listed user ID: pick an audience or
   a single group; any content is delivered **verbatim** via `copyMessage`.
 - **History / Edit by Link** (was Bot Messages / Message Manager) — every outbound send is recorded in

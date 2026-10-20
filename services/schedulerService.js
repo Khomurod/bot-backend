@@ -8,7 +8,9 @@ const { resolveBroadcastTargetGroups } = require('./broadcastTargetService');
 const { withRunRecord, noteHeartbeat } = require('./operations/runLedger');
 const {
   DEFAULT_SCHEDULE_TIMEZONE,
+  STALE_CLAIM_MINUTES,
   computeNextWeeklyOccurrence,
+  decideStaleClaim,
   normalizeMediaItems,
 } = require('./scheduledMessageUtils');
 
@@ -232,10 +234,46 @@ function scheduleNextTick() {
 }
 
 /**
+ * Release messages a dead process claimed and never finished — the rules are
+ * `decideStaleClaim`'s. Never sends anything itself; a released weekly message
+ * goes out at its next ordinary time, through the ordinary tick.
+ *
+ * @returns {Promise<{rescheduled: number, failed: number}>}
+ */
+async function recoverStaleClaims({ store = db } = {}) {
+  const out = { rescheduled: 0, failed: 0 };
+  const stale = await store.listStaleClaims({ olderThanMinutes: STALE_CLAIM_MINUTES });
+  for (const msg of stale) {
+    const decision = decideStaleClaim(msg);
+    // eslint-disable-next-line no-await-in-loop
+    const released = await store.releaseStaleClaim(msg.id, {
+      nextScheduledAt: decision.action === 'reschedule' ? decision.nextAt : null,
+    });
+    if (!released) continue; // its own send finished after all
+    if (decision.action === 'reschedule') {
+      out.rescheduled += 1;
+      console.log(`[SCHEDULER] Message id=${msg.id} was stuck mid-send; next run ${decision.nextAt}`);
+    } else {
+      out.failed += 1;
+      console.log(`[SCHEDULER] Message id=${msg.id} was stuck mid-send and is marked failed: ${decision.reason}`);
+    }
+  }
+  return out;
+}
+
+/**
  * Periodic chat_logs retention pass — hard-wires the 30-day window
  * documented in the schema. Runs hourly; cheap if nothing to delete.
  */
 async function retentionTick() {
+  // A SEND THAT DIED HALFWAY. Rides this timer — at boot, which is exactly
+  // when a dead process's claim is found, and then hourly.
+  try {
+    await recoverStaleClaims();
+  } catch (err) {
+    console.error('[SCHEDULER] Stuck-message recovery error:', err.message);
+  }
+
   try {
     if (typeof db.deleteOldChatLogs === 'function') {
       const deleted = await db.deleteOldChatLogs(30);
@@ -354,4 +392,6 @@ function stopScheduler() {
   console.log('[SCHEDULER] Stopped.');
 }
 
-module.exports = { startScheduler, stopScheduler, tick, processMessage, retentionTick };
+module.exports = {
+  startScheduler, stopScheduler, tick, processMessage, retentionTick, recoverStaleClaims,
+};
