@@ -124,8 +124,6 @@ CREATE TABLE IF NOT EXISTS facebook_lead_sms_mirrors (
   UNIQUE (telegram_chat_id, telegram_message_id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_facebook_lead_sms_mirrors_lookup
-  ON facebook_lead_sms_mirrors (telegram_chat_id, telegram_message_id);
 
 ALTER TABLE facebook_lead_sms_mirrors
   ADD COLUMN IF NOT EXISTS source_type TEXT NOT NULL DEFAULT 'outbound_auto';
@@ -139,8 +137,6 @@ ALTER TABLE group_pinned_messages ADD COLUMN IF NOT EXISTS source_event_at TIMES
 ALTER TABLE group_pinned_messages ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW();
 ALTER TABLE group_pinned_messages ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW();
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_group_pinned_messages_group_id
-  ON group_pinned_messages(group_id);
 CREATE INDEX IF NOT EXISTS idx_group_pinned_messages_updated_at
   ON group_pinned_messages(updated_at DESC);
 

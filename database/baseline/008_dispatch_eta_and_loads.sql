@@ -155,8 +155,6 @@ CREATE INDEX IF NOT EXISTS idx_groups_samsara_vehicle_id
   WHERE samsara_vehicle_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_groups_type_active
   ON groups(group_type, active);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_driver_profiles_group_id
-  ON driver_profiles(group_id);
 CREATE INDEX IF NOT EXISTS idx_driver_profiles_unit_number
   ON driver_profiles(unit_number);
 CREATE INDEX IF NOT EXISTS idx_driver_profiles_status
