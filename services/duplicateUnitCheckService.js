@@ -29,7 +29,8 @@ const dup = require('../database/duplicateUnitReports');
 const { getEldConfig } = require('../database/eldSettings');
 const samsara = require('./samsaraLocationService');
 const groups = require('../database/groups');
-const { driverNamesMatch, extractDriverNameFromVehicleLabel } = require('../lib/drivers/driverGroupTitle');
+const { extractDriverNameFromVehicleLabel } = require('../lib/drivers/driverGroupTitle');
+const { namesLikelySame } = require('../lib/drivers/nameTolerance');
 const { withRunRecord } = require('./operations/runLedger');
 
 const POLL_MS = 15 * 60 * 1000;
@@ -139,7 +140,7 @@ function analyzeDuplicateUnits(rows, vehicles) {
 
       if (selection.vehicle) {
         const providerDriver = extractDriverNameFromVehicleLabel(selection.vehicle.name, unit);
-        if (providerDriver && !driverNamesMatch(driver, providerDriver)) {
+        if (providerDriver && !namesLikelySame(driver, providerDriver)) {
           reports.push({
             unitNumber: unit,
             reportType: 'name_mismatch',
@@ -223,10 +224,13 @@ function resolveVehicleLinks(rows, vehicles) {
     // A NAMED VEHICLE NEEDS A GROUP DRIVER TO AGREE WITH. An active profile can
     // carry a unit number and no name at all, and treating that as "nothing to
     // disagree with" turns incomplete profile data into an authoritative wrong
-    // link. `driverNamesMatch` is false against an empty name, which is the
-    // answer wanted: only a genuinely NAMELESS label is eligible here.
+    // link. `namesLikelySame` is false against an empty name, which is the
+    // answer wanted: only a genuinely NAMELESS label is eligible here. It
+    // forgives a one-letter typo and a team label ("PRINCE / OTIS"), which kept
+    // trucks 2614 and 013 routing by name until 20 October 2026; a different
+    // person is still a mismatch.
     const providerDriver = extractDriverNameFromVehicleLabel(selection.vehicle.name, unit);
-    if (providerDriver && !driverNamesMatch(driver, providerDriver)) continue;
+    if (providerDriver && !namesLikelySame(driver, providerDriver)) continue;
 
     candidates.push({
       groupId: row.group_id,

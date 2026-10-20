@@ -68,12 +68,18 @@ inconsistency:
   a nickname as often as a legal name, so demanding an exact match would refuse
   almost every true link.
 
+Since 20 October 2026 the comparison is `namesLikelySame`
+(`lib/drivers/nameTolerance.js`): `driverNamesMatch` plus an apostrophe
+("Charlie O'Neal Jr" ↔ CHARLIE ONEAL), one letter off in BOTH first and last
+name (four letters or more), and a team label ("PRINCE / OTIS"). The board keeps
+the strict matcher and its normaliser untouched — its row keys depend on it.
+
 ## The findings
 
 | Check | Tier | Proposes |
 |---|---|---|
 | `identity.telegram_link` | `auto` | the link |
-| `identity.telegram_member_unnamed` | `approval` | the link — common, often right, so a person confirms |
+| `identity.telegram_member_unnamed` | `approval` | the link to **the one candidate** — common, often right, so a person confirms |
 | `identity.telegram_members_ambiguous` | `warning` | **nothing** |
 
 **Nothing in the message path decides this.** The bot records who it has seen
@@ -91,6 +97,16 @@ The id travels in `proposedChange` only.
 answer is still `link` and still the **same account**. Somebody joining the chat
 between the sweep and the apply turns "the only candidate" into a question, and
 that is exactly the case worth refusing.
+
+**A person's "yes" on an unnamed member is the other way in.** Until 20 October
+2026 an `identity.telegram_member_unnamed` finding proposed nothing — the
+candidate was not in it — so approving one could never work ("no proposed
+change"), and fifteen sat open. Now the finding carries the one candidate in
+`proposedChange`, `payloadFor` marks it `confirmedUnnamed`, and the apply
+accepts it while the room still holds exactly that one candidate. The link is
+recorded with `link_source = 'manual'` and no confidence of its own: a person
+decided, not the rule. The tier stays `approval`, so the autopilot never takes
+this path (the same payload without the mark refuses).
 
 **It never overwrites an administrator's choice.** It fills
 `driver_profiles.telegram_user_id` only when that column is NULL — the rule

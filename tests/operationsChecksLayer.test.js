@@ -98,7 +98,9 @@ test('every person-layer check runs over one snapshot and declares its keys', ()
   // A TRIPWIRE, not bookkeeping: `resolveClearedFindings` only clears keys this
   // list declares, so a check that files under an undeclared key leaves rows
   // open for ever. Adding a check means adding it here on purpose.
-  assert.equal(layer.CHECK_KEYS.length, 4);
+  // Five since 20 October 2026: `identity.unit_handover`, filed by the same
+  // function as `unit_contested` when the holder has left.
+  assert.equal(layer.CHECK_KEYS.length, 5);
 });
 
 // ─── the systems around it ───────────────────────────────────────────────────
@@ -198,9 +200,10 @@ test('a holder in a DIFFERENT fleet does not contest the truck', () => {
 });
 
 test('a holder in the SAME fleet still contests it', () => {
-  const groups = [group(72, 'WENZE UNIT # 001 A ONE (COMPANY DRIVERS)')];
+  // The holder still drives (an active chat of their own): a dispute, not a handover.
+  const groups = [group(72, 'WENZE UNIT # 001 A ONE (COMPANY DRIVERS)'), group(82, 'WENZE UNIT # 007 B TWO')];
   const profiles = [profile(72, '001')];
-  const personGroups = [{ person_id: 1, group_id: 72, started_at: '2026-01-01' }];
+  const personGroups = [{ person_id: 1, group_id: 72, started_at: '2026-01-01' }, { person_id: 2, group_id: 82 }];
   const units = [{ person_id: 2, unit_number: '001', fleet_type: 'company' }];
   const people = [{ id: 1, display_name: 'A ONE' }, { id: 2, display_name: 'B TWO' }];
 
@@ -211,20 +214,21 @@ test('a holder in the SAME fleet still contests it', () => {
 });
 
 test('an unplaceable holder contests, because unknown proves nothing either way', () => {
-  const groups = [group(73, 'WENZE UNIT # 001 A ONE (COMPANY DRIVERS)')];
+  const groups = [group(73, 'WENZE UNIT # 001 A ONE (COMPANY DRIVERS)'), group(83, 'WENZE UNIT # 008 B TWO')];
   const profiles = [profile(73, '001')];
-  const personGroups = [{ person_id: 1, group_id: 73, started_at: '2026-01-01' }];
+  const personGroups = [{ person_id: 1, group_id: 73, started_at: '2026-01-01' }, { person_id: 2, group_id: 83 }];
   const units = [{ person_id: 2, unit_number: '001', fleet_type: 'unknown' }];
   const people = [{ id: 1, display_name: 'A ONE' }, { id: 2, display_name: 'B TWO' }];
 
   const found = layer.checkUnitContested({ groups, profiles, personGroups, units, people });
   assert.equal(found.length, 1, 'unknown never wins a match, in either direction');
+  assert.equal(found[0].checkKey, 'identity.unit_contested');
 });
 
 test('several holders on one number: only the one in the same truck is named', () => {
-  const groups = [group(74, 'WENZE UNIT # 001 A ONE (COMPANY DRIVERS)')];
+  const groups = [group(74, 'WENZE UNIT # 001 A ONE (COMPANY DRIVERS)'), group(84, 'WENZE UNIT # 009 B TWO')];
   const profiles = [profile(74, '001')];
-  const personGroups = [{ person_id: 1, group_id: 74, started_at: '2026-01-01' }];
+  const personGroups = [{ person_id: 1, group_id: 74, started_at: '2026-01-01' }, { person_id: 2, group_id: 84 }];
   // The old `new Map()` keyed by number kept whichever row came LAST and
   // silently dropped the rest — here it would have reported the lease driver.
   const units = [

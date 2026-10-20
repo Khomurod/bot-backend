@@ -31,6 +31,7 @@ const { takeDecision } = require('../../decisions/journal');
  *     home_time.returned_to_road          85 → 75     ← the tightest, 5 to spare
  *     identity.group_without_person       90 → 80
  *     identity.stale_unit_assignment      90 → 80
+ *     identity.unit_handover              90 → 80
  *     home_time.ghost_home_status         90 → 80   (retired October 2026)
  *     home_time.closable_open_cycle    90/95 → 80/85
  *     identity.status_disagreement        95 → 85

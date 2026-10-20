@@ -2,7 +2,9 @@
  * Recording which Telegram account belongs to a driver.
  *
  *   identity.link_telegram   the one person in a driver's chat, whose name
- *                            matches the driver, becomes that person's account.
+ *                            matches the driver, becomes that person's account
+ *                            — or, when the name does not match, the one person
+ *                            a human confirmed (recorded as `manual`).
  *
  * TWO RULES CARRIED FROM THE REST OF THE REGISTRY, and one that is specific.
  *
@@ -20,7 +22,7 @@
  * partial unique index, so the insert can lose; that is the guarantee working,
  * and it is reported as a stale correction rather than retried.
  */
-const { decideTelegramLink } = require('../../../lib/identity/telegramResolution');
+const { decideTelegramLink, CHECKS } = require('../../../lib/identity/telegramResolution');
 const { driverNameOf } = require('../checks/telegramIdentity');
 const { StaleCorrectionError } = require('./evidence');
 const people = require('../../../database/driverPeople');
@@ -105,13 +107,21 @@ const linkTelegramIdentity = {
   subjectType: 'group',
   describe: (p) => `Record a Telegram account as person ${p.personId}'s`,
 
-  async apply({ groupId, personId, telegramUserId }, client) {
+  async apply({
+    groupId, personId, telegramUserId, confirmedUnnamed = false,
+  }, client) {
     if (!groupId || !personId || !telegramUserId) {
       throw new StaleCorrectionError('A group, a person and an account are all required.');
     }
     const { profile, decision } = await liveDecisionFor(groupId, personId, client);
 
-    if (decision.action !== 'link') {
+    // A PERSON'S "YES, THAT IS THEM" IS THE OTHER WAY IN. The rule asks, rather
+    // than links, when the one candidate's name does not look like the driver;
+    // the approval of that question (`identity.telegram_member_unnamed`, approval
+    // tier, so never the autopilot) links exactly that candidate — and only
+    // while the room still holds that one candidate.
+    const confirmed = confirmedUnnamed === true && decision.checkKey === CHECKS.UNNAMED;
+    if (decision.action !== 'link' && !confirmed) {
       throw new StaleCorrectionError(
         `Group ${groupId} no longer resolves to one account (${decision.reason}).`
       );
@@ -126,8 +136,8 @@ const linkTelegramIdentity = {
       personId,
       telegramUserId,
       usernameAtLink: null,
-      linkSource: 'member_resolution',
-      confidence: decision.confidence,
+      linkSource: confirmed ? 'manual' : 'member_resolution',
+      confidence: confirmed ? null : decision.confidence,
       evidence: { groupId, candidates: decision.candidates, reason: decision.reason },
     }, client);
     if (!opened) {

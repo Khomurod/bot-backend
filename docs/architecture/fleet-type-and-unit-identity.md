@@ -177,5 +177,9 @@ unless somebody decided otherwise.
   stored decision beating the title, and two fleets on one number coexisting.
 - `tests/identityActionsPg.test.js` — the correction records the fleet and is
   not blocked by a holder in another one.
+- `tests/unitHandoverCheck.test.js` and `tests/fleetDecisionsPg.test.js` — a
+  same-fleet holder with **no active chat** is a handover (`identity.unit_handover`,
+  auto since migration 0078); a holder who still drives, or who comes back
+  between the sweep and the apply, keeps the truck; the revert reopens it.
 - `tests/broadcastCompanyDriverTarget.test.js` — nobody the old rule reached is
   dropped by a parsing change.

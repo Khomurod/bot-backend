@@ -100,7 +100,7 @@ test('the migration re-applies as a no-op', { skip: skipWithoutPg() }, async (t)
 
 // ─── the settings themselves ─────────────────────────────────────────────────
 
-test('the schema seeds no rows — only migration 0027\'s three switches exist, each saying who set it',
+test('the schema seeds no rows — only the migrations\' switches exist, each saying who set it',
   { skip: skipWithoutPg() }, async (t) => {
     // Default deny is the schema's rule: a check with no row is disabled. The
     // only rows that exist without a person's click are the three the owner
@@ -115,8 +115,10 @@ test('the schema seeds no rows — only migration 0027\'s three switches exist, 
       'home_time.returned_to_road',
       'identity.group_without_person',
       'identity.stale_unit_assignment',
+      // 0078: the owner's decision of 20 October 2026 (a departed driver's truck).
+      'identity.unit_handover',
     ]);
-    for (const r of rows) assert.match(r.updatedBy, /^migration 00(27|30)/);
+    for (const r of rows) assert.match(r.updatedBy, /^migration 00(27|30|78)/);
   });
 
 test('granting and revoking auto-apply records who did it', { skip: skipWithoutPg() }, async (t) => {
@@ -139,7 +141,7 @@ test('granting and revoking auto-apply records who did it', { skip: skipWithoutP
 
   const rows = await store.listCheckSettings();
   assert.equal(rows.filter((r) => r.checkKey === 'home_time.closable_open_cycle').length, 1, 'upsert, not insert');
-  assert.equal(rows.length, 4, 'the other seeded rows are untouched');
+  assert.equal(rows.length, 5, 'the other seeded rows are untouched');
 });
 
 test('a cap outside the permitted range is corrected, not rejected by a constraint',

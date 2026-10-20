@@ -46,7 +46,9 @@ test('the three repairs are switched on with their measured caps', { skip: skipW
   }
   assert.equal(rows['home_time.returned_to_road'].max_auto_per_run, 25,
     'migration 0030 adds the automatic return-to-road switch, with its own cap');
-  assert.equal(Object.keys(rows).length, 4, 'and no other check is touched');
+  assert.equal(rows['identity.unit_handover'].max_auto_per_run, 20,
+    'migration 0078 adds the departed-driver truck handover, with its own cap');
+  assert.equal(Object.keys(rows).length, 5, 'and no other check is touched');
 });
 
 test('a setting an administrator already saved is left exactly as saved', { skip: skipWithoutPg() }, async (t) => {
@@ -101,7 +103,7 @@ test('the migration re-applies as a no-op', { skip: skipWithoutPg() }, async (t)
   await harness.query(MIGRATION_0027);
   const rows = await settings(harness);
   assert.equal(rows['identity.stale_unit_assignment'].auto_apply_enabled, false, 'switching it off in the admin sticks across boots');
-  assert.equal(Object.keys(rows).length, 4);
+  assert.equal(Object.keys(rows).length, 5);
 });
 
 test('the migration URLs are the catalogue\'s, character for character', () => {

@@ -348,7 +348,14 @@ consequences are real — broadcasts stop for that chat and its profile stops
 being indexed as a driver's — so
 the finding spells them out and a human clicks. It refuses outright when the
 person layer has a driver placed in the chat: that is stronger evidence about
-what the room is for than any reading of its name.
+what the room is for than any reading of its name. **Except a placeholder**: on
+10 September 2026 the person layer gave every driver-typed office chat a
+"person" named after the chat itself ("HR Personnel", "Employee Feedback"),
+which made all seven office chats impossible to retype. A bot-created person
+whose name IS the chat's title (or the title without its "(Admin)"), with no
+other chat, truck or Telegram account, is ended in the same transaction and
+reopened by the revert. A driver's name parsed out of a "WENZE UNIT #" title is
+never treated as a placeholder.
 
 ### Recruiting and leads
 
