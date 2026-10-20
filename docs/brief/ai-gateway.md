@@ -38,6 +38,20 @@ stay in §4a. The provider terms watcher is
   UTC midnight on 19 and 20 October, and every AI feature, Safety Approvals
   first, had no provider for the day (`tests/aiClassifyGroqLimits.test.js`).
   Per-DAY limits (TPD, `free-models-per-day`) stay quota.
+- **A spent allowance that names ONE model pauses that model, not its
+  provider** (October 2026, migration 0074). Groq and Gemini count free
+  allowances per model, so `Rate limit reached for model X … per day` (or
+  Gemini's `… model: X`) is `QUOTA` with `scope: 'model'`: the router writes
+  `ai_providers.model_cooldowns[X] = {until, reason}` (the stated wait, else
+  the next UTC midnight), asks the next model of the same provider at once,
+  and skips X until its time passes; a model that answers loses its pause.
+  Spent credits, account-wide daily allowances (`free-models-per-day`) and a
+  quota naming no model stay provider-wide. "Put back in rotation" clears every
+  pause. In Settings → AI each provider's drop-down lists **every** model it
+  listed — "Can answer now", "Quota spent — back at HH:MM", "Cannot answer a
+  chat prompt" (disabled) — and the chosen list marks a paused, non-chat or
+  no-longer-listed model (`database/aiProviderModelCooldowns.js`,
+  `tests/aiModelPause.test.js`, `tests/aiModelPausePg.test.js`).
 - **A provider's name or label is never a key.** Production once held a
   disabled provider whose operator-typed name was a pasted OpenRouter key. A
   name is shown in the admin and written to logs, while a key is encrypted and

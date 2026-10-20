@@ -14,11 +14,16 @@ const DISCOVERED = [
   { id: "text-embedding", chat: false, free: "unknown" },
 ];
 
-test("a listed chat model can be added; non-chat and already-chosen ones are not offered", () => {
+test("every listed model is shown; only a chat model not yet chosen can be picked", () => {
   const onChange = vi.fn();
   render(<ModelChainEditor chain={["claude-haiku-5-5"]} discovered={DISCOVERED} onChange={onChange} />);
-  const offered = screen.getAllByRole("option").map((o) => o.value).filter(Boolean);
-  expect(offered).toEqual(["claude-opus-5-5", "claude-sonnet-5-5"]);
+  const options = screen.getAllByRole("option").filter((o) => o.value);
+  expect(options.map((o) => o.value).sort()).toEqual(
+    ["claude-haiku-5-5", "claude-opus-5-5", "claude-sonnet-5-5", "text-embedding"]
+  );
+  const pickable = options.filter((o) => !o.disabled).map((o) => o.value);
+  expect(pickable).toEqual(["claude-opus-5-5", "claude-sonnet-5-5"]);
+  expect(screen.getByRole("option", { name: /text-embedding — not a chat model/ })).toBeDisabled();
 
   fireEvent.change(screen.getByLabelText("Model to add"), { target: { value: "claude-opus-5-5" } });
   fireEvent.click(screen.getByRole("button", { name: "Add" }));
@@ -41,4 +46,29 @@ test("an id can be typed for a provider whose listing is incomplete; an empty ch
   fireEvent.change(screen.getByLabelText("Model id to add"), { target: { value: " my-model " } });
   fireEvent.click(screen.getByRole("button", { name: "Add typed" }));
   expect(onChange).toHaveBeenCalledWith(["my-model"]);
+});
+
+test("a model waiting for its allowance is shown as such, in the list and in the drop-down", () => {
+  const later = new Date(Date.now() + 3 * 3600 * 1000).toISOString();
+  render(
+    <ModelChainEditor
+      chain={["claude-haiku-5-5"]}
+      discovered={DISCOVERED}
+      cooldowns={{ "claude-haiku-5-5": { until: later }, "claude-opus-5-5": { until: later } }}
+      onChange={vi.fn()}
+    />
+  );
+  expect(screen.getByText(/quota spent — back at/)).toBeInTheDocument();
+  const waiting = screen.getByRole("group", { name: /Quota spent/ });
+  expect(waiting.textContent).toMatch(/claude-opus-5-5/);
+  expect(screen.getByRole("option", { name: /claude-opus-5-5.*back at/ })).not.toBeDisabled();
+});
+
+test("a pause that has already ended is not shown", () => {
+  const earlier = new Date(Date.now() - 60_000).toISOString();
+  render(
+    <ModelChainEditor chain={["claude-haiku-5-5"]} discovered={DISCOVERED}
+      cooldowns={{ "claude-haiku-5-5": { until: earlier } }} onChange={vi.fn()} />
+  );
+  expect(screen.queryByText(/quota spent/)).toBeNull();
 });

@@ -11,20 +11,50 @@ import React from "react";
  * Replaces a comma-separated text box (owner, October 2026: "I must be able to
  * choose the models myself"). Wenze's daily check no longer adds models to a
  * chain chosen here; it only removes one the provider has retired.
+ *
+ * EVERY LISTED MODEL IS SHOWN, usable or not (owner, October 2026), grouped by
+ * what it can do right now: answer; wait for its own allowance to reset (the
+ * router skips it until then and asks the next model — `modelCooldowns`); or
+ * not answer a chat prompt at all (speech, embeddings, images), which cannot
+ * be chosen.
  */
+function pauseOf(cooldowns, id, now) {
+  const entry = cooldowns?.[id];
+  const at = entry?.until ? new Date(entry.until).getTime() : NaN;
+  return Number.isFinite(at) && at > now ? at : null;
+}
+
+function timeOf(ms) {
+  return new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
 function freeLabel(model) {
   if (model.free === "free") return " — free";
   if (model.free === "paid") return " — paid";
   return "";
 }
 
-export default function ModelChainEditor({ chain, discovered = [], onChange }) {
+export default function ModelChainEditor({ chain, discovered = [], cooldowns = {}, onChange }) {
   const [pick, setPick] = React.useState("");
   const [typed, setTyped] = React.useState("");
 
-  const available = discovered
-    .filter((m) => m.chat && !chain.includes(m.id))
-    .sort((a, b) => a.id.localeCompare(b.id));
+  const now = Date.now();
+  const sorted = [...discovered].sort((a, b) => a.id.localeCompare(b.id));
+  const listed = new Map(sorted.map((m) => [m.id, m]));
+  const ready = sorted.filter((m) => m.chat && !pauseOf(cooldowns, m.id, now));
+  const paused = sorted.filter((m) => m.chat && pauseOf(cooldowns, m.id, now));
+  const cannot = sorted.filter((m) => !m.chat);
+
+  /** What a chain entry can do right now, in words — or null when it is fine. */
+  const statusOf = (model) => {
+    const at = pauseOf(cooldowns, model, now);
+    if (at) return { tone: "#f59e0b", text: `quota spent — back at ${timeOf(at)}` };
+    const m = listed.get(model);
+    if (m && !m.chat) return { tone: "#f87171", text: "not a chat model — never answers" };
+    if (discovered.length && !m) return { tone: "#f87171", text: "not listed by the provider" };
+    return null;
+  };
+  const optionLabel = (m, suffix) => `${m.id}${freeLabel(m)}${suffix || ""}${chain.includes(m.id) ? " (in the list)" : ""}`;
 
   const move = (index, delta) => {
     const target = index + delta;
@@ -53,7 +83,14 @@ export default function ModelChainEditor({ chain, discovered = [], onChange }) {
         <ol style={{ margin: "4px 0 0", paddingLeft: 20, fontSize: 12 }}>
           {chain.map((model, index) => (
             <li key={model} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <code style={{ flex: 1 }}>{model}</code>
+              <code style={{ flex: 1 }}>
+                {model}
+                {statusOf(model) && (
+                  <span style={{ color: statusOf(model).tone, marginLeft: 6, fontFamily: "inherit" }}>
+                    · {statusOf(model).text}
+                  </span>
+                )}
+              </code>
               <button
                 type="button" className="btn btn-ghost btn-sm" aria-label={`Move ${model} up`}
                 disabled={index === 0} onClick={() => move(index, -1)}
@@ -78,16 +115,36 @@ export default function ModelChainEditor({ chain, discovered = [], onChange }) {
       )}
 
       <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
-        {available.length > 0 && (
+        {sorted.length > 0 && (
           <>
             <select
               className="form-select" value={pick} aria-label="Model to add"
-              onChange={(e) => setPick(e.target.value)} style={{ maxWidth: 320 }}
+              onChange={(e) => setPick(e.target.value)} style={{ maxWidth: 360 }}
             >
-              <option value="">Choose a model to add…</option>
-              {available.map((m) => (
-                <option key={m.id} value={m.id}>{m.id}{freeLabel(m)}</option>
-              ))}
+              <option value="">Choose a model to add… ({ready.length} ready, {paused.length} waiting, {cannot.length} unusable)</option>
+              {ready.length > 0 && (
+                <optgroup label="Can answer now">
+                  {ready.map((m) => (
+                    <option key={m.id} value={m.id} disabled={chain.includes(m.id)}>{optionLabel(m)}</option>
+                  ))}
+                </optgroup>
+              )}
+              {paused.length > 0 && (
+                <optgroup label="Quota spent — used again after its reset">
+                  {paused.map((m) => (
+                    <option key={m.id} value={m.id} disabled={chain.includes(m.id)}>
+                      {optionLabel(m, ` — back at ${timeOf(pauseOf(cooldowns, m.id, now))}`)}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+              {cannot.length > 0 && (
+                <optgroup label="Cannot answer a chat prompt">
+                  {cannot.map((m) => (
+                    <option key={m.id} value={m.id} disabled>{optionLabel(m, " — not a chat model")}</option>
+                  ))}
+                </optgroup>
+              )}
             </select>
             <button
               type="button" className="btn btn-secondary btn-sm" disabled={!pick}

@@ -72,6 +72,7 @@ function mapProviderForAdmin(row) {
     notes: row.notes,
     catalogKey: row.catalog_key ?? null,
     discoveredModels: Array.isArray(row.discovered_models) ? row.discovered_models : [],
+    modelCooldowns: row.model_cooldowns && typeof row.model_cooldowns === 'object' ? row.model_cooldowns : {},
     modelsRefreshedAt: row.models_refreshed_at ?? null,
     modelsRefreshError: row.models_refresh_error ?? null,
     updatedBy: row.updated_by,
@@ -176,7 +177,8 @@ async function getProvidersForRouter() {
   // longer by services/ai/registry.js.
   const res = await query(
     `SELECT provider_key, adapter, enabled, priority, is_free, base_url, model_chain, catalog_key,
-            api_key_encrypted, cooled_until, cooled_indefinitely, cooldown_reason, consecutive_failures
+            api_key_encrypted, cooled_until, cooled_indefinitely, cooldown_reason, consecutive_failures,
+            model_cooldowns
        FROM ai_providers WHERE enabled = TRUE ORDER BY priority ASC, provider_key ASC`
   );
   return res.rows.map((row) => ({
@@ -192,6 +194,7 @@ async function getProvidersForRouter() {
     cooledUntil: row.cooled_indefinitely ? INDEFINITE : row.cooled_until,
     cooldownReason: row.cooldown_reason,
     consecutiveFailures: row.consecutive_failures,
+    modelCooldowns: row.model_cooldowns && typeof row.model_cooldowns === 'object' ? row.model_cooldowns : {},
   }));
 }
 
@@ -385,12 +388,13 @@ async function recordFailure(providerKey, { message, cooldown }) {
   );
 }
 
-/** An operator putting a provider back in rotation by hand. */
+/** An operator putting a provider — and every model it paused — back in rotation by hand. */
 async function clearCooldown(providerKey, updatedBy = null) {
   const res = await query(
     `UPDATE ai_providers
         SET cooled_until = NULL, cooled_indefinitely = FALSE, cooldown_reason = NULL,
-            consecutive_failures = 0, updated_by = $2, updated_at = NOW()
+            consecutive_failures = 0, model_cooldowns = '{}'::jsonb,
+            updated_by = $2, updated_at = NOW()
       WHERE provider_key = $1 RETURNING *`,
     [providerKey, updatedBy]
   );
@@ -402,7 +406,13 @@ async function deleteProvider(providerKey) {
   return res.rowCount > 0;
 }
 
+// Re-exported so the router writes model pauses through the same module it
+// already writes provider cooldowns through.
+const { pauseModel, clearModelPause } = require('./aiProviderModelCooldowns');
+
 module.exports = {
+  pauseModel,
+  clearModelPause,
   ENV_KEYS,
   envKeyFor,
   mapProviderForAdmin,
