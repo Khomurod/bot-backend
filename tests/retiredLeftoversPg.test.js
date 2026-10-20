@@ -238,3 +238,34 @@ test('a drop SURVIVES the next boot — schema.sql does not recreate it', { skip
     'a dropped leftover must not reappear after a restart',
   );
 });
+
+test('THE OCTOBER 2026 GROUPS: dropped on a deployed database, they stay dropped', { skip: skipWithoutPg() }, async (t) => {
+  // Route Control, the driver-raise review, BOL/POD and fuel. Three of their
+  // tables are still created by the baseline — but only on a BRAND-NEW
+  // database, for the first boot's migrations. A deployed database has the
+  // ledger, so the next boot must not bring any of them back.
+  const harness = await createPgHarness(t);
+  const leftovers = await loadLeftovers(harness);
+  const groups = ['route_control', 'driver_raise', 'bol_pod', 'fuel'];
+  const tables = leftovers.tablesForGroups(groups);
+  const present = async () => (await harness.query(
+    `SELECT table_name FROM information_schema.tables
+      WHERE table_schema = 'public' AND table_name = ANY($1::text[]) ORDER BY table_name`,
+    [tables],
+  )).rows.map((row) => row.table_name);
+
+  // Built from schema.sql alone, with no ledger: exactly the three stubs exist.
+  assert.deepEqual(await present(), ['dispatch_team_drivers', 'fuel_stop_alerts', 'route_assignments']);
+
+  // Now it is a deployed database: the ledger exists, and it still holds data.
+  await harness.query('CREATE TABLE IF NOT EXISTS schema_migrations (version TEXT PRIMARY KEY)');
+  await harness.query('INSERT INTO route_assignments (group_id) VALUES (NULL)');
+  await harness.query('CREATE TABLE raise_rounds (id SERIAL PRIMARY KEY)');
+
+  const result = await leftovers.dropRetiredTables({ groupKeys: groups });
+  assert.deepEqual(result.blocked || [], [], JSON.stringify(result));
+  assert.deepEqual(await present(), []);
+
+  await harness.applySchemaSql(); // the reboot
+  assert.deepEqual(await present(), [], 'a dropped leftover must not reappear after a restart');
+});

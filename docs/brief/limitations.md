@@ -10,29 +10,28 @@
   Settings → Retired Leftovers is what clears them, on an administrator's
   explicit confirmation. See `docs/architecture/retired-trailers-qbq-sos.md`
   and `docs/ARCHIVED_FEATURES.md`.
-- **Route Control and the driver-raise review were removed (2026-10)**, and
-  their tables were kept and are **still created by the baseline**, because
-  later forward migrations alter them. They are read by nothing and are not in
-  Settings → Retired Leftovers' list yet; clearing them is a separate step with
-  a backup. `/raise` answers 410. The Dispatcher Board stays, read only for Home
+- **Route Control and the driver-raise review were removed (2026-10)**. Their
+  tables are read by nothing and are on Settings → Retired Leftovers' list
+  (groups `route_control` and `driver_raise`), to be dropped there after a
+  backup; the baseline no longer creates them, except a stub of the two that
+  old migrations alter, on a brand-new database only. `/raise` answers 410. The Dispatcher Board stays, read only for Home
   Time. See `docs/architecture/retired-route-control.md`,
   `docs/architecture/retired-driver-raise.md` and
   `docs/architecture/dispatcher-board.md`.
 - **BOL/POD document forwarding was removed (2026-10)**, at the owner's
   request. No `datatruck_documents` worker, no Settings → BOL / POD, no
-  `/api/settings/bol-pod*` (404). Its two tables, `bol_pod_forwarding_settings`
-  and `datatruck_document_deliveries`, are still created by the baseline and
-  read by nothing, and its last `system_health_states` row is left behind;
-  clearing them is the same separate, backed-up step. The shared Datatruck
+  `/api/settings/bol-pod*` (404). Its tables, `bol_pod_forwarding_settings`
+  and `datatruck_document_deliveries`, are read by nothing and are on Settings →
+  Retired Leftovers' list (group `bol_pod`); its last `system_health_states` row
+  is deleted by migration 0073. The shared Datatruck
   client stays. See `docs/architecture/retired-bol-pod.md`.
 - **Everything fuel was removed (2026-10)**, at the owner's request: no
   gas-station recognition in driver groups, no fuel-stop reminders, no fuel risk
   watch, no Fuel Monitor page (`/api/fuel-monitor` is 404), no `fuel`
   notification category. `fuel_stop_alerts`, `fuel_monitor_inbox` and
-  `truck_fuel_readings` are still created by the schema and read by nothing;
-  the `fuel_risk`, `fuel_stop_alerts` and `eld_location_freshness` rows in
-  `system_health_states` and 105 old `fuel` notices are left for the same
-  backed-up cleanup. **There is no fleet-wide "ELD positions are stale" health
+  `truck_fuel_readings` are read by nothing and are on Settings → Retired
+  Leftovers' list (group `fuel`); the three fuel health rows are deleted by
+  migration 0073, and 105 old `fuel` notices stay as history. **There is no fleet-wide "ELD positions are stale" health
   line any more** — it was computed from fuel readings; Live Locations,
   return-to-road and the load watch report their own ELD failures. The sales
   deck (`server/presentation/`) still shows fuel scenes, by the owner's choice.

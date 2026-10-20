@@ -28,7 +28,6 @@ function mapRow(row) {
     enabled: row.enabled !== false,
     defaultChatId: row.default_chat_id || null,
     categoryChatIds: row.category_chat_ids || {},
-    repeatAfterHours: row.repeat_after_hours,
     updatedBy: row.updated_by || null,
     updatedAt: row.updated_at || null,
   };
@@ -39,7 +38,7 @@ async function getNotificationSettings({ fresh = false } = {}) {
   if (!fresh && cache && Date.now() - cachedAt < CACHE_MS) return cache;
   const res = await query('SELECT * FROM operational_notification_settings WHERE id = 1');
   cache = mapRow(res.rows[0]) || {
-    enabled: true, defaultChatId: null, categoryChatIds: {}, repeatAfterHours: 168,
+    enabled: true, defaultChatId: null, categoryChatIds: {},
     updatedBy: null, updatedAt: null,
   };
   cachedAt = Date.now();
@@ -70,12 +69,9 @@ async function updateNotificationSettings(patch = {}) {
     const v = String(patch.defaultChatId ?? '').trim();
     set('default_chat_id', v === '' ? null : v);
   }
-  if (patch.repeatAfterHours !== undefined) {
-    const n = Number(patch.repeatAfterHours);
-    // Clamped in JS to the CHECK's own range, so a bad value is a corrected
-    // value rather than a 500 from a constraint violation.
-    set('repeat_after_hours', Math.max(1, Math.min(8760, Number.isFinite(n) ? Math.round(n) : 168)));
-  }
+  // `repeat_after_hours` (migration 0031) is no longer read or written: its
+  // only reader was the fuel watch, removed in October 2026. The column keeps
+  // its default; dropping a column is a separate, approved schema change.
 
   if (patch.categoryChatIds !== undefined) {
     // MERGED IN SQL, NOT IN JAVASCRIPT. Reading the stored JSON, merging, and
