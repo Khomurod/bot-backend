@@ -28,8 +28,8 @@ const {
 test('every catalogued provider carries what Connect needs', () => {
   for (const entry of Object.values(CATALOG)) {
     assert.match(entry.baseUrl, /^https:\/\//, `${entry.key}: base URL`);
-    assert.ok(['openai_chat', 'gemini'].includes(entry.adapter), `${entry.key}: adapter`);
-    assert.equal(entry.modelsPath, '/models', `${entry.key}: models path`);
+    assert.ok(['openai_chat', 'gemini', 'anthropic'].includes(entry.adapter), `${entry.key}: adapter`);
+    assert.equal(entry.modelsPath, entry.adapter === 'anthropic' ? '/v1/models' : '/models', `${entry.key}: models path`);
     assert.match(entry.envKey, /^[A-Z_]+_API_KEY$/, `${entry.key}: env key`);
     assert.ok(entry.policySources.terms && entry.policySources.privacy,
       `${entry.key}: the terms watcher needs at least terms + privacy to seed`);

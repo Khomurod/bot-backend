@@ -41,6 +41,8 @@ const aiProviders = require('../../database/aiProviders');
 const { recordAiCall } = require('../../database/aiCallLog');
 const { callOpenAiChat } = require('./adapters/openaiChat');
 const { callGeminiGenerate } = require('./adapters/gemini');
+const { callAnthropicMessages } = require('./adapters/anthropic');
+const { buildRequest, geminiTurnsFromMessages } = require('./requestShape');
 
 /** Every provider was unusable, cooled, or refused. The consumer degrades. */
 class AiUnavailableError extends Error {
@@ -54,69 +56,6 @@ class AiUnavailableError extends Error {
     this.allRateLimited = attemptErrors.length > 0
       && attemptErrors.every((e) => e.kind === FAILURE.QUOTA || e.kind === FAILURE.TRANSIENT);
   }
-}
-
-/**
- * OpenAI-shaped `messages` → Gemini's `contents` + `systemInstruction`.
- *
- * NOT a nicety. `requestPinnedContextFromGroq` and
- * `requestDispatchTemplateFromGroq` both call `callGroqWithFallback('')` and put
- * the entire document in `messages`. Without this, the moment the roster reached
- * a Gemini provider it would send `[{ parts: [{ text: '' }] }]` — an EMPTY
- * prompt — and a model asked nothing at all still returns well-formed JSON.
- * Both of those sites validate the SHAPE of the answer, not its truth, so a
- * guessed pickup address would have passed through as an extracted fact. A
- * confident wrong answer is worse than a failure, and this is how one gets made.
- */
-function geminiTurnsFromMessages(messages, extraParts) {
-  const systemParts = [];
-  const turns = [];
-  for (const m of messages) {
-    const text = String(m?.content ?? '');
-    if (m?.role === 'system') {
-      systemParts.push({ text });
-      continue;
-    }
-    turns.push({ role: m?.role === 'assistant' ? 'model' : 'user', parts: [{ text }] });
-  }
-  const extras = extraParts || [];
-  if (extras.length) {
-    if (turns.length) turns[turns.length - 1].parts.push(...extras);
-    else turns.push({ role: 'user', parts: [{ text: '' }, ...extras] });
-  }
-  return { systemParts, turns };
-}
-
-/** Prompt → the shape this provider's wire format wants. */
-function buildRequest(provider, {
-  systemText, userText, messages, contents, extraParts, generationConfig, systemInstruction,
-}) {
-  if (provider.adapter === 'gemini') {
-    // A caller that built its own Gemini-shaped instruction keeps it; a caller
-    // that passed plain text or OpenAI messages gets one built here.
-    let builtContents = contents;
-    let builtSystem = systemInstruction
-      || (systemText ? { parts: [{ text: systemText }] } : null);
-
-    if (!builtContents && Array.isArray(messages) && messages.length) {
-      const { systemParts, turns } = geminiTurnsFromMessages(messages, extraParts);
-      builtContents = turns.length ? turns : [{ role: 'user', parts: [{ text: '' }] }];
-      if (!builtSystem && systemParts.length) builtSystem = { parts: systemParts };
-    } else if (!builtContents) {
-      builtContents = [{ role: 'user', parts: [{ text: userText || '' }, ...(extraParts || [])] }];
-    }
-
-    return {
-      contents: builtContents,
-      systemInstruction: builtSystem,
-      generationConfig: generationConfig || {},
-    };
-  }
-  const built = messages || [
-    ...(systemText ? [{ role: 'system', content: systemText }] : []),
-    { role: 'user', content: userText || '' },
-  ];
-  return { messages: built };
 }
 
 /**
@@ -148,6 +87,18 @@ async function callOne(provider, model, request, { timeoutMs, expects, generatio
       systemInstruction: request.systemInstruction,
       generationConfig: config,
       timeoutMs,
+    });
+  }
+  if (provider.adapter === 'anthropic') {
+    // OpenAI-shaped messages; the adapter splits out the system text. No
+    // temperature, seed or JSON mode — see the adapter for why.
+    return callAnthropicMessages({
+      apiKey: provider.apiKey,
+      model,
+      messages: request.messages,
+      maxTokens: generation.maxTokens ?? 2000,
+      timeoutMs,
+      ...(provider.baseUrl ? { baseUrl: provider.baseUrl } : {}),
     });
   }
   return callOpenAiChat({

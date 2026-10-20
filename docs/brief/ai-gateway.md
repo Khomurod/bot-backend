@@ -18,10 +18,11 @@ stay in §4a. The provider terms watcher is
   to deterministic logic. The master switch being OFF is a supported, tested
   mode — the whole suite passes with every provider disabled — which is the
   enforceable form of that rule.
-- **`services/ai/` is ~500 lines and adds ZERO runtime dependencies.** Every
-  mechanism either already existed in `groqClient` (model chains, retry-after
-  parsing, capped waits, abort timeouts) or is a timestamp comparison. ModelMix
-  and ai-fallback were read for their proven shapes; neither is installed.
+- **`services/ai/` is small, and its one runtime dependency is the official
+  `@anthropic-ai/sdk`, used only by the Claude adapter.** Every other mechanism
+  either already existed in `groqClient` (model chains, retry-after parsing,
+  capped waits, abort timeouts) or is a timestamp comparison. ModelMix and
+  ai-fallback were read for their proven shapes; neither is installed.
 - **`lib/ai/classify.js` fixes a live defect.** `groqClient.isAuthOrConfigError`
   treats 401/403 as fatal and **aborts the whole chain** — defensible with one
   provider, plainly wrong with several, where it turns one expired credential
@@ -44,23 +45,50 @@ stay in §4a. The provider terms watcher is
   rejected credential cools *indefinitely* — a sentinel, not a long timer, since
   no elapsed time makes an expired key work — and clears the moment an
   administrator saves a new one.
-- **Two adapters cover everything.** `openai_chat` serves Groq, Cerebras,
+- **Three adapters cover everything.** `openai_chat` serves Groq, Cerebras,
   Mistral, OpenRouter and Together, so adding one is a `base_url` and a key in a
   row. Gemini keeps its own adapter and **gains the timeout it has never had**:
   the existing client passes no signal, so a hung connection hangs the caller
-  forever, reachable from interactive paths.
+  forever, reachable from interactive paths. **`anthropic` (October 2026) is
+  Claude** (`services/ai/adapters/anthropic.js`, through the official SDK with
+  `maxRetries: 0`, so the router alone decides what happens after a failure).
+  It sends no `temperature` (current Claude models reject sampling
+  parameters), sends `effort: 'low'` only to the model families that accept it,
+  treats `stop_reason: 'refusal'` or a reply with no text as a failure, and
+  turns Anthropic's `404 "model: <id>"` into "model not found" so the classifier
+  skips just that model. Migration 0071 widens the `adapter` CHECK to allow it.
+  Claude is **paid** (`is_free = false`), so **"Free tiers only" keeps it from
+  being called at all** — an operator who puts Claude first must turn that
+  switch off. No server-side `fallbacks` parameter is sent: the fallback is the
+  operator's own order, below.
+- **The operator sets the order; the first provider is the primary.** The
+  owner's rule (October 2026): *"if I put Claude first, Claude is used first,
+  and the others I lined up are the fallbacks, in order."* The **Order of
+  providers** card on the tab is a list with ↑ ↓, each row labelled `primary`,
+  `fallback 1`, `fallback 2`… or `not used` (switched off, or paid under
+  free-only). Saving calls `PUT /api/settings/ai/provider-order`, and
+  `aiProviders.setProviderOrder` writes priorities 10, 20, 30… in **one**
+  statement. An order that does not name every provider exactly once — a page
+  loaded before someone connected another — is refused with "reload", not
+  guessed at. The provider card no longer edits `priority`, so a save there can
+  never undo the order. Strict order needs routing mode `priority`; under
+  `round_robin` the card says the order is only a starting point. Guarded by
+  `tests/aiProviderOrder.test.js`, `tests/aiProviderOrderPg.test.js` and
+  `admin/src/pages/settings/ai/ProviderOrderCard.test.jsx`.
 - **Adding a known provider is: pick it, paste the key, Connect.**
-  `lib/ai/providerCatalog.js` (pure) holds what is public about eight providers
-  — Groq, Gemini, OpenRouter, Cerebras, Mistral, Together, DeepSeek, NVIDIA —
+  `lib/ai/providerCatalog.js` (pure) holds what is public about nine providers
+  — Groq, Gemini, OpenRouter, Anthropic Claude, Cerebras, Mistral, Together,
+  DeepSeek, NVIDIA —
   adapter, endpoint, models path, env-var name, key prefix, free-tier note and
   the official terms/privacy/pricing/deprecation pages. `POST
   /api/settings/ai/providers/connect` (`services/ai/discovery/connectProvider.js`)
-  reads the provider's own `/models` listing (`modelDiscovery.js`; OpenAI shape
-  and Gemini's paged shape), keeps what can chat (`lib/ai/modelSelection.js`
+  reads the provider's own `/models` listing (`modelDiscovery.js`; OpenAI shape,
+  Gemini's paged shape, and Anthropic's `/v1/models` through the SDK), keeps what can chat (`lib/ai/modelSelection.js`
   refuses embeddings, speech, moderation and image models by name and, for
   Gemini, by `supportedGenerationMethods`), chooses a chain — strongest family
   first, always ending in a small fast model — honours free-only mode, proves the
-  key with ONE 8-token call, saves the provider **enabled** at the next priority,
+  key with ONE 8-token call (256 for Claude, whose thinking models would spend
+  eight before answering), saves the provider **enabled** at the next priority,
   records the listing in `ai_providers.discovered_models`, writes a `selected`
   row to `ai_model_events`, and seeds the terms watcher with the catalogue's
   official pages (`source_origin = 'catalog'`). Then it says what happened in
@@ -69,17 +97,25 @@ stay in §4a. The provider terms watcher is
   A failure names the step — `invalid_key` (with a hint when the key clearly
   belongs to another provider), `no_free_models`, `no_compatible_models`,
   `no_models_endpoint`, `models_refused` — never "could not tell what went
-  wrong". **Base URL and the model list moved under Advanced settings** on the
-  provider card; only the **Custom OpenAI-compatible** entry asks for a Base URL,
-  and even it discovers its models. Free status is reported only where it is a
+  wrong". **The models are the operator's to choose**: the provider card shows
+  them as an ordered list (first asked first) with ↑ ↓ ✕, and adds from a
+  drop-down of the chat models the provider itself listed, or a typed id
+  (`ModelChainEditor.jsx`). **Base URL is under Advanced settings**; only the
+  **Custom OpenAI-compatible** entry asks for one, and even it discovers its
+  models. **Wenze never picks a Claude Opus, Fable or Mythos model on its own**
+  (`PREMIUM` in `lib/ai/modelSelection.js`) — they cost 40–100× Haiku per token
+  for tasks a small model answers; a person can still add one by hand. Free status is reported only where it is a
   published fact (OpenRouter pricing, Groq/Cerebras/NVIDIA free tiers, Gemini
   Flash); elsewhere it is `unknown`, said plainly. Migration 0023.
 - **The chain is kept current, not remembered.** "Refresh models" on the card
   (and, from Phase 3-C, a scheduled job) re-reads the listing through
   `services/ai/discovery/refreshModels.js` and `reconcileChain`: a configured
   model the provider no longer lists is **retired** from the active chain and
-  recorded; the operator's order survives for what still exists; Wenze's picks
-  fill the chain back up. **An empty or failed listing changes nothing** — one bad
+  recorded; the operator's order survives for what still exists. **Nothing is
+  added to a chain an operator chose**: a retired model of a FREE provider is
+  replaced one for one, and a PAID provider's is only removed (`replaceRetired:
+  false`), so Wenze never starts spending on a model nobody picked — an empty
+  chain is reported as a `serious` finding for a person to fix. **An empty or failed listing changes nothing** — one bad
   fetch must never strip a working chain — and the failure is shown on the card
   as "last check failed: …". **A legacy row is listed at the catalogue's URL**:
   Groq and Gemini were configured from environment keys before the catalogue

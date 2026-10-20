@@ -24,6 +24,7 @@ const { invalidateRegistry } = require('../../../services/ai/registry');
 const { invalidateCapabilityCache } = require('../../../services/ai/capabilityGate');
 const { callOpenAiChat } = require('../../../services/ai/adapters/openaiChat');
 const { callGeminiGenerate } = require('../../../services/ai/adapters/gemini');
+const { callAnthropicMessages } = require('../../../services/ai/adapters/anthropic');
 const { classifyFailure } = require('../../../lib/ai/classify');
 const { listCatalog } = require('../../../lib/ai/providerCatalog');
 const { connectProvider } = require('../../../services/ai/discovery/connectProvider');
@@ -136,6 +137,24 @@ function createAiSettingsRouter({ authMiddleware }) {
     }
   });
 
+  /**
+   * The order providers are asked in: first is primary, the rest fall back in
+   * turn. A separate path rather than `/ai/providers/order`, which `:key` would
+   * read as a provider called "order".
+   */
+  router.put('/ai/provider-order', authMiddleware, async (req, res) => {
+    try {
+      const result = await aiProviders.setProviderOrder(req.body?.order, {
+        updatedBy: req.admin?.username || null,
+      });
+      if (!result.ok) return res.status(400).json({ error: result.error });
+      invalidateRegistry();
+      return res.json(result);
+    } catch (err) {
+      return sendFailure(res, err, { message: 'Failed to save the provider order', logPrefix: '[AI SETTINGS]' });
+    }
+  });
+
   router.delete('/ai/providers/:key', authMiddleware, async (req, res) => {
     try {
       const removed = await aiProviders.deleteProvider(String(req.params.key));
@@ -193,15 +212,24 @@ function createAiSettingsRouter({ authMiddleware }) {
 
     const startedAt = Date.now();
     try {
-      const result = adapter === 'gemini'
-        ? await callGeminiGenerate({
+      let result;
+      if (adapter === 'gemini') {
+        result = await callGeminiGenerate({
           apiKey: candidateKey, model, timeoutMs: TEST_TIMEOUT_MS,
           contents: [{ role: 'user', parts: [{ text: TEST_PROMPT }] }],
-        })
-        : await callOpenAiChat({
+        });
+      } else if (adapter === 'anthropic') {
+        // A thinking model needs room before its one word; 16 tokens is not it.
+        result = await callAnthropicMessages({
+          apiKey: candidateKey, model, timeoutMs: TEST_TIMEOUT_MS, maxTokens: 256,
+          messages: [{ role: 'user', content: TEST_PROMPT }],
+        });
+      } else {
+        result = await callOpenAiChat({
           apiKey: candidateKey, model, baseUrl, timeoutMs: TEST_TIMEOUT_MS, maxTokens: 16,
           messages: [{ role: 'user', content: TEST_PROMPT }],
         });
+      }
       return res.json({
         ok: true, model: result.model, latencyMs: Date.now() - startedAt,
         sample: String(result.text || '').slice(0, 80),

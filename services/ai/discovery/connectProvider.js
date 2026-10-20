@@ -28,6 +28,7 @@ const { classifyFailure, FAILURE } = require('../../../lib/ai/classify');
 const TEST_PROMPT = 'Reply with the single word: ok';
 const TEST_TIMEOUT_MS = 20_000;
 const MAX_SMOKE_ATTEMPTS = 3;
+const ANTHROPIC_TEST_MAX_TOKENS = 256;
 
 /** Providers whose free status per model is a published fact, not a guess. */
 const FREE_STATUS_KNOWN = new Set(['openrouter', 'groq', 'cerebras', 'nvidia']);
@@ -38,6 +39,7 @@ function defaultDeps() {
     listModels: require('./modelDiscovery').listModels,
     callOpenAiChat: require('../adapters/openaiChat').callOpenAiChat,
     callGeminiGenerate: require('../adapters/gemini').callGeminiGenerate,
+    callAnthropicMessages: require('../adapters/anthropic').callAnthropicMessages,
     aiProviders: require('../../../database/aiProviders'),
     aiSettings: require('../../../database/aiSettings'),
     aiPolicy: require('../../../database/aiPolicy'),
@@ -101,6 +103,13 @@ async function smokeTest(target, apiKey, chain, deps) {
           apiKey, model, timeoutMs: TEST_TIMEOUT_MS, baseUrl: `${target.baseUrl}/models`,
           contents: [{ role: 'user', parts: [{ text: TEST_PROMPT }] }],
           generationConfig: { maxOutputTokens: 8 },
+        });
+      } else if (target.adapter === 'anthropic') {
+        // Room for a model that thinks before it answers; eight tokens would be
+        // spent before the word "ok" and read as an empty reply.
+        await deps.callAnthropicMessages({
+          apiKey, model, timeoutMs: TEST_TIMEOUT_MS, maxTokens: ANTHROPIC_TEST_MAX_TOKENS,
+          messages: [{ role: 'user', content: TEST_PROMPT }],
         });
       } else {
         await deps.callOpenAiChat({

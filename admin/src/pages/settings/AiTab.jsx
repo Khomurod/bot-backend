@@ -2,6 +2,7 @@ import React from "react";
 
 import * as api from "../../api";
 import ProviderCard from "./ai/ProviderCard";
+import ProviderOrderCard from "./ai/ProviderOrderCard";
 import AddProviderPanel from "./ai/AddProviderPanel";
 import PolicyWatcherCard from "./ai/PolicyWatcherCard";
 import ResponsibilitiesCard from "./ai/ResponsibilitiesCard";
@@ -117,7 +118,7 @@ export default function AiTab() {
               className="form-select" value={settings.routingMode}
               onChange={(e) => saveSettings({ routingMode: e.target.value })}
             >
-              <option value="priority">Always try them in priority order</option>
+              <option value="priority">Always try them in priority order (first, then fallbacks)</option>
               <option value="round_robin">Rotate, so one allowance is not always burned first</option>
             </select>
           </div>
@@ -156,9 +157,14 @@ export default function AiTab() {
             Adding a provider here is how you take over from them.
           </p>
         </div>
-      ) : providers.map((p) => (
-        <ProviderCard key={p.providerKey} provider={p} onSaved={load} flash={flash} />
-      ))}
+      ) : (
+        <>
+          <ProviderOrderCard providers={providers} settings={settings} onSaved={load} flash={flash} />
+          {providers.map((p) => (
+            <ProviderCard key={p.providerKey} provider={p} onSaved={load} flash={flash} />
+          ))}
+        </>
+      )}
 
       <div className="card" style={{ marginTop: 16 }}>
         <strong>Health, last 24 hours</strong>

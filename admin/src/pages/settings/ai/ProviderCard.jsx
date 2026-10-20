@@ -1,6 +1,7 @@
 import React from "react";
 
 import * as api from "../../../api";
+import ModelChainEditor from "./ModelChainEditor";
 
 /**
  * One provider: who it is, whether it is answering, and the key — never shown.
@@ -13,6 +14,10 @@ import * as api from "../../../api";
  * Test before save, not after. The button sends whatever is currently typed, so
  * a key is proven while it can still be corrected — the alternative is finding
  * out at the next real call, hours later, in a feature nobody was watching.
+ *
+ * WHERE THIS PROVIDER STANDS in the order is not edited here: the Order of
+ * providers card owns it, so a save here never sends a priority and can never
+ * undo an order saved there.
  */
 const KIND_WORDING = {
   credential: "The key was rejected. Check it and try again.",
@@ -26,10 +31,9 @@ export default function ProviderCard({ provider, onSaved, flash }) {
   const [form, setForm] = React.useState({
     label: provider.label || provider.providerKey,
     enabled: provider.enabled,
-    priority: provider.priority,
     isFree: provider.isFree,
     baseUrl: provider.baseUrl || "",
-    modelChain: (provider.modelChain || []).join(", "),
+    modelChain: provider.modelChain || [],
     apiKey: "",
   });
   const [testing, setTesting] = React.useState(false);
@@ -40,7 +44,7 @@ export default function ProviderCard({ provider, onSaved, flash }) {
 
   const set = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));
 
-  const models = form.modelChain.split(",").map((m) => m.trim()).filter(Boolean);
+  const models = form.modelChain;
 
   const save = async () => {
     setSaving(true);
@@ -48,7 +52,6 @@ export default function ProviderCard({ provider, onSaved, flash }) {
       await api.updateAiProvider(provider.providerKey, {
         label: form.label,
         enabled: form.enabled,
-        priority: Number(form.priority) || 100,
         isFree: form.isFree,
         baseUrl: form.baseUrl || null,
         modelChain: models,
@@ -83,8 +86,9 @@ export default function ProviderCard({ provider, onSaved, flash }) {
   };
 
   /**
-   * Re-read the provider's own listing. A retired model leaves the chain, a new
-   * one may be added, and the operator's order survives for what still exists.
+   * Re-read the provider's own listing. A retired model leaves the chain (a free
+   * provider's is replaced one for one); nothing else is added, and the
+   * operator's order survives for what still exists.
    * The words below say exactly which — a silent chain change is the failure
    * this exists to prevent.
    */
@@ -104,7 +108,7 @@ export default function ProviderCard({ provider, onSaved, flash }) {
         if (r.retired.length) parts.push(`retired ${r.retired.join(", ")}`);
         if (r.added.length) parts.push(`added ${r.added.join(", ")}`);
         setRefreshNote({ ok: true, text: `Chain updated — ${parts.join("; ")}.` });
-        set("modelChain", r.chain.join(", "));
+        set("modelChain", r.chain);
         onSaved();
       }
     } catch (err) {
@@ -157,18 +161,20 @@ export default function ProviderCard({ provider, onSaved, flash }) {
         </div>
       )}
 
-      {/* What Wenze is asking, and what it found. The chain is Wenze's choice
-          from the provider's own listing; editing it by hand lives under
-          Advanced, because for a known provider nobody should need to. */}
-      <div style={{ marginTop: 8, fontSize: 12 }}>
-        <span style={{ color: "#94a3b8" }}>Models in use: </span>
-        {models.length ? models.join(" → ") : <em style={{ color: "#f59e0b" }}>none — nothing to ask</em>}
+      {/* The models are the operator's choice, picked from the provider's own
+          listing. Saved with the card's Save button. */}
+      <ModelChainEditor
+        chain={models}
+        discovered={provider.discoveredModels || []}
+        onChange={(next) => set("modelChain", next)}
+      />
+      <div style={{ marginTop: 4, fontSize: 11, color: "#94a3b8" }}>
         {provider.discoveredModels?.length > 0 && (
-          <span style={{ color: "#94a3b8" }}>
-            {" · "}{provider.discoveredModels.filter((m) => m.chat).length} usable of{" "}
+          <>
+            {provider.discoveredModels.filter((m) => m.chat).length} usable of{" "}
             {provider.discoveredModels.length} listed
             {provider.modelsRefreshedAt && ` (checked ${new Date(provider.modelsRefreshedAt).toLocaleDateString()})`}
-          </span>
+          </>
         )}
         {provider.modelsRefreshError && (
           <span style={{ color: "#f59e0b" }}> · last check failed: {provider.modelsRefreshError}</span>
@@ -176,13 +182,6 @@ export default function ProviderCard({ provider, onSaved, flash }) {
       </div>
 
       <div className="home-time-form-grid" style={{ marginTop: 10 }}>
-        <div className="form-group">
-          <label>Priority (1 is tried first)</label>
-          <input
-            className="form-input" type="number" min={1} max={999}
-            value={form.priority} onChange={(e) => set("priority", e.target.value)}
-          />
-        </div>
         <div className="form-group" style={{ gridColumn: "1 / -1" }}>
           <label>API key</label>
           <input
@@ -206,17 +205,10 @@ export default function ProviderCard({ provider, onSaved, flash }) {
               onChange={(e) => set("baseUrl", e.target.value)}
             />
           </div>
-          <div className="form-group" style={{ gridColumn: "1 / -1" }}>
-            <label>Models, in order, comma separated</label>
-            <input
-              className="form-input" value={form.modelChain}
-              onChange={(e) => set("modelChain", e.target.value)}
-            />
-          </div>
         </div>
         <div style={{ color: "#94a3b8", fontSize: 11 }}>
-          For a provider Wenze knows, these are filled in and kept current automatically.
-          Change them only for a custom endpoint.
+          For a provider Wenze knows, this is filled in automatically.
+          Change it only for a custom endpoint.
         </div>
       </details>
 
