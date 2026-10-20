@@ -12,9 +12,8 @@
  *
  * Every message in the group is stored (lib/safetyApprovals/messageShape.js),
  * because Safety answers a post the bot must already have seen. A message from
- * one of the people named as Safety that REPLIES to something queues a review;
- * so does any item of a reply album, which re-arms the settle delay so the
- * reply is read once it has stopped arriving.
+ * one of the people named as Safety that is a DECISION (a #Approved /
+ * #NotApproved hashtag, or the words) queues a review — see queueReview.
  *
  * IT NEVER THROWS AT THE BOT. It returns a reason instead, like
  * services/finance/captureService.js, and logs ids only — these messages are
@@ -27,35 +26,50 @@ const {
 } = require('../../database/safetyApprovals/settings');
 const messages = require('../../database/safetyApprovals/messages');
 const reviews = require('../../database/safetyApprovals/reviews');
+const { isDecisionMessage } = require('../../lib/safetyApprovals/trigger');
 const { wakeSafetyApprovalWorker } = require('./worker');
 const { noteConversationMessage } = require('../hiringStages/conversationQueue');
 const { wakeHiringStageWorker } = require('../hiringStages/worker');
 
-/** How long a reply is left to finish arriving (an album comes item by item). */
-const SETTLE_SECONDS = 30;
+/**
+ * How long a decision is left to finish arriving. An album comes item by item,
+ * a second or so apart, and each item re-arms this. Short on purpose: the
+ * owner wants a hashtag in the topic "this very second" (20 October 2026).
+ */
+const SETTLE_SECONDS = 5;
 
 const markedGroups = new Set();
 
-async function queueReview(shaped, settings) {
+/**
+ * Queue a Safety message that is a DECISION — a #Approved / #NotApproved
+ * hashtag, or the words "approved" / "not approved" — whether or not it is a
+ * reply (lib/safetyApprovals/trigger.js). "On it", "CLH sent" and a bare PDF
+ * are stored and never queued: they cost nothing. An album is queued once the
+ * item carrying the words has arrived, and each later item re-arms the settle
+ * delay so the album is read whole.
+ */
+async function queueReview(shaped) {
   const { chatId } = shaped;
   if (shaped.mediaGroupId) {
-    const safetyKey = `album:${shaped.mediaGroupId}`;
-    let target = shaped.replyToMessageId;
-    if (!target) {
-      // Not every item of a reply album is marked as the reply.
-      const album = await messages.getMediaGroup(chatId, shaped.mediaGroupId);
-      target = album.find((row) => row.replyToMessageId)?.replyToMessageId ?? null;
-    }
-    if (!target) return null;
+    const album = await messages.getMediaGroup(chatId, shaped.mediaGroupId);
+    const words = [...album.map((row) => row.text), shaped.text].filter(Boolean).join('\n');
+    if (!isDecisionMessage(words)) return null;
+    // Not every item of a reply album is marked as the reply.
+    const target = shaped.replyToMessageId ?? album.find((row) => row.replyToMessageId)?.replyToMessageId ?? null;
     return reviews.enqueueReview({
-      chatId, safetyKey, safetyUserId: shaped.fromUserId, postMessageId: target, settleSeconds: SETTLE_SECONDS,
+      chatId,
+      safetyKey: `album:${shaped.mediaGroupId}`,
+      safetyUserId: shaped.fromUserId,
+      postMessageId: target,
+      settleSeconds: SETTLE_SECONDS,
     });
   }
-  if (!shaped.replyToMessageId) return null;
+  if (!isDecisionMessage(shaped.text)) return null;
   return reviews.enqueueReview({
     chatId,
     safetyKey: `message:${shaped.messageId}`,
     safetyUserId: shaped.fromUserId,
+    // null: a decision written on its own; the reviewer finds its post.
     postMessageId: shaped.replyToMessageId,
     settleSeconds: SETTLE_SECONDS,
   });
@@ -99,7 +113,7 @@ async function captureSafetyApprovalMessage(message, deps = {}) {
     const fromSafety = shaped.fromUserId !== null && settings.safetyUserIds.includes(String(shaped.fromUserId));
     if (!fromSafety) return { captured: true };
 
-    const queued = await queueReview(shaped, settings);
+    const queued = await queueReview(shaped);
     if (queued) (deps.wake || wakeSafetyApprovalWorker)();
     return { captured: true, queued: Boolean(queued) };
   } catch (err) {

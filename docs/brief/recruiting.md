@@ -141,16 +141,23 @@ the same treatment home time got, and for the same reason.
 
 ## Safety Approvals (the recruiting group)
 
-- **The bot listens quietly in the recruiting group** and posts Safety's hire
-  decisions, one driver at a time, in the group's "approved / not approved"
-  topic: the CDL as a file, every file Safety attached (PSP / MVR / CLH), and
-  APPROVED or NOT APPROVED with the name and phone under them. It never writes
-  in the conversation itself.
-- **Only a reply from a person ticked as Safety is a decision**, and only a
-  reply to a post the bot saw. A model reads the language ("We cah hire him");
-  `lib/safetyApprovals/reading.js` keeps only names the messages contain,
-  phones the recruiter typed, and approvals with no refusal or question beside
-  them. **An unclear reply posts nothing** — the owner's choice.
+- **The bot posts Safety's hire decisions**, one driver at a time, in the
+  group's "approved / not approved" topic: **the driver's post as the
+  recruiter sent it** (the CDL photos and the recruiter's words) with
+  "✅ APPROVED by Aubrey" / "❌ NOT APPROVED by …" and Safety's reason under it.
+  Safety's PSP / MVR / CLH files are not re-posted. A hashtag goes out about
+  five seconds after it is written. A post Safety forwarded counts as the
+  original recruiter's.
+- **Safety marks a decision `#Approved` / `#NotApproved`** as a reply to the
+  driver's post (the team's convention since 20 October 2026). A hashtag
+  decides with **no model**; the driver is read off the post. The words alone
+  ("approved", "not approved", "can / can't hire") still count and are read by a model, verified by
+  `lib/safetyApprovals/reading.js`. Other Safety messages ("on it", "CLH sent")
+  cost nothing. Only people ticked as Safety decide.
+- **Nothing is lost, nothing is guessed.** A decision not written as a reply is
+  matched to the posts the last six messages were about (a model may only pick
+  one by label). A team hashtag naming nobody, or a decision the bot cannot
+  place, makes the bot **ask Safety in General** under their message.
 - Off by default; Settings → Safety Approvals cannot switch it on without a
   validated group, a topic and a Safety person. The group is moved from
   `driver` to `recruitment` so no driver feature acts on it. Captured messages

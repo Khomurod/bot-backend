@@ -29,6 +29,9 @@ function mapRow(row) {
     mediaGroupId: row.media_group_id || null,
     fromUserId: row.from_user_id === null ? null : String(row.from_user_id),
     fromName: row.from_name || null,
+    // Who a forwarded message is really from (migration 0077).
+    forwardedFromUserId: row.forwarded_from_user_id == null ? null : String(row.forwarded_from_user_id),
+    forwardedFromName: row.forwarded_from_name || null,
     text: row.text ?? null,
     photos: Array.isArray(row.photos) ? row.photos : [],
     documents: Array.isArray(row.documents) ? row.documents : [],
@@ -46,8 +49,9 @@ async function upsertMessage(m) {
   const { rows } = await query(
     `INSERT INTO safety_approval_messages (
        chat_id, message_id, thread_id, media_group_id, from_user_id, from_name,
-       text, photos, documents, reply_to_message_id, sent_at, edited_at
-     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9::jsonb,$10,$11,$12)
+       text, photos, documents, reply_to_message_id, sent_at, edited_at,
+       forwarded_from_user_id, forwarded_from_name
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9::jsonb,$10,$11,$12,$13,$14)
      ON CONFLICT (chat_id, message_id) DO UPDATE
         SET text = EXCLUDED.text,
             photos = EXCLUDED.photos,
@@ -61,6 +65,7 @@ async function upsertMessage(m) {
       m.fromUserId ?? null, m.fromName ?? null, m.text ?? null,
       JSON.stringify(m.photos || []), JSON.stringify(m.documents || []),
       m.replyToMessageId ?? null, m.sentAt ?? null, m.editedAt ?? null,
+      m.forwardedFromUserId ?? null, m.forwardedFromName ?? null,
     ],
   );
   return { id: Number(rows[0].id), created: Boolean(rows[0].created) };
@@ -134,6 +139,21 @@ async function listSafetyReplies({ chatId, postMessageIds, safetyUserIds, limit 
   return rows.map(mapRow);
 }
 
+/**
+ * The General-topic messages just before one, newest first: what a Safety
+ * decision written on its own (not as a reply) is most likely about.
+ */
+async function listRecentGeneral({ chatId, beforeMessageId, limit = 6 }) {
+  const { rows } = await query(
+    `SELECT * FROM safety_approval_messages
+      WHERE chat_id = $1 AND thread_id IS NULL AND message_id < $2
+      ORDER BY message_id DESC
+      LIMIT $3`,
+    [String(chatId), Number(beforeMessageId), Number(limit)],
+  );
+  return rows.map(mapRow);
+}
+
 /** Recruiting chatter is not kept forever. Returns how many rows went. */
 async function purgeOldMessages(days = 60) {
   try {
@@ -155,6 +175,7 @@ module.exports = {
   getMediaGroup,
   listSenderMessagesAround,
   listSafetyReplies,
+  listRecentGeneral,
   purgeOldMessages,
   // database/hiringStages/threads.js reads the same rows.
   mapMessageRow: mapRow,

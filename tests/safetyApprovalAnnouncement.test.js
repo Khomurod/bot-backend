@@ -13,44 +13,36 @@ const {
 } = require('../lib/safetyApprovals/announcement');
 const { shapeCapturedMessage, isImageDocument } = require('../lib/safetyApprovals/messageShape');
 
-test('an approval caption: status, name, phone, Safety\'s own words, people, link', () => {
-  const caption = buildCaption({
-    decision: 'approved',
-    name: 'Renata Ilves',
-    phone: '(555) 010-7788',
-    safetyNote: 'We can hire <Renata> & go',
-    recruiterName: 'Kim | Recruitment',
-    safetyName: 'A. Davis',
-    link: 'https://t.me/c/123/45',
-  });
-  assert.equal(caption, [
-    '✅ <b>APPROVED</b>',
-    '<b>Renata Ilves</b>',
-    '📞 (555) 010-7788',
-    '💬 «We can hire &lt;Renata&gt; &amp; go»',
-    '👤 Recruiter: Kim | Recruitment · Safety: A. Davis',
-    '<a href="https://t.me/c/123/45">Original post</a>',
+const POST = 'Company Driver - 80 CPM\n\nJohn <Bolling>\n3,5 yrs of exp\n+17049572114';
+
+test('the caption: the recruiter\'s words as written, then the decision, who made it, and the link', () => {
+  assert.equal(buildCaption({
+    decision: 'not_approved', postText: POST, name: 'John Bolling', decidedBy: 'Aubrey Davis',
+    reason: 'driver at fault & more', recruiterName: 'Amelia Carter', link: 'https://t.me/c/123/193',
+  }), [
+    'Company Driver - 80 CPM', '', 'John &lt;Bolling&gt;', '3,5 yrs of exp', '+17049572114',
+    '━━━━━━━━━━━━━━━━━━',
+    '❌ <b>NOT APPROVED</b> by Aubrey Davis',
+    '📝 Reason: driver at fault &amp; more',
+    '👤 Recruiter: Amelia Carter · 🔗 <a href="https://t.me/c/123/193">Original post</a>',
   ].join('\n'));
 });
 
-test('a refusal, with nothing optional', () => {
-  assert.equal(buildCaption({ decision: 'not_approved', name: 'Renata Ilves' }),
-    '❌ <b>NOT APPROVED</b>\n<b>Renata Ilves</b>');
+test('a team names whose decision it is; a name off the CDL says so; an SSN never shows', () => {
+  assert.match(buildCaption({ decision: 'approved', postText: POST, name: 'Darnell Brooks', nameInStatus: true }),
+    /✅ <b>APPROVED<\/b> — <b>Darnell Brooks<\/b>$/);
+  assert.match(buildCaption({ decision: 'approved', postText: '', name: 'Joe Hardeman', nameFromCdl: true }),
+    /^👤 <b>Joe Hardeman<\/b> <i>\(name read from the CDL\)<\/i>\n━/);
+  assert.doesNotMatch(buildCaption({ decision: 'approved', postText: 'Joe\nssn; 455453402', name: 'Joe' }), /455453402/);
 });
 
-test('a name read off the CDL says so', () => {
-  assert.equal(buildCaption({ decision: 'approved', name: 'Renata Ilves', nameFromCdl: true }),
-    '✅ <b>APPROVED</b>\n<b>Renata Ilves</b> <i>(name read from the CDL)</i>');
-});
-
-test('a long note gives way, and the caption fits Telegram\'s limit', () => {
+test('a long post gives way, and the caption fits Telegram\'s limit', () => {
   const caption = buildCaption({
-    decision: 'approved', name: 'Renata Ilves', phone: '555-010-7788', safetyNote: '<&>'.repeat(900),
-    recruiterName: 'R', safetyName: 'S', link: 'https://t.me/c/1/2',
+    decision: 'approved', postText: '<&>'.repeat(900), name: 'R I', decidedBy: 'S', link: 'https://t.me/c/1/2',
   });
   assert.ok(caption.length <= CAPTION_LIMIT, String(caption.length));
-  assert.match(caption, /…»/);
-  assert.match(caption, /Original post<\/a>$/, 'the link survives; the note is what was cut');
+  assert.match(caption, /…\n━/);
+  assert.match(caption, /Original post<\/a>$/, 'the decision and the link survive; the post is what was cut');
   assert.doesNotMatch(caption, /&(?!amp;|lt;|gt;|quot;)/, 'never cut through an escape');
 });
 
@@ -103,6 +95,22 @@ test('a message in a forum topic is not a reply to the topic', () => {
     is_topic_message: true, message_thread_id: 3, reply_to_message: { message_id: 15 },
   });
   assert.equal(realReply.replyToMessageId, 15);
+});
+
+test('a FORWARDED post remembers who it is really from', () => {
+  const fwd = shapeCapturedMessage({
+    message_id: 194, chat: { id: -1001 }, from: { id: 900, first_name: 'Aubrey' }, caption: 'John Bolling',
+    forward_origin: { type: 'user', sender_user: { id: 777, first_name: 'Amelia', last_name: 'Carter | Driver Relations' } },
+  });
+  assert.equal(fwd.fromUserId, 900);
+  assert.equal(fwd.forwardedFromUserId, 777);
+  assert.equal(fwd.forwardedFromName, 'Amelia Carter | Driver Relations');
+  const hidden = shapeCapturedMessage({
+    message_id: 195, chat: { id: -1001 }, from: { id: 900 }, forward_origin: { type: 'hidden_user', sender_user_name: 'Amelia C' },
+  });
+  assert.deepEqual([hidden.forwardedFromUserId, hidden.forwardedFromName], [null, 'Amelia C']);
+  const own = shapeCapturedMessage({ message_id: 196, chat: { id: -1001 }, from: { id: 900 }, text: 'hi' });
+  assert.deepEqual([own.forwardedFromUserId, own.forwardedFromName], [null, null]);
 });
 
 test('a document keeps its name; blank text is no text; non-messages are null', () => {

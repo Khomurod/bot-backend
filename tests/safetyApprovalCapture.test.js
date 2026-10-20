@@ -71,10 +71,10 @@ test('a recruiter\'s post is stored, the group leaves the driver features, nothi
   assert.equal(queued.length, 0);
 });
 
-test('a Safety reply queues a review of the post it answers, after the settle delay', async () => {
+test('a Safety DECISION queues a review of the post it answers, after the settle delay', async () => {
   reset();
   const out = await capture(message({
-    message_id: 20, from: { id: 900 }, text: 'We cah hire her', reply_to_message: { message_id: 10 },
+    message_id: 20, from: { id: 900 }, text: '#Approved', reply_to_message: { message_id: 10 },
   }));
   assert.equal(out.queued, true);
   assert.deepEqual(queued[0], {
@@ -83,26 +83,39 @@ test('a Safety reply queues a review of the post it answers, after the settle de
   assert.equal(wakes, 1);
 });
 
-test('every item of a Safety reply album re-arms the same review', async () => {
+test('a decision written on its own is queued too, with no post yet — it is never dropped', async () => {
+  reset();
+  await capture(message({ message_id: 30, from: { id: 900 }, text: 'driver was at fault, not approved' }));
+  await capture(message({ message_id: 31, from: { id: 900 }, text: 'Looks good, we can hire him' }));
+  assert.deepEqual(queued.map((q) => [q.safetyKey, q.postMessageId]), [['message:30', null], ['message:31', null]]);
+});
+
+test('an album is queued once the item with the words arrives, and each later item re-arms it', async () => {
   reset();
   await capture(message({
     message_id: 20, from: { id: 900 }, media_group_id: 's1', reply_to_message: { message_id: 10 },
     document: { file_id: 'psp', file_name: 'PSP.pdf', mime_type: 'application/pdf' },
   }));
+  assert.equal(queued.length, 0, 'a PDF on its own is not a decision');
   await capture(message({
-    message_id: 21, from: { id: 900 }, media_group_id: 's1', caption: 'approved',
+    message_id: 21, from: { id: 900 }, media_group_id: 's1', caption: '#NotApproved',
     document: { file_id: 'mvr', file_name: 'MVR.pdf', mime_type: 'application/pdf' },
+  }));
+  await capture(message({
+    message_id: 22, from: { id: 900 }, media_group_id: 's1',
+    document: { file_id: 'clh', file_name: 'CLH.pdf', mime_type: 'application/pdf' },
   }));
   assert.deepEqual(queued.map((q) => [q.safetyKey, q.postMessageId]), [['album:s1', 10], ['album:s1', 10]]);
 });
 
-test('Safety talking without replying, a recruiter replying, and bots queue nothing', async () => {
+test('NO TOKENS FOR CHATTER: "on it", "CLH sent", a recruiter, and bots queue nothing', async () => {
   reset();
-  await capture(message({ message_id: 30, from: { id: 900 }, text: 'approved' }));
-  await capture(message({ message_id: 31, from: { id: 500 }, text: 'can we hire him?', reply_to_message: { message_id: 10 } }));
-  await capture(message({ message_id: 32, from: { id: 777, is_bot: true }, text: 'hi', reply_to_message: { message_id: 10 } }));
+  await capture(message({ message_id: 30, from: { id: 900 }, text: 'on it', reply_to_message: { message_id: 10 } }));
+  await capture(message({ message_id: 31, from: { id: 900 }, text: 'CLH sent', reply_to_message: { message_id: 10 } }));
+  await capture(message({ message_id: 32, from: { id: 500 }, text: 'is he approved?', reply_to_message: { message_id: 10 } }));
+  await capture(message({ message_id: 33, from: { id: 777, is_bot: true }, text: '#Approved', reply_to_message: { message_id: 10 } }));
   assert.equal(queued.length, 0);
-  assert.equal(stored.length, 2, 'a bot\'s message is not stored');
+  assert.equal(stored.length, 3, 'a bot\'s message is not stored');
 });
 
 test('a database failure is a reason, never an exception at the bot', async () => {

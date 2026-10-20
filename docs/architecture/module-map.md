@@ -183,11 +183,14 @@ reads the text out.
 |---|---|
 | A Telegram message as stored; why a forum-topic message is not a reply | `lib/safetyApprovals/messageShape.js` (pure) |
 | Which messages are the post, and which are Safety's answer | `lib/safetyApprovals/bundle.js` (pure) |
+| Is a Safety message a decision; the #Approved / #NotApproved hashtags | `lib/safetyApprovals/trigger.js` (pure) |
+| A post's names, job line and phone, read without a model | `lib/safetyApprovals/postDetails.js` (pure) |
+| Who a hashtag decides about (a team must be named) | `lib/safetyApprovals/hashtagDecision.js` (pure) |
 | A model's reading cut down to what the messages prove | `lib/safetyApprovals/reading.js` (pure: `verifyReading`, `documentsFor`) |
-| The caption, the topic link, the link to the post | `lib/safetyApprovals/announcement.js` (pure) |
-| Settings, captured messages, the review queue, what was posted | `database/safetyApprovals/{settings,messages,reviews}.js`, migration 0069 |
+| The card, the topic link, the link to the post | `lib/safetyApprovals/announcement.js` (pure) |
+| Settings, captured messages, the review queue, what was posted | `database/safetyApprovals/{settings,messages,reviews}.js`, migrations 0069 and 0077 |
 | Capture and the bot seam above it | `services/safetyApprovals/captureService.js`, `bot/handlers/safetyApprovalHandlers.js` (thin) |
-| Reading a reply and posting the decision | `services/safetyApprovals/{reviewer,aiReading,announcer}.js`; worker `services/safetyApprovals/worker.js`, key `safety_approvals`, capability `safety_approval_reading` |
+| Reading a decision and posting it | `services/safetyApprovals/{reviewer,postLocator,decide,aiReading,aiContext,announcer}.js`; worker `services/safetyApprovals/worker.js`, key `safety_approvals`, capability `safety_approval_reading` |
 | Settings → Safety Approvals | `server/routes/settings/safetyApprovalRoutes.js`, admin `settings/SafetyApprovalsTab.jsx`, `admin/src/api/safetyApprovals.js` |
 
 ### 5c. Hiring Stage Proposals (Bitrix deal stages from the General topic)

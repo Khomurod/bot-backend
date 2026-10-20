@@ -14,13 +14,28 @@ experience as text — or a team of two. Safety checks the driver and REPLIES
 to that post with the PSP / MVR / CLH reports and a sentence ("We can hire
 him", "good to go", "can't take him, 3 accidents").
 
-The bot listens to the group **quietly** — Safety Approvals never writes in
-the conversation — and posts each decision, separately, in the group's
-"approved / not approved" topic as **one block of files**: the CDL as a file,
-then every file Safety attached, with the status, the driver's name and phone,
-Safety's words, who posted and who decided, and a link to the original post
-under it. This is what the owner asked for on 16 October 2026: "all in one
-block of files", "all of Safety's PDFs", and "an unclear reply posts nothing".
+**Since 20 October 2026 the team marks each decision with a hashtag:**
+`#Approved` or `#NotApproved`, as a reply to the driver's post. A hashtag
+decides with **no model at all**; the driver is read off the post. The words
+alone ("approved", "not approved") still count — a forgotten hashtag never
+loses a decision — and are read by a model, as before. Any other Safety
+message ("on it", "CLH sent", a PDF) is not a decision and costs nothing.
+
+Each decision is posted, separately, in the group's "approved / not approved"
+topic as **the driver's post, the way the recruiter sent it**: the post's photos
+(the CDL), and as their caption the recruiter's own words — job, full name,
+phone, experience — then `✅ APPROVED by Aubrey Davis` (or `❌ NOT APPROVED`),
+Safety's reason when one was written, the recruiter and a link to the original
+post. Safety's MVR / PSP / Clearinghouse files are **not** re-posted. The owner
+chose this on 20 October 2026, and asked for it "this very second": a hashtag
+goes out about five seconds after it is written — no model, no download, the
+photos re-sent by their Telegram file ids.
+
+When the bot **cannot tell which driver** a decision is about, it does not
+guess and does not drop it: it **asks Safety in General**, once, as a reply to
+their message ("Which driver is this about? Reply to the driver's post with
+#Approved or #NotApproved"). That is the only thing Safety Approvals ever
+writes in the conversation.
 
 The same captured messages feed a second, separately switched feature: the
 **Bitrix stage proposals**, which DO reply in General ("move <driver> to
@@ -39,17 +54,30 @@ Every rule below closes a way to post one.
 2. **Only the people named as Safety decide.** `safety_user_ids` is a list the
    administrator ticks in Settings. A recruiter writing "approved" is stored and
    never read as a decision.
-3. **Only a REPLY is an answer.** A Safety message counts only when it replies
-   to something (or belongs to an album where an item does). In a forum group
-   Telegram marks every topic message as a "reply" to the topic's root; that is
-   not a reply (`lib/safetyApprovals/messageShape.js`).
-4. **The post must have been seen.** A reply to a message from before the
-   feature was on has no CDL and no names to check against: `no_post`.
-5. **Safety is given time to finish.** A reply with no words yet, or no files
-   yet, and under two minutes old waits (`WAIT_FOR_REST_SECONDS`) without
-   spending an attempt — Safety often sends the PDFs and the sentence as two
-   messages. Every new item or edit re-arms a 30-second settle delay.
-6. **A model reads the language; the messages decide the facts.**
+3. **Only a decision is read.** A Safety message is queued only when it
+   carries `#Approved` / `#NotApproved` (any spelling: `#notapproved`,
+   `#Not_Approved`…) or the words "approved" / "not approved"
+   (`lib/safetyApprovals/trigger.js`). A question ("is he approved?") is never
+   a decision and is not answered. In a forum group Telegram marks every topic
+   message as a "reply" to the topic's root; that is not a reply
+   (`lib/safetyApprovals/messageShape.js`).
+4. **Which post: the reply, or the conversation just before.** A reply names
+   its post. A decision written on its own is matched to the posts the last
+   six General messages before it belong to (`services/safetyApprovals/
+   postLocator.js`): one such post is the answer; several are put to a model
+   that may only PICK one by label; none, or a model that cannot tell, means
+   **Safety is asked** — never a guess. A reply to a post from before the
+   feature was on is asked about too.
+4a. **A hashtag decides — for the driver(s) it names.** In a one-driver post it
+   is that driver. In a team post it must name one ("#Approved Darnell"), or
+   say "both"; a team hashtag naming nobody, or both hashtags for one driver,
+   is asked about (`lib/safetyApprovals/hashtagDecision.js`). The name is read
+   off the post without a model (`lib/safetyApprovals/postDetails.js`); only a
+   post with no readable name asks a model — for the names, never the decision.
+5. **No waiting for Safety's files.** They are not posted, so nothing waits
+   for them. A decision is read 5 seconds after its last piece arrives (an
+   album comes item by item; each item and each edit re-arms the delay).
+6. **Without a hashtag, a model reads the language; the messages decide the facts.**
    `lib/safetyApprovals/reading.js` keeps a candidate only if every part of the
    name appears in the post, Safety's words or Safety's file names — or, in a
    post with no name in writing at all, the ONE candidate the model read off a
@@ -60,10 +88,18 @@ Every rule below closes a way to post one.
    decision only for a driver Safety's **words** name by a name the other
    driver does not share (a file name is not naming; "both"/"them" is); and
    drops two different answers for one driver. Anything dropped posts nothing,
-   and the review is `unclear`.
-7. **The caption carries nothing a model wrote.** Status and name come from the
-   verified reading, the phone is the recruiter's, and the reason is Safety's
-   own words quoted verbatim (`lib/safetyApprovals/announcement.js`).
+   the review is `unclear`, and Safety is asked.
+7. **The post carries nothing a model wrote.** The caption is the recruiter's
+   words verbatim (an SSN taken out, should one have been pasted), the status
+   is the hashtag (or the verified reading) and who wrote it, the reason is
+   Safety's own words beside the hashtag (`lib/safetyApprovals/announcement.js`).
+   In a team post the status names whose decision it is.
+7a. **A post Safety forwarded is the recruiter's.** Telegram makes a forwarded
+   message the forwarder's; the bot keeps who it is really from
+   (`forward_origin`, migration 0077) and treats it as that recruiter's post,
+   gathering the other pieces forwarded from the same author around it ("old
+   cdl") — never anything Safety wrote themselves. This is why John Bolling's
+   `#Approved` on 20 October posted nothing before the change.
 8. **The same decision is never posted twice; a changed one is.**
    `safety_approval_announcements` remembers the last decision per (post,
    driver). An edit from "approved" to "not approved" posts again. The right
@@ -72,8 +108,6 @@ Every rule below closes a way to post one.
    the post cannot post it again. A send Telegram refused gives the
    reservation back. This is at-most-once on purpose: a duplicate APPROVED
    is worse than a missing one, which shows in Settings.
-9. **In a team, a driver's files are that driver's.** A file whose name names
-   the other driver is not attached (`documentsFor`).
 10. **The recruiting group is not a driver group.** Every group the bot joins
     is registered as `driver`; this one is moved to `recruitment` on save and on
     the first captured message, so home-time, retention and driver broadcasts
@@ -85,22 +119,28 @@ Every rule below closes a way to post one.
 ```
 bot message / edited_message
   → bot/handlers/safetyApprovalHandlers.js      (thin; always next(); never throws)
-  → services/safetyApprovals/captureService.js  (chat gate → store → Safety reply? → enqueue + wake)
+  → services/safetyApprovals/captureService.js  (chat gate → store → Safety DECISION? → enqueue + wake)
   → services/safetyApprovals/worker.js          (queue wake scheduler; withRunRecord('safety_approvals'))
-  → services/safetyApprovals/reviewer.js        (post bundle → Safety bundle → wait? → photos → AI → verify → post)
-      ├─ services/safetyApprovals/aiReading.js  (capability `safety_approval_reading`, photos as image parts)
-      └─ services/safetyApprovals/announcer.js  (sendMediaGroup of documents into message_thread_id)
+  → services/safetyApprovals/reviewer.js        (decision? → post → Safety bundle → wait? → photos → decide → post)
+      ├─ services/safetyApprovals/postLocator.js (the replied post, or the post the last messages were about)
+      │    └─ services/safetyApprovals/aiContext.js  (several posts in play: a model PICKS one by label)
+      ├─ services/safetyApprovals/decide.js     (hashtag → no model; words → aiReading.js, verified)
+      │    └─ services/safetyApprovals/aiReading.js  (capability `safety_approval_reading`, photos as image parts)
+      └─ services/safetyApprovals/announcer.js  (the post's photos + caption into message_thread_id;
+                                                 or the question to Safety in General)
 ```
 
 - **The post** (`lib/safetyApprovals/bundle.js`) is the replied message plus
   its album, plus — only when that has no words or no pictures — the same
   recruiter's non-reply messages within three minutes. A recruiter posting two
-  complete drivers in a row has made two posts. Safety replying to its own
-  earlier message is followed back to the post (three hops at most).
-- **The CDL is uploaded again.** Telegram will not mix a photo with documents
-  in one album and will not re-send a photo's file id as a document, so the
-  CDL's bytes (already fetched for the model) go up as `CDL - <name>.jpg`.
-  Safety's files are re-sent by file id; no bytes are downloaded for them.
+  complete drivers in a row has made two posts. The post Safety answered is
+  the start of the reply chain, whoever wrote each step: Safety replying to a
+  recruiter's "could we schedule his drug test?" is about the post that
+  question follows.
+- **Nothing is downloaded to post.** The post's photos are re-sent by the
+  file ids the bot captured (pictures sent "as files" as documents; Telegram
+  will not mix the two). Photos are downloaded only when a model must look at
+  them — a decision without a hashtag.
 - **Failures retry, then stop.** An AI outage, a Telegram error or photos that
   will not download retry at 1, 5, 15, 30 and 60 minutes; after six attempts or
   a day the review is `gave_up` and shows in Settings → Safety Approvals.
@@ -119,7 +159,7 @@ Migration `0069_safety_approvals.sql`:
 |---|---|
 | `safety_approval_settings` | the single settings row (group, topic, Safety ids, switch) |
 | `safety_approval_messages` | every message in the group, verbatim, with Telegram file ids — **deleted after 60 days** by the worker |
-| `safety_approval_reviews` | one row per Safety reply: the queue, then the verified outcome (never the raw model answer) |
+| `safety_approval_reviews` | one row per Safety decision message: the queue, then the verified outcome (never the raw model answer). `post_message_id` is NULL for a decision written on its own (migration 0077) |
 | `safety_approval_announcements` | what was posted, per post and driver |
 
 No file bytes are stored, and nothing logs message text — these rows are
@@ -138,6 +178,7 @@ drivers' names and phone numbers.
 ## Tests
 
 `tests/safetyApprovalReading.test.js`, `tests/safetyApprovalAnnouncement.test.js`,
-`tests/safetyApprovalReviewer.test.js`, `tests/safetyApprovalCapture.test.js`,
+`tests/safetyApprovalReviewer.test.js`, `tests/safetyApprovalHashtag.test.js`,
+`tests/safetyApprovalTrigger.test.js`, `tests/safetyApprovalCapture.test.js`,
 `tests/safetyApprovalSettingsRoute.test.js`, `tests/safetyApprovalStorePg.test.js`
 and `admin/src/pages/settings/SafetyApprovalsTab.test.jsx`.

@@ -211,7 +211,8 @@ not `facebookCrypto` — the poller holds none of this app's secrets.
   and `finance_moneycode_events` is the append-only trail of how each state was
   reached, including whether a model contributed
   (`docs/architecture/finance-monitor.md`).
-- **The Safety Approvals tables also stand apart** (migration 0069):
+- **The Safety Approvals tables also stand apart** (migration 0069; 0077
+  lets a review have no post yet — a decision written on its own):
   `safety_approval_settings` / `safety_approval_messages` /
   `safety_approval_reviews` / `safety_approval_announcements` key on the raw
   Telegram `chat_id` and touch no driver table. Unlike the finance record, the
