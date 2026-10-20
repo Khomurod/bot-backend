@@ -87,6 +87,38 @@ async function listProvidersForAdmin() {
 }
 
 /**
+ * Put the providers in the order an operator chose: the first is asked first,
+ * the rest are fallbacks in turn (owner, October 2026). Written as priorities
+ * 10, 20, 30… in ONE statement, so a half-saved order is impossible.
+ *
+ * The list must name EVERY provider exactly once. An order built from a page
+ * that is out of date (someone connected a provider meanwhile) is refused, not
+ * guessed at — a provider left out would keep a priority that no longer means
+ * what the operator saw.
+ *
+ * @returns {Promise<{ok: true, order: string[]} | {ok: false, error: string}>}
+ */
+async function setProviderOrder(keys, { updatedBy = null } = {}) {
+  const order = (Array.isArray(keys) ? keys : []).map((k) => String(k || '').trim());
+  const current = (await query('SELECT provider_key FROM ai_providers')).rows.map((r) => r.provider_key);
+  const sameSet = order.length === current.length
+    && new Set(order).size === order.length
+    && order.every((k) => current.includes(k));
+  if (!sameSet) {
+    return { ok: false, error: 'The provider list has changed since this page loaded — reload and try again.' };
+  }
+  if (order.length > 99) return { ok: false, error: 'Too many providers to order (99 at most).' };
+  await query(
+    `UPDATE ai_providers p
+        SET priority = (o.ord * 10)::smallint, updated_by = $2, updated_at = NOW()
+       FROM unnest($1::text[]) WITH ORDINALITY AS o(key, ord)
+      WHERE p.provider_key = o.key`,
+    [order, updatedBy]
+  );
+  return { ok: true, order };
+}
+
+/**
  * A provider's NAME and LABEL are shown in the admin and written to logs; its
  * key is encrypted and never shown. Production once held a provider whose name
  * was a pasted OpenRouter key, so a value that looks like a key is refused
@@ -380,6 +412,7 @@ module.exports = {
   getDiscoveredModelIdsForRouter,
   getProviderSecretsByKey,
   upsertProvider,
+  setProviderOrder,
   saveDiscoveredModels,
   nextPriority,
   recordSuccess,

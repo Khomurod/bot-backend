@@ -14,6 +14,10 @@
  *                      nextPageToken? } — paged, and honest about what each
  *                      model can do, which selection prefers over its name.
  *
+ *   Anthropic          GET /v1/models → { data: [{ id, display_name,
+ *                      max_input_tokens }], has_more, last_id } — read through
+ *                      the official SDK, which pages and authenticates.
+ *
  * ONE ATTEMPT, NO POLICY. Like the call adapters, this throws an Error carrying
  * `status` and the provider's own message so the caller can say "the key is
  * invalid" (401/403) rather than "could not tell what went wrong". Timeouts are
@@ -22,6 +26,7 @@
  * `fetchImpl` is injected for tests. Production callers never pass it.
  */
 const { normaliseModel } = require('../../../lib/ai/modelSelection');
+const { makeClient } = require('../adapters/anthropic');
 
 const DEFAULT_TIMEOUT_MS = 20_000;
 const MAX_PAGES = 10;
@@ -91,6 +96,26 @@ async function listGeminiModels({ baseUrl, apiKey, timeoutMs, fetchImpl, provide
   return out;
 }
 
+async function listAnthropicModels({ baseUrl, apiKey, timeoutMs, fetchImpl, providerKey }) {
+  const client = makeClient({ apiKey, baseUrl, timeoutMs, fetchImpl });
+  const out = [];
+  try {
+    for await (const m of client.models.list({ limit: 100 })) {
+      out.push(normaliseModel(m, 'anthropic', providerKey));
+      if (out.length >= MAX_PAGES * 100) break;
+    }
+  } catch (err) {
+    // Same shape as fetchJson's: `status` and the provider's own words.
+    const body = err?.error?.error || err?.error || {};
+    const wrapped = new Error(err?.status
+      ? `${err.status} ${body.message || err.message}`.trim()
+      : `models listing failed: ${err?.message || err}`);
+    wrapped.status = err?.status ?? null;
+    throw wrapped;
+  }
+  return out;
+}
+
 /**
  * @returns {Promise<Array>} normalised models — see lib/ai/modelSelection.normaliseModel
  * @throws Error with `.status` (401/403 = the key; 404 = no such endpoint; null = network/timeout)
@@ -110,7 +135,9 @@ async function listModels({
     throw err;
   }
   const args = { baseUrl, apiKey, timeoutMs, fetchImpl, providerKey };
-  return adapter === 'gemini' ? listGeminiModels(args) : listOpenAiModels(args);
+  if (adapter === 'gemini') return listGeminiModels(args);
+  if (adapter === 'anthropic') return listAnthropicModels(args);
+  return listOpenAiModels(args);
 }
 
 module.exports = { listModels, DEFAULT_TIMEOUT_MS, MAX_PAGES };

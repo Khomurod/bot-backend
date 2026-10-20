@@ -35,6 +35,15 @@ export async function updateAiProvider(providerKey, patch) {
   return data.provider;
 }
 
+/** The full list of provider keys, first = asked first. */
+export async function setAiProviderOrder(order) {
+  const res = await fetch(`${API_BASE}/settings/ai/provider-order`, {
+    method: 'PUT', headers: getHeaders(), body: JSON.stringify({ order }),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
 export async function deleteAiProvider(providerKey) {
   const res = await fetch(`${API_BASE}/settings/ai/providers/${encodeURIComponent(providerKey)}`, {
     method: 'DELETE', headers: getHeaders(),

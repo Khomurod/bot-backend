@@ -74,7 +74,10 @@ async function refreshProviderModels(providerKey, { initiator = 'refresh', updat
   }
 
   const freeOnly = (await deps.aiSettings.getAiSettings()).freeOnlyMode === true;
-  const r = reconcileChain(provider.modelChain, models, { providerKey, freeOnly });
+  // A paid provider's retired model is removed, never swapped for one nobody chose.
+  const r = reconcileChain(provider.modelChain, models, {
+    providerKey, freeOnly, replaceRetired: provider.isFree === true,
+  });
 
   await deps.aiProviders.saveDiscoveredModels(providerKey, {
     models: models.map((m) => ({
