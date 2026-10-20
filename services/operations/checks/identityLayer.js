@@ -5,7 +5,7 @@
  * These checks are what keeps it HONEST: every one compares the person layer
  * with the chat/profile layer beside it and reports where they disagree.
  *
- * Two of them are auto-correctable, and both pass the registry's test — the
+ * Three of them are auto-correctable, and all pass the registry's test — the
  * corrected value is already recorded somewhere else:
  *
  *   A driver group with no person. The resolver places a group when the bot
@@ -16,8 +16,14 @@
  *   profile's truck is held by nobody. The profile IS the record; the person
  *   layer is behind it.
  *
+ *   A truck still recorded to a driver who has LEFT — no active chat anywhere —
+ *   while the chat that now claims it is active. The departed driver's record
+ *   is the stale one; the truck passes to the active chat's driver. The owner's
+ *   decision of 20 October 2026 (ten such trucks, every one a new hire in a
+ *   departed driver's truck).
+ *
  * The other two are for a human: the same person on two active chats, and a
- * truck the profile claims that another person still holds.
+ * truck the profile claims that another person, still working, holds.
  */
 const { resolveDriverType, FLEET_TYPES } = require('../../../lib/drivers/fleetType');
 
@@ -154,6 +160,11 @@ function checkUnitContested({ groups, profiles, personGroups, units, people }) {
   const claimedTwice = ({ unit, fleet }) => live
     .filter((other) => other.unit === unit && compatible(other.fleet || FLEET_TYPES.UNKNOWN, fleet || FLEET_TYPES.UNKNOWN))
     .length > 1;
+  const activeIds = new Set(live.map(({ g }) => g.id));
+  const liveChats = new Map();
+  for (const a of personGroups || []) {
+    if (activeIds.has(a.group_id)) liveChats.set(a.person_id, (liveChats.get(a.person_id) || 0) + 1);
+  }
   const findings = [];
   for (const { g, unit, fleet } of live) {
     const association = open.get(g.id);
@@ -163,6 +174,14 @@ function checkUnitContested({ groups, profiles, personGroups, units, people }) {
       .filter((h) => h.person_id !== association.person_id);
     const holder = contenders[0];
     if (!holder) continue;
+    // A HANDOVER, NOT A DISPUTE: everyone in the way has no active chat left,
+    // and the claimant is on exactly one. A person on two chats is its own
+    // question (person_on_two_active_groups) and is not handed anything.
+    const holdersGone = contenders.every((h) => !liveChats.get(h.person_id));
+    if (holdersGone && liveChats.get(association.person_id) === 1) {
+      findings.push(handoverFinding({ g, unit, fleet, association, contenders, names }));
+      continue;
+    }
     findings.push({
       checkKey: 'identity.unit_contested',
       subjectType: 'group',
@@ -183,6 +202,41 @@ function checkUnitContested({ groups, profiles, personGroups, units, people }) {
     });
   }
   return findings;
+}
+
+/** The departed driver's truck passes to the active chat's driver. */
+function handoverFinding({
+  g, unit, fleet, association, contenders, names,
+}) {
+  const from = contenders.map((h) => names.get(h.person_id) || `person ${h.person_id}`).join(', ');
+  return {
+    checkKey: 'identity.unit_handover',
+    subjectType: 'group',
+    subjectId: g.id,
+    title: `${label(g)}: unit ${unit} is still recorded to ${from}, who has no active chat`,
+    severity: 'info',
+    tier: 'auto',
+    confidence: 90,
+    evidence: {
+      groupId: g.id,
+      groupName: g.group_name,
+      unitNumber: unit,
+      fleetType: fleet,
+      personId: association.person_id,
+      holders: contenders.map((h) => ({
+        personId: h.person_id,
+        displayName: names.get(h.person_id) || null,
+        fleetType: h.fleet_type || FLEET_TYPES.UNKNOWN,
+      })),
+    },
+    proposedChange: {
+      table: 'driver_units',
+      personId: association.person_id,
+      groupId: g.id,
+      unitNumber: unit,
+      holderPersonIds: contenders.map((h) => h.person_id),
+    },
+  };
 }
 
 /**
@@ -255,6 +309,7 @@ const CHECK_KEYS = [
   'identity.group_without_person',
   'identity.person_on_two_active_groups',
   'identity.unit_contested',
+  'identity.unit_handover',
   'identity.stale_unit_assignment',
 ];
 

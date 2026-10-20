@@ -146,6 +146,11 @@ function runTelegramIdentityChecks({
       severity: 'info',
       tier: decision.checkKey === CHECKS.UNNAMED ? 'approval' : 'warning',
       confidence: 100,
+      // The one candidate, so a person's "yes" has something to apply. A team
+      // or crowded chat proposes nothing: there is no single account to name.
+      proposedChange: decision.checkKey === CHECKS.UNNAMED && decision.telegramUserId
+        ? { personId, groupId: group.id, telegramUserId: decision.telegramUserId }
+        : null,
     });
   }
   return findings;

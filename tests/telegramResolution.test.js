@@ -51,7 +51,10 @@ test('A USERNAME IS NEVER EVIDENCE', () => {
   });
   assert.equal(got.action, 'ask');
   assert.equal(got.checkKey, CHECKS.UNNAMED);
-  assert.equal(got.telegramUserId, null);
+  // The one candidate is NAMED, so a person can confirm it — but nothing here
+  // links it, and it carries no confidence of its own.
+  assert.equal(got.telegramUserId, '501');
+  assert.equal(got.confidence, null);
 });
 
 test('TWO CANDIDATES IS A QUESTION, NOT A CHOICE', () => {

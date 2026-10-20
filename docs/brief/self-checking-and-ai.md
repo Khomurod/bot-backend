@@ -56,8 +56,12 @@ feature it belongs to.
   resolver itself runs from the sweep, so a driver nobody has texted since the
   layer arrived is still placed), `identity.stale_unit_assignment` (**auto**:
   the profile's truck is the record; the person's open unit is brought to it,
-  only when nobody else holds it), `identity.person_on_two_active_groups` and
-  `identity.unit_contested` (a human decides). `checks/systems.js` reads across
+  only when nobody else holds it), `identity.unit_handover` (**auto**, owner's
+  decision of 20 October 2026: a truck still recorded to a driver with NO active
+  chat passes to the one active chat whose profile claims it —
+  `corrections/unitHandoverActions.js`, re-checked under lock, switched on by
+  migration 0078), `identity.person_on_two_active_groups` and
+  `identity.unit_contested` (a human decides — the holder still drives). `checks/systems.js` reads across
   features: `samsara.vehicle_on_two_active_groups`,
   `samsara.vehicle_link_disagrees` and `raise.progress_without_person` (one
   aggregated finding about mileage-bonus rows — the name predates the raise

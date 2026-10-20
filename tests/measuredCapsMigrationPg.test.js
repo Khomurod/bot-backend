@@ -20,8 +20,9 @@ const { createPgHarness, skipWithoutPg, allMigrationsSql } = require('./helpers/
 
 // Every migration that SEEDS a check-settings row is excluded, so these tests
 // reason about the rows they create rather than about whatever the current
-// seed set happens to be. 0030 switches on the automatic return-to-road check.
-const SEEDS_CHECK_SETTINGS = ['0027_', '0028_', '0030_'];
+// seed set happens to be. 0030 switches on the automatic return-to-road check,
+// 0078 the departed-driver truck handover.
+const SEEDS_CHECK_SETTINGS = ['0027_', '0028_', '0030_', '0078_'];
 const BEFORE_0027 = allMigrationsSql((name) => !SEEDS_CHECK_SETTINGS.some((p) => name.startsWith(p)));
 const read = (name) => fs.readFileSync(path.join(__dirname, '..', 'database', 'migrations', name), 'utf8');
 const MIGRATION_0027 = read('0027_production_repair_permissions_and_legacy_providers.sql');

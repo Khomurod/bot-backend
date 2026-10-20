@@ -21,6 +21,19 @@ const { compareWritten, OUTCOMES } = require('../../lib/decisions/verification')
 const { classifyOrigin, assessRollback } = require('../../lib/decisions/rollbackSafety');
 const decisions = require('../../database/operationalDecisions');
 
+/** The truck recorded to the person behind a chat — what a unit correction set. */
+async function readGroupDriversUnit(client, subjectId) {
+  const res = await client.query(
+    `SELECT u.unit_number AS "unitNumber", u.person_id AS "personId"
+       FROM driver_units u
+       JOIN driver_person_groups g
+         ON g.person_id = u.person_id AND g.ended_at IS NULL
+      WHERE g.group_id = $1 AND u.ended_at IS NULL`,
+    [Number(subjectId)]
+  );
+  return res.rows[0] || null;
+}
+
 /**
  * How to re-read the subject of each action, and whether it may be undone
  * automatically.
@@ -97,17 +110,15 @@ const SUBJECTS = Object.freeze({
     impact: 'operational',
     autoRevert: false,
     table: 'driver_units',
-    async read(client, subjectId) {
-      const res = await client.query(
-        `SELECT u.unit_number AS "unitNumber", u.person_id AS "personId"
-           FROM driver_units u
-           JOIN driver_person_groups g
-             ON g.person_id = u.person_id AND g.ended_at IS NULL
-          WHERE g.group_id = $1 AND u.ended_at IS NULL`,
-        [Number(subjectId)]
-      );
-      return res.rows[0] || null;
-    },
+    read: readGroupDriversUnit,
+  },
+
+  // The same question as a sync: is the chat's driver recorded in that truck?
+  'identity.hand_over_unit': {
+    impact: 'operational',
+    autoRevert: false,
+    table: 'driver_units',
+    read: readGroupDriversUnit,
   },
 
   'identity.link_telegram': {

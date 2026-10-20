@@ -43,13 +43,18 @@ test('A TELEGRAM ID NEVER APPEARS IN A FINDING TITLE', () => {
   assert.ok(!JSON.stringify(found.evidence).includes('501'), 'nor in the evidence');
 });
 
-test('a name that does not agree needs a person, and proposes nothing', () => {
+test('a name that does not agree needs a person — and names the one candidate for them to confirm', () => {
+  // Until 20 October 2026 this proposed nothing, so a person's "yes, that is
+  // them" had nothing to apply: the approve route answered "no proposed change".
+  // The candidate travels in the proposal (never the title or the evidence), and
+  // the tier is still approval, so only a person ever acts on it.
   const [found] = runTelegramIdentityChecks(snapshot({
     groupMembers: [{ ...DRIVER, first_name: 'Ivan', last_name: 'Petrov' }],
   }));
   assert.equal(found.checkKey, CHECKS.UNNAMED);
   assert.equal(found.tier, 'approval');
-  assert.equal(found.proposedChange, null);
+  assert.deepEqual(found.proposedChange, { personId: 10, groupId: 1, telegramUserId: '501' });
+  assert.ok(!found.title.includes('501'));
 });
 
 test('several candidates is a warning with nothing proposed', () => {
