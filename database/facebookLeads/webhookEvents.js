@@ -7,6 +7,9 @@
  * `FOR UPDATE SKIP LOCKED`, so overlapping drains cannot work the same row.
  * Retries carry their own `next_retry_at`, which the worker sleeps until.
  *
+ * A retry has an end: `abandoned` is never claimed again, so an event that
+ * cannot succeed stops instead of re-running every fifteen minutes for months.
+ *
  * Split out of database/facebookLeads.js, which re-exports every symbol here.
  */
 const { query } = require('../pool');
@@ -88,12 +91,47 @@ async function failFacebookWebhookEvent(eventId, errorMessage, nextRetryAt) {
   return res.rows[0] || null;
 }
 
+/**
+ * Stop retrying an event. Terminal: the claim only takes `pending` and
+ * `failed`, so nothing picks this row up again unless a person presses Retry.
+ */
+async function abandonFacebookWebhookEvent(eventId, errorMessage) {
+  const res = await query(
+    `UPDATE facebook_webhook_events
+        SET status = 'abandoned',
+            last_error = $1,
+            updated_at = NOW()
+      WHERE id = $2
+      RETURNING id`,
+    [String(errorMessage || 'Unknown error').slice(0, 2000), eventId]
+  );
+  return res.rows[0] || null;
+}
+
+/** Remember that this event's lead is already in the Telegram group. */
+async function markFacebookWebhookEventTelegramPosted(eventId) {
+  await query(
+    `UPDATE facebook_webhook_events
+        SET telegram_posted_at = COALESCE(telegram_posted_at, NOW())
+      WHERE id = $1`,
+    [eventId]
+  );
+}
+
+/**
+ * Put an event back in the queue — a person pressed Retry.
+ *
+ * The attempt budget starts again from zero: an abandoned event would
+ * otherwise get exactly one more try. `telegram_posted_at` is kept, so a lead
+ * already in the group is not posted a second time.
+ */
 async function resetFacebookWebhookEventByIdentifier(identifier) {
   const normalized = String(identifier || '').trim();
   if (!normalized) return null;
   const res = await query(
     `UPDATE facebook_webhook_events
         SET status = 'pending',
+            attempt_count = 0,
             next_retry_at = NOW(),
             updated_at = NOW(),
             last_error = NULL
@@ -152,6 +190,8 @@ module.exports = {
   claimPendingFacebookWebhookEvents,
   completeFacebookWebhookEvent,
   failFacebookWebhookEvent,
+  abandonFacebookWebhookEvent,
+  markFacebookWebhookEventTelegramPosted,
   resetFacebookWebhookEventByIdentifier,
   getRecentFacebookWebhookEvents,
   recordFacebookSenderSeen,

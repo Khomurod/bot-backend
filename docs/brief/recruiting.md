@@ -19,6 +19,17 @@ the same treatment home time got, and for the same reason.
   creates a Bitrix24 CRM lead (best-effort; CRM failure never blocks the
   Telegram post) → fires auto-SMS **from the assigned recruiter's number** →
   mirrors SMS replies two-way.
+- **A lead event is tried at most five times, then abandoned** — retries wait
+  1, 5, 15 and 60 minutes, so a short outage is ridden out. The fifth failure
+  marks the event `abandoned` (never claimed again) and posts ONE notice to the
+  leads group; Retry on the admin Facebook Leads page restores a fresh budget.
+  Until October 2026 there was no end: a May test lead had 9,041 attempts.
+- **A retry never repeats what already happened.** The Telegram post is
+  stamped in `facebook_webhook_events.telegram_posted_at` and skipped once
+  stamped; the Bitrix record is reused once the `leads` row carries its id; the
+  SMS is skipped once `sms_from_number` is set. Before this, each retry of an
+  event that failed after the post put the lead in the group again.
+  `tests/facebookWebhookRetryLimit.test.js`, `tests/facebookWebhookQueuePg.test.js`.
 - **An inbound SMS forwarded to Telegram registers its own reply mirror**
   (`leads-bot/webhook/connect_command.py` `_register_inbound_sms_mirror`), and a
   recruiter's reply to the forward goes back as SMS through it. Until October

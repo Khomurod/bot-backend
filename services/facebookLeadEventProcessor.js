@@ -18,6 +18,13 @@
  *   5. mirror + notice        so a reply typed in Telegram reaches the driver
  *                             FROM THE SAME NUMBER that first texted them.
  *
+ * A RETRY DOES NOT REPEAT WHAT ALREADY HAPPENED. When a later step throws, the
+ * queue runs the whole event again, so each step that reaches the outside world
+ * checks first: the Telegram post is skipped once `telegram_posted_at` is
+ * stamped, the Bitrix record is reused once the `leads` row carries its id, and
+ * the SMS is skipped once `sms_from_number` is written. Before this, one
+ * September lead was posted to the group on each of 238 attempts.
+ *
  * Telegram is passed in rather than held here: the queue worker
  * (services/facebookWebhookService) owns that client, and this module stays a
  * plain orchestration function that a test can drive with a fake.
@@ -41,7 +48,7 @@ const {
   buildTemplateContext,
   renderLeadSmsTemplate,
 } = require('./facebookLeadSmsTemplate');
-const { createCrmRecordFromLead } = require('./bitrix24Service');
+const { createCrmRecordFromLead, getBitrixMapperConfig } = require('./bitrix24Service');
 
 /**
  * The line posted to the group when the auto-SMS did NOT go out. Returns null
@@ -77,8 +84,43 @@ function buildAutoMessageNotification(fieldMap, smsResult, leadName, ruleLabel =
   return `AutoMessage failed for ${phone}${detail}`;
 }
 
+/**
+ * The `leads` row an earlier run of this lead left behind, or null.
+ *
+ * Read ONCE per event, before anything below can create the row, and handed to
+ * both guards that need it: the Bitrix record is reused when it carries one,
+ * and the SMS is not sent again when it carries a from-number.
+ *
+ * A lookup failure answers null — "cannot prove anything happened" — so a
+ * database hiccup costs at worst a second CRM record, never a genuinely new
+ * lead its only record or its only text.
+ */
+async function findEarlierLead(leadgenId) {
+  if (!leadgenId) return null;
+  try {
+    return await db.getLeadBySourceExternalId('facebook', leadgenId);
+  } catch (err) {
+    console.warn('[Leads] Could not check for an earlier run of this lead:', err.message);
+    return null;
+  }
+}
+
+/** The Bitrix record an earlier run already created, as createCrmRecordFromLead would answer. */
+async function earlierBitrixRecord(earlierLead) {
+  if (!earlierLead?.bitrix_id) return null;
+  let entity = 'lead';
+  try {
+    entity = (await getBitrixMapperConfig()).entity || 'lead';
+  } catch (_) { /* the default entity is the common case */ }
+  return { ok: true, bitrixId: earlierLead.bitrix_id, entity, reused: true };
+}
+
 /** Create the Bitrix record, swallowing every failure. Returns null if it blew up. */
-async function createBitrixRecord({ fieldMap, leadData, connection, leadgenId, payload }) {
+async function createBitrixRecord({
+  fieldMap, leadData, connection, leadgenId, payload, earlierLead = null,
+}) {
+  const earlier = await earlierBitrixRecord(earlierLead);
+  if (earlier) return earlier;
   try {
     const formId = String(payload.value?.form_id || payload.value?.formId || '');
     const result = await createCrmRecordFromLead({
@@ -152,18 +194,12 @@ async function recordLead({ leadgenId, fullName, fieldMap, phone, connection, pa
  * carry the shared company number here, so none of them can be re-texted from
  * a recruiter's line.
  *
- * A lookup failure means "cannot prove it was sent", and the guard opens: a
- * database hiccup must not cost a genuinely new lead its only text.
+ * A lookup failure means "cannot prove it was sent", and the guard opens
+ * (findEarlierLead answers null): a database hiccup must not cost a genuinely
+ * new lead its only text.
  */
-async function alreadyTexted(leadgenId) {
-  if (!leadgenId) return null;
-  try {
-    const existing = await db.getLeadBySourceExternalId('facebook', leadgenId);
-    return existing?.sms_from_number ? existing : null;
-  } catch (err) {
-    console.warn('[Leads] Could not check whether this lead was already texted:', err.message);
-    return null;
-  }
+function alreadyTexted(earlierLead) {
+  return earlierLead?.sms_from_number ? earlierLead : null;
 }
 
 /**
@@ -171,12 +207,14 @@ async function alreadyTexted(leadgenId) {
  * @returns {Promise<{smsResult:object, smsBody:string|null, ruleLabel:string|null,
  *   sender:object|null}>}
  */
-async function sendAutoSms({ phone, fieldMap, connection, bitrixResult, leadgenId = null }) {
+async function sendAutoSms({
+  phone, fieldMap, connection, bitrixResult, leadgenId = null, earlierLead = null,
+}) {
   if (!phone) {
     return { smsResult: { ok: false, reason: 'no_phone' }, smsBody: null, ruleLabel: null, sender: null };
   }
 
-  const texted = await alreadyTexted(leadgenId);
+  const texted = alreadyTexted(earlierLead);
   if (texted) {
     console.log(
       `[Leads] Lead ${leadgenId} was already texted from ${texted.sms_from_number} `
@@ -259,15 +297,30 @@ async function processLeadEvent(eventRow, { telegram }) {
   const fullName = fieldMap.full_name || fieldMap.first_name || 'Driver';
   const phone = fieldMap.phone_number || fieldMap.phone || '';
 
-  await sendTelegramMessage(connection.telegram_group_id, formatLeadMessage(leadData));
+  if (eventRow.telegram_posted_at) {
+    console.log(`[Leads] Lead ${leadgenId} is already in the group — not posting it again.`);
+  } else {
+    await sendTelegramMessage(connection.telegram_group_id, formatLeadMessage(leadData));
+    try {
+      await db.markFacebookWebhookEventTelegramPosted(eventRow.id);
+    } catch (err) {
+      // The lead IS in the group; only the memory of it failed. Loud, because
+      // a retry of this event would post it a second time.
+      console.error(`[Leads] Could not record that lead ${leadgenId} was posted — `
+        + `a retry would post it again: ${err.message}`);
+    }
+  }
 
-  const bitrixResult = await createBitrixRecord({ fieldMap, leadData, connection, leadgenId, payload });
+  const earlierLead = await findEarlierLead(leadgenId);
+  const bitrixResult = await createBitrixRecord({
+    fieldMap, leadData, connection, leadgenId, payload, earlierLead,
+  });
   const leadId = await recordLead({
     leadgenId, fullName, fieldMap, phone, connection, pageId, bitrixResult,
   });
 
   const { smsResult, smsBody, ruleLabel, sender } = await sendAutoSms({
-    phone, fieldMap, connection, bitrixResult, leadgenId,
+    phone, fieldMap, connection, bitrixResult, leadgenId, earlierLead,
   });
 
   // Who ended up texting the driver — visible in the admin Leads tab. Pure
