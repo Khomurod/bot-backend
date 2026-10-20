@@ -53,10 +53,10 @@ export async function deleteAiProvider(providerKey) {
 }
 
 /** Returns { ok, model, latencyMs, sample } or { ok: false, failureKind, error }. */
-export async function testAiProvider(providerKey, { apiKey, adapter, baseUrl, model }) {
+export async function testAiProvider(providerKey, { apiKey, adapter, baseUrl, model, workspaceId }) {
   const res = await fetch(`${API_BASE}/settings/ai/providers/${encodeURIComponent(providerKey)}/test`, {
     method: 'POST', headers: getHeaders(),
-    body: JSON.stringify({ apiKey, adapter, baseUrl, model }),
+    body: JSON.stringify({ apiKey, adapter, baseUrl, model, workspaceId }),
   });
   if (!res.ok) { await handleApiError(res); }
   return res.json();
@@ -75,10 +75,10 @@ export async function getAiCatalog() {
  * plain-language `message` when the provider or the key is the problem — the
  * request succeeded; what failed is the thing being connected.
  */
-export async function connectAiProvider({ catalogKey, apiKey, label, baseUrl, adapter }) {
+export async function connectAiProvider({ catalogKey, apiKey, label, baseUrl, adapter, workspaceId }) {
   const res = await fetch(`${API_BASE}/settings/ai/providers/connect`, {
     method: 'POST', headers: getHeaders(),
-    body: JSON.stringify({ catalogKey, apiKey, label, baseUrl, adapter }),
+    body: JSON.stringify({ catalogKey, apiKey, label, baseUrl, adapter, workspaceId }),
   });
   if (!res.ok) { await handleApiError(res); }
   return res.json();

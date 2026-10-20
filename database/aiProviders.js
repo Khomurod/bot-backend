@@ -73,6 +73,7 @@ function mapProviderForAdmin(row) {
     catalogKey: row.catalog_key ?? null,
     discoveredModels: Array.isArray(row.discovered_models) ? row.discovered_models : [],
     modelCooldowns: row.model_cooldowns && typeof row.model_cooldowns === 'object' ? row.model_cooldowns : {},
+    workspaceId: row.workspace_id ?? null,
     modelsRefreshedAt: row.models_refreshed_at ?? null,
     modelsRefreshError: row.models_refresh_error ?? null,
     updatedBy: row.updated_by,
@@ -178,7 +179,7 @@ async function getProvidersForRouter() {
   const res = await query(
     `SELECT provider_key, adapter, enabled, priority, is_free, base_url, model_chain, catalog_key,
             api_key_encrypted, cooled_until, cooled_indefinitely, cooldown_reason, consecutive_failures,
-            model_cooldowns
+            model_cooldowns, workspace_id
        FROM ai_providers WHERE enabled = TRUE ORDER BY priority ASC, provider_key ASC`
   );
   return res.rows.map((row) => ({
@@ -195,6 +196,7 @@ async function getProvidersForRouter() {
     cooldownReason: row.cooldown_reason,
     consecutiveFailures: row.consecutive_failures,
     modelCooldowns: row.model_cooldowns && typeof row.model_cooldowns === 'object' ? row.model_cooldowns : {},
+    workspaceId: row.workspace_id ?? null,
   }));
 }
 
@@ -240,6 +242,7 @@ async function getProviderSecretsByKey(providerKey) {
     baseUrl: row.base_url,
     modelChain: Array.isArray(row.model_chain) ? row.model_chain : [],
     catalogKey: row.catalog_key ?? null,
+    workspaceId: row.workspace_id ?? null,
     apiKey: safeDecrypt(row.api_key_encrypted) || envKeyFor(row.provider_key),
   };
 }
@@ -253,9 +256,19 @@ async function getProviderSecretsByKey(providerKey) {
  * keep waiting is gone. Making an operator save a key and then separately press
  * "clear cooldown" would be a puzzle, not a safeguard.
  */
+/** An Anthropic workspace id, or null. Refuses anything else rather than storing it. */
+function normaliseWorkspaceId(value) {
+  const id = String(value || '').trim();
+  if (!id) return null;
+  if (!/^wrkspc_[A-Za-z0-9]+$/.test(id)) {
+    throw Object.assign(new Error('A workspace id looks like wrkspc_… — copy it from the Claude Console.'), { statusCode: 400 });
+  }
+  return id;
+}
+
 async function upsertProvider(providerKey, {
   label, adapter, enabled, priority, isFree, baseUrl, modelChain,
-  apiKey, clearApiKey = false, notes, catalogKey, updatedBy = null,
+  apiKey, clearApiKey = false, notes, catalogKey, workspaceId, updatedBy = null,
 } = {}) {
   refuseSecretAsName('name', providerKey);
   refuseSecretAsName('label', label);
@@ -275,6 +288,12 @@ async function upsertProvider(providerKey, {
   set('base_url', baseUrl);
   set('notes', notes);
   set('catalog_key', catalogKey);
+  // A string sets it; an empty string clears it (NULL: no header is sent).
+  if (typeof workspaceId === 'string') {
+    sets.push(`workspace_id = $${i}`);
+    values.push(normaliseWorkspaceId(workspaceId));
+    i += 1;
+  }
   if (modelChain !== undefined && modelChain !== null) {
     sets.push(`model_chain = $${i}::jsonb`);
     values.push(JSON.stringify(Array.isArray(modelChain) ? modelChain : []));

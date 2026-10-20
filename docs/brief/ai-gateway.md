@@ -81,7 +81,12 @@ stay in §4a. The provider terms watcher is
   Claude is **paid** (`is_free = false`), so **"Free tiers only" keeps it from
   being called at all** — an operator who puts Claude first must turn that
   switch off. No server-side `fallbacks` parameter is sent: the fallback is the
-  operator's own order, below.
+  operator's own order, below. **An organization-level Anthropic key** is
+  refused with `400 … not scoped to a workspace … anthropic-workspace-id`; Add a
+  provider → Anthropic Claude takes an optional **Workspace ID** (`wrkspc_…`,
+  also editable under the card's Advanced settings), stored in
+  `ai_providers.workspace_id` (migration 0075) and sent as that header on every
+  call and model listing. Connect turns the 400 into words naming the field.
 - **The operator sets the order; the first provider is the primary.** The
   owner's rule (October 2026): *"if I put Claude first, Claude is used first,
   and the others I lined up are the fallbacks, in order."* The **Order of

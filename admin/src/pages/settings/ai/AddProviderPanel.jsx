@@ -20,6 +20,7 @@ export default function AddProviderPanel({ onConnected, onCancel }) {
   const [apiKey, setApiKey] = React.useState("");
   const [baseUrl, setBaseUrl] = React.useState("");
   const [label, setLabel] = React.useState("");
+  const [workspaceId, setWorkspaceId] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [result, setResult] = React.useState(null);
   const [loadError, setLoadError] = React.useState(null);
@@ -39,6 +40,7 @@ export default function AddProviderPanel({ onConnected, onCancel }) {
         catalogKey: picked.key,
         apiKey: apiKey.trim(),
         ...(picked.needsBaseUrl ? { baseUrl: baseUrl.trim(), label: label.trim() || undefined } : {}),
+        ...(picked.adapter === "anthropic" && workspaceId.trim() ? { workspaceId: workspaceId.trim() } : {}),
       });
       setResult(r);
       if (r.ok) {
@@ -130,6 +132,16 @@ export default function AddProviderPanel({ onConnected, onCancel }) {
                 onKeyDown={(e) => { if (e.key === "Enter" && canConnect && !busy) connect(); }}
               />
             </div>
+            {picked.adapter === "anthropic" && (
+              <div className="form-group" style={{ gridColumn: "1 / -1" }}>
+                <label htmlFor="add-provider-workspace">Workspace ID (only for an organization-level key)</label>
+                <input
+                  id="add-provider-workspace" className="form-input" value={workspaceId}
+                  placeholder="wrkspc_… — leave empty for a key created inside a workspace"
+                  onChange={(e) => setWorkspaceId(e.target.value)}
+                />
+              </div>
+            )}
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <button type="button" className="btn btn-primary btn-sm" disabled={!canConnect || busy} onClick={connect}>

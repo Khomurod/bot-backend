@@ -85,3 +85,24 @@ test("an already-added provider is still offered, marked as added", async () => 
   await open();
   expect(screen.getByRole("option", { name: /Groq.*added/ })).toBeInTheDocument();
 });
+
+test("Claude asks for an optional Workspace ID and sends it; other providers never show it", async () => {
+  getAiCatalog.mockResolvedValue([
+    ...CATALOG,
+    { key: "anthropic", label: "Anthropic Claude", adapter: "anthropic", isFree: false, needsBaseUrl: false, configured: false, keyPrefix: "sk-ant-" },
+  ]);
+  connectAiProvider.mockResolvedValue({ ok: true, providerKey: "anthropic", label: "Anthropic Claude", message: "ok", report: {} });
+  render(<AddProviderPanel onConnected={vi.fn()} />);
+  await waitFor(() => expect(screen.getByRole("option", { name: /Anthropic Claude/ })).toBeInTheDocument());
+
+  fireEvent.click(screen.getByRole("option", { name: /OpenRouter/ }));
+  expect(screen.queryByLabelText(/Workspace ID/)).toBeNull();
+
+  fireEvent.click(screen.getByRole("option", { name: /Anthropic Claude/ }));
+  fireEvent.change(screen.getByLabelText(/Anthropic Claude API key/), { target: { value: "sk-ant-org" } });
+  fireEvent.change(screen.getByLabelText(/Workspace ID/), { target: { value: " wrkspc_01ABC " } });
+  fireEvent.click(screen.getByRole("button", { name: "Connect" }));
+  await waitFor(() => expect(connectAiProvider).toHaveBeenCalledWith({
+    catalogKey: "anthropic", apiKey: "sk-ant-org", workspaceId: "wrkspc_01ABC",
+  }));
+});

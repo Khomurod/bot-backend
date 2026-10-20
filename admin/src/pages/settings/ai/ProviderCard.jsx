@@ -40,6 +40,7 @@ export default function ProviderCard({ provider, onSaved, flash }) {
     enabled: provider.enabled,
     isFree: provider.isFree,
     baseUrl: provider.baseUrl || "",
+    workspaceId: provider.workspaceId || "",
     modelChain: provider.modelChain || [],
     apiKey: "",
   });
@@ -62,6 +63,7 @@ export default function ProviderCard({ provider, onSaved, flash }) {
         isFree: form.isFree,
         baseUrl: form.baseUrl || null,
         modelChain: models,
+        ...(provider.adapter === "anthropic" ? { workspaceId: form.workspaceId.trim() } : {}),
         // Omitted when blank, which is what leaves the stored key alone.
         ...(form.apiKey.trim() ? { apiKey: form.apiKey.trim() } : {}),
       });
@@ -84,6 +86,7 @@ export default function ProviderCard({ provider, onSaved, flash }) {
         adapter: provider.adapter,
         baseUrl: form.baseUrl,
         model: models[0],
+        ...(provider.adapter === "anthropic" ? { workspaceId: form.workspaceId.trim() } : {}),
       }));
     } catch (err) {
       setResult({ ok: false, error: err?.detail || err?.message });
@@ -215,6 +218,16 @@ export default function ProviderCard({ provider, onSaved, flash }) {
               onChange={(e) => set("baseUrl", e.target.value)}
             />
           </div>
+          {provider.adapter === "anthropic" && (
+            <div className="form-group">
+              <label htmlFor={`workspace-${provider.providerKey}`}>Workspace ID</label>
+              <input
+                id={`workspace-${provider.providerKey}`} className="form-input" value={form.workspaceId}
+                placeholder="wrkspc_… — only for an organization-level key"
+                onChange={(e) => set("workspaceId", e.target.value)}
+              />
+            </div>
+          )}
         </div>
         <div style={{ color: "#94a3b8", fontSize: 11 }}>
           For a provider Wenze knows, this is filled in automatically.
