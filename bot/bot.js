@@ -22,6 +22,7 @@ const { registerDispatchStatusLookupHandlers } = require('./dispatchStatusLookup
 const { registerGroupCaptureHandlers } = require('./handlers/groupCaptureHandlers');
 const { registerFinanceCaptureHandlers } = require('./handlers/financeCaptureHandlers');
 const { registerSafetyApprovalHandlers } = require('./handlers/safetyApprovalHandlers');
+const { registerHiringStageHandlers } = require('./handlers/hiringStageHandlers');
 const { registerControlReplyHandlers } = require('./controlReplyHandlers');
 const {
   registerDispatchCommands,
@@ -218,6 +219,10 @@ async function startBot() {
 
     // Dispatcher status helper: always available, even if auto updates are disabled.
     registerStatusCommand(bot);
+
+    // Move / No / search-again on the Bitrix stage proposals in the
+    // recruiting group's General topic (services/hiringStages/actions.js).
+    registerHiringStageHandlers(bot);
 
     // Mileage bonus Paid / Rejected buttons (accounting-only).
     registerMileageBonusHandlers(bot);

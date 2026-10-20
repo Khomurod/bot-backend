@@ -17,6 +17,7 @@
 const express = require('express');
 const settingsStore = require('../../../database/safetyApprovals/settings');
 const reviews = require('../../../database/safetyApprovals/reviews');
+const { listRecentProposals } = require('../../../database/hiringStages/proposals');
 const { listGroupMembers } = require('../../../database/groupMembers');
 const { getGroupByTelegramId } = require('../../../database/groups');
 const { checkChatId } = require('../../../services/telegramChatIdCheck');
@@ -69,17 +70,36 @@ function shapeReview(r) {
   };
 }
 
+/** A Bitrix stage proposal, for the list under its switch. A name and stages; no message text. */
+function shapeProposal(p) {
+  return {
+    id: p.id,
+    kind: p.kind,
+    status: p.status,
+    driverName: p.driverName,
+    dealTitle: p.dealTitle,
+    fromStageName: p.fromStageName,
+    toStageName: p.toStageName,
+    decidedByName: p.decidedByName,
+    lastError: p.lastError,
+    createdAt: p.createdAt,
+  };
+}
+
 function createSafetyApprovalSettingsRouter({ authMiddleware, telegram }) {
   const router = express.Router();
 
   router.get('/safety-approvals', authMiddleware, async (req, res) => {
     try {
       const settings = await settingsStore.getSafetyApprovalSettings();
-      const [members, recent] = await Promise.all([
+      const [members, recent, proposals] = await Promise.all([
         membersOf(settings.chatId),
         reviews.listRecentReviews(20),
+        listRecentProposals(15),
       ]);
-      res.json({ settings, members, recent: recent.map(shapeReview) });
+      res.json({
+        settings, members, recent: recent.map(shapeReview), proposals: proposals.map(shapeProposal),
+      });
     } catch (err) {
       sendFailure(res, err, { message: 'Failed to read the Safety Approvals settings', ...LOG });
     }
@@ -113,6 +133,7 @@ function createSafetyApprovalSettingsRouter({ authMiddleware, telegram }) {
       const patch = {};
       if (body.enabled !== undefined) patch.enabled = Boolean(body.enabled);
       if (Array.isArray(body.safetyUserIds)) patch.safetyUserIds = body.safetyUserIds;
+      if (body.stageProposalsEnabled !== undefined) patch.stageProposalsEnabled = Boolean(body.stageProposalsEnabled);
 
       if (body.chatId !== undefined) {
         const raw = String(body.chatId ?? '').trim();

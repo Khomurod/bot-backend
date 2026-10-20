@@ -74,3 +74,28 @@ test("the topic link is saved as typed; the server reads it", async () => {
   fireEvent.click(screen.getByRole("button", { name: /Save topic/i }));
   await waitFor(() => expect(api.updateSafetyApprovals).toHaveBeenCalledWith({ topic: "https://t.me/c/777/45" }));
 });
+
+test("Bitrix stage proposals stay off until Safety Approvals is on", async () => {
+  render(<SafetyApprovalsTab />);
+  expect(await screen.findByLabelText(/Propose Bitrix stage changes/i)).toBeDisabled();
+});
+
+test("with Safety Approvals on, the stage proposals have a switch of their own and a history", async () => {
+  api.getSafetyApprovals.mockResolvedValue({
+    settings: { ...SETTINGS, safetyUserIds: ["900"], enabled: true },
+    members: MEMBERS,
+    recent: [],
+    proposals: [{
+      id: 1, kind: "move", status: "applied", driverName: "Samuel Phillips",
+      fromStageName: "CLEARINGHOUSE CHECK", toStageName: "MVR + PSP CHECK", decidedByName: "Ann",
+      createdAt: "2026-10-20T10:00:00Z",
+    }],
+  });
+  render(<SafetyApprovalsTab />);
+  expect(await screen.findByText("CLEARINGHOUSE CHECK → MVR + PSP CHECK")).toBeTruthy();
+  expect(screen.getByText(/Moved — Ann/)).toBeTruthy();
+  const box = screen.getByLabelText(/Propose Bitrix stage changes/i);
+  expect(box).not.toBeDisabled();
+  fireEvent.click(box);
+  await waitFor(() => expect(api.updateSafetyApprovals).toHaveBeenCalledWith({ stageProposalsEnabled: true }));
+});

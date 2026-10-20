@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import * as api from "../../api";
 import { Banner } from "./fields";
+import HiringStagesCard from "./HiringStagesCard";
 
 /**
  * Settings → Safety Approvals.
@@ -19,6 +20,7 @@ export default function SafetyApprovalsTab() {
   const [settings, setSettings] = useState(null);
   const [members, setMembers] = useState([]);
   const [recent, setRecent] = useState([]);
+  const [proposals, setProposals] = useState([]);
   const [form, setForm] = useState({ chatId: "", topic: "", extraId: "" });
   const [picked, setPicked] = useState([]);
   const [message, setMessage] = useState(null);
@@ -32,6 +34,7 @@ export default function SafetyApprovalsTab() {
       setSettings(data.settings);
       setMembers(Array.isArray(data.members) ? data.members : []);
       setRecent(Array.isArray(data.recent) ? data.recent : []);
+      setProposals(Array.isArray(data.proposals) ? data.proposals : []);
       setPicked(data.settings?.safetyUserIds || []);
       setForm({
         chatId: data.settings?.chatId || "",
@@ -177,6 +180,9 @@ export default function SafetyApprovalsTab() {
           </div>
         )}
       </div>
+
+      <HiringStagesCard settings={settings} proposals={proposals} busy={busy}
+        onToggle={(on) => save({ stageProposalsEnabled: on }, on ? "Bitrix stage proposals are on." : "Bitrix stage proposals are off.")} />
 
       <div className="card" style={{ marginTop: 16 }}>
         <h3 style={{ marginTop: 0 }}>Latest Safety replies</h3>

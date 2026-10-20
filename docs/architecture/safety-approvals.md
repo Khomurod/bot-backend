@@ -14,13 +14,17 @@ experience as text — or a team of two. Safety checks the driver and REPLIES
 to that post with the PSP / MVR / CLH reports and a sentence ("We can hire
 him", "good to go", "can't take him, 3 accidents").
 
-The bot listens to the group **quietly** — it never writes in the
-conversation — and posts each decision, separately, in the group's
+The bot listens to the group **quietly** — Safety Approvals never writes in
+the conversation — and posts each decision, separately, in the group's
 "approved / not approved" topic as **one block of files**: the CDL as a file,
 then every file Safety attached, with the status, the driver's name and phone,
 Safety's words, who posted and who decided, and a link to the original post
 under it. This is what the owner asked for on 16 October 2026: "all in one
 block of files", "all of Safety's PDFs", and "an unclear reply posts nothing".
+
+The same captured messages feed a second, separately switched feature: the
+**Bitrix stage proposals**, which DO reply in General ("move <driver> to
+<stage>?" with a button). See [`hiring-stage-proposals.md`](hiring-stage-proposals.md).
 
 ## The rules, and why each one exists
 

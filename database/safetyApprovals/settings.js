@@ -86,6 +86,8 @@ function shape(row) {
     topicId: normaliseTopicId(row?.topic_id),
     safetyUserIds: normaliseUserIds(row?.safety_user_ids),
     enabledAt: row?.enabled_at || null,
+    // Bitrix deal-stage proposals in the General topic (migration 0076).
+    stageProposalsEnabled: Boolean(row?.stage_proposals_enabled),
     updatedAt: row?.updated_at || null,
   };
 }
@@ -135,6 +137,9 @@ async function updateSafetyApprovalSettings(patch = {}, adminId = null) {
     safety_user_ids: patch.safetyUserIds === undefined
       ? normaliseUserIds(current?.safety_user_ids)
       : normaliseUserIds(patch.safetyUserIds),
+    stage_proposals_enabled: patch.stageProposalsEnabled === undefined
+      ? Boolean(current?.stage_proposals_enabled)
+      : Boolean(patch.stageProposalsEnabled),
   };
 
   const missing = missingForEnable(next);
@@ -147,12 +152,12 @@ async function updateSafetyApprovalSettings(patch = {}, adminId = null) {
     `UPDATE safety_approval_settings
         SET enabled = $1, chat_id = $2, chat_title = $3, chat_validated_at = $4,
             topic_id = $5, safety_user_ids = $6::bigint[], enabled_at = $7,
-            updated_at = NOW(), updated_by = $8
+            updated_at = NOW(), updated_by = $8, stage_proposals_enabled = $9
       WHERE id = 1
       RETURNING *`,
     [
       next.enabled, next.chat_id, next.chat_title, next.chat_validated_at,
-      next.topic_id, next.safety_user_ids, enabledAt, adminId,
+      next.topic_id, next.safety_user_ids, enabledAt, adminId, next.stage_proposals_enabled,
     ],
   );
   invalidateCache();

@@ -219,6 +219,13 @@ not `facebookCrypto` — the poller holds none of this app's secrets.
   candidates' names and phones, kept only while a late Safety reply could
   still need them. What a model made of a reply is never stored, only the
   verified outcome (`docs/architecture/safety-approvals.md`).
+- **The hiring-stage tables ride on them** (migration 0076):
+  `hiring_stage_threads` (one queue row per candidate conversation) and
+  `hiring_stage_proposals` (what was proposed in General and who answered),
+  plus `safety_approval_settings.stage_proposals_enabled`. The Bitrix deal is
+  referenced by its id only; nothing is copied from Bitrix but its title and
+  stage names. Closed proposals are deleted after 60 days
+  (`docs/architecture/hiring-stage-proposals.md`).
 - **Optimistic locking on roles**: `roles.version` means a custom-role edit
   that sends a stale version gets HTTP 409, never a silent overwrite.
 - **Audit redaction** (`database/adminAudit.js` `redact`) recursively strips

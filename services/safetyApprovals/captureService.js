@@ -5,8 +5,10 @@
  *
  * ONE GATE: the chat id. Every message the bot sees is asked about, and the
  * answer is no — no row, no log line — unless Safety Approvals is switched on
- * and pointed at this chat. The bot never writes in the recruiting group's
- * conversation; it only posts decisions in the approvals topic.
+ * and pointed at this chat. Safety Approvals never writes in the recruiting
+ * group's conversation; it only posts decisions in the approvals topic. (The
+ * Bitrix stage proposals, when switched on, reply in General — see
+ * services/hiringStages/conversationQueue.js, queued from here.)
  *
  * Every message in the group is stored (lib/safetyApprovals/messageShape.js),
  * because Safety answers a post the bot must already have seen. A message from
@@ -26,6 +28,8 @@ const {
 const messages = require('../../database/safetyApprovals/messages');
 const reviews = require('../../database/safetyApprovals/reviews');
 const { wakeSafetyApprovalWorker } = require('./worker');
+const { noteConversationMessage } = require('../hiringStages/conversationQueue');
+const { wakeHiringStageWorker } = require('../hiringStages/worker');
 
 /** How long a reply is left to finish arriving (an album comes item by item). */
 const SETTLE_SECONDS = 30;
@@ -80,6 +84,16 @@ async function captureSafetyApprovalMessage(message, deps = {}) {
         markedGroups.delete(chatId);
         console.error('[SAFETY APPROVALS] could not mark the group as recruitment:', err.message);
       });
+    }
+
+    // The same conversation, read for a Bitrix stage (services/hiringStages/).
+    // Its own failure is its own: it never stops a Safety decision below.
+    try {
+      if (await (deps.noteConversation || noteConversationMessage)(shaped, settings)) {
+        (deps.wakeStages || wakeHiringStageWorker)();
+      }
+    } catch (err) {
+      console.error('[HIRING STAGES] could not queue a conversation:', err.message);
     }
 
     const fromSafety = shaped.fromUserId !== null && settings.safetyUserIds.includes(String(shaped.fromUserId));
