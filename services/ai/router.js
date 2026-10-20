@@ -32,7 +32,7 @@
  *   this separation exists to prevent.
  */
 const { classifyFailure, invalidResponse, retryAfterMs, FAILURE } = require('../../lib/ai/classify');
-const { cooldownFor, eligibleProviders } = require('../../lib/ai/cooldown');
+const { cooldownFor, eligibleProviders, modelPause } = require('../../lib/ai/cooldown');
 const {
   getRoster, nextRotation, invalidateProviders, noteProviderSuccess,
 } = require('./registry');
@@ -265,6 +265,16 @@ async function runCapability({
     }
 
     for (const model of chain) {
+      // A model paused for its own spent allowance is skipped; the next model
+      // of the same provider is asked, and the provider stays in rotation.
+      const paused = modelPause(provider, model);
+      if (paused) {
+        attemptErrors.push({
+          provider: provider.providerKey, model, status: null,
+          kind: FAILURE.QUOTA, message: `paused until ${new Date(paused.until).toISOString()}`,
+        });
+        continue;
+      }
       attempts += 1;
       const startedAt = Date.now();
       try {
@@ -311,6 +321,7 @@ async function runCapability({
 
         await aiProviders.recordSuccess(provider.providerKey);
         noteProviderSuccess(provider.providerKey);
+        if (provider.modelCooldowns?.[model]) await aiProviders.clearModelPause(provider.providerKey, model);
         await recordAiCall({
           capabilityKey: capability, providerKey: provider.providerKey,
           model: result.model, outcome: 'ok', latencyMs: Date.now() - startedAt,
@@ -340,6 +351,18 @@ async function runCapability({
           // Skip this model, keep the provider, and let the maintenance job
           // confirm against the listing before anything is retired for good.
           reportModelRefusal({ providerKey: provider.providerKey, model, error: err.message });
+          continue;
+        }
+
+        if (verdict.kind === FAILURE.QUOTA && verdict.scope === 'model') {
+          // This model's own allowance is spent: pause IT until the reset and
+          // ask the next model. The rest of the chain has allowances of its own.
+          const pause = cooldownFor({
+            kind: FAILURE.QUOTA,
+            retryAfterMs: retryAfterMs({ headerValue: err.retryAfterHeader, message: err.message, maxMs: 86_400_000 }),
+          });
+          await aiProviders.pauseModel(provider.providerKey, model, { until: pause.until, reason: pause.reason });
+          invalidateProviders();
           continue;
         }
 

@@ -27,6 +27,13 @@ const KIND_WORDING = {
   unknown: "Could not tell what went wrong.",
 };
 
+/** Any model of this provider paused for its own spent allowance right now. */
+function hasPausedModel(provider) {
+  const now = Date.now();
+  return Object.values(provider.modelCooldowns || {})
+    .some((entry) => entry?.until && new Date(entry.until).getTime() > now);
+}
+
 export default function ProviderCard({ provider, onSaved, flash }) {
   const [form, setForm] = React.useState({
     label: provider.label || provider.providerKey,
@@ -152,9 +159,11 @@ export default function ProviderCard({ provider, onSaved, flash }) {
       </div>
 
       {/* A cooldown always says why — the schema refuses one without a reason. */}
-      {provider.cooledUntil && (
+      {(provider.cooledUntil || hasPausedModel(provider)) && (
         <div style={{ marginTop: 8, fontSize: 12, color: "#f59e0b" }}>
-          Not being asked right now: {provider.cooldownReason}{" "}
+          {provider.cooledUntil
+            ? <>Not being asked right now: {provider.cooldownReason}{" "}</>
+            : <>Some models are waiting for their allowance to reset; the others are asked meanwhile.{" "}</>}
           <button type="button" className="btn btn-ghost btn-sm" onClick={clearCooldown}>
             Put back in rotation
           </button>
@@ -166,6 +175,7 @@ export default function ProviderCard({ provider, onSaved, flash }) {
       <ModelChainEditor
         chain={models}
         discovered={provider.discoveredModels || []}
+        cooldowns={provider.modelCooldowns || {}}
         onChange={(next) => set("modelChain", next)}
       />
       <div style={{ marginTop: 4, fontSize: 11, color: "#94a3b8" }}>
