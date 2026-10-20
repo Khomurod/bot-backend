@@ -21,7 +21,9 @@
  * (config.bitrix24FieldMap).
  *
  * Read-only and best-effort throughout: a Bitrix outage degrades the sender
- * choice back to the shared number, it never blocks the lead.
+ * choice back to the shared number, it never blocks the lead. (The one write
+ * to an existing record — a deal's stage, after a person pressed a button —
+ * lives in services/bitrix24DealStages.js.)
  */
 const config = require('../config/config');
 const { getBitrixConfig } = require('../database/bitrix');

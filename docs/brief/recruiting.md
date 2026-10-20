@@ -156,3 +156,23 @@ the same treatment home time got, and for the same reason.
   `driver` to `recruitment` so no driver feature acts on it. Captured messages
   are deleted after 60 days. See
   [`docs/architecture/safety-approvals.md`](../architecture/safety-approvals.md).
+
+## Bitrix stage proposals (the recruiting group's General topic)
+
+- **The bot follows each candidate's conversation in General** ("CLH sent",
+  "CLEAN", "Approved") and, when it shows the candidate has reached a later
+  stage of the Bitrix deal pipeline, **replies there with "move <driver> to
+  <stage>?" and a Move / No button**. Anyone in the group may press it; only
+  then does the deal move (`crm.deal.update`), after it is read again — a deal
+  moved by hand meanwhile is not moved. The owner's request, 20 October 2026.
+- The deal is found by the phone a recruiter typed, else by first AND last
+  name; two different people matching proposes nothing. With no deal, the
+  recruiter who posted the candidate is asked once to create it, with a
+  "search again" button.
+- A model picks the stage by meaning; `lib/hiringStages/proposal.js` keeps only
+  a stage of that pipeline, forward of where the deal is (or a lost stage),
+  quoting words somebody wrote. SSNs, birth dates, licence numbers and phones
+  are removed before the text is sent; no photo is.
+- Off by default (Settings → Safety Approvals → 5, needs Safety Approvals on).
+  Proposals are deleted after 60 days. See
+  [`docs/architecture/hiring-stage-proposals.md`](../architecture/hiring-stage-proposals.md).

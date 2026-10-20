@@ -156,5 +156,7 @@ module.exports = {
   listSenderMessagesAround,
   listSafetyReplies,
   purgeOldMessages,
+  // database/hiringStages/threads.js reads the same rows.
+  mapMessageRow: mapRow,
   __mapRowForTests: mapRow,
 };

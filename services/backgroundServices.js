@@ -119,6 +119,10 @@ const {
   stopSafetyApprovalWorker,
 } = require('./safetyApprovals/worker');
 const {
+  startHiringStageWorker,
+  stopHiringStageWorker,
+} = require('./hiringStages/worker');
+const {
   startPolicyWatcher,
   stopPolicyWatcher,
 } = require('./ai/policy/policyService');
@@ -236,6 +240,9 @@ function startBackgroundServices({ telegram }) {
   // Reads Safety's replies in the recruiting group and posts each decision in
   // the approvals topic. `blocked` until Safety Approvals is switched on.
   startSafetyApprovalWorker({ telegram: telegram || null });
+  // Reads candidate conversations in the same group's General topic and
+  // proposes Bitrix deal stages there. `blocked` until its switch is on.
+  startHiringStageWorker({ telegram: telegram || null });
   // A saved driver profile keeps the person layer current (unit change,
   // Telegram id). Registered here so database/ never depends upward.
   setProfileSavedHook(onProfileSaved);
@@ -283,6 +290,7 @@ function stopBackgroundServices() {
   try { stopFinanceDocumentReader(); } catch (err) { console.error('[SHUTDOWN] stopFinanceDocumentReader failed:', err.message); }
   try { stopFinanceWeeklyReport(); } catch (err) { console.error('[SHUTDOWN] stopFinanceWeeklyReport failed:', err.message); }
   try { stopSafetyApprovalWorker(); } catch (err) { console.error('[SHUTDOWN] stopSafetyApprovalWorker failed:', err.message); }
+  try { stopHiringStageWorker(); } catch (err) { console.error('[SHUTDOWN] stopHiringStageWorker failed:', err.message); }
   try { stopPolicyWatcher(); } catch (err) { console.error('[SHUTDOWN] stopPolicyWatcher failed:', err.message); }
   try { stopModelMaintenance(); } catch (err) { console.error('[SHUTDOWN] stopModelMaintenance failed:', err.message); }
   try { stopTelegramDestinationProbe(); } catch (err) { console.error('[SHUTDOWN] stopTelegramDestinationProbe failed:', err.message); }

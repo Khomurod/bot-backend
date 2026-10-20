@@ -190,6 +190,20 @@ reads the text out.
 | Reading a reply and posting the decision | `services/safetyApprovals/{reviewer,aiReading,announcer}.js`; worker `services/safetyApprovals/worker.js`, key `safety_approvals`, capability `safety_approval_reading` |
 | Settings → Safety Approvals | `server/routes/settings/safetyApprovalRoutes.js`, admin `settings/SafetyApprovalsTab.jsx`, `admin/src/api/safetyApprovals.js` |
 
+### 5c. Hiring Stage Proposals (Bitrix deal stages from the General topic)
+
+| Concern | Current files |
+|---|---|
+| What leaves for a model (no SSN, no phone); the phones a deal is found by | `lib/hiringStages/redact.js` (pure) |
+| A candidate's conversation as the model reads it | `lib/hiringStages/conversation.js` (pure) |
+| Which answers may become a proposal (real stage, forward only, real quote) | `lib/hiringStages/proposal.js` (pure) |
+| The group messages and their buttons | `lib/hiringStages/messages.js` (pure) |
+| The conversation queue, the proposals | `database/hiringStages/{threads,proposals}.js`, migration 0076 |
+| Bitrix deals: find, stages, the one write | `services/bitrix24DealStages.js`, `services/hiringStages/{dealFinder,stagePlan}.js` |
+| Queueing from capture; reading and proposing | `services/hiringStages/{conversationQueue,reviewer,aiReading,groupMessages}.js`; worker `services/hiringStages/worker.js`, key `hiring_stage_proposals`, capability `hiring_stage_reading` |
+| The buttons | `bot/handlers/hiringStageHandlers.js` (thin) → `services/hiringStages/actions.js` |
+| The switch and history | `admin/src/pages/settings/HiringStagesCard.jsx` inside Settings → Safety Approvals |
+
 ### 6. AI / Insights Module
 
 | Concern | Current files |
