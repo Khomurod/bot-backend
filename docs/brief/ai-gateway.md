@@ -30,7 +30,14 @@ stay in §4a. The provider terms watcher is
   argument: quota language is checked BEFORE the transient status set, because a
   spent free tier arrives as a 429 and 429 is in that set. A 400/404/422 is OUR
   request being wrong, so it moves on **without cooling anyone** — one stale
-  model name must not disable a working provider.
+  model name must not disable a working provider. **Two Groq answers carry its
+  billing link and are NOT quota** (October 2026): `Request too large for model
+  … reduce max_tokens` is that one model's output cap — skip the model, cool
+  nothing — and a per-MINUTE limit (TPM / RPM / OTPM) is TRANSIENT. Read as
+  quota, one oversized request to `qwen/qwen3.8-27b` cooled all of Groq until
+  UTC midnight on 19 and 20 October, and every AI feature, Safety Approvals
+  first, had no provider for the day (`tests/aiClassifyGroqLimits.test.js`).
+  Per-DAY limits (TPD, `free-models-per-day`) stay quota.
 - **A provider's name or label is never a key.** Production once held a
   disabled provider whose operator-typed name was a pasted OpenRouter key. A
   name is shown in the admin and written to logs, while a key is encrypted and
