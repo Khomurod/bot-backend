@@ -30,7 +30,7 @@ without any timer firing), `tests/jobQueueScheduler.test.js` and
 
 | Service | Tick | What it does |
 |---|---|---|
-| `schedulerService` | 60s + hourly retention | delivers due `scheduled_messages` |
+| `schedulerService` | 60s + hourly retention | delivers due `scheduled_messages`; hourly, releases a claim a dead process left in `processing` 2h+ past its time — never re-sent: a weekly message that missed one run carries on next week, anything else is marked `failed` (`last_run_status = 'interrupted'`) for a person (a PTI reminder sat stuck May–October 2026) |
 | `dataRetention` (on the scheduler's hourly retention tick) | 1h | prunes the seven tables that grow — safety events, AI call log, coaching, resolved findings, finished notices, resolved duplicate reports, `service_runs` idempotency keys. Catalogued `data_retention` and recorded through `withRunRecord`, so a prune that stops is visible; it used to report only to `console.error` |
 | `telegramDestinationProbe` | 6h, first 2 min after boot | asks Telegram about every configured destination chat; a group upgraded to a supergroup is followed to its new id everywhere (settings, `groups` row, queued notices) before a send has to fail on it. Catalogued `telegram_destination_probe`; see `docs/architecture/operational-notifications.md` |
 | `dispatchEtaUpdateService` | 90s | per-group ETA updates, `FOR UPDATE SKIP LOCKED` claims |

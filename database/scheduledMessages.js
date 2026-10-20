@@ -122,6 +122,49 @@ async function claimScheduledMessage(id) {
   return res.rows[0] || null;
 }
 
+/**
+ * Rows claimed for sending more than `olderThanMinutes` past their time and
+ * never released — see `decideStaleClaim` in services/scheduledMessageUtils.js.
+ * The age is computed here, in the database's own clock, because
+ * `scheduled_at` is a TIMESTAMP without a zone and reading it back into
+ * JavaScript would apply the process's.
+ */
+async function listStaleClaims({ olderThanMinutes = 120 } = {}) {
+  const res = await query(
+    `SELECT id, schedule_type, schedule_timezone, weekly_day_of_week, weekly_time_local,
+            EXTRACT(EPOCH FROM (NOW() - scheduled_at)) / 86400.0 AS days_overdue
+       FROM scheduled_messages
+      WHERE status = 'processing'
+        AND scheduled_at < NOW() - ($1 || ' minutes')::interval
+      ORDER BY id`,
+    [String(Math.max(1, Number(olderThanMinutes) || 120))]
+  );
+  return res.rows.map((r) => ({ ...r, days_overdue: Number(r.days_overdue) }));
+}
+
+/**
+ * Release one stuck claim: back to `pending` at `nextScheduledAt`, or `failed`
+ * when there is none. GUARDED ON `processing`, so a send that finishes after
+ * all and writes its own outcome is never overwritten by this.
+ * @returns {Promise<boolean>} whether the row was released
+ */
+async function releaseStaleClaim(id, { nextScheduledAt = null } = {}) {
+  const res = nextScheduledAt
+    ? await query(
+      `UPDATE scheduled_messages
+          SET status = 'pending', scheduled_at = $2, last_run_status = 'interrupted'
+        WHERE id = $1 AND status = 'processing'`,
+      [id, nextScheduledAt]
+    )
+    : await query(
+      `UPDATE scheduled_messages
+          SET status = 'failed', last_run_status = 'interrupted'
+        WHERE id = $1 AND status = 'processing'`,
+      [id]
+    );
+  return (res.rowCount || 0) > 0;
+}
+
 async function deleteScheduledMessage(id) {
   await query('DELETE FROM scheduled_messages WHERE id = $1', [id]);
 }
@@ -135,5 +178,7 @@ module.exports = {
   updateScheduledMessageStatus,
   recordRecurringScheduledMessageRun,
   claimScheduledMessage,
+  listStaleClaims,
+  releaseStaleClaim,
   deleteScheduledMessage,
 };
