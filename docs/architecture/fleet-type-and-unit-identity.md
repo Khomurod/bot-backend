@@ -152,7 +152,10 @@ no *parsing* change can exclude a group the previous rule included:
   exclude a group, and recording it is the point;
 - otherwise the title decides **by either reading**, because `lib/board/` is
   strict (the Board always parenthesises its labels) while a Telegram title does
-  not have to. `COMPANY DRIVERS` with no brackets is a company driver's chat.
+  not have to. `COMPANY DRIVERS` with no brackets is a company driver's chat,
+  and since October 2026 so is a bare `( COMPANY )` — reading only the long form
+  had typed 15 company drivers as owner operators. A RENAME now moves the
+  recorded type too (`services/driverGroupTitleSync.js`).
 
 `tests/broadcastCompanyDriverTarget.test.js` states that floor as a property, not
 a list: for every title the old rule reached, the new rule must reach it too

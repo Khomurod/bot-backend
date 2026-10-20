@@ -221,7 +221,7 @@ test('getLoadStates: one read for the board, only the columns a pass uses', { sk
   assert.deepEqual([...states.keys()].sort(), ['ORD-1', 'ORD-2'], 'a load never seen is simply absent');
   assert.deepEqual(Object.keys(states.get('ORD-1')).sort(), [
     'groupId', 'loadIdentifier', 'orderId', 'personId', 'phase', 'phaseSince',
-    'unitNumber', 'wasAtDelivery', 'wasAtPickup',
+    'seenAt', 'unitNumber', 'wasAtDelivery', 'wasAtPickup',
   ]);
   assert.equal(states.get('ORD-1').wasAtPickup, true);
   assert.equal(states.get('ORD-1').loadIdentifier, 'L1');

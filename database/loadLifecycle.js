@@ -52,7 +52,7 @@ async function getLoadState(orderId) {
 
 /** The columns a pass needs about a load it saw before: who it is, and what was witnessed. */
 const PASS_STATE_COLUMNS = `order_id, load_identifier, group_id, person_id, unit_number,
-  phase, phase_since, was_at_pickup, was_at_delivery`;
+  phase, phase_since, was_at_pickup, was_at_delivery, last_seen_at`;
 
 function mapPassState(row) {
   return {
@@ -65,6 +65,8 @@ function mapPassState(row) {
     phaseSince: row.phase_since,
     wasAtPickup: row.was_at_pickup === true,
     wasAtDelivery: row.was_at_delivery === true,
+    // Was this truck ever seen on this load? (lib/loads/lifecycleReport.js worthAsking)
+    seenAt: row.last_seen_at || null,
   };
 }
 

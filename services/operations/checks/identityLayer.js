@@ -135,20 +135,30 @@ function checkPersonOnTwoActiveGroups({ groups, personGroups, people }) {
  * This is the contradiction the resolver refuses to resolve by itself: a chat
  * title must not evict the driver the layer says is in the truck. Somebody
  * decides.
+ *
+ * NOT when two live groups both claim the truck: that is
+ * `identity.duplicate_unit`'s finding, and filing it here too counted one
+ * conflict twice (17 of 21 in production, October 2026).
  */
 function checkUnitContested({ groups, profiles, personGroups, units, people }) {
   const open = openByGroup(personGroups);
   const byGroup = profilesByGroup(profiles);
   const holders = unitsByNumber(units);
   const names = new Map((people || []).map((p) => [p.id, p.display_name]));
+  const live = activeDriverGroups(groups).map((g) => ({
+    g,
+    unit: String(byGroup.get(g.id)?.unit_number || '').trim(),
+    fleet: resolveDriverType({ column: byGroup.get(g.id)?.driver_type, title: g.group_name }).fleetType,
+  }));
+  const compatible = (a, b) => a === b || a === FLEET_TYPES.UNKNOWN || b === FLEET_TYPES.UNKNOWN;
+  const claimedTwice = ({ unit, fleet }) => live
+    .filter((other) => other.unit === unit && compatible(other.fleet || FLEET_TYPES.UNKNOWN, fleet || FLEET_TYPES.UNKNOWN))
+    .length > 1;
   const findings = [];
-  for (const g of activeDriverGroups(groups)) {
+  for (const { g, unit, fleet } of live) {
     const association = open.get(g.id);
-    const unit = String(byGroup.get(g.id)?.unit_number || '').trim();
     if (!association || !unit) continue;
-    const fleet = resolveDriverType({
-      column: byGroup.get(g.id)?.driver_type, title: g.group_name,
-    }).fleetType;
+    if (claimedTwice({ unit, fleet })) continue;
     const contenders = holdersInWay(holders.get(unit), fleet)
       .filter((h) => h.person_id !== association.person_id);
     const holder = contenders[0];

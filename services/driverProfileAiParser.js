@@ -67,7 +67,11 @@ async function parseGroups(groups) {
       last_name: cleanStr(ai.last_name) || base.last_name,
       secondary_first_name: cleanStr(ai.secondary_first_name) || base.secondary_first_name,
       secondary_last_name: cleanStr(ai.secondary_last_name) || base.secondary_last_name,
-      driver_type: ai.driver_type || base.driver_type,
+      // The fleet is the company's naming convention, read by a rule
+      // (lib/drivers/driverProfileParse.js inferDriverType) — never a model's
+      // guess: an AI answering "owner" for "( COMPANY )" typed 15 company
+      // drivers as owner operators (October 2026).
+      driver_type: base.driver_type,
       source: 'ai',
     };
   });

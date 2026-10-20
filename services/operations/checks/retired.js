@@ -43,6 +43,16 @@ const RETIRED_CHECK_KEYS = Object.freeze([
   'raise.driver_unplaced',
   'raise.roster_not_rebuilt',
   'dispatch.team_driver_on_inactive_group',
+  // A one-time copy (migration 0016) of the old duplicate-unit scan. Owned by
+  // nothing, last seen September 2026, and superseded by the fleet-aware
+  // identity.duplicate_unit — they would otherwise stay open for ever.
+  'legacy.duplicate_unit',
+  'legacy.name_mismatch',
+  'legacy.ambiguous_match',
+  // "Still tracked but the group is inactive": 63 open rows, deliberately with
+  // no action, so nobody could ever close one (October 2026). An inactive
+  // group's last home/road row is history, not a problem.
+  'home_time.ghost_home_status',
 ]);
 
 function runRetiredChecks() {

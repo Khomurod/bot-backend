@@ -40,8 +40,12 @@ feature it belongs to.
   Dispatcher Board's identity and person-link checks (`board.*`), the two
   board-vs-Home-Time contradictions, the driver-raise review's
   (`raise.driver_unplaced`, `raise.roster_not_rebuilt`,
-  `dispatch.team_driver_on_inactive_group`), and fuel's
-  (`fuel.watch_on_inactive_group`). A finding resolves only when a sweep
+  `dispatch.team_driver_on_inactive_group`), fuel's
+  (`fuel.watch_on_inactive_group`), and — closed as noise in October 2026 —
+  the frozen `legacy.*` copy of the old duplicate-unit scan (superseded by the
+  fleet-aware `identity.duplicate_unit`) and `home_time.ghost_home_status` (an
+  inactive group's last home/road row is history, and the finding had no
+  action, so nobody could ever close one). A finding resolves only when a sweep
   completes the module owning its key, so deleting a check with its feature
   would leave its open findings open for ever. The Board itself is now read only
   by Home Time ([`dispatcher-board.md`](../architecture/dispatcher-board.md)).
@@ -84,9 +88,16 @@ feature it belongs to.
 - Two rules bound what may live in the registry. **The value must already be
   recorded somewhere else** — every action copies a fact the database already
   holds, never an inference. And **nothing is destructive**: every action is an
-  UPDATE of a nullable column whose previous value is captured in full. The
-  `home_time.ghost_home_status` finding deliberately has **no** action, because
-  retiring that row would destroy the only record of where a driver was.
+  UPDATE of a nullable column whose previous value is captured in full. That is
+  why `home_time.ghost_home_status` never had an action — retiring that row
+  would destroy the only record of where a driver was — and why the check was
+  retired rather than given one.
+- **Noise rules (October 2026).** A home stay past the allowance is filed only
+  for a live driver group; a road clock only past DOUBLE the allowance;
+  `identity.unit_contested` stays silent when two live groups both claim the
+  truck (that is `identity.duplicate_unit`'s, counted once); and a load is not
+  asked about when the board calls it delivered or cancelled, it has no truck,
+  or its truck has never reported a position on it.
 - Each `apply` locks its target **and its evidence** `FOR UPDATE` and
   **re-derives the answer inside the transaction** rather than trusting the
   payload the sweep computed. A finding can be hours old, and the dangerous edit

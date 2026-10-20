@@ -132,7 +132,10 @@ test('a driver is seen, works, comes home, changes truck, goes back out — one 
   unit = await harness.query('SELECT person_id FROM driver_units WHERE unit_number = $1 AND ended_at IS NULL', ['322']);
   assert.equal(unit.rows[0].person_id, personId, 'a chat title does not evict the recorded driver');
   const { findings } = await bound.sweep();
-  assert.ok(findings.some((f) => f.checkKey === 'identity.unit_contested' && f.subjectId === d.group.id), 'the contest is a finding for a person');
+  // Two live chats claim 322: ONE conflict, reported once as a duplicate unit
+  // (not again as a contest — October 2026). Either way, a person decides.
+  assert.ok(findings.some((f) => f.checkKey === 'identity.duplicate_unit'), 'the conflict is a finding for a person');
+  assert.ok(!findings.some((f) => f.checkKey === 'identity.unit_contested' && f.subjectId === d.group.id), 'counted once');
 
   // ── 6. A quiet driver is placed by the watchdog once allowed ───────────────
   const quiet = await harness.query(

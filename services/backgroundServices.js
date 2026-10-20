@@ -114,6 +114,7 @@ const {
   startFinanceWeeklyReport,
   stopFinanceWeeklyReport,
 } = require('./finance/weeklyReportService');
+const { reconcileTitles } = require('./driverGroupTitleSync');
 const {
   startSafetyApprovalWorker,
   stopSafetyApprovalWorker,
@@ -240,6 +241,10 @@ function startBackgroundServices({ telegram }) {
   // Reads Safety's replies in the recruiting group and posts each decision in
   // the approvals topic. `blocked` until Safety Approvals is switched on.
   startSafetyApprovalWorker({ telegram: telegram || null });
+  // Once per start: every driver profile up to what its chat title says
+  // ("( COMPANY )", "INACTIVE"). Renames after this are followed as they
+  // happen (bot/handlers/groupCaptureHandlers.js).
+  setTimeout(() => { reconcileTitles().catch(() => {}); }, 90_000).unref?.();
   // Reads candidate conversations in the same group's General topic and
   // proposes Bitrix deal stages there. `blocked` until its switch is on.
   startHiringStageWorker({ telegram: telegram || null });

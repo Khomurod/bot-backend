@@ -44,6 +44,12 @@ Every driver and staff Telegram group is a `groups` row: `telegram_group_id`,
 plus unit and driver parsed from the Telegram title (convention
 `WENZE UNIT # <unit> <NAME> (COMPANY DRIVER)`, parsed by
 `lib/drivers/driverGroupTitle.js`). `driver_profiles` hangs off it one-to-one.
+The profile's type and status **follow the title**: `( COMPANY )` / `LEASE`
+set the fleet and an appended `INACTIVE` the status, on every rename (followed
+even over a manual setting, for what the rename changed) and in one reconcile
+at startup (never over a manual setting, never reactivating) —
+`lib/drivers/titleSync.js`, `services/driverGroupTitleSync.js`. The fleet is
+read by that rule, never by a model.
 **Nearly every feature joins to `groups`** — surveys, broadcasts, dispatch, home
 time and bonuses.
 

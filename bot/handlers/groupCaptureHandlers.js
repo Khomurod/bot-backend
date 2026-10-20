@@ -11,6 +11,7 @@
  * required here import bot/bot.js, so the require graph stays acyclic.
  */
 const db = require('../../database/db');
+const { onGroupRenamed } = require('../../services/driverGroupTitleSync');
 const chatMigration = require('../../services/telegramChatMigration');
 const { notify: notifyOps } = require('../../services/notifications/send');
 const botUsers = require('../../database/botUsers');
@@ -222,6 +223,11 @@ function registerGroupCaptureHandlers(bot) {
       let group = null;
       if (ctx.chat && (ctx.chat.type === 'group' || ctx.chat.type === 'supergroup')) {
         group = await db.upsertGroup(ctx.chat.id, ctx.chat.title || 'Unknown');
+        // A renamed driver chat: its type and status follow the new title
+        // ("( COMPANY )", "INACTIVE"). Detached; it never fails the update.
+        if (group?.previous_group_name && group.previous_group_name !== group.group_name) {
+          onGroupRenamed(group, group.previous_group_name).catch(() => {});
+        }
         // The person behind this chat. Resolved once per group per ten minutes
         // (the resolver caches), detached, and never allowed to fail the update:
         // a driver's message must be processed whether or not the identity

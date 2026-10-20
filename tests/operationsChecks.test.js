@@ -319,17 +319,17 @@ test('the road clock uses the configured allowance, not a hardcoded four weeks',
   assert.equal(homeTime.checkRoadClockPastAllowance({ ...args, settings: { road_allowance_weeks: 12 } }).length, 0);
 });
 
-test('a home-status row for a gone or inactive group is auto-retirable', () => {
-  const homeStatus = [
-    { group_id: 3, state: 'road', state_since: '2026-01-01' },
-    { group_id: 999, state: 'home', state_since: '2026-01-01' },
-    { group_id: 1, state: 'road', state_since: '2026-09-01' },
+test('an inactive group "home for months" is not a home stay; only a live driver group is', () => {
+  const roadHistory = [
+    { id: 1, group_id: 1, home_arrived_at: '2026-01-01', return_to_road_at: null },
+    { id: 2, group_id: 3, home_arrived_at: '2026-01-01', return_to_road_at: null },
   ];
-  const found = homeTime.checkGhostHomeStatus({ homeStatus, groupsById: GROUPS_BY_ID });
-
-  assert.deepEqual(found.map((f) => f.subjectId).sort((a, b) => a - b), [3, 999]);
-  assert.ok(found.every((f) => f.tier === 'auto'));
-  assert.equal(found.find((f) => f.subjectId === 999).evidence.groupExists, false);
+  const homeStatus = [{ group_id: 1, state: 'home' }, { group_id: 3, state: 'home' }];
+  const found = homeTime.runHomeTimeChecks({
+    roadHistory, homeStatus, groupsById: GROUPS_BY_ID, settings: SETTINGS, now: NOW,
+  }).filter((f) => f.checkKey === 'home_time.home_stay_past_allowance');
+  assert.ok(found.every((f) => f.subjectId !== 3), 'group 3 is inactive');
+  assert.ok(!homeTime.CHECK_KEYS.includes('home_time.ghost_home_status'), 'retired');
 });
 
 test('the road-clock check ignores departed drivers so they are counted once', () => {

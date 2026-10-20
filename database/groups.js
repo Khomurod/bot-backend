@@ -16,16 +16,24 @@ const { cachedGroupRow, rememberGroupRow, forgetGroupRows } = require('./groupRo
 async function upsertGroup(telegramGroupId, groupName) {
   const cached = cachedGroupRow(telegramGroupId);
   if (cached && cached.group_name === groupName) return cached;
+  // `previous_group_name` is the title BEFORE this write — so a rename is seen
+  // (services/driverGroupTitleSync.js). NULL for a chat seen the first time.
   const res = await query(
-    `INSERT INTO groups (telegram_group_id, group_name, active, status_source)
+    `WITH before AS (SELECT group_name FROM groups WHERE telegram_group_id = $1)
+     INSERT INTO groups (telegram_group_id, group_name, active, status_source)
      VALUES ($1, $2, TRUE, 'bot')
      ON CONFLICT (telegram_group_id)
      DO UPDATE SET group_name = EXCLUDED.group_name
-     RETURNING *`,
+     RETURNING *, (SELECT group_name FROM before) AS previous_group_name`,
     [telegramGroupId, groupName]
   );
   console.log(`[DB] Group upserted: ${groupName} (${telegramGroupId})`);
-  if (res.rows[0]) rememberGroupRow(res.rows[0]);
+  if (res.rows[0]) {
+    // The cache keeps the row WITHOUT the previous title: a cached answer must
+    // never look like a rename again on the next message.
+    const { previous_group_name: _previous, ...row } = res.rows[0];
+    rememberGroupRow(row);
+  }
   return res.rows[0];
 }
 
