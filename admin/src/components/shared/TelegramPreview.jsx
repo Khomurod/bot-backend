@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
+import { sanitizeTelegramHtmlForPreview } from "../../telegramHtmlPreview";
 
 /**
  * A faithful mock-up of how a message will look in Telegram: the bubble, the
@@ -218,7 +219,12 @@ export const TelegramPreview = React.memo(function TelegramPreview({ text, butto
         <div
           className="telegram-html-preview"
           style={{ whiteSpace: "pre-wrap", fontSize: 15, lineHeight: 1.4, wordBreak: "break-word" }}
-          dangerouslySetInnerHTML={{ __html: window.sanitizeTelegramHtmlForPreview ? window.sanitizeTelegramHtmlForPreview(content) : content }}
+          // ALWAYS SANITIZED. This used to call `window.sanitizeTelegramHtmlForPreview`
+          // when present, and nothing ever set it — so the preview rendered
+          // message text (typed by any admin, or produced by AI translation) as
+          // raw HTML in the viewing admin's session. The sanitizer keeps only
+          // Telegram's own tags and safe link targets.
+          dangerouslySetInnerHTML={{ __html: sanitizeTelegramHtmlForPreview(content) }}
         />
       </div>
 
