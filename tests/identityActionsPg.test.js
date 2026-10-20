@@ -137,8 +137,11 @@ test("sync_unit brings the person's truck to the profile's; refuses when somebod
     applyCorrection({ finding: filed, actionKey: 'identity.sync_unit', payload: { personId: pb, unitNumber: '322', groupId: b.id }, initiator: 'admin', admin: ADMIN }),
     (err) => err.stale === true || err.name === 'StaleCorrectionError'
   );
-  const contested = (await sweep()).findings.filter((f) => f.checkKey === 'identity.unit_contested');
-  assert.deepEqual(contested.map((f) => f.subjectId), [b.id], 'and the sweep reports the contest for a person');
+  // Two live groups now claim 322: that is ONE conflict, reported once — as a
+  // duplicate unit — and not a second time as a contest (October 2026).
+  const swept = (await sweep()).findings;
+  assert.deepEqual(swept.filter((f) => f.checkKey === 'identity.unit_contested'), [], 'not counted twice');
+  assert.ok(swept.some((f) => f.checkKey === 'identity.duplicate_unit'), 'and the sweep reports it once');
 
   await revertCorrection({ correctionId: correction.id, admin: ADMIN, reason: 'undo' });
   units = await harness.query('SELECT unit_number FROM driver_units WHERE person_id = $1 AND ended_at IS NULL', [pa]);

@@ -38,7 +38,8 @@ and every API client function is exactly what it was.
   `other_company`, plus an active filter), media via staged Telegram `file_id`s,
   placeholders via `broadcastTemplateService.js`, per-group results in
   `broadcast_deliveries`.
-  `company_drivers` asks `inferDriverType()` (`/company\s+drivers?/i`), the same
+  `company_drivers` asks `inferDriverType()` (any `COMPANY` word — `( COMPANY )` on
+  its own counts since October 2026), the same
   test the rest of the application uses. It used to match the literal string
   `'(COMPANY DRIVER)'`, so every real `(COMPANY DRIVERS)` team title was silently
   dropped from every company-driver broadcast — and nothing anywhere reports a

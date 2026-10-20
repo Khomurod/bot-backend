@@ -185,6 +185,12 @@ function checkHomeStayPastAllowance({
   const allowance = settings.home_allowance_days || DEFAULT_HOME_ALLOWANCE_DAYS;
   return classifyOpenCycles({ roadHistory, homeStatus })
     .filter((c) => c.evidenceClass === 'C')
+    // Only live driver groups, as the road check below: a departed driver's
+    // chat "home for 67 days" is not a home stay, and it was filed as serious.
+    .filter(({ cycle }) => {
+      const group = groupsById.get(cycle.group_id);
+      return group && group.active === true && group.group_type === 'driver';
+    })
     .map(({ cycle }) => ({ cycle, days: daysBetween(cycle.home_arrived_at, now) }))
     .filter(({ days }) => days != null && days > allowance + GRACE_DAYS)
     .map(({ cycle, days }) => ({
@@ -220,14 +226,17 @@ function checkRoadClockPastAllowance({
     // finding, and reporting it here would double-count it.
     if (!group || group.active !== true || group.group_type !== 'driver') continue;
     const days = daysBetween(status.state_since, now);
-    if (days == null || days <= allowanceDays) continue;
+    // Past DOUBLE the allowance. A few weeks over is ordinary and showed as 21
+    // info rows nobody could act on; months over means a home stay went
+    // unrecorded, and that is worth a person's look.
+    if (days == null || days <= allowanceDays * 2) continue;
 
     findings.push({
       checkKey: 'home_time.road_clock_past_allowance',
       subjectType: 'group',
       subjectId: status.group_id,
       title: `${groupLabel(group, status.group_id)}: on the road ${days} days (allowance ${allowanceDays})`,
-      severity: days > allowanceDays * 2 ? 'warning' : 'info',
+      severity: 'warning',
       tier: 'warning',
       evidence: {
         groupId: status.group_id,
@@ -241,44 +250,6 @@ function checkRoadClockPastAllowance({
   return findings;
 }
 
-/**
- * A home-status row for a group that is gone or inactive.
- *
- * 54 in production. Harmless on its own, but it is what makes every count of
- * "drivers on the road" quietly wrong.
- */
-function checkGhostHomeStatus({ homeStatus = [], groupsById = new Map() }) {
-  return homeStatus
-    .filter((status) => {
-      const group = groupsById.get(status.group_id);
-      return !group || group.active !== true;
-    })
-    .map((status) => {
-      const group = groupsById.get(status.group_id);
-      return {
-        checkKey: 'home_time.ghost_home_status',
-        subjectType: 'group',
-        subjectId: status.group_id,
-        title: `${groupLabel(group, status.group_id)}: still tracked as "${status.state}" but the group is `
-          + `${group ? 'inactive' : 'gone'}`,
-        severity: 'info',
-        tier: 'auto',
-        confidence: 90,
-        evidence: {
-          groupId: status.group_id,
-          state: status.state,
-          stateSince: status.state_since,
-          groupExists: Boolean(group),
-          groupActive: group ? group.active : null,
-        },
-        proposedChange: {
-          table: 'driver_home_status',
-          groupId: status.group_id,
-          action: 'retire',
-        },
-      };
-    });
-}
 
 /**
  * The pile of internal alerts nobody will ever receive.
@@ -355,7 +326,6 @@ const CHECKS = [
   checkClosableCycles,
   checkHomeStayPastAllowance,
   checkRoadClockPastAllowance,
-  checkGhostHomeStatus,
   checkExhaustedInternalAlerts,
 ];
 
@@ -363,7 +333,6 @@ const CHECK_KEYS = [
   'home_time.closable_open_cycle',
   'home_time.home_stay_past_allowance',
   'home_time.road_clock_past_allowance',
-  'home_time.ghost_home_status',
   'home_time.exhausted_internal_alerts',
 ];
 
@@ -382,6 +351,5 @@ module.exports = {
   checkClosableCycles,
   checkHomeStayPastAllowance,
   checkRoadClockPastAllowance,
-  checkGhostHomeStatus,
   checkExhaustedInternalAlerts,
 };

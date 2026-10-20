@@ -114,7 +114,7 @@ confidences suggest, because each single-source decision loses 10 to
 | `home_time.returned_to_road` | 85 | **75** ← tightest |
 | `identity.group_without_person` | 90 | 80 |
 | `identity.stale_unit_assignment` | 90 | 80 |
-| `home_time.ghost_home_status` | 90 | 80 |
+| `home_time.ghost_home_status` (retired October 2026) | 90 | 80 |
 | `home_time.closable_open_cycle` | 90 / 95 | 80 / 85 |
 | `identity.status_disagreement` | 95 | 85 |
 | `home_time.exhausted_internal_alerts` | 100 | 90 |

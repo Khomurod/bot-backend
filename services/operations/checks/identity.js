@@ -233,7 +233,7 @@ function checkUnitTitleMismatch({ groups, profiles }) {
       subjectId: group.id,
       title: `${group.group_name || `Group ${group.id}`}: profile says unit ${profileUnit}, title says ${titleUnit}`,
       severity: 'warning',
-      tier: 'approval',
+      tier: 'warning', // no action exists: a person decides, then edits the group
       confidence: 60,
       evidence: {
         groupId: group.id,
@@ -286,7 +286,7 @@ function checkSilentActiveGroups({ groups, now }) {
       subjectId: group.id,
       title: `${group.group_name || `Group ${group.id}`}: active but silent for ${silentFor} days`,
       severity: 'info',
-      tier: 'approval',
+      tier: 'warning', // no action exists: a person decides, then edits the group
       confidence: 55,
       evidence: {
         groupId: group.id,

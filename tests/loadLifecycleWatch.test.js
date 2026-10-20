@@ -291,16 +291,34 @@ test('a disagreement is ALWAYS a question, however fresh', async () => {
   assert.match(calls.findings[0].title, /disagree/);
 });
 
-test('a load unreadable for HALF A DAY becomes a question', async () => {
+test('a load unreadable for HALF A DAY becomes a question — once its truck was ever seen', async () => {
   const { deps, calls } = harness({
     orders: [{ ...ORDER, status: 'dispatched' }],
-    // No position at all: nothing can be read about it.
+    // No position now, but this truck was seen on this load before.
     position: null,
-    stored: { orderId: 'ORD-1', phase: 'assigned', phaseSince: at(60 * 20), wasAtPickup: false },
+    stored: { orderId: 'ORD-1', phase: 'assigned', phaseSince: at(60 * 20), wasAtPickup: false, seenAt: at(60 * 21) },
   });
   const summary = await watcher.runLoadLifecycleCheck({ now: NOW, deps });
   assert.equal(summary.asked, 1, 'twenty hours in one unreadable phase is worth a look');
   assert.match(calls.findings[0].title, /not enough evidence/);
+});
+
+test('NOT A QUESTION: a truck that never reported, a finished load, a load with no truck', async () => {
+  for (const [order, stored, why] of [
+    [{ ...ORDER, status: 'dispatched' }, {}, 'never reported a position: an ELD question, not a load one'],
+    [{ ...ORDER, status: 'Delivered' }, { seenAt: at(60 * 21) }, 'the board already says delivered'],
+    [{ ...ORDER, status: 'Canceled' }, { seenAt: at(60 * 21) }, 'cancelled'],
+  ]) {
+    const { deps, calls } = harness({
+      orders: [order],
+      position: null,
+      stored: { orderId: 'ORD-1', phase: 'assigned', phaseSince: at(60 * 20), wasAtPickup: false, ...stored },
+    });
+    // eslint-disable-next-line no-await-in-loop
+    const summary = await watcher.runLoadLifecycleCheck({ now: NOW, deps });
+    assert.equal(summary.asked, 0, why);
+    assert.deepEqual(calls.findings, [], why);
+  }
 });
 
 test('the same load twenty minutes in is not a question — that is a Tuesday', async () => {
