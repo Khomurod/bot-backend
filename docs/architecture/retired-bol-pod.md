@@ -48,17 +48,16 @@ broadcasts, Live Locations and home-time tracking.
   and, through `services/datatruckLoadService.js`, load control and `/load`. `fetchOrdersByDocumentWindow`, written for this feature, is
   still used by Live Locations (`services/liveLocations/orders.js`). The client
   never uploads anything.
-- **The tables**, still created by `database/baseline/013_bot_access_and_datatruck_docs.sql`
-  (`datatruck_document_deliveries`, with its `central_*` columns and status
-  checks) and `021_bol_pod_forwarding.sql` (`bol_pod_forwarding_settings`,
-  single row). Nothing reads or writes them. The removal deliberately touched no
-  schema: the delivery ledger is the only record of what was forwarded where,
-  so taking them out of the baseline goes together with dropping them — a
-  separate, deliberate step with a backup first. Neither is on the Settings →
-  Retired Leftovers allow-list yet.
-- **The stale health row.** `system_health_states` still holds a
-  `datatruck_documents` row from the last pass. No observation writes it any
-  more; it is left for the same cleanup.
+- **The tables** `datatruck_document_deliveries` (the only record of what was
+  forwarded where) and `bol_pod_forwarding_settings`, plus the older
+  `bol_pod_monitor_settings`, are read or written by nothing. They stay on a
+  deployed database until an administrator drops them from **Settings →
+  Retired feature leftovers** (group `bol_pod`) after a backup. The baseline no
+  longer creates them (`013_bot_access_and_datatruck_docs.sql`,
+  `021_bol_pod_forwarding.sql`), so a drop stays done.
+- **The stale health row.** The `datatruck_documents` row in
+  `system_health_states` is deleted by migration 0073; nothing writes it any
+  more, and the health screen must not keep calling it `ok`.
 - **The older intake/upload pipeline stays removed.** Before forwarding came
   under admin control, drivers could post documents in their group to be
   AI-classified, matched to a load and uploaded to Datatruck. That never ran

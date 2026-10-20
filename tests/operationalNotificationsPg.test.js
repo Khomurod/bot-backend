@@ -67,12 +67,11 @@ test('a patch touching one section does not blank another', { skip: skipWithoutP
   const harness = await seed(t);
   const { operationalNotificationSettings: s } = load(harness);
   await s.updateNotificationSettings({
-    defaultChatId: '-100111', categoryChatIds: { load_lifecycle: '-100222' }, repeatAfterHours: 24,
+    defaultChatId: '-100111', categoryChatIds: { load_lifecycle: '-100222' },
   });
   await s.updateNotificationSettings({ categoryChatIds: { retention: '-100333' } });
   const cfg = await s.getNotificationSettings({ fresh: true });
   assert.equal(cfg.defaultChatId, '-100111');
-  assert.equal(cfg.repeatAfterHours, 24);
   assert.deepEqual(cfg.categoryChatIds, { load_lifecycle: '-100222', retention: '-100333' });
 });
 
@@ -85,14 +84,16 @@ test('an unknown category is refused rather than stored forever', { skip: skipWi
   );
 });
 
-test('a nonsense repeat window is clamped to the CHECK, not rejected by it',
+test('the repeat window is not a setting any more — its only reader went with fuel',
   { skip: skipWithoutPg() }, async (t) => {
     const harness = await seed(t);
     const { operationalNotificationSettings: s } = load(harness);
-    await s.updateNotificationSettings({ repeatAfterHours: 999999 });
-    assert.equal((await s.getNotificationSettings({ fresh: true })).repeatAfterHours, 8760);
-    await s.updateNotificationSettings({ repeatAfterHours: -5 });
-    assert.equal((await s.getNotificationSettings({ fresh: true })).repeatAfterHours, 1);
+    await s.updateNotificationSettings({ repeatAfterHours: 24, defaultChatId: '-100111' });
+    const cfg = await s.getNotificationSettings({ fresh: true });
+    assert.equal(cfg.defaultChatId, '-100111');
+    assert.equal('repeatAfterHours' in cfg, false);
+    const raw = await harness.query('SELECT repeat_after_hours FROM operational_notification_settings WHERE id = 1');
+    assert.equal(raw.rows[0].repeat_after_hours, 168, 'an ignored field writes nothing');
   });
 
 // ── saying a thing once ──────────────────────────────────────────────────────

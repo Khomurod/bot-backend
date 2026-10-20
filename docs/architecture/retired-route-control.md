@@ -32,11 +32,13 @@ group, and the route marked complete near the destination.
   driver-raise panel imported its `driverTypeLabel`; it went with that page
   ([`retired-driver-raise.md`](retired-driver-raise.md)).
 - **The tables** `route_assignments`, `route_assignment_attachments`,
-  `route_monitor_events` and `gmaps_settings` still exist and are still created
-  by `database/baseline/019_gmaps_and_route_control.sql`. Nothing reads or
-  writes them. They cannot simply stop being created: migration 0026 alters
-  `route_assignments`, and a fresh database runs it after the baseline. Clearing
-  them is a separate, deliberate step with a backup first.
+  `route_monitor_events` and `gmaps_settings` stay on a deployed database, with
+  their rows, until an administrator drops them from **Settings → Retired
+  feature leftovers** (group `route_control`) after a backup. The baseline no
+  longer creates them (`database/baseline/019_gmaps_and_route_control.sql`), so a
+  drop stays done. Migration 0026 still alters `route_assignments`, so a
+  BRAND-NEW database — and only that, before its migration ledger exists — gets
+  a two-column stub of it for its first boot.
 - **Old Telegram buttons.** A Replace / Ignore button on an old route message is
   acknowledged by the `callback_query` catch-all in
   `bot/handlers/surveyCallbackHandlers.js` and does nothing.

@@ -68,26 +68,29 @@ runs, not resurrected from this table.
 
 ## What stayed, and why
 
-- **The Samsara request.** `services/samsaraLocationService.js` still asks for
-  `fuelPercents` and `obdOdometerMeters` on the same vehicle-stats call — it is
-  one request either way — and Live Locations' providers
-  (`services/liveLocations/providers.js`) still copy the tank level into the
-  positions they return, though nothing reads it any more.
+- **The Samsara request itself** (`services/samsaraLocationService.js`) stays:
+  Live Locations, ETA and return-to-road read its GPS. What it asked for on the
+  fuel watch's behalf went in the cleanup below.
 - **"Fuel advance" in the Finance Monitor** is money-code wording
   (`lib/finance/moneycode/*`), unrelated to this feature, and stays.
-- **The tables**, still created by the schema and read and written by nothing:
-  `fuel_stop_alerts` and `fuel_monitor_inbox` (`database/baseline/014_fuel_monitoring.sql`,
-  plus `fuel_stop_alerts.person_id` from migration 0026) and
-  `truck_fuel_readings` (migration 0038). The removal deliberately touched no
-  schema; dropping them, and taking `014` out of the baseline, is a separate,
-  deliberate step with a backup first. None is on the Settings → Retired
-  Leftovers allow-list yet.
-- **Rows that outlived it.** `system_health_states` still holds `fuel_risk`,
-  `fuel_stop_alerts` and `eld_location_freshness` rows from the last pass, and
-  `operational_notifications` holds 105 historical rows with category `fuel`.
-  No code writes either again; they are left for the same cleanup. A stored
-  `category_chat_ids.fuel` override, if one exists, is inert — the settings API
-  refuses an unknown category key, so it is cleared in that cleanup too.
+- **The tables** `fuel_stop_alerts`, `fuel_monitor_inbox` and
+  `truck_fuel_readings` (migration 0038) are read and written by nothing. They
+  stay on a deployed database until an administrator drops them from
+  **Settings → Retired feature leftovers** (group `fuel`) after a backup. The
+  baseline no longer creates them (`014_fuel_monitoring.sql`), so a drop stays
+  done. Migration 0026 still adds `fuel_stop_alerts.person_id`, so a BRAND-NEW
+  database — and only that, before its migration ledger exists — gets a
+  two-column stub of it for its first boot.
+- **Rows that outlived it.** The `fuel_risk`, `fuel_stop_alerts` and
+  `eld_location_freshness` rows in `system_health_states` are deleted by
+  migration 0073. The 105 historical `fuel` rows in `operational_notifications`
+  stay as history. No `category_chat_ids.fuel` override was set in production.
+- **What the fuel watch asked Samsara for.** The vehicle-stats request asks for
+  `gps` only; `fuelPercents` and `obdOdometerMeters` went, with the
+  `fuelPercent` / `odometerMiles` fields Live Locations mapped and nothing read.
+  The notification settings' `repeat_after_hours` (migration 0031), whose only
+  reader was the fuel watch, is no longer read or written; the column keeps its
+  default.
 - **`operational_notification_settings.repeat_after_hours`** was read only by
   the fuel watch, as a ceiling on its per-risk quiet windows. It is stored and
   read by nothing again, and the admin has no field for it.

@@ -243,9 +243,8 @@ many are retired.
 
 The fuel-stop reminder (`fuelStopAlertService`, 150 s) and the fuel risk watch
 (`fuel_risk`, 20 min) were removed at the owner's request, together with
-`truck_fuel_readings`'s writer and `/api/health → operations.fuel`. Samsara is
-still asked for `fuelPercents` and `obdOdometerMeters` on the same GPS request,
-and the Live Locations providers still map them; nothing reads them now.
+`truck_fuel_readings`'s writer and `/api/health → operations.fuel`. The Samsara
+vehicle-stats request now asks for `gps` only.
 `docs/architecture/retired-fuel.md`.
 
 ## Safety coach (every 6 hours, first pass 20 minutes after boot)

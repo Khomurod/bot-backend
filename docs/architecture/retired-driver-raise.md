@@ -49,16 +49,18 @@ home-out — see [`dispatcher-board.md`](dispatcher-board.md).
   **`raise.progress_without_person` is NOT retired**: despite its prefix it is
   about mileage-bonus progress rows the person layer could not place, and it is
   still filed by `services/operations/checks/systems.js`.
-- **The tables**, still created by `database/baseline/010_dispatch_teams.sql`
-  and `011_raise_approval.sql` and read or written by nothing:
-  `dispatch_teams`, `dispatch_team_drivers`, `dispatch_team_members`,
-  `raise_settings`, `raise_rounds`, `raise_round_submissions`,
-  `raise_round_picks`, `raise_otp`. They cannot simply stop being created:
-  migrations 0026, 0058 and 0062 alter or update `dispatch_team_drivers`, and a
-  fresh database runs them after the baseline. In production
-  `dispatch_team_members` is empty and `dispatch_team_drivers` holds 49 rows.
-  `raise_settings` may hold an encrypted Gmail App Password. Dropping them is a
-  separate, deliberate step with a backup first.
+- **The tables** `dispatch_teams`, `dispatch_team_drivers`,
+  `dispatch_team_members`, `raise_settings`, `raise_rounds`,
+  `raise_round_submissions`, `raise_round_picks` and `raise_otp` are read or
+  written by nothing. They stay on a deployed database until an administrator
+  drops them from **Settings → Retired feature leftovers** (group
+  `driver_raise`) after a backup. The baseline no longer creates them
+  (`010_dispatch_teams.sql`, `011_raise_approval.sql`), so a drop stays done.
+  Migrations 0026, 0058 and 0062 still touch `dispatch_team_drivers`, so a
+  BRAND-NEW database — and only that, before its migration ledger exists — gets
+  a four-column stub of it for its first boot. In production
+  `dispatch_team_members` is empty and `dispatch_team_drivers` holds 49 rows;
+  `raise_settings` may hold an encrypted Gmail App Password.
 - **Two routing columns.** `message_group_settings.dispatch_review_group_id` and
   `raise_results_group_id` remain and are unread. `lib/telegram/chatMigration.js`
   no longer rewrites them when a group is upgraded to a supergroup, and

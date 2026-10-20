@@ -1111,192 +1111,45 @@ CREATE TABLE IF NOT EXISTS leads (
 CREATE INDEX IF NOT EXISTS idx_leads_created_at ON leads(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_leads_source_created ON leads(source, created_at DESC);
 
--- ─── 75¢/mile Driver Raise Approval ──────────────────────────────────────────
--- Dispatch teams (groups of dispatch specialists). Each team is linked to a set
--- of active company drivers it is responsible for.
-CREATE TABLE IF NOT EXISTS dispatch_teams (
-  id SERIAL PRIMARY KEY,
-  name TEXT NOT NULL,
-  active BOOLEAN NOT NULL DEFAULT TRUE,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
--- Company drivers assigned to a dispatch team.
+-- ─── Retired: dispatch teams ──────────────────────────────────────────────
+-- This segment used to create dispatch_teams, dispatch_team_drivers and dispatch_team_members.
+-- They belonged to the driver-raise review, which was removed (October 2026, see docs/architecture/retired-driver-raise.md). The baseline no longer creates them:
+-- it is applied on EVERY boot, so a table it created could never be dropped for
+-- good. A deployed database keeps its tables and rows until an administrator
+-- drops them from Settings → Retired feature leftovers, after a backup.
 --
--- Source of truth is now Driver Groups / driver_profiles (linked by
--- driver_profile_id + group_id). The driver_name / driver_normalized_name
--- columns are kept as a SNAPSHOT so the public raise-review form and
--- raise_round_picks stay historically stable even if a profile later changes,
--- and so legacy Datatruck-name rows (driver_external_id, no profile link)
--- keep working. driver_normalized_name uses normalizeDriverName() (UPPERCASE).
-CREATE TABLE IF NOT EXISTS dispatch_team_drivers (
-  id SERIAL PRIMARY KEY,
-  team_id INTEGER NOT NULL REFERENCES dispatch_teams(id) ON DELETE CASCADE,
-  driver_external_id TEXT,
-  driver_normalized_name TEXT NOT NULL,
-  driver_name TEXT NOT NULL,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  UNIQUE (team_id, driver_normalized_name)
-);
+-- The segment file stays, empty of tables, because segments are numbered
+-- contiguously (tests/schemaBaselineBuild.test.js).
+--
+-- ONE STUB, ON A BRAND-NEW DATABASE ONLY. Migrations 0026, 0058 and 0062 still
+-- alter and update `dispatch_team_drivers`, and migrations are immutable once
+-- applied. On a new database they run right after this baseline, so the table
+-- has to exist for them — with just the columns they touch. Once the ledger
+-- exists (every deployed database) this never runs again, so a drop stays done.
+DO $$
+BEGIN
+  -- FRESH DATABASE ONLY: the migration ledger does not exist until the first
+  -- boot's migrations run, so this never fires on a deployed database.
+  IF to_regclass('public.schema_migrations') IS NULL THEN
+    CREATE TABLE IF NOT EXISTS dispatch_team_drivers (
+      id SERIAL PRIMARY KEY,
+      group_id INTEGER,
+      active BOOLEAN NOT NULL DEFAULT TRUE,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  END IF;
+END $$;
 
-CREATE INDEX IF NOT EXISTS idx_dispatch_team_drivers_team
-  ON dispatch_team_drivers(team_id);
-
--- Driver Groups as the source of truth: link each assignment to a driver
--- profile / group, keep a unit snapshot, and let assignments be soft-disabled.
--- needs_review flags legacy name-only rows that could not be linked to a profile.
-ALTER TABLE dispatch_team_drivers ADD COLUMN IF NOT EXISTS driver_profile_id INTEGER
-  REFERENCES driver_profiles(id) ON DELETE SET NULL;
-ALTER TABLE dispatch_team_drivers ADD COLUMN IF NOT EXISTS group_id INTEGER
-  REFERENCES groups(id) ON DELETE SET NULL;
-ALTER TABLE dispatch_team_drivers ADD COLUMN IF NOT EXISTS unit_number TEXT;
-ALTER TABLE dispatch_team_drivers ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT TRUE;
-ALTER TABLE dispatch_team_drivers ADD COLUMN IF NOT EXISTS needs_review BOOLEAN NOT NULL DEFAULT FALSE;
-ALTER TABLE dispatch_team_drivers ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
-
--- A driver normally belongs to ONE active dispatch team at a time. Enforce it at
--- the DB level per driver profile and per group (partial unique — only over
--- active, linked rows; legacy name-only rows with NULL links are unaffected).
-CREATE UNIQUE INDEX IF NOT EXISTS uniq_dispatch_active_driver_profile
-  ON dispatch_team_drivers(driver_profile_id)
-  WHERE active AND driver_profile_id IS NOT NULL;
-CREATE UNIQUE INDEX IF NOT EXISTS uniq_dispatch_active_driver_group
-  ON dispatch_team_drivers(group_id)
-  WHERE active AND group_id IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_dispatch_team_drivers_profile
-  ON dispatch_team_drivers(driver_profile_id) WHERE driver_profile_id IS NOT NULL;
-
--- Dispatch team MEMBERS (dispatchers). Their Telegram username authorizes them
--- to assign routes from Telegram (Route Control, see routeControlService).
--- telegram_username is stored WITHOUT a leading '@' and lowercased; compared
--- case-insensitively. telegram_user_id is the stable numeric id when known.
-CREATE TABLE IF NOT EXISTS dispatch_team_members (
-  id SERIAL PRIMARY KEY,
-  team_id INTEGER NOT NULL REFERENCES dispatch_teams(id) ON DELETE CASCADE,
-  name TEXT NULL,
-  telegram_username TEXT NULL,
-  telegram_user_id BIGINT NULL,
-  role TEXT NULL CHECK (role IS NULL OR role IN ('dispatcher', 'lead_dispatcher', 'manager')),
-  active BOOLEAN NOT NULL DEFAULT TRUE,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE INDEX IF NOT EXISTS idx_dispatch_team_members_team
-  ON dispatch_team_members(team_id);
-CREATE INDEX IF NOT EXISTS idx_dispatch_team_members_username
-  ON dispatch_team_members(telegram_username) WHERE telegram_username IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_dispatch_team_members_user_id
-  ON dispatch_team_members(telegram_user_id) WHERE telegram_user_id IS NOT NULL;
-
--- Single-row settings for the raise-approval service.
-CREATE TABLE IF NOT EXISTS raise_settings (
-  id INTEGER PRIMARY KEY CHECK (id = 1),
-  enabled BOOLEAN NOT NULL DEFAULT FALSE,
-  otp_channel TEXT NOT NULL DEFAULT 'gmail' CHECK (otp_channel IN ('gmail', 'ringcentral')),
-  schedule_enabled BOOLEAN NOT NULL DEFAULT FALSE,
-  -- Default automatic schedule: Sunday (luxon weekday 7) 14:00 Central. The pay
-  -- period reviewed is the Monday→Sunday week ending on that same Sunday.
-  weekly_day_of_week INTEGER NOT NULL DEFAULT 7 CHECK (weekly_day_of_week BETWEEN 1 AND 7),
-  weekly_time_local TEXT NOT NULL DEFAULT '14:00',
-  schedule_timezone TEXT NOT NULL DEFAULT 'America/Chicago',
-  rate_low NUMERIC(5,3) NOT NULL DEFAULT 0.720,
-  rate_high NUMERIC(5,3) NOT NULL DEFAULT 0.750,
-  link_ttl_hours INTEGER NOT NULL DEFAULT 48 CHECK (link_ttl_hours BETWEEN 1 AND 720),
-  -- Gmail App Password channel, entered in the admin panel. The address is
-  -- stored as-is; the App Password is stored encrypted (same scheme as
-  -- Facebook tokens — FACEBOOK_TOKEN_ENCRYPTION_KEY).
-  gmail_user TEXT NULL,
-  gmail_app_password_encrypted TEXT NULL,
-  next_run_at TIMESTAMPTZ NULL,
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-ALTER TABLE raise_settings ADD COLUMN IF NOT EXISTS gmail_user TEXT NULL;
-ALTER TABLE raise_settings ADD COLUMN IF NOT EXISTS gmail_app_password_encrypted TEXT NULL;
-
-INSERT INTO raise_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
-
--- Move deployments that still hold the OLD seed default (Monday 09:00) to the
--- new default schedule of Sunday 14:00 Central. Guarded so an admin who has
--- deliberately picked a different day/time is never overwritten.
-UPDATE raise_settings
-   SET weekly_day_of_week = 7, weekly_time_local = '14:00'
- WHERE id = 1 AND weekly_day_of_week = 1 AND weekly_time_local = '09:00';
-
--- One approval round per pay period. The access_token backs the public
--- temporary link the dispatch team uses (modeled on facebook_connect_sessions).
-CREATE TABLE IF NOT EXISTS raise_rounds (
-  id SERIAL PRIMARY KEY,
-  period_start DATE NOT NULL,
-  period_end DATE NOT NULL,
-  access_token TEXT NOT NULL UNIQUE,
-  status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'closed')),
-  rate_low NUMERIC(5,3) NOT NULL DEFAULT 0.720,
-  rate_high NUMERIC(5,3) NOT NULL DEFAULT 0.750,
-  expires_at TIMESTAMPTZ NOT NULL,
-  employee_chat_id TEXT NULL,
-  employee_message_id BIGINT NULL,
-  created_by TEXT NULL,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  closed_at TIMESTAMPTZ NULL
-);
-
-CREATE INDEX IF NOT EXISTS idx_raise_rounds_status ON raise_rounds(status, created_at DESC);
-
--- One submission per team per round (the dispatcher's verified response).
-CREATE TABLE IF NOT EXISTS raise_round_submissions (
-  id SERIAL PRIMARY KEY,
-  round_id INTEGER NOT NULL REFERENCES raise_rounds(id) ON DELETE CASCADE,
-  team_id INTEGER NOT NULL REFERENCES dispatch_teams(id) ON DELETE CASCADE,
-  dispatcher_name TEXT NOT NULL,
-  dispatcher_contact TEXT NOT NULL,
-  contact_type TEXT NOT NULL CHECK (contact_type IN ('email', 'phone')),
-  submitted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  UNIQUE (round_id, team_id)
-);
-
--- Per-driver qualify / not-qualify decision within a submission.
-CREATE TABLE IF NOT EXISTS raise_round_picks (
-  id SERIAL PRIMARY KEY,
-  submission_id INTEGER NOT NULL REFERENCES raise_round_submissions(id) ON DELETE CASCADE,
-  round_id INTEGER NOT NULL REFERENCES raise_rounds(id) ON DELETE CASCADE,
-  team_id INTEGER NOT NULL REFERENCES dispatch_teams(id) ON DELETE CASCADE,
-  driver_normalized_name TEXT NOT NULL,
-  driver_name TEXT NOT NULL,
-  qualified BOOLEAN NOT NULL,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE INDEX IF NOT EXISTS idx_raise_round_picks_round ON raise_round_picks(round_id);
-
--- One-time passcodes for verifying a dispatcher before they submit. Codes are
--- stored hashed; never in plaintext.
-CREATE TABLE IF NOT EXISTS raise_otp (
-  id SERIAL PRIMARY KEY,
-  round_id INTEGER NOT NULL REFERENCES raise_rounds(id) ON DELETE CASCADE,
-  team_id INTEGER NULL REFERENCES dispatch_teams(id) ON DELETE SET NULL,
-  contact TEXT NOT NULL,
-  contact_type TEXT NOT NULL CHECK (contact_type IN ('email', 'phone')),
-  code_hash TEXT NOT NULL,
-  expires_at TIMESTAMPTZ NOT NULL,
-  attempts INTEGER NOT NULL DEFAULT 0,
-  verified BOOLEAN NOT NULL DEFAULT FALSE,
-  verified_at TIMESTAMPTZ NULL,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE INDEX IF NOT EXISTS idx_raise_otp_lookup
-  ON raise_otp(round_id, contact, created_at DESC);
-
--- ───────────────────────── Driver Home-Time Tracking ─────────────────────────
--- The bot reads each driver group's messages. The update specialist posts
--- "Status: Home" while a driver is home and "Status: Ready"/"Status: Rolling"
--- when they leave. Drivers get a set number of weeks on the road for free; each
--- FULL extra week earns a fixed bonus. The clock resets every time a driver goes
--- home. State is tracked per driver group; completed road trips are kept as a
--- history with the computed bonus.
+-- ─── Retired: driver raise approval ──────────────────────────────────────────────
+-- This segment used to create raise_settings, raise_rounds, raise_round_submissions, raise_round_picks
+-- and raise_otp.
+-- The driver-raise review was removed (October 2026, see docs/architecture/retired-driver-raise.md). The baseline no longer creates them:
+-- it is applied on EVERY boot, so a table it created could never be dropped for
+-- good. A deployed database keeps its tables and rows until an administrator
+-- drops them from Settings → Retired feature leftovers, after a backup.
+--
+-- The segment file stays, empty of tables, because segments are numbered
+-- contiguously (tests/schemaBaselineBuild.test.js).
 
 CREATE TABLE IF NOT EXISTS home_time_settings (
   id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
@@ -1540,110 +1393,11 @@ CREATE TABLE IF NOT EXISTS bot_access_settings (
 
 INSERT INTO bot_access_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
 
--- ─── Datatruck BOL/POD Document Delivery ──────────────────────────────────────
--- When a driver uploads a Bill of Lading or Proof of Delivery to Datatruck, the
--- bot forwards the file to that driver's Telegram group. One row per delivered
--- (order, document) pair — the UNIQUE signature is the idempotency guard so a
--- document is forwarded at most once no matter how often the poller scans it.
--- `status` records what happened: sent, failed (retryable), suppressed_backfill
--- (existed before the feature was activated — recorded, never sent), or
--- skipped_no_group (no matching active driver group).
-CREATE TABLE IF NOT EXISTS datatruck_document_deliveries (
-  id BIGSERIAL PRIMARY KEY,
-  signature TEXT UNIQUE NOT NULL,
-  order_id TEXT,
-  load_reference TEXT,
-  file_type TEXT NOT NULL,
-  file_link TEXT,
-  uploaded_by TEXT,
-  uploaded_at TIMESTAMPTZ,
-  driver_name TEXT,
-  unit_number TEXT,
-  matched_by TEXT,
-  group_id INTEGER REFERENCES groups(id) ON DELETE SET NULL,
-  telegram_group_id BIGINT,
-  status TEXT NOT NULL DEFAULT 'pending',
-  telegram_message_id BIGINT,
-  attempt_count INTEGER NOT NULL DEFAULT 0,
-  last_error TEXT,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  CONSTRAINT datatruck_document_deliveries_status_check CHECK (
-    status IN ('pending', 'sent', 'failed', 'suppressed_backfill', 'skipped_no_group', 'suppressed_bot_upload')
-  )
-);
-
--- Additive: the admin-controlled BOL/POD forwarding feature tracks TWO
--- destinations per document (the driver group and a central group). The columns
--- above serve the DRIVER destination; these central_* columns track the CENTRAL
--- destination independently, so a partial failure retries only the failed side.
--- doc_classification/classification_source record how BOL vs POD was decided.
--- All ADD COLUMN IF NOT EXISTS — safe to run on every boot.
-ALTER TABLE datatruck_document_deliveries
-  ADD COLUMN IF NOT EXISTS central_status TEXT NOT NULL DEFAULT 'skipped_not_applicable';
-ALTER TABLE datatruck_document_deliveries
-  ADD COLUMN IF NOT EXISTS central_telegram_group_id BIGINT NULL;
-ALTER TABLE datatruck_document_deliveries
-  ADD COLUMN IF NOT EXISTS central_telegram_message_id BIGINT NULL;
-ALTER TABLE datatruck_document_deliveries
-  ADD COLUMN IF NOT EXISTS central_attempt_count INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE datatruck_document_deliveries
-  ADD COLUMN IF NOT EXISTS central_last_error TEXT NULL;
-ALTER TABLE datatruck_document_deliveries
-  ADD COLUMN IF NOT EXISTS doc_classification TEXT NULL;
-ALTER TABLE datatruck_document_deliveries
-  ADD COLUMN IF NOT EXISTS classification_source TEXT NULL;
-
--- Additive migration for existing databases. Widens the driver-destination
--- status allow-list (adds 'processing' and the routing skip states while
--- keeping the legacy 'suppressed_bot_upload' historical value) and adds the
--- central-destination status allow-list. Drop + re-add is idempotent; existing
--- rows only carry values in the old (narrower) set. The central_status
--- constraint is added AFTER its column exists (columns are altered above).
-DO $$
-BEGIN
-  IF EXISTS (
-    SELECT 1 FROM pg_constraint
-    WHERE conname = 'datatruck_document_deliveries_status_check'
-      AND conrelid = 'datatruck_document_deliveries'::regclass
-  ) THEN
-    ALTER TABLE datatruck_document_deliveries
-      DROP CONSTRAINT datatruck_document_deliveries_status_check;
-  END IF;
-  ALTER TABLE datatruck_document_deliveries
-    ADD CONSTRAINT datatruck_document_deliveries_status_check
-    CHECK (status IN (
-      'pending', 'processing', 'sent', 'failed',
-      'suppressed_backfill', 'skipped_no_group', 'suppressed_bot_upload',
-      'skipped_not_applicable', 'skipped_same_group', 'skipped_unclear',
-      'skipped_duplicate'
-    ));
-
-  IF EXISTS (
-    SELECT 1 FROM pg_constraint
-    WHERE conname = 'datatruck_document_deliveries_central_status_check'
-      AND conrelid = 'datatruck_document_deliveries'::regclass
-  ) THEN
-    ALTER TABLE datatruck_document_deliveries
-      DROP CONSTRAINT datatruck_document_deliveries_central_status_check;
-  END IF;
-  ALTER TABLE datatruck_document_deliveries
-    ADD CONSTRAINT datatruck_document_deliveries_central_status_check
-    CHECK (central_status IN (
-      'pending', 'processing', 'sent', 'failed',
-      'skipped_not_applicable', 'skipped_same_group', 'skipped_unclear',
-      'skipped_duplicate'
-    ));
-END
-$$;
-
-CREATE INDEX IF NOT EXISTS idx_datatruck_document_deliveries_status
-  ON datatruck_document_deliveries(status, created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_datatruck_document_deliveries_group
-  ON datatruck_document_deliveries(group_id, created_at DESC);
--- Supports the per-destination central retry scan (claim due central rows).
-CREATE INDEX IF NOT EXISTS idx_datatruck_document_deliveries_central_status
-  ON datatruck_document_deliveries(central_status, updated_at DESC);
+-- ─── Retired: Datatruck BOL/POD document delivery ─────────────────────────────
+-- `datatruck_document_deliveries` was created here until BOL/POD forwarding was
+-- removed (October 2026, docs/architecture/retired-bol-pod.md). A deployed
+-- database keeps the table until it is dropped from Settings → Retired feature
+-- leftovers; see 021_bol_pod_forwarding.sql for why the baseline stops here.
 
 -- ── Retired: Smart BOL/POD intake + silent BOL/POD test monitor ──
 -- The Telegram→Datatruck BOL/POD intake pipeline and the admin "BOL/POD
@@ -1652,81 +1406,33 @@ CREATE INDEX IF NOT EXISTS idx_datatruck_document_deliveries_central_status
 -- code uses them. Existing databases may still contain:
 --   telegram_document_batches, telegram_document_files,
 --   datatruck_upload_attempts, bol_pod_monitor_settings
--- They are harmless and may be dropped manually once their history is no
--- longer needed (no automatic DROP is performed).
+-- They are harmless. `bol_pod_monitor_settings` is listed in Settings →
+-- Retired feature leftovers; no automatic DROP is performed.
 
--- ── Fuel Monitor: gas-station proximity reminders ──
--- When the Fuel Monitoring team posts a gas-station location into a driver
--- group, we create one "watching" row here. A background poller checks each
--- watching row against the truck's live GPS and, when the truck is within
--- radius_miles of the station, replies to the original message tagging the
--- driver, then flips the row to 'notified' (fires once). Mirrors the
--- watch/poll/claim shape of dispatch_eta_updates.
-CREATE TABLE IF NOT EXISTS fuel_stop_alerts (
-  id SERIAL PRIMARY KEY,
-  group_id INTEGER NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
-  telegram_group_id BIGINT NOT NULL,
-  source_message_id BIGINT NOT NULL,
-  station_name TEXT NULL,
-  station_address TEXT NULL,
-  station_lat DOUBLE PRECISION NOT NULL,
-  station_lng DOUBLE PRECISION NOT NULL,
-  radius_miles DOUBLE PRECISION NOT NULL DEFAULT 10,
-  status TEXT NOT NULL DEFAULT 'watching',
-  processing BOOLEAN NOT NULL DEFAULT FALSE,
-  processing_started_at TIMESTAMP NULL,
-  last_distance_miles DOUBLE PRECISION NULL,
-  last_checked_at TIMESTAMP NULL,
-  notified_at TIMESTAMP NULL,
-  last_error TEXT NULL,
-  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-  expires_at TIMESTAMP NULL,
-  -- ETA-based scheduling: instead of polling every watch row constantly, each
-  -- row stores when it should next be evaluated (next_check_at) and the latest
-  -- estimate of when the truck will reach the 10-mile boundary.
-  next_check_at TIMESTAMP NULL,
-  eta_minutes DOUBLE PRECISION NULL,
-  eta_boundary_at TIMESTAMP NULL,
-  CONSTRAINT fuel_stop_alerts_status_check CHECK (
-    status IN ('watching', 'notified', 'expired', 'error')
-  )
-);
-
-ALTER TABLE fuel_stop_alerts ADD COLUMN IF NOT EXISTS next_check_at TIMESTAMP NULL;
-ALTER TABLE fuel_stop_alerts ADD COLUMN IF NOT EXISTS eta_minutes DOUBLE PRECISION NULL;
-ALTER TABLE fuel_stop_alerts ADD COLUMN IF NOT EXISTS eta_boundary_at TIMESTAMP NULL;
-
-CREATE INDEX IF NOT EXISTS idx_fuel_stop_alerts_due
-  ON fuel_stop_alerts(status, expires_at);
-CREATE INDEX IF NOT EXISTS idx_fuel_stop_alerts_next_check
-  ON fuel_stop_alerts(status, next_check_at);
-CREATE INDEX IF NOT EXISTS idx_fuel_stop_alerts_group
-  ON fuel_stop_alerts(group_id, created_at DESC);
-
--- ── Fuel Monitor: inbox of fuel-header messages seen by the bot ──
--- Every time the bot sees a "⛽FUEL MONITORING DEPARTMENT⛽" message in a
--- company-driver group, we record it here. The detection/geocode pipeline runs
--- immediately; if it fails (transient geocode error, AI quota) the row stays
--- 'pending' and the admin "Refresh" button can retry it later. Rows that were
--- successfully turned into fuel_stop_alerts are marked 'picked_up'.
--- Note: the Telegram Bot API cannot retrieve past history, so this table is the
--- only durable record of messages the bot has observed.
-CREATE TABLE IF NOT EXISTS fuel_monitor_inbox (
-  id SERIAL PRIMARY KEY,
-  group_id INTEGER NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
-  telegram_group_id BIGINT NOT NULL,
-  message_id BIGINT NOT NULL,
-  message_text TEXT NOT NULL,
-  status TEXT NOT NULL DEFAULT 'pending',  -- pending | picked_up
-  alert_id INTEGER REFERENCES fuel_stop_alerts(id) ON DELETE SET NULL,
-  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-  processed_at TIMESTAMP NULL,
-  UNIQUE (group_id, message_id),
-  CONSTRAINT fuel_monitor_inbox_status_check CHECK (status IN ('pending', 'picked_up'))
-);
-
-CREATE INDEX IF NOT EXISTS idx_fuel_monitor_inbox_status_created
-  ON fuel_monitor_inbox(status, created_at DESC);
+-- ─── Retired: fuel monitoring ──────────────────────────────────────────────
+-- This segment used to create fuel_stop_alerts and fuel_monitor_inbox (truck_fuel_readings came from
+-- migration 0038, which runs once).
+-- Every fuel feature was removed (October 2026, see docs/architecture/retired-fuel.md). The baseline no longer creates them:
+-- it is applied on EVERY boot, so a table it created could never be dropped for
+-- good. A deployed database keeps its tables and rows until an administrator
+-- drops them from Settings → Retired feature leftovers, after a backup.
+--
+-- The segment file stays, empty of tables, because segments are numbered
+-- contiguously (tests/schemaBaselineBuild.test.js).
+--
+-- ONE STUB, ON A BRAND-NEW DATABASE ONLY: migration 0026 adds and fills
+-- `fuel_stop_alerts.person_id` by `group_id`. See 010_dispatch_teams.sql.
+DO $$
+BEGIN
+  -- FRESH DATABASE ONLY: the migration ledger does not exist until the first
+  -- boot's migrations run, so this never fires on a deployed database.
+  IF to_regclass('public.schema_migrations') IS NULL THEN
+    CREATE TABLE IF NOT EXISTS fuel_stop_alerts (
+      id SERIAL PRIMARY KEY,
+      group_id INTEGER
+    );
+  END IF;
+END $$;
 
 -- ─── Driver Location Monitoring — RETIRED, and no longer created here ────
 -- The pickup/delivery "Checked In / Checked Out" location-monitor feature was
@@ -1982,233 +1688,30 @@ CREATE INDEX IF NOT EXISTS idx_ringcentral_calls_time
 -- returned to the frontend. The feature is OFF until an admin enables it and
 -- enters a key in Settings → GMaps.
 
--- Single-row Google Maps Platform settings + monitoring tunables.
-CREATE TABLE IF NOT EXISTS gmaps_settings (
-  id INTEGER PRIMARY KEY CHECK (id = 1),
-  enabled BOOLEAN NOT NULL DEFAULT FALSE,
-  -- Google Maps Platform server key (encrypted). Overrides GOOGLE_MAPS_API_KEY.
-  server_api_key_encrypted TEXT NULL,
-  routes_api_enabled BOOLEAN NOT NULL DEFAULT TRUE,
-  roads_api_enabled BOOLEAN NOT NULL DEFAULT FALSE,
-  -- Optional separate Geocoding key; when empty the server key is used.
-  geocoding_api_enabled BOOLEAN NOT NULL DEFAULT FALSE,
-  geocoding_api_key_encrypted TEXT NULL,
-  -- Monitoring tunables.
-  deviation_threshold_meters INTEGER NOT NULL DEFAULT 250
-    CHECK (deviation_threshold_meters BETWEEN 10 AND 20000),
-  check_interval_seconds INTEGER NOT NULL DEFAULT 300
-    CHECK (check_interval_seconds BETWEEN 30 AND 3600),
-  off_route_grace_checks INTEGER NOT NULL DEFAULT 3
-    CHECK (off_route_grace_checks BETWEEN 1 AND 20),
-  warning_cooldown_minutes INTEGER NOT NULL DEFAULT 30
-    CHECK (warning_cooldown_minutes BETWEEN 1 AND 1440),
-  stale_gps_minutes INTEGER NOT NULL DEFAULT 15
-    CHECK (stale_gps_minutes BETWEEN 1 AND 240),
-  parked_speed_mph INTEGER NOT NULL DEFAULT 5
-    CHECK (parked_speed_mph BETWEEN 0 AND 60),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-INSERT INTO gmaps_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
-
--- Auto-complete a route when the driver's fresh GPS is within this many miles of
--- the FINAL destination. Additive/idempotent; default 50 mi (see
--- services/routeControlConstants.js), recommended range 1–100. The CHECK stays
--- 0.5–100 for backward compatibility with any legacy sub-1-mile value.
-ALTER TABLE gmaps_settings ADD COLUMN IF NOT EXISTS route_completion_radius_miles DOUBLE PRECISION NOT NULL DEFAULT 10
-  CHECK (route_completion_radius_miles BETWEEN 0.5 AND 100);
-ALTER TABLE gmaps_settings ALTER COLUMN route_completion_radius_miles SET DEFAULT 50;
-
--- One-shot 10 → 35 completion-radius migration. The marker column makes it run
--- exactly once even though this file executes on every boot: an untouched old
--- default of 10 becomes the new default of 35; any other (customized) value is
--- left alone. NOTE: a value of exactly 10 cannot be distinguished from a
--- deliberate choice of 10 — treating it as the old default is the documented
--- decision here (an admin can set it back to 10 afterwards and it will stick).
-ALTER TABLE gmaps_settings ADD COLUMN IF NOT EXISTS completion_radius_35_migrated BOOLEAN NOT NULL DEFAULT FALSE;
-UPDATE gmaps_settings
-   SET route_completion_radius_miles = 35, completion_radius_35_migrated = TRUE
- WHERE id = 1 AND completion_radius_35_migrated = FALSE AND route_completion_radius_miles = 10;
-UPDATE gmaps_settings
-   SET completion_radius_35_migrated = TRUE
- WHERE id = 1 AND completion_radius_35_migrated = FALSE;
-
--- One-shot 35 → 50 completion-radius migration (same one-run-only marker
--- pattern). The intended production radius is now 50 mi. A row still sitting on
--- the previous default of 35 is bumped to 50; any other (customized) value —
--- including a deliberate 35 the admin later re-selects — is left untouched.
--- Additive/idempotent: safe to re-run on every boot.
-ALTER TABLE gmaps_settings ADD COLUMN IF NOT EXISTS completion_radius_50_migrated BOOLEAN NOT NULL DEFAULT FALSE;
-UPDATE gmaps_settings
-   SET route_completion_radius_miles = 50, completion_radius_50_migrated = TRUE
- WHERE id = 1 AND completion_radius_50_migrated = FALSE AND route_completion_radius_miles = 35;
-UPDATE gmaps_settings
-   SET completion_radius_50_migrated = TRUE
- WHERE id = 1 AND completion_radius_50_migrated = FALSE;
-
--- One assigned route per row. group_id ties it to a driver group so the monitor
--- can resolve that driver's live GPS (via the same resolver as /location).
-CREATE TABLE IF NOT EXISTS route_assignments (
-  id SERIAL PRIMARY KEY,
-  group_id INTEGER REFERENCES groups(id) ON DELETE SET NULL,
-  driver_profile_id INTEGER NULL,
-  driver_label TEXT NULL,
-  unit_number TEXT NULL,
-  original_url TEXT NOT NULL,
-  origin_text TEXT NULL,
-  destination_text TEXT NULL,
-  waypoints JSONB NOT NULL DEFAULT '[]'::jsonb,
-  origin_lat DOUBLE PRECISION NULL,
-  origin_lng DOUBLE PRECISION NULL,
-  destination_lat DOUBLE PRECISION NULL,
-  destination_lng DOUBLE PRECISION NULL,
-  -- Google encoded polyline for the computed route (NULL until computed).
-  encoded_polyline TEXT NULL,
-  distance_meters DOUBLE PRECISION NULL,
-  duration_seconds DOUBLE PRECISION NULL,
-  status TEXT NOT NULL DEFAULT 'active'
-    CHECK (status IN ('active', 'completed', 'cancelled')),
-  assigned_by TEXT NULL,
-  -- Live monitoring state.
-  last_checked_at TIMESTAMPTZ NULL,
-  last_latitude DOUBLE PRECISION NULL,
-  last_longitude DOUBLE PRECISION NULL,
-  last_deviation_meters DOUBLE PRECISION NULL,
-  last_check_result TEXT NULL,
-  consecutive_off_route INTEGER NOT NULL DEFAULT 0,
-  last_notification_at TIMESTAMPTZ NULL,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
--- Where the assignment came from: 'admin' (Route Control page) or 'telegram'
--- (a dispatcher sent a Google Maps route link in the driver group). The
--- Telegram origin also records the sender's numeric id and the triggering
--- message id — the (chat, message) pair is a restart-safe dedupe key so the
--- same route message is never processed twice.
-ALTER TABLE route_assignments ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'admin';
-ALTER TABLE route_assignments ADD COLUMN IF NOT EXISTS assigned_by_user_id BIGINT NULL;
-ALTER TABLE route_assignments ADD COLUMN IF NOT EXISTS telegram_chat_id BIGINT NULL;
-ALTER TABLE route_assignments ADD COLUMN IF NOT EXISTS telegram_message_id BIGINT NULL;
--- Admin → "Send route message to driver group" delivery tracking. sent_at is the
--- last successful send; message_id the Telegram message id (for a link/edit);
--- sent_by the admin username/name that triggered it.
-ALTER TABLE route_assignments ADD COLUMN IF NOT EXISTS driver_group_message_sent_at TIMESTAMPTZ NULL;
-ALTER TABLE route_assignments ADD COLUMN IF NOT EXISTS driver_group_message_id BIGINT NULL;
-ALTER TABLE route_assignments ADD COLUMN IF NOT EXISTS driver_group_message_sent_by TEXT NULL;
-
--- Tracking start controls. `status` stays the route LIFECYCLE (active/completed/
--- cancelled); `tracking_status` is the MONITORING state layered on top:
---   pending → the start condition has not been met yet (mode decides which)
---   active  → the monitor compares live GPS against the route
--- Existing rows default to active/immediate so the migration changes nothing
--- for routes that are already being monitored. tracking_hold_reason is a short
--- machine-readable reason shown in the admin UI while pending
--- (waiting_for_message | waiting_for_time | waiting_for_location).
-ALTER TABLE route_assignments ADD COLUMN IF NOT EXISTS tracking_status TEXT NOT NULL DEFAULT 'active';
-ALTER TABLE route_assignments ADD COLUMN IF NOT EXISTS tracking_start_mode TEXT NOT NULL DEFAULT 'immediate';
-ALTER TABLE route_assignments ADD COLUMN IF NOT EXISTS tracking_start_at TIMESTAMPTZ NULL;
-ALTER TABLE route_assignments ADD COLUMN IF NOT EXISTS tracking_started_at TIMESTAMPTZ NULL;
-ALTER TABLE route_assignments ADD COLUMN IF NOT EXISTS tracking_start_lat DOUBLE PRECISION NULL;
-ALTER TABLE route_assignments ADD COLUMN IF NOT EXISTS tracking_start_lng DOUBLE PRECISION NULL;
-ALTER TABLE route_assignments ADD COLUMN IF NOT EXISTS tracking_start_location_text TEXT NULL;
-ALTER TABLE route_assignments ADD COLUMN IF NOT EXISTS tracking_start_radius_miles DOUBLE PRECISION NULL;
-ALTER TABLE route_assignments ADD COLUMN IF NOT EXISTS tracking_hold_reason TEXT NULL;
-
--- Auto-completion. When the driver's fresh GPS enters the completion radius
--- around the FINAL destination (destination_lat/destination_lng), the monitor
--- flips status to 'completed', records where/when/how far, and stops monitoring
--- permanently. These columns are additive/idempotent; NULL on every existing row.
-ALTER TABLE route_assignments ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ NULL;
-ALTER TABLE route_assignments ADD COLUMN IF NOT EXISTS completion_latitude DOUBLE PRECISION NULL;
-ALTER TABLE route_assignments ADD COLUMN IF NOT EXISTS completion_longitude DOUBLE PRECISION NULL;
-ALTER TABLE route_assignments ADD COLUMN IF NOT EXISTS completion_distance_meters DOUBLE PRECISION NULL;
-ALTER TABLE route_assignments ADD COLUMN IF NOT EXISTS completion_reason TEXT NULL;
-
--- Completion diagnostics (why a route is / is not completing) + screenshot send
--- reporting. Written by the monitor on every completion check so the Admin
--- panel can show the live distance to the final destination and a
--- machine-readable blocked reason (e.g. DESTINATION_COORDINATES_MISSING,
--- LIVE_GPS_STALE, OUTSIDE_COMPLETION_RADIUS). All additive/idempotent.
-ALTER TABLE route_assignments ADD COLUMN IF NOT EXISTS last_completion_check_at TIMESTAMPTZ NULL;
-ALTER TABLE route_assignments ADD COLUMN IF NOT EXISTS last_destination_distance_meters DOUBLE PRECISION NULL;
-ALTER TABLE route_assignments ADD COLUMN IF NOT EXISTS completion_blocked_reason TEXT NULL;
--- Bounded destination-coordinate repair bookkeeping (never retried every tick).
-ALTER TABLE route_assignments ADD COLUMN IF NOT EXISTS destination_repair_attempts INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE route_assignments ADD COLUMN IF NOT EXISTS destination_repair_last_at TIMESTAMPTZ NULL;
--- How the last driver-group route message went out (photo | photo+text | text)
--- and the last screenshot delivery error (NULL when the screenshot was sent or
--- there was none) — lets the Admin panel say "Sent as text only" truthfully.
-ALTER TABLE route_assignments ADD COLUMN IF NOT EXISTS driver_group_message_via TEXT NULL;
-ALTER TABLE route_assignments ADD COLUMN IF NOT EXISTS screenshot_send_error TEXT NULL;
-
--- One route delivery can be MORE than one Telegram message (a photo plus a
--- separate long-text message). To later EDIT every part in place (replace the
--- screenshot / edit the text) without posting new messages, store the ordered
--- list of Telegram messages that make up the delivery:
---   [{ "message_id": 71, "kind": "photo" }, { "message_id": 72, "kind": "text" }]
--- driver_group_messages is the authoritative record used for in-place editing;
--- it survives restart/redeploy/logout because it lives in the DB, not memory.
--- Legacy rows (NULL here) are reconstructed from driver_group_message_id +
--- driver_group_message_via. driver_group_message_edited_at / _edit_error record
--- the last in-place edit outcome so the admin panel can report it truthfully.
--- All additive/idempotent; NULL on every existing row.
-ALTER TABLE route_assignments ADD COLUMN IF NOT EXISTS driver_group_messages JSONB NULL;
-ALTER TABLE route_assignments ADD COLUMN IF NOT EXISTS driver_group_message_edited_at TIMESTAMPTZ NULL;
-ALTER TABLE route_assignments ADD COLUMN IF NOT EXISTS driver_group_message_edit_error TEXT NULL;
-
--- Route screenshots (admin-attached images sent with the driver-group route
--- message). A SEPARATE table so no existing `SELECT r.*` query ever drags image
--- bytes into list views; bytes are only read by the dedicated fetch used for
--- Telegram sends and the auth-gated preview endpoint. One screenshot per
--- assignment (replaced on re-upload).
-CREATE TABLE IF NOT EXISTS route_assignment_attachments (
-  id SERIAL PRIMARY KEY,
-  assignment_id INTEGER NOT NULL REFERENCES route_assignments(id) ON DELETE CASCADE,
-  kind TEXT NOT NULL DEFAULT 'route_screenshot',
-  mime_type TEXT NOT NULL,
-  file_size_bytes INTEGER NOT NULL,
-  file_data BYTEA NOT NULL,
-  uploaded_by TEXT NULL,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-CREATE INDEX IF NOT EXISTS idx_route_assignment_attachments_assignment
-  ON route_assignment_attachments(assignment_id, kind);
-
--- Enforce ONE screenshot per (assignment, kind) so replacement can be a single
--- atomic UPSERT (a failed replacement can never destroy the stored screenshot,
--- and two concurrent uploads can never leave duplicates). The DELETE below
--- clears any pre-constraint duplicates (keeps the newest row) and is a no-op on
--- every later boot.
-DELETE FROM route_assignment_attachments a
- USING route_assignment_attachments b
- WHERE a.assignment_id = b.assignment_id AND a.kind = b.kind AND a.id < b.id;
-CREATE UNIQUE INDEX IF NOT EXISTS uniq_route_assignment_attachment
-  ON route_assignment_attachments(assignment_id, kind);
-
-CREATE INDEX IF NOT EXISTS idx_route_assignments_active
-  ON route_assignments(status, updated_at DESC) WHERE status = 'active';
-CREATE INDEX IF NOT EXISTS idx_route_assignments_group
-  ON route_assignments(group_id, created_at DESC);
-CREATE UNIQUE INDEX IF NOT EXISTS uniq_route_assignments_telegram_message
-  ON route_assignments(telegram_chat_id, telegram_message_id)
-  WHERE telegram_chat_id IS NOT NULL AND telegram_message_id IS NOT NULL;
-
--- Audit trail of monitoring checks + notifications for one assignment.
-CREATE TABLE IF NOT EXISTS route_monitor_events (
-  id SERIAL PRIMARY KEY,
-  assignment_id INTEGER NOT NULL REFERENCES route_assignments(id) ON DELETE CASCADE,
-  event_type TEXT NOT NULL,
-  result TEXT NULL,
-  latitude DOUBLE PRECISION NULL,
-  longitude DOUBLE PRECISION NULL,
-  deviation_meters DOUBLE PRECISION NULL,
-  detail TEXT NULL,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE INDEX IF NOT EXISTS idx_route_monitor_events_assignment
-  ON route_monitor_events(assignment_id, created_at DESC);
+-- ─── Retired: Google Maps settings and Route Control ──────────────────────────────────────────────
+-- This segment used to create gmaps_settings, route_assignments, route_assignment_attachments and
+-- route_monitor_events.
+-- Route Control and its Settings → GMaps tab were removed (October 2026, see docs/architecture/retired-route-control.md). The baseline no longer creates them:
+-- it is applied on EVERY boot, so a table it created could never be dropped for
+-- good. A deployed database keeps its tables and rows until an administrator
+-- drops them from Settings → Retired feature leftovers, after a backup.
+--
+-- `duplicate_unit_reports`, at the end of this segment, belongs to the
+-- duplicate-unit scan, which is still running; it stays exactly as it was.
+--
+-- ONE STUB, ON A BRAND-NEW DATABASE ONLY: migration 0026 adds and fills
+-- `route_assignments.person_id` by `group_id`. See 010_dispatch_teams.sql.
+DO $$
+BEGIN
+  -- FRESH DATABASE ONLY: the migration ledger does not exist until the first
+  -- boot's migrations run, so this never fires on a deployed database.
+  IF to_regclass('public.schema_migrations') IS NULL THEN
+    CREATE TABLE IF NOT EXISTS route_assignments (
+      id SERIAL PRIMARY KEY,
+      group_id INTEGER
+    );
+  END IF;
+END $$;
 
 -- ─────────────────────────────────────────────────────────────────────────
 -- Duplicate unit-number reports (Samsara / provider ↔ driver-group mismatches).
@@ -2370,32 +1873,15 @@ ALTER TABLE safety_event_video_jobs
   ADD CONSTRAINT safety_event_video_jobs_status_check
   CHECK (status IN ('pending','processing','sent','compressed_sent','failed','fallback_sent','skipped','failed_too_large'));
 
--- ══════════════════════════════════════════════════════════════════════════
--- BOL / POD document forwarding (admin-controlled) — Settings → BOL / POD
--- ══════════════════════════════════════════════════════════════════════════
--- Runtime-editable routing for forwarding DataTruck BOL/POD documents to
--- Telegram groups. Single-row (id = 1). OFF by default: after deploy NO document
--- is forwarded to ANY group until an administrator enables the feature in the
--- admin panel. This is a NEW table — the retired bol_pod_monitor_settings table
--- (a different, removed feature) is left untouched for historical safety and is
--- NOT reused. No secrets are stored here (the bot token stays server-side).
-CREATE TABLE IF NOT EXISTS bol_pod_forwarding_settings (
-  id INTEGER PRIMARY KEY CHECK (id = 1),
-  enabled BOOLEAN NOT NULL DEFAULT FALSE,
-  delivery_mode TEXT NOT NULL DEFAULT 'driver_group'
-    CHECK (delivery_mode IN ('driver_group', 'central_group', 'both')),
-  central_group_id BIGINT NULL,
-  central_group_title TEXT NULL,
-  central_group_validated_at TIMESTAMPTZ NULL,
-  document_type_mode TEXT NOT NULL DEFAULT 'both'
-    CHECK (document_type_mode IN ('bol', 'pod', 'both')),
-  uncertain_document_policy TEXT NOT NULL DEFAULT 'do_not_send'
-    CHECK (uncertain_document_policy IN ('do_not_send', 'central_review')),
-  last_tested_at TIMESTAMPTZ NULL,
-  updated_by TEXT NULL,
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-INSERT INTO bol_pod_forwarding_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
+-- ─── Retired: BOL/POD forwarding settings ──────────────────────────────────────────────
+-- This segment used to create bol_pod_forwarding_settings.
+-- BOL/POD document forwarding was removed (October 2026, see docs/architecture/retired-bol-pod.md). The baseline no longer creates them:
+-- it is applied on EVERY boot, so a table it created could never be dropped for
+-- good. A deployed database keeps its tables and rows until an administrator
+-- drops them from Settings → Retired feature leftovers, after a backup.
+--
+-- The segment file stays, empty of tables, because segments are numbered
+-- contiguously (tests/schemaBaselineBuild.test.js).
 
 -- ══════════════════════════════════════════════════════════════════════════
 -- ADMIN ACCOUNTS AND ROLE-BASED ACCESS CONTROL

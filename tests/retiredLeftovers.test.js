@@ -18,19 +18,21 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const leftovers = require('../database/retiredLeftovers');
 
-// Tables that belong to features that are still running, or to removed
-// features whose tables the baseline still creates. If any of these ever
+// Tables that belong to features that are still running. If any of these ever
 // appears in the allow-list, the cleanup action becomes a way to delete live
 // data, so this is the single most important assertion in the file.
 const SURVIVING_TABLES = [
   'groups', 'drivers', 'driver_profiles', 'questions', 'responses', 'broadcasts',
   'scheduled_messages', 'admins', 'roles', 'permissions', 'role_permissions',
   'admin_user_roles', 'admin_audit_log', 'facebook_leads', 'recruiters',
-  'ringcentral_calls', 'route_assignments', 'home_time_settings',
-  'mileage_bonus_notifications', 'driver_road_history', 'raise_rounds',
-  'fuel_monitor_inbox', 'dispatch_eta_updates', 'safety_event_video_jobs',
-  'bol_pod_forwarding_settings', 'database_transfer_usage', 'schema_migrations',
-  'bot_sent_messages', 'employee_birthdays', 'dispatch_teams', 'bitrix_settings',
+  'ringcentral_calls', 'home_time_settings', 'mileage_bonus_notifications',
+  'driver_road_history', 'dispatch_eta_updates', 'safety_event_video_jobs',
+  'database_transfer_usage', 'schema_migrations', 'bot_sent_messages',
+  'employee_birthdays', 'bitrix_settings', 'bot_access_settings',
+  // Survivors whose NAMES sit next to retired ones — the easiest to sweep up
+  // by mistake. The Dispatcher Board stayed for Home Time (October 2026).
+  'dispatch_board_settings', 'dispatch_board_rows', 'driver_people',
+  'message_group_settings', 'mileage_bonus_progress',
 ];
 
 test('the allow-list contains no table belonging to a surviving feature', () => {
@@ -132,9 +134,12 @@ test('the boot baseline never recreates a table this tool can DROP', () => {
   // fails here instead of in production.
   const fs = require('node:fs');
   const path = require('node:path');
-  const schema = fs.readFileSync(
+  const { deployedBootSchema } = require('./helpers/freshOnlyStubs');
+  // A stub created only on a brand-new database is not a boot recreation:
+  // the next test proves each such stub really is guarded that way.
+  const schema = deployedBootSchema(fs.readFileSync(
     path.join(__dirname, '..', 'database', 'schema.sql'), 'utf8',
-  );
+  ));
 
   const offenders = [];
   for (const key of leftovers.GROUP_KEYS) {
@@ -151,6 +156,25 @@ test('the boot baseline never recreates a table this tool can DROP', () => {
     + 'database/baseline/*.sql (and run npm run build:schema), or take the table '
     + 'out of the droppable group',
   );
+});
+
+test('a retired table the baseline still creates is created ONLY on a brand-new database', () => {
+  // Migrations 0026, 0058 and 0062 alter three retired tables, and applied
+  // migrations are immutable, so a brand-new database needs those tables for
+  // the length of its first boot. Each stub must be inside the fresh-only guard
+  // and nowhere else, and must name a table this tool can drop.
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const { freshOnlyBlocks, deployedBootSchema } = require('./helpers/freshOnlyStubs');
+  const schema = fs.readFileSync(path.join(__dirname, '..', 'database', 'schema.sql'), 'utf8');
+  const droppable = new Set(leftovers.tablesForGroups(leftovers.GROUP_KEYS));
+
+  const stubbed = freshOnlyBlocks(schema)
+    .flatMap((block) => [...block.matchAll(/CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+(\w+)/gi)].map((m) => m[1]))
+    .sort();
+  assert.deepEqual(stubbed, ['dispatch_team_drivers', 'fuel_stop_alerts', 'route_assignments']);
+  for (const table of stubbed) assert.ok(droppable.has(table), `${table} is stubbed but not droppable`);
+  assert.ok(!/CREATE\s+TABLE[^;]*\bdispatch_team_drivers\b/i.test(deployedBootSchema(schema)));
 });
 
 test('the sentinel above can actually fail (it is not matching nothing)', () => {

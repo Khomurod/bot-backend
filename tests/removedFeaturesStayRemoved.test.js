@@ -264,13 +264,17 @@ test('BOL/POD forwarding stays removed, and so does the intake it replaced', () 
 });
 
 test('the baseline schema creates no removed feature table, and still creates the shared ones', () => {
-  const schema = read('database/schema.sql');
+  // As a deployed database runs it: the fresh-database-only stubs are proven
+  // guarded in tests/retiredLeftovers.test.js.
+  const { deployedBootSchema } = require('./helpers/freshOnlyStubs');
+  const schema = deployedBootSchema(read('database/schema.sql'));
   const created = [...schema.matchAll(/CREATE TABLE IF NOT EXISTS (\w+)/g)].map((m) => m[1]);
-  const removed = created.filter((t) => /^(trailer|sos_|qbq_|fleet_)/.test(t) || t === 'trailers');
+  const removed = created.filter((t) => /^(trailer|sos_|qbq_|fleet_|route_|gmaps_|raise_|dispatch_team|bol_pod_|datatruck_document|fuel_|truck_fuel)/.test(t)
+    || t === 'trailers');
   assert.deepEqual(removed, [], 'the baseline must not create a removed feature table');
   for (const kept of [
     'groups', 'drivers', 'admins', 'permissions', 'roles', 'admin_user_roles',
-    'role_permissions', 'admin_audit_log', 'bol_pod_forwarding_settings',
+    'role_permissions', 'admin_audit_log', 'bot_access_settings',
   ]) {
     assert.ok(created.includes(kept), `the baseline must still create ${kept}`);
   }

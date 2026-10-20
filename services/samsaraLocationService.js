@@ -71,15 +71,10 @@ function computePingAgeMinutes(pingTimeIso, now = new Date()) {
 function buildStatsUrl(apiBase, cursor) {
   const cleanBase = String(apiBase || DEFAULT_SAMSARA_API_BASE).replace(/\/+$/, '');
   const params = new URLSearchParams({
-    // GPS is what the map needs. `fuelPercents` and `obdOdometerMeters` ride
-    // along on a request that was already being made (the removed fuel watch
-    // read them; Live Locations still maps the tank level) — asking for them
-    // separately would double the calls against a rate-limited API.
-    //
-    // A vehicle that does not report them simply has no key for them, which the
-    // reader treats as unknown rather than as zero. "No fuel reading" and "an
-    // empty tank" must never be the same value.
-    types: 'gps,fuelPercents,obdOdometerMeters',
+    // GPS is all anything reads. The tank level and odometer were asked for
+    // here for the fuel watch, removed in October 2026
+    // (docs/architecture/retired-fuel.md); nothing reads them any more.
+    types: 'gps',
     limit: String(PAGE_LIMIT),
   });
   if (cursor) params.set('after', cursor);
