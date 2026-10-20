@@ -6,11 +6,11 @@ import HiringStagesCard from "./HiringStagesCard";
 /**
  * Settings → Safety Approvals.
  *
- * The bot listens quietly in the recruiting group. When one of the people
- * picked here as Safety REPLIES to a recruiter's driver post, it reads the
- * reply and posts the decision in the approvals topic: the CDL as a file,
- * Safety's PDFs, and the status, name and phone under them. A reply it cannot
- * read with certainty posts nothing.
+ * The bot listens in the recruiting group. When one of the people picked here
+ * as Safety marks a decision — #Approved / #NotApproved, or the words — it
+ * posts the driver's post (CDL photos and the recruiter's words) in the
+ * approvals topic with "APPROVED by …" under it, within seconds. A decision it
+ * cannot place is asked of Safety in General, never guessed.
  *
  * The switch stays disabled until the group is validated, the topic is named
  * and at least one Safety person is picked — each one missing is a way to post
@@ -208,7 +208,7 @@ export default function SafetyApprovalsTab() {
 const STATUS = {
   pending: "Waiting to be read",
   published: "Posted",
-  unclear: "Not clear — nothing posted",
-  no_post: "Not a reply to a post the bot saw",
+  unclear: "Not clear — nothing posted (Safety asked if it was a decision)",
+  no_post: "Not read (switched off, or an old post the bot never saw)",
   gave_up: "Could not post",
 };

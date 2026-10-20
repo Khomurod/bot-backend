@@ -65,8 +65,9 @@ async function propose(thread, ctx, deps) {
     driverName: ctx.driverName,
     driverPhone: ctx.phones[0] || null,
     evidence: ctx.evidence,
-    recruiterUserId: ctx.recruiter.fromUserId,
-    recruiterName: ctx.recruiter.fromName,
+    // A post Safety forwarded is the recruiter's: ask them, not Safety.
+    recruiterUserId: ctx.recruiter.forwardedFromUserId || (ctx.recruiter.forwardedFromName ? null : ctx.recruiter.fromUserId),
+    recruiterName: ctx.recruiter.forwardedFromName || ctx.recruiter.fromName,
   };
 
   let row;

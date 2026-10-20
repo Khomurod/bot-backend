@@ -163,3 +163,31 @@ test('old captured messages are deleted', { skip: skipWithoutPg() }, async (t) =
   assert.equal(await messages.getMessage(CHAT, 1), null);
   assert.ok(await messages.getMessage(CHAT, 2));
 });
+
+test('0077: a decision with no post yet, the messages before it, and who a forward is really from',
+  { skip: skipWithoutPg() }, async (t) => {
+    const { messages, reviews } = await setup(t);
+    const queued = await reviews.enqueueReview({
+      chatId: CHAT, safetyKey: 'message:21', safetyUserId: 900, postMessageId: null, settleSeconds: 0,
+    });
+    assert.equal(queued.postMessageId, null);
+    const [claimed] = await reviews.claimDueReviews({ limit: 1 });
+    assert.equal(claimed.postMessageId, null);
+
+    for (const m of [
+      shaped(10, { text: 'Renata Ilves' }),
+      shaped(11, { text: 'in a topic', threadId: 3 }),
+      shaped(12, { text: 'CLH sent', replyToMessageId: 10 }),
+      shaped(21, { text: 'not approved' }),
+      shaped(22, { text: 'later' }),
+    ]) {
+      // eslint-disable-next-line no-await-in-loop
+      await messages.upsertMessage(m);
+    }
+    const before = await messages.listRecentGeneral({ chatId: CHAT, beforeMessageId: 21, limit: 6 });
+    assert.deepEqual(before.map((m) => m.messageId), [12, 10], 'General only, newest first, before it');
+
+    await messages.upsertMessage(shaped(30, { forwardedFromUserId: 777, forwardedFromName: 'Amelia Carter' }));
+    const fwd = await messages.getMessage(CHAT, 30);
+    assert.deepEqual([fwd.forwardedFromUserId, fwd.forwardedFromName], ['777', 'Amelia Carter']);
+  });

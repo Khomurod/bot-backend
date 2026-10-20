@@ -30,7 +30,8 @@ function mapReview(row) {
     chatId: row.chat_id,
     safetyKey: row.safety_key,
     safetyUserId: row.safety_user_id === null ? null : String(row.safety_user_id),
-    postMessageId: Number(row.post_message_id),
+    // null: a decision written on its own, not as a reply (migration 0077).
+    postMessageId: row.post_message_id === null ? null : Number(row.post_message_id),
     status: row.status,
     attempts: Number(row.attempts),
     revision: Number(row.revision),
@@ -57,7 +58,8 @@ async function enqueueReview({ chatId, safetyKey, safetyUserId, postMessageId, s
             revision = safety_approval_reviews.revision + 1,
             updated_at = NOW()
      RETURNING *`,
-    [String(chatId), safetyKey, safetyUserId ?? null, Number(postMessageId), Number(settleSeconds)],
+    [String(chatId), safetyKey, safetyUserId ?? null, postMessageId == null ? null : Number(postMessageId),
+      Number(settleSeconds)],
   );
   return mapReview(rows[0]);
 }
