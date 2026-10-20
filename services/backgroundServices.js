@@ -111,10 +111,6 @@ const {
 } = require('./operations/learningPass');
 const { registerKnownCapabilities } = require('./ai/capabilityRegistry');
 const {
-  startRouteControlService,
-  stopRouteControlService,
-} = require('./routeControlService');
-const {
   startDuplicateUnitCheckService,
   stopDuplicateUnitCheckService,
 } = require('./duplicateUnitCheckService');
@@ -242,7 +238,6 @@ function startBackgroundServices({ telegram }) {
   registerKnownCapabilities().catch((err) => {
     console.warn('[AI CAPABILITIES] registration pass failed:', err.message);
   });
-  startRouteControlService(telegram);
   launchUnlessPaused(['duplicate_unit_scan'], () => startDuplicateUnitCheckService());
   // Runs beside the duplicate-unit scan, whose three report types it generalises;
   // that service keeps running until its checks are folded in.
@@ -310,7 +305,6 @@ function stopBackgroundServices() {
   try { stopChatAnnotator(); } catch (err) { console.error('[SHUTDOWN] stopChatAnnotator failed:', err.message); }
   try { stopSelfHealingWatch(); } catch (err) { console.error('[SHUTDOWN] stopSelfHealingWatch failed:', err.message); }
   try { stopLearningPass(); } catch (err) { console.error('[SHUTDOWN] stopLearningPass failed:', err.message); }
-  try { stopRouteControlService(); } catch (err) { console.error('[SHUTDOWN] stopRouteControlService failed:', err.message); }
   try { stopDuplicateUnitCheckService(); } catch (err) { console.error('[SHUTDOWN] stopDuplicateUnitCheckService failed:', err.message); }
   try { stopConsistencyService(); } catch (err) { console.error('[SHUTDOWN] stopConsistencyService failed:', err.message); }
   try { stopDispatchBoardPoller(); } catch (err) { console.error('[SHUTDOWN] stopDispatchBoardPoller failed:', err.message); }

@@ -118,8 +118,8 @@ describe("hash round-trip", () => {
   });
 
   test("a hash names its page, with or without the #", () => {
-    expect(pageKeyFromHash("#route_control")).toBe("route_control");
-    expect(pageKeyFromHash("route_control")).toBe("route_control");
+    expect(pageKeyFromHash("#live_locations")).toBe("live_locations");
+    expect(pageKeyFromHash("live_locations")).toBe("live_locations");
   });
 
   test("a tab hint after the page is ignored, not treated as junk", () => {

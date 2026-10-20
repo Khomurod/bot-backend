@@ -136,12 +136,11 @@ async function fetchVehicleStatsPage({ apiKey, apiBase, cursor }) {
 /**
  * THE WHOLE FLEET IS FETCHED ONCE PER MINUTE, NOT ONCE PER CALLER.
  *
- * Route Control resolves each active assignment's GPS separately, and each
- * resolution called this — so ten active assignments meant ten complete
- * paginated fleet fetches every check interval, around fourteen thousand a day
- * for a fleet of about a hundred trucks whose positions are identical in all
- * ten. The duplicate-unit scan, the fuel watch and the load watch each ask for
- * the same snapshot on their own timers too.
+ * Route Control (removed October 2026) resolved each active assignment's GPS
+ * separately, and each resolution called this — ten active assignments meant
+ * ten complete paginated fleet fetches every check interval. The
+ * duplicate-unit scan, the fuel watch and the load watch each ask for the same
+ * snapshot on their own timers too.
  *
  * Sixty seconds, because that is shorter than every caller's interval and the
  * data it holds is already treated as approximate: nothing here decides

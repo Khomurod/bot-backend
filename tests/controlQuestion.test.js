@@ -121,7 +121,7 @@ test('THE WORDING READS THE SHAPE THE CHECK ACTUALLY PRODUCES', () => {
     boardRows: [],
     groupMembers: [], botUsers: [], telegramIdentities: [],
     fuelAlerts: [], teamDrivers: [], mileageProgress: [],
-    routeAssignments: [], personGroupHistory: [], notificationSettings: [],
+    personGroupHistory: [], notificationSettings: [],
   });
   const stale = findings.find((f) => f.checkKey === 'identity.stale_unit_assignment');
   assert.ok(stale, 'the check produced the finding this wording is for');

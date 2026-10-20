@@ -33,7 +33,6 @@ const DB_PATH = require.resolve('../database/db');
 const MODULES = [
   { file: 'samsaraSettings', getter: 'getSamsaraConfig', admin: 'getSamsaraSettingsForAdmin' },
   { file: 'eldSettings', getter: 'getEldConfig', admin: 'getEldSettingsForAdmin' },
-  { file: 'gmapsSettings', getter: 'getGmapsConfig', admin: 'getGmapsSettingsForAdmin' },
   { file: 'bolPodForwardingSettings', getter: 'getBolPodConfig', admin: 'getBolPodSettingsForAdmin' },
   { file: 'messageRoutingSettings', getter: 'getMessageGroupConfig', admin: 'getMessageGroupSettingsForAdmin' },
   { file: 'safetyEventVideoSettings', getter: 'getSafetyEventVideoConfig', admin: 'getSafetyEventVideoSettingsForAdmin' },

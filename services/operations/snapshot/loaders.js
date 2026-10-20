@@ -158,7 +158,7 @@ async function loadLayerSnapshot(db) {
   const [
     people, personGroups, units, fuelAlerts, groupMembers, botUsers, telegramIdentities,
     teamDrivers, mileageProgress,
-    routeAssignments, personGroupHistory, notificationSettings,
+    personGroupHistory, notificationSettings,
   ] = await Promise.all([
     db.query('SELECT id, display_name, merged_into_person_id FROM driver_people'),
     db.query('SELECT person_id, group_id, started_at FROM driver_person_groups WHERE ended_at IS NULL'),
@@ -189,7 +189,6 @@ async function loadLayerSnapshot(db) {
          FROM dispatch_team_drivers WHERE active = TRUE`
     ),
     db.query('SELECT id, driver_normalized_name, person_id FROM mileage_bonus_progress WHERE is_active = TRUE'),
-    db.query(`SELECT id, group_id, status, created_at FROM route_assignments WHERE status = 'active'`),
     // Open AND closed: the continuity check needs to know which chat a person
     // was on BEFORE the one they are on now.
     db.query('SELECT person_id, group_id, started_at, ended_at FROM driver_person_groups ORDER BY started_at'),
@@ -214,7 +213,6 @@ async function loadLayerSnapshot(db) {
     ),
     teamDrivers: teamDrivers.rows,
     mileageProgress: mileageProgress.rows,
-    routeAssignments: routeAssignments.rows,
     notificationSettings: notificationSettings.rows[0]
       ? {
         enabled: notificationSettings.rows[0].enabled !== false,

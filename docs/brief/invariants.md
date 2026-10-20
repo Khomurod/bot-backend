@@ -11,17 +11,13 @@ dropped, and the numbering is unchanged**, so every existing reference to
 "`APP_BRIEF.md` §9" still means exactly this.
 
 The full per-feature invariants, with the tests that guard each one, live in
-`docs/architecture/route-control.md`; `CLAUDE.md` links to them and holds the
+`docs/architecture/*.md`; `CLAUDE.md` links to them and holds the
 repository-wide working rules. The highest-consequence items:
 
-1. **Signed-URL media transport.** Route Control screenshots reach Telegram as
-   short-lived HMAC-signed HTTPS URLs
-   (`/api/route-screenshot-media/:id`) — never as raw
-   `Buffer`/multipart uploads from Render. The direct-upload path repeatedly
-   stalled in production. Signed URLs and query strings are never logged.
-   Existing text-only messages are converted **in place** with
-   `editMessageMedia`, never replaced with a new post.
-   BOL/POD forwarding follows the same rule for the same reason plus bandwidth:
+1. **Media goes to Telegram by URL, not as bytes from this process.** Direct
+   multipart uploads from the host repeatedly stalled in production (Route
+   Control's screenshots, removed October 2026, were the first case).
+   BOL/POD forwarding follows the rule for that reason plus bandwidth:
    `datatruckDocumentService` passes the Datatruck URL to `Input.fromURL(url)`,
    which in Telegraf 4.x is *literally* `url.toString()` — a plain string form
    field, so **Telegram's servers** fetch the file and the bytes never enter this

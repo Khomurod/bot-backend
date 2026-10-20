@@ -7,7 +7,6 @@ const NAV_SECTIONS = [
     items: [
       { key: 'operations', icon: '🔎', label: 'Needs Attention' },
       { key: 'live_locations', icon: '📍', label: 'Live Locations' },
-      { key: 'route_control', icon: '🧭', label: 'Route Control' },
       { key: 'fuel_monitor', icon: '⛽', label: 'Fuel Monitor' },
       { key: 'home_time', icon: '🏠', label: 'Driver Home Time' },
       { key: 'system_health', icon: '🩺', label: 'System & AI Health' },

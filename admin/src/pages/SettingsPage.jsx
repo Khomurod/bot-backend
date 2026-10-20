@@ -29,7 +29,6 @@ import React, { Suspense, lazy, useState } from "react";
 const LocationProvidersTab = lazy(() => import("./settings/LocationProvidersTab"));
 const RingCentralTab = lazy(() => import("./settings/RingCentralTab"));
 const TelegramGroupsTab = lazy(() => import("./settings/TelegramGroupsTab"));
-const GmapsTab = lazy(() => import("./settings/GmapsTab"));
 const SamsaraTab = lazy(() => import("./settings/SamsaraTab"));
 const DispatcherBoardTab = lazy(() => import("./settings/DispatcherBoardTab"));
 const BolPodTab = lazy(() => import("./settings/BolPodTab"));
@@ -42,7 +41,7 @@ const GroupAccessPanel = lazy(() => import("./settings/bot/GroupAccessPanel"));
 const RetiredLeftoversTab = lazy(() => import("./settings/RetiredLeftoversTab"));
 
 const TAB_KEYS = [
-  "location", "ringcentral", "groups", "gmaps", "samsara",
+  "location", "ringcentral", "groups", "samsara",
   "board", "bolpod", "finance", "safety", "ai", "notifications", "reactions", "access", "leftovers",
 ];
 
@@ -64,7 +63,6 @@ export default function SettingsPage({ initialTab }) {
         <button className={`btn ${tab === "location" ? "btn-primary" : "btn-ghost"} touch-target`} onClick={() => setTab("location")}>📡 Live Location</button>
         <button className={`btn ${tab === "ringcentral" ? "btn-primary" : "btn-ghost"} touch-target`} onClick={() => setTab("ringcentral")}>📞 RingCentral</button>
         <button className={`btn ${tab === "groups" ? "btn-primary" : "btn-ghost"} touch-target`} onClick={() => setTab("groups")}>💬 Telegram Groups</button>
-        <button className={`btn ${tab === "gmaps" ? "btn-primary" : "btn-ghost"} touch-target`} onClick={() => setTab("gmaps")}>🗺️ GMaps</button>
         <button className={`btn ${tab === "samsara" ? "btn-primary" : "btn-ghost"} touch-target`} onClick={() => setTab("samsara")}>🛰️ Samsara</button>
         <button className={`btn ${tab === "board" ? "btn-primary" : "btn-ghost"} touch-target`} onClick={() => setTab("board")}>🗂️ Dispatcher Board</button>
         <button className={`btn ${tab === "bolpod" ? "btn-primary" : "btn-ghost"} touch-target`} onClick={() => setTab("bolpod")}>📄 BOL / POD</button>
@@ -80,7 +78,6 @@ export default function SettingsPage({ initialTab }) {
         {tab === "location" && <LocationProvidersTab />}
         {tab === "ringcentral" && <RingCentralTab />}
         {tab === "groups" && <TelegramGroupsTab />}
-        {tab === "gmaps" && <GmapsTab />}
         {tab === "samsara" && <SamsaraTab />}
         {tab === "board" && <DispatcherBoardTab />}
         {tab === "bolpod" && <BolPodTab />}

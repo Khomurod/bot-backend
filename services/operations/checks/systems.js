@@ -13,7 +13,6 @@
  *   Dispatch teams — a team seat pointing at a chat the driver has left, when
  *   the person layer knows where they are now.
  *   Raise / mileage — progress rows the person layer could not place.
- *   Route Control — an active route on a chat nobody is in.
  */
 
 const { createHash } = require('node:crypto');
@@ -160,32 +159,12 @@ function checkMileageWithoutPerson({ mileageProgress }) {
   }];
 }
 
-/** An active route on a chat that is inactive or gone. */
-function checkRouteOnInactiveGroup({ groupsById, routeAssignments }) {
-  return (routeAssignments || [])
-    .filter((r) => r.status === 'active' && r.group_id != null)
-    .filter((r) => { const g = groupsById.get(r.group_id); return !g || g.active !== true; })
-    .map((r) => {
-      const g = groupsById.get(r.group_id);
-      return {
-        checkKey: 'route_control.assignment_on_inactive_group',
-        subjectType: 'route_assignment',
-        subjectId: r.id,
-        title: `Route #${r.id} is still active for ${label(g)}, which is inactive`,
-        severity: 'warning',
-        tier: 'warning',
-        evidence: { assignmentId: r.id, groupId: r.group_id, groupName: g?.group_name || null, createdAt: r.created_at },
-      };
-    });
-}
-
 const CHECKS = [
   checkSamsaraVehicleOnTwoGroups,
   checkSamsaraLinkDisagrees,
   checkFuelWatchOnInactiveGroup,
   checkTeamDriverOnInactiveGroup,
   checkMileageWithoutPerson,
-  checkRouteOnInactiveGroup,
   // Declared below; function declarations hoist, so the reference is live.
   checkNotificationDestination,
 ];
@@ -249,6 +228,8 @@ const CHECK_KEYS = [
   'fuel.watch_on_inactive_group',
   'dispatch.team_driver_on_inactive_group',
   'raise.progress_without_person',
+  // Route Control was removed (October 2026). The key stays so a sweep that
+  // completes this module resolves any finding still open under it.
   'route_control.assignment_on_inactive_group',
   'ops.no_notification_destination',
 ];
@@ -265,6 +246,5 @@ module.exports = {
   checkFuelWatchOnInactiveGroup,
   checkTeamDriverOnInactiveGroup,
   checkMileageWithoutPerson,
-  checkRouteOnInactiveGroup,
   checkNotificationDestination,
 };

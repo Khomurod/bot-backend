@@ -20,7 +20,6 @@ export const PAGE_KEYS = Object.freeze([
   // Operations
   'operations',
   'live_locations',
-  'route_control',
   'fuel_monitor',
   'home_time',
   'system_health',

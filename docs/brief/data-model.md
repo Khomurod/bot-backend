@@ -13,7 +13,7 @@
   entry point), the `admins` queries, the `service_runs` claim helpers and the
   group-directory queries.
 - ⚠️ **The seam is NOT universal — several feature modules are required
-  directly**, including `database/homeTime.js` and `database/routeControl.js`.
+  directly**, including `database/homeTime.js`.
   `db.someHomeTimeFn(...)` is `undefined`. Check `database/db.js`'s require list
   before assuming a helper is reachable through it; new code should prefer
   requiring the feature module directly anyway.
@@ -45,7 +45,7 @@ plus unit and driver parsed from the Telegram title (convention
 `WENZE UNIT # <unit> <NAME> (COMPANY DRIVER)`, parsed by
 `lib/drivers/driverGroupTitle.js`). `driver_profiles` hangs off it one-to-one.
 **Nearly every feature joins to `groups`** — surveys, broadcasts, dispatch, home
-time, fuel, bonuses and Route Control.
+time, fuel and bonuses.
 
 **But a `groups` row is three real-world things at once** — a PERSON
 (`driver_birthday`), a TRUCK (`samsara_vehicle_id`, the unit parsed out of the
@@ -185,8 +185,8 @@ not `facebookCrypto` — the poller holds none of this app's secrets.
   - **Per-driver lookups go through `liveLocationResolver`** (Samsara → Factor →
     Leader, with transient retries): `/location`
     (`bot/handlers/dispatchCommandHandlers.js`), ETA updates and the `/status`
-    snapshot (`dispatchEtaUpdateService.js`), fuel alerts, Route Control
-    (`routeControl/assignmentLocation.js`), and dispatch test diagnostics.
+    snapshot (`dispatchEtaUpdateService.js`), fuel alerts, and dispatch test
+    diagnostics.
   - **Batch/fleet fetches do NOT use it.** The Live Locations map
     (`liveLocationsService.js`) calls `samsaraLocationService` / `driveHosEldService`
     directly and re-implements the same provider order, and the duplicate-unit

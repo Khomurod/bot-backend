@@ -1,5 +1,5 @@
 /**
- * Driver mention resolver — Route Control.
+ * Driver mention resolver.
  *
  * Works out how to address the driver of a driver group in a Telegram message,
  * preferring the most reliable identity we hold:
