@@ -10,6 +10,19 @@ git so they can be recovered.
 
 ---
 
+## BOL/POD document forwarding
+
+Removed 2026-10 at the owner's request ("BOL и POD… полностью отключай" —
+switch it off completely): the Datatruck poller that forwarded Bills of Lading
+and Proofs of Delivery to driver groups and a central group, its settings tab
+(Settings → BOL / POD, `/api/settings/bol-pod*` now 404), the
+`datatruck_documents` background service and its config keys. The shared
+Datatruck client stays. What was removed, what was kept (the two tables, the
+guard against the older intake/upload pipeline) and why are in
+[`architecture/retired-bol-pod.md`](architecture/retired-bol-pod.md).
+
+---
+
 ## Route Control
 
 Removed 2026-10 at the owner's request: Google Maps route links pasted into
@@ -129,8 +142,8 @@ Three feature areas removed in one pass: the trailer rental business at
 and the QBQ/SOS employee assessment with its hosted deck at `/qbq`.
 
 Roughly 35 000 lines. The RBAC substrate, the administrative audit trail and
-the BOL/POD forwarding settings were living inside the removed baseline
-segments and were moved out first; the only test of the auth middleware and the
+the BOL/POD forwarding settings (that feature itself retired in October 2026)
+were living inside the removed baseline segments and were moved out first; the only test of the auth middleware and the
 repository's only PostgreSQL harness were living inside the removed test files
 and were renamed and kept.
 

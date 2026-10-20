@@ -241,6 +241,7 @@ that area**, and run the tests it names.
 | Area | Read first |
 |---|---|
 | Route Control's removal, and the tables it left | [`docs/architecture/retired-route-control.md`](docs/architecture/retired-route-control.md) |
+| BOL/POD document forwarding's removal, the tables it left, and the shared Datatruck client that stayed | [`docs/architecture/retired-bol-pod.md`](docs/architecture/retired-bol-pod.md) |
 | Which recruiter's number texts a lead, which MESSAGE they send, the E.164 `from` rule, per-recruiter RingCentral credentials, inbound-SMS subscriptions | [`docs/architecture/recruiter-sms-sender.md`](docs/architecture/recruiter-sms-sender.md) |
 | The Dispatcher Board feed, which Home Time reads for home-in / home-out (and nothing else since October 2026), fleet types, and why a truck number alone is not unique | [`docs/architecture/dispatcher-board.md`](docs/architecture/dispatcher-board.md) |
 | The Gross Grand Prix displays: why the Datatruck token never reaches the page, what Datatruck may be asked and how often, which names may be public | [`docs/architecture/gross-race.md`](docs/architecture/gross-race.md) |

@@ -26,7 +26,6 @@ function defaultDeps() {
       require('../database/operationalNotificationSettings'),
       require('../database/messageRoutingSettings'),
       require('../database/financeSettings'),
-      require('../database/bolPodForwardingSettings'),
     ],
   };
   /* eslint-enable global-require */

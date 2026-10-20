@@ -51,6 +51,8 @@ const NOT_DESTINATIONS = Object.freeze({
     'the driver-raise review was removed in October 2026; nothing sends there, and the column waits for the retired-feature cleanup',
   'message_group_settings.raise_results_group_id':
     'the driver-raise review was removed in October 2026; nothing sends there, and the column waits for the retired-feature cleanup',
+  'bol_pod_forwarding_settings.central_group_id':
+    'BOL/POD forwarding was removed in October 2026; nothing sends there, and the table waits for the retired-feature cleanup',
 });
 
 test('every chat-id column in a *_settings table is a destination or has a stated reason not to be', () => {

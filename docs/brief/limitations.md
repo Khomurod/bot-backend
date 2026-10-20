@@ -18,6 +18,13 @@
   Time. See `docs/architecture/retired-route-control.md`,
   `docs/architecture/retired-driver-raise.md` and
   `docs/architecture/dispatcher-board.md`.
+- **BOL/POD document forwarding was removed (2026-10)**, at the owner's
+  request. No `datatruck_documents` worker, no Settings → BOL / POD, no
+  `/api/settings/bol-pod*` (404). Its two tables, `bol_pod_forwarding_settings`
+  and `datatruck_document_deliveries`, are still created by the baseline and
+  read by nothing, and its last `system_health_states` row is left behind;
+  clearing them is the same separate, backed-up step. The shared Datatruck
+  client stays. See `docs/architecture/retired-bol-pod.md`.
 - **FleetView is archived, not present.** No `fleet/`, no `server/fleet/`, no
   `/update` SPA, no `/api/v1/*`. It is preserved at the git tag
   `archive/fleetview-disabled`, its tables were deliberately **not** dropped, and

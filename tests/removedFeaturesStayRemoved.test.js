@@ -212,6 +212,36 @@ test("the driver-raise review and the Dispatcher Board's identity checks stay re
   assert.ok(read('server/routes/retiredRoutes.js').includes("'/raise'"), '/raise is a retired route');
 });
 
+test('BOL/POD forwarding stays removed, and so does the intake it replaced', () => {
+  // Forwarding (Datatruck -> Telegram) was removed at the owner's request in
+  // October 2026. The older intake/upload pipeline (drivers posting documents
+  // -> AI classify -> upload to Datatruck) had been removed before it; its
+  // guard lived in a test that went with the forwarding feature, so it is here.
+  for (const gone of [
+    'services/datatruckDocumentService.js', 'services/datatruckDocumentHelpers.js',
+    'services/datatruckDocumentSender.js', 'services/bolPodClassifier.js',
+    'services/bolPodGroupValidation.js', 'database/datatruckDocuments.js',
+    'database/bolPodForwardingSettings.js', 'server/routes/settings/bolPodRoutes.js',
+    'admin/src/pages/settings/BolPodTab.jsx',
+    // the earlier intake/upload/monitor pipeline
+    'bot/documentIntakeHandlers.js', 'services/documentIntakeService.js',
+    'services/documentIntakeHelpers.js', 'services/documentClassifierService.js',
+    'services/documentLoadMatcher.js', 'services/documentMergeService.js',
+    'services/datatruckUploadService.js', 'services/bolPodMonitorSettingsService.js',
+    'services/bolPodTestMonitorService.js', 'database/bolPodMonitorSettings.js',
+    'database/telegramDocuments.js', 'admin/src/pages/settings/BolPodMonitorTab.jsx',
+  ]) {
+    assert.equal(exists(gone), false, `${gone} must stay removed`);
+  }
+  const roster = read('services/backgroundServices.js') + read('index.js');
+  assert.ok(!roster.includes('startDatatruckDocumentService'), 'no document forwarding runs');
+  assert.ok(!/documentIntake/i.test(roster), 'and no intake either');
+  assert.ok(!read('server/routes/settingsRoutes.js').includes('bolPod'), 'no /api/settings/bol-pod router');
+  assert.ok(!read('admin/src/pages/SettingsPage.jsx').includes('BolPod'), 'no BOL / POD settings tab');
+  assert.ok(!/uploadOrderDocument/.test(read('services/datatruckApiService.js')),
+    'the Datatruck client never uploads documents');
+});
+
 test('the baseline schema creates no removed feature table, and still creates the shared ones', () => {
   const schema = read('database/schema.sql');
   const created = [...schema.matchAll(/CREATE TABLE IF NOT EXISTS (\w+)/g)].map((m) => m[1]);
@@ -235,7 +265,6 @@ test('the whole index.js module graph loads with no application env', () => {
     'services/birthdayService.js', 'services/groupStatusAiService.js',
     'services/employeeBirthdayWishService.js', 'services/facebookWebhookService.js',
     'services/dispatchEtaUpdateService.js', 'services/mileageBonusService.js',
-    'services/datatruckDocumentService.js',
     'services/fuelStopAlertService.js', 'services/recruiterCallSyncService.js',
     'services/ringCentralTokenRefreshService.js', 'services/roadBonusNotifierService.js',
     'services/homeTimeReminderService.js',

@@ -109,9 +109,9 @@ test('WHAT THE OWNER KEPT RUNNING is never on the pause list', () => {
 test('a paused pass gets a reason only while economy mode is on', () => {
   const on = resolveEconomy({ env: { ECONOMY_MODE_UNTIL: UNTIL }, now: NOW });
   const off = resolveEconomy({ env: {}, now: NOW });
-  assert.equal(economyPauseReason('datatruck_documents', on),
+  assert.equal(economyPauseReason('load_lifecycle', on),
     'paused to save database traffic until 2026-10-21T00:00:00.000Z');
-  assert.equal(economyPauseReason('datatruck_documents', off), null);
+  assert.equal(economyPauseReason('load_lifecycle', off), null);
   assert.equal(economyPauseReason('scheduler', on), null);
 });
 
@@ -140,7 +140,7 @@ test('a service whose passes are all paused is held, and starts when the date pa
   t.after(() => economy.cancelEconomyEnd());
 
   let started = 0;
-  assert.equal(economy.launchUnlessPaused(['datatruck_documents'], () => { started += 1; }), true);
+  assert.equal(economy.launchUnlessPaused(['load_lifecycle'], () => { started += 1; }), true);
   assert.equal(started, 0, 'nothing that could reach the database runs');
   assert.equal(economy.launchUnlessPaused(['scheduler'], () => { started += 1; }), false);
   assert.equal(started, 1, 'a service that is not paused starts at once');
@@ -179,7 +179,7 @@ test('with the switch off, every service starts and nothing is written', async (
   withEnv(t, undefined);
   const economy = freshEconomy();
   let started = 0;
-  assert.equal(economy.launchUnlessPaused(['datatruck_documents'], () => { started += 1; }), false);
+  assert.equal(economy.launchUnlessPaused(['load_lifecycle'], () => { started += 1; }), false);
   assert.equal(started, 1);
   const writes = [];
   const noted = await economy.notePausedServices({ runs: { async recordRunFinish(...a) { writes.push(a); return true; } } });

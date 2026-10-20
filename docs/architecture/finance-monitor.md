@@ -335,7 +335,7 @@ request succeeded; the verdict was negative. It used to answer 400, which made
 the admin's HTTP layer throw — so the tab's own rendering of `ok: false`,
 including the one-click *"did you mean -5142950669?"* that makes the sign-flip
 check useful, was unreachable code. `bol-pod/validate-group` had it right all
-along.
+along (it went with BOL/POD forwarding in October 2026).
 
 **A real 4xx answers `{ error }`, never `{ message }`.** `admin/src/api/http.js`
 reads `errData.error`; this file was the only settings module answering with

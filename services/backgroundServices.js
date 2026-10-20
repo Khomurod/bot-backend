@@ -49,10 +49,6 @@ const {
   stopMileageBonusService,
 } = require('./mileageBonusService');
 const {
-  startDatatruckDocumentService,
-  stopDatatruckDocumentService,
-} = require('./datatruckDocumentService');
-const {
   startFuelStopAlertService,
   stopFuelStopAlertService,
 } = require('./fuelStopAlertService');
@@ -186,7 +182,6 @@ function startBackgroundServices({ telegram }) {
   startEmployeeBirthdayWishService();
   launchUnlessPaused(['group_status_ai'], () => startGroupStatusAiService());
   startMileageBonusService();
-  launchUnlessPaused(['datatruck_documents'], () => startDatatruckDocumentService());
   launchUnlessPaused(['fuel_stop_alerts'], () => startFuelStopAlertService(telegram));
   startRecruiterCallSyncService();
   startRingCentralTokenRefreshService();
@@ -283,7 +278,6 @@ function stopBackgroundServices() {
   try { stopEmployeeBirthdayWishService(); } catch (err) { console.error('[SHUTDOWN] stopEmployeeBirthdayWishService failed:', err.message); }
   try { stopGroupStatusAiService(); } catch (err) { console.error('[SHUTDOWN] stopGroupStatusAiService failed:', err.message); }
   try { stopMileageBonusService(); } catch (err) { console.error('[SHUTDOWN] stopMileageBonusService failed:', err.message); }
-  try { stopDatatruckDocumentService(); } catch (err) { console.error('[SHUTDOWN] stopDatatruckDocumentService failed:', err.message); }
   try { stopFuelStopAlertService(); } catch (err) { console.error('[SHUTDOWN] stopFuelStopAlertService failed:', err.message); }
   try { stopRecruiterCallSyncService(); } catch (err) { console.error('[SHUTDOWN] stopRecruiterCallSyncService failed:', err.message); }
   try { stopRingCentralTokenRefreshService(); } catch (err) { console.error('[SHUTDOWN] stopRingCentralTokenRefreshService failed:', err.message); }

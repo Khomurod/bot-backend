@@ -89,8 +89,7 @@ export default function GroupsPage() {
       )}
       {activeTab === "company" && (
         <div className="muted" style={{ marginBottom: 12 }}>
-          Chats that are not a driver&apos;s. They receive no broadcasts and no
-          BOL/POD documents.
+          Chats that are not a driver&apos;s. They receive no broadcasts.
         </div>
       )}
 

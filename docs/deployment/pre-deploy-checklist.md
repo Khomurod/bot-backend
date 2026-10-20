@@ -137,7 +137,7 @@ after deploy on the live service.
 | F1 | Feedback survey works. | **[AUTO]** `anonymousFeedbackHandlers.test.js`; **[MANUAL]** submit an answer. |
 | F2 | Broadcast works. | **[AUTO]** `broadcastTargetService.test.js`; **[MANUAL]** test send. |
 | F3 | ~~Driver of the Week voting~~ **REMOVED** — feature retired. | **[MANUAL]** Confirm no "Driver Polls" tab in admin and no `/voting` endpoints. |
-| F4 | BOL/POD delivery works (idempotent). | **[AUTO]** `datatruckDocumentService.test.js`, `datatruckDocumentHelpers.test.js`. |
+| F4 | ~~BOL/POD delivery works (idempotent).~~ **REMOVED** — BOL/POD forwarding retired October 2026 (`docs/architecture/retired-bol-pod.md`). | **[AUTO]** `removedFeaturesStayRemoved.test.js`; **[MANUAL]** confirm no "BOL / POD" tab in Settings. |
 | F5 | Fuel-stop reminder works. | **[AUTO]** `fuelStopAlertService.test.js`. |
 | F6 | Home-time policy tracking works. | **[AUTO]** `homeTime*.test.js` (service, request, import, status). |
 | F7 | Birthday notification works. | **[AUTO]** `birthdayService.test.js`, `employeeBirthdayWishService.test.js`. |
@@ -197,7 +197,7 @@ or lead event.**
 |---|---|---|
 | Telegram | Safe-send wrapper retries transient errors; no duplicate on success. | **[AUTO]** `safeSend.test.js`, `botSentMessageRegistry.test.js`. |
 | Samsara | Isolated service; hub unaffected; events retried next poll. | **[AUTO]** `samsaraIdempotentDelivery.test.js` (external repo). |
-| Datatruck | API client backs off; document delivery stays retry-eligible, never duplicates. | **[AUTO]** `datatruckApiService.test.js`, `datatruckDocumentService.test.js`. |
+| Datatruck | API client backs off; Live Locations, mileage bonus and load lookups degrade to fallbacks or skip the tick. | **[AUTO]** `datatruckApiService.test.js`. |
 | Bitrix24 | Error logged; lead not lost (webhook idempotency preserves it). | **[AUTO]** `bitrix24Service.test.js`. |
 | RingCentral | SMS/reply errors logged; no duplicate SMS. | **[AUTO]** `facebookLeadSmsMirrorService.test.js`. |
 | Meta webhook sends duplicate data | Dedup by `leadgen:<pageId>:<leadgen_id>`; one lead only. | **[AUTO]** `facebookWebhookService.test.js`. |

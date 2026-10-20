@@ -43,7 +43,6 @@ without any timer firing), `tests/jobQueueScheduler.test.js` and
 | `services/homeTime/returnToRoadWatch.js` (`startReturnToRoadWatch`) | 12 min, first tick 4 min | Watches drivers who are at home and decides whether they went back to work — Datatruck load + truck movement. No driver at home means no provider call at all. Files a finding; the corrections pass applies the high-confidence ones. **Each driver is checked inside its own try**: one that throws is counted and its error KIND recorded, and the pass is a failure only when every watched driver failed. Every timestamp it stores comes from a provider or from Datatruck and goes through `lib/database/timestampValue.js` first — an unreadable one becomes null rather than aborting the write |
 | `services/homeTime/boardPresenceWatch.js` (`startBoardPresenceWatch`) | 15 min, first tick 2 min | The other half of the same question: WHEN A DRIVER GOES HOME. Reads the Dispatcher Board snapshot somebody else's poller already fetched — no second integration and no extra network call — and opens a cycle when the board has said `HOME`/`VACATION` for twenty minutes, or closes one when the truck is back in the dispatch pool. Writes only through `applyStateTransition`. Three rules keep it from flapping (settle / dwell / hold), so a board a few minutes behind a driver's own message produces silence; only a twelve-hour disagreement files `home_time.board_disagrees_with_state`. Capped at 25 transitions a pass, so a board that suddenly claims the whole fleet went home is a slow problem somebody notices. `blocked` while the board is switched off |
 | `roadBonusNotifierService` | 10 min (first tick +20s) | decides each leg's bonus once the driver is back on the road (released / forfeited / held for a person) and posts the released summaries and forfeit notes |
-| `datatruckDocumentService` | `DATATRUCK_DOC_POLL_MINUTES` (15) | new BOL/POD → matching driver group, deduped |
 | `duplicateUnitCheckService` | 15 min (first tick +90s) | duplicate-unit / name-mismatch reports, **and the only writer of `groups.samsara_vehicle_id`** |
 | `modelMaintenance` (AI) | daily 06:00 UTC (first tick +3 min), plus a 5-min-debounced verification when the router is refused a model. The hourly wake checks the schedule first; until October 2026 every wake ran the whole pass, ~24 a day. A run that errored is retried at the next wake | re-reads each enabled provider's `/models`; retires what is gone, keeps the operator's order, fills from Wenze's picks; files a `discontinuation` finding and a plain-words Telegram line. A failed listing changes nothing |
 | `consistencyService` | 15 min (first tick +120s) | one snapshot → every pure check → findings filed and cleared ones resolved — **then the permitted Tier-1 corrections are applied, in the same guarded run**. Default deny per check; the Findings card shows "Auto-applied N of M" |
@@ -69,9 +68,9 @@ pinned-context snapshots, and the recent-message buffer.
 
 **None of this depends on a browser.** Every job above is started by
 `index.js` at boot and stopped only by the shutdown coordinator; no route, no
-login and no admin page starts, feeds or keeps one alive. Route monitoring,
-fuel monitoring, birthdays, Samsara/ELD reads, dispatch ETA, the alert queues
-and the alert queues all continue with the admin panel closed — the
+login and no admin page starts, feeds or keeps one alive. Fuel monitoring,
+birthdays, Samsara/ELD reads, dispatch ETA and the alert queues all continue
+with the admin panel closed — the
 panel is a viewer, never the engine. (Nothing in `server/routes/**` calls a
 `start*Service`, and no route module holds an interval at all.)
 
@@ -116,12 +115,10 @@ retry.**
 | `service_runs` | a scheduled service firing twice for one due window |
 | `facebook_webhook_events` (`leadgen:<pageId>:<leadgen_id>`) | a re-delivered Meta lead being posted twice; `telegram_posted_at` stops a RETRIED event posting it again |
 | `facebook_lead_sms_mirrors` | an SMS reply being mirrored twice |
-| `datatruck_document_deliveries` | the same BOL/POD being forwarded twice |
 | `fuel_monitor_inbox` | one fuel-stop post creating several watches |
 | `dispatch_eta_updates` / `fuel_stop_alerts` claim pattern (`FOR UPDATE SKIP LOCKED`) | two ticks working the same row |
 | `driver_road_history.bonus_posted_at` (atomic claim) | a completed road leg being announced twice |
 | `responses` UNIQUE `(driver_id, question_id)` | a driver answering one question twice |
-| `route_assignment_attachments` unique index | a second screenshot per assignment (replacement is a single UPSERT) |
 
 `bot_sent_messages` belongs to this family but is **not** a guard — it is the
 after-the-fact record of what was sent (§4).

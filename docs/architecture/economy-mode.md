@@ -14,7 +14,8 @@ outright, so every feature stops, not just the costly ones. The owner chose
 what keeps running until the allowance resets on the 20th. The largest measured
 consumers were:
 
-- BOL/POD forwarding, ~100 MB a day (every document in the window re-read every pass);
+- BOL/POD forwarding, ~100 MB a day (every document in the window re-read every
+  pass) — since removed outright ([`retired-bol-pod.md`](retired-bol-pod.md));
 - load control, ~110 MB;
 - the consistency sweep and the findings it re-writes, 60–120 MB;
 - each driver message, ~5.7 KB of reads;
@@ -64,7 +65,7 @@ configuration", never a failure.
 
 | Owner's list (2026-10-09) | Catalogue keys |
 |---|---|
-| BOL/POD forwarding | `datatruck_documents` |
+| BOL/POD forwarding | none now — the feature, and its `datatruck_documents` key, were removed in October 2026 |
 | load control | `load_lifecycle` |
 | automatic checks and questions | `consistency_sweep`, `contradiction_pass`, `control_ask_pass`, `control_daily_digest`, `self_healing`, `learning_pass`, `duplicate_unit_scan`, `decision_verification` |
 | fuel | `fuel_risk`, `fuel_stop_alerts` |
@@ -99,9 +100,6 @@ and the cron pinger asks for it about 150 times a day.
 
 ## What the end of a pause looks like
 
-- **BOL/POD.** Documents uploaded during the pause are forwarded late, and only
-  those inside the lookback window (`DATATRUCK_DOC_LOOKBACK_DAYS`, default 7).
-  Older ones are not forwarded automatically.
 - **Findings and questions.** These resume on the first sweep. The owner's
   question budget (two a day) still applies, so a backlog cannot flood the
   notification group.

@@ -9,7 +9,6 @@
  * confidence, which is a guess about what a room is for. Guesses do not get to
  * act, and this one has consequences a person must see first:
  *
- *   BOL and POD documents stop routing to that chat.
  *   It stops receiving broadcasts.
  *   Its driver profile stops being indexed as a driver.
  *

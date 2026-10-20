@@ -71,7 +71,8 @@ Business problems it solves:
   the Telegram groups they already live in.
 - Give dispatch real-time truck location, load and ETA information.
 - Automate recurring operations work: bonuses, home-time, fuel stops,
-  document forwarding, birthday wishes.
+  birthday wishes. (BOL/POD document forwarding was removed in October 2026 —
+  `docs/architecture/retired-bol-pod.md`.)
 - Capture and convert recruiting leads (Facebook/Meta, Indeed) and measure
   recruiter performance.
 
@@ -156,7 +157,7 @@ Hard constraints of this deployment:
 
 | User type | How they use it |
 |---|---|
-| **Drivers** | Their Telegram driver group is the whole interface: answer surveys, post `Status: Home/Ready/Rolling`, request home time, receive broadcasts, bonuses, BOL/POD documents, fuel reminders. Also anonymous feedback in the bot's private chat. |
+| **Drivers** | Their Telegram driver group is the whole interface: answer surveys, post `Status: Home/Ready/Rolling`, request home time, receive broadcasts, bonuses, fuel reminders. Also anonymous feedback in the bot's private chat. |
 | **Dispatchers** | `/load`, `/location`, `/status`, `/update` inside driver groups; receive automatic ETA updates; keep the Dispatcher Board current, which Home Time reads. |
 | **Admins / office staff** | The admin SPA at `/admin`: broadcasts, surveys, groups, leads, live map, home time, fuel, mileage bonuses, recruiter KPIs, settings. |
 | **Accounting** | Mileage-bonus Paid/Rejected buttons in Telegram (allow-listed accounting users — see §5). |
@@ -230,6 +231,7 @@ by a number on every stage does not belong in the file everything else fits in.
 | The implementation workflow | `.claude/skills/implement/SKILL.md` (`/implement`) |
 | Route Control's removal (October 2026) | `docs/architecture/retired-route-control.md` |
 | The driver-raise review's removal, and the Dispatcher Board's identity checks (October 2026) | `docs/architecture/retired-driver-raise.md`, `docs/architecture/dispatcher-board.md` |
+| BOL/POD document forwarding's removal (October 2026), and the tables it left | `docs/architecture/retired-bol-pod.md` |
 | Whose number texts a lead, WHICH message they send, and the RingCentral/TCR prerequisites | `docs/architecture/recruiter-sms-sender.md` |
 | The Gross Grand Prix displays (`/dispatch`, `/dispatchteam`): the Datatruck read budget, and what a public page may show | `docs/architecture/gross-race.md` |
 | Samsara settings (the shared `samsara_settings` row, the shared-secret envelope for its API key) and missing-video recovery | `docs/architecture/samsara-settings-and-video-recovery.md` |

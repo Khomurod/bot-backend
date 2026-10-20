@@ -132,9 +132,9 @@ async function fetchOrdersByPickupWindow(startIso, endIso) {
 
 /**
  * All orders with delivery_time within [startIso, endIso] (UTC ISO strings).
- * Each row includes its inline `documents` array (BOL/POD/rate confirmation),
- * from which the delivery service selects BOLs and PODs. Newest deliveries first so
- * a partial/rate-limited scan still surfaces the most recent uploads.
+ * Each row includes its inline `documents` array (BOL/POD/rate confirmation).
+ * Newest deliveries first so a partial/rate-limited scan still surfaces the
+ * most recent orders.
  */
 async function fetchOrdersByDeliveryWindow(startIso, endIso) {
   const filter = JSON.stringify([
