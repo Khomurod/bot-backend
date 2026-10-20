@@ -300,7 +300,7 @@ file passed the 500-line limit.
   facts other features already recorded — weeks past the road allowance, a home
   request that expired unanswered, earned bonus never posted, days sitting
   empty, and what the driver said in their own words
-  (`chat_message_annotations`: `quit_signal`, `complaint`, sentiment). Above a
+  (`quit_signal`; AI reads only messages that may be about leaving). Above a
   threshold it posts to the `retention` notification category with **the
   reasons and a suggested action**, and the action is always something the
   company does: ring them, answer the request, pay the bonus, find them a load.

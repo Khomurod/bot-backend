@@ -366,6 +366,9 @@ Visible on `/api/health` → `operations.safety`.
 Classifies driver-group messages recorded since the owner switched capture on
 (2026-10-06) — at most 120 per pass, from the last 72 hours — so the retention
 watch's chat signals have something to read. `blocked` while capture is off.
+**Only a message with a leaving cue is sent to a model**
+(`services/retention/leavingCue.js`); the rest are recorded as unread `no_signal`
+without a call.
 See `docs/architecture/driver-retention.md`.
 
 ## Retention watch (every 4 hours, first pass 15 minutes after boot)

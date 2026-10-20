@@ -34,7 +34,16 @@ function deps({ returned = true, confidence = 90, throws = null, enabled = true 
       async runCapability(args) {
         calls.push({ capability: args.capability, expects: args.expects, text: args.userText });
         if (throws) throw new Error(throws);
-        return { parsed: { returned, confidence, reason: 'the truck is moving toward the pickup' } };
+        const parsed = { returned, confidence, reason: 'the truck is moving toward the pickup' };
+        // THE ROUTER'S CALL SHAPE, exactly: `validate(text, parsed)`. The stub
+        // used to skip the validator, which is how one that read its FIRST
+        // argument as the parsed answer rejected every model's reply in
+        // production — 396 "invalid" answers in one week — with every test green.
+        if (typeof args.validate === 'function') {
+          const verdict = args.validate(JSON.stringify(parsed), parsed);
+          if (verdict !== true) throw new Error(verdict?.message || 'failed validation');
+        }
+        return { parsed };
       },
     },
   };

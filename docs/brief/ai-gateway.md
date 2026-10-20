@@ -255,6 +255,12 @@ stay in §4a. The provider terms watcher is
   floor the router enforces cannot drift from the floor the output must clear.
   `groqClient` forwards it as `validate`, and the router treats a failed verdict
   exactly like a provider failure and continues down the chain.
+- **A validator is called `validate(text, parsed)` — the raw text FIRST.** The
+  return-to-road review read its first argument as the parsed answer, so it
+  checked `.returned` on a string and rejected every reply from every model:
+  about 74 failed calls a day (October 2026), each review walking the whole
+  fallback chain. Its test stub never called the validator, which is how it
+  stayed green; the stub now calls it exactly as the router does.
 - **Migration 0021 seeds the roster, and it is the riskiest three lines in
   Stage 5.** 0019 seeded nothing, which was right while the router had no
   consumers; once the clients became wrappers, an empty `ai_providers` stopped
