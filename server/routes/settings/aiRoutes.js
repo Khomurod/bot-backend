@@ -92,11 +92,11 @@ function createAiSettingsRouter({ authMiddleware }) {
    * reason — the REQUEST succeeded; what failed is the thing being connected.
    */
   router.post('/ai/providers/connect', authMiddleware, async (req, res) => {
-    const { catalogKey, apiKey, label, baseUrl, adapter, providerKey } = req.body || {};
+    const { catalogKey, apiKey, label, baseUrl, adapter, providerKey, workspaceId } = req.body || {};
     if (!catalogKey) return res.status(400).json({ error: 'Choose a provider from the catalogue.' });
     try {
       const result = await connectProvider({
-        catalogKey, apiKey, label, baseUrl, adapter, providerKey, updatedBy: req.admin?.username || null,
+        catalogKey, apiKey, label, baseUrl, adapter, providerKey, workspaceId, updatedBy: req.admin?.username || null,
       });
       return res.json(result);
     } catch (err) {
@@ -195,10 +195,15 @@ function createAiSettingsRouter({ authMiddleware }) {
    */
   router.post('/ai/providers/:key/test', authMiddleware, async (req, res) => {
     const key = String(req.params.key || '').trim();
-    const { apiKey, adapter, baseUrl, model } = req.body || {};
+    const { apiKey, adapter, baseUrl, model, workspaceId } = req.body || {};
     if (!model) return res.status(400).json({ error: 'A model is required to test with' });
 
     let candidateKey = typeof apiKey === 'string' ? apiKey.trim() : '';
+    let workspace = typeof workspaceId === 'string' ? workspaceId.trim() : '';
+    if (!workspace) {
+      const stored = (await aiProviders.getProvidersForRouter()).find((p) => p.providerKey === key);
+      workspace = stored?.workspaceId || '';
+    }
     if (!candidateKey) {
       // Fall back to what is stored, so "test the provider I saved earlier"
       // works too. Read through the router's view, never returned to the client.
@@ -222,6 +227,7 @@ function createAiSettingsRouter({ authMiddleware }) {
         // A thinking model needs room before its one word; 16 tokens is not it.
         result = await callAnthropicMessages({
           apiKey: candidateKey, model, timeoutMs: TEST_TIMEOUT_MS, maxTokens: 256,
+          workspaceId: workspace || null,
           messages: [{ role: 'user', content: TEST_PROMPT }],
         });
       } else {

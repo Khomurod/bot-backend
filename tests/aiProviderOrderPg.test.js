@@ -58,3 +58,19 @@ test('an order from a stale page is refused and nothing moves', { skip: skipWith
   const after = (await aiProviders.listProvidersForAdmin()).map((p) => [p.providerKey, p.priority]);
   assert.deepEqual(after, before);
 });
+
+test('a Claude workspace id is stored, read back by the router, cleared by an empty string, and a non-id is refused', { skip: skipWithoutPg() }, async (t) => {
+  const { aiProviders } = await setup(t);
+  await aiProviders.upsertProvider('anthropic', { adapter: 'anthropic', enabled: true, workspaceId: 'wrkspc_01ABC' });
+  const routed = (await aiProviders.getProvidersForRouter()).find((p) => p.providerKey === 'anthropic');
+  assert.equal(routed.workspaceId, 'wrkspc_01ABC');
+  assert.equal((await aiProviders.getProviderSecretsByKey('anthropic')).workspaceId, 'wrkspc_01ABC');
+
+  await aiProviders.upsertProvider('anthropic', { label: 'Claude' });
+  assert.equal((await aiProviders.getProviderSecretsByKey('anthropic')).workspaceId, 'wrkspc_01ABC', 'omitting it keeps it');
+
+  await aiProviders.upsertProvider('anthropic', { workspaceId: '' });
+  assert.equal((await aiProviders.getProviderSecretsByKey('anthropic')).workspaceId, null);
+
+  await assert.rejects(aiProviders.upsertProvider('anthropic', { workspaceId: 'drop table' }), (e) => e.statusCode === 400);
+});

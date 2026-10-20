@@ -98,6 +98,7 @@ async function callOne(provider, model, request, { timeoutMs, expects, generatio
       messages: request.messages,
       maxTokens: generation.maxTokens ?? 2000,
       timeoutMs,
+      workspaceId: provider.workspaceId || null,
       ...(provider.baseUrl ? { baseUrl: provider.baseUrl } : {}),
     });
   }

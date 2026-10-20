@@ -46,12 +46,17 @@ function acceptsEffort(model) {
  * The client, built per call — keys live in the database and change without a
  * restart. `fetch` is injected by tests only.
  */
-function makeClient({ apiKey, baseUrl = API_ROOT, timeoutMs = DEFAULT_TIMEOUT_MS, fetchImpl = null }) {
+function makeClient({
+  apiKey, baseUrl = API_ROOT, timeoutMs = DEFAULT_TIMEOUT_MS, fetchImpl = null, workspaceId = null,
+}) {
   return new Anthropic({
     apiKey,
     baseURL: String(baseUrl || API_ROOT).replace(/\/+$/, '').replace(/\/v1$/, ''),
     timeout: timeoutMs,
     maxRetries: 0,
+    // An organization-level key is refused without it ("not scoped to a
+    // workspace"); a workspace-scoped key needs none.
+    ...(workspaceId ? { defaultHeaders: { 'anthropic-workspace-id': workspaceId } } : {}),
     ...(fetchImpl ? { fetch: fetchImpl } : {}),
   });
 }
@@ -108,7 +113,7 @@ function normaliseError(err, model, timeoutMs) {
  */
 async function callAnthropicMessages({
   apiKey, model, messages, maxTokens = 2000,
-  timeoutMs = DEFAULT_TIMEOUT_MS, baseUrl = API_ROOT, fetchImpl = null,
+  timeoutMs = DEFAULT_TIMEOUT_MS, baseUrl = API_ROOT, fetchImpl = null, workspaceId = null,
 } = {}) {
   if (!apiKey) {
     const err = new Error('No API key is configured for this provider');
@@ -122,7 +127,7 @@ async function callAnthropicMessages({
 
   let payload;
   try {
-    payload = await makeClient({ apiKey, baseUrl, timeoutMs, fetchImpl }).messages.create(body);
+    payload = await makeClient({ apiKey, baseUrl, timeoutMs, fetchImpl, workspaceId }).messages.create(body);
   } catch (err) {
     throw normaliseError(err, model, timeoutMs);
   }

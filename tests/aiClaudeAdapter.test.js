@@ -156,3 +156,22 @@ test('a rejected key on the listing says 401, so Connect can say "the key is inv
     (err) => err.status === 401 && /invalid x-api-key/.test(err.message)
   );
 });
+
+test('AN ORGANIZATION-LEVEL KEY WORKS: the workspace id travels as anthropic-workspace-id', async () => {
+  const { impl, calls } = fakeFetch([{ body: message() }]);
+  await callAnthropicMessages({
+    apiKey: 'sk-ant-org', model: 'claude-haiku-5-5', fetchImpl: impl, workspaceId: 'wrkspc_01ABC',
+    messages: [{ role: 'user', content: 'q' }],
+  });
+  assert.equal(new Headers(calls[0].init.headers).get('anthropic-workspace-id'), 'wrkspc_01ABC');
+
+  const plain = fakeFetch([{ body: message() }]);
+  await callAnthropicMessages({ apiKey: 'k', model: 'claude-haiku-5-5', fetchImpl: plain.impl, messages: [{ role: 'user', content: 'q' }] });
+  assert.equal(new Headers(plain.calls[0].init.headers).get('anthropic-workspace-id'), null, 'no id, no header');
+
+  const listing = fakeFetch([{ body: { data: [{ id: 'claude-haiku-5-5', type: 'model' }], has_more: false } }]);
+  await listModels({
+    adapter: 'anthropic', baseUrl: 'https://api.anthropic.com', apiKey: 'k', fetchImpl: listing.impl, workspaceId: 'wrkspc_01ABC',
+  });
+  assert.equal(new Headers(listing.calls[0].init.headers).get('anthropic-workspace-id'), 'wrkspc_01ABC');
+});

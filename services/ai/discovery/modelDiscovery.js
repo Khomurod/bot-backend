@@ -96,8 +96,8 @@ async function listGeminiModels({ baseUrl, apiKey, timeoutMs, fetchImpl, provide
   return out;
 }
 
-async function listAnthropicModels({ baseUrl, apiKey, timeoutMs, fetchImpl, providerKey }) {
-  const client = makeClient({ apiKey, baseUrl, timeoutMs, fetchImpl });
+async function listAnthropicModels({ baseUrl, apiKey, timeoutMs, fetchImpl, providerKey, workspaceId }) {
+  const client = makeClient({ apiKey, baseUrl, timeoutMs, fetchImpl, workspaceId });
   const out = [];
   try {
     for await (const m of client.models.list({ limit: 100 })) {
@@ -121,7 +121,7 @@ async function listAnthropicModels({ baseUrl, apiKey, timeoutMs, fetchImpl, prov
  * @throws Error with `.status` (401/403 = the key; 404 = no such endpoint; null = network/timeout)
  */
 async function listModels({
-  adapter, baseUrl, apiKey, providerKey = null,
+  adapter, baseUrl, apiKey, providerKey = null, workspaceId = null,
   timeoutMs = DEFAULT_TIMEOUT_MS, fetchImpl = globalThis.fetch,
 } = {}) {
   if (!apiKey) {
@@ -134,7 +134,7 @@ async function listModels({
     err.status = 404;
     throw err;
   }
-  const args = { baseUrl, apiKey, timeoutMs, fetchImpl, providerKey };
+  const args = { baseUrl, apiKey, timeoutMs, fetchImpl, providerKey, workspaceId };
   if (adapter === 'gemini') return listGeminiModels(args);
   if (adapter === 'anthropic') return listAnthropicModels(args);
   return listOpenAiModels(args);

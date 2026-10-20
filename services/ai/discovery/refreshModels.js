@@ -67,6 +67,7 @@ async function refreshProviderModels(providerKey, { initiator = 'refresh', updat
   try {
     models = await deps.listModels({
       adapter: target.adapter, baseUrl: target.baseUrl, apiKey: provider.apiKey, providerKey,
+      workspaceId: provider.workspaceId || null,
     });
   } catch (err) {
     await deps.aiProviders.saveDiscoveredModels(providerKey, { error: err.message });

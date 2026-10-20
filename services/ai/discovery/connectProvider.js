@@ -109,6 +109,7 @@ async function smokeTest(target, apiKey, chain, deps) {
         // spent before the word "ok" and read as an empty reply.
         await deps.callAnthropicMessages({
           apiKey, model, timeoutMs: TEST_TIMEOUT_MS, maxTokens: ANTHROPIC_TEST_MAX_TOKENS,
+          workspaceId: target.workspaceId,
           messages: [{ role: 'user', content: TEST_PROMPT }],
         });
       } else {
@@ -152,20 +153,32 @@ function summarise(target, { compatible, free, chain, tested, quota }) {
  */
 async function connectProvider({
   catalogKey, apiKey, label = null, baseUrl = null, adapter = null, providerKey = null,
-  updatedBy = null, freeOnly = null,
+  updatedBy = null, freeOnly = null, workspaceId = null,
 } = {}, deps = defaultDeps()) {
   const key = String(apiKey || '').trim();
   if (!key) return failure('missing_key', 'Paste the provider\'s API key to connect.');
   const resolved = resolveTarget({ catalogKey, label, baseUrl, adapter, providerKey });
   if (resolved.error) return resolved.error;
   const { entry, target } = resolved;
+  // Anthropic only: an organization-level key needs the workspace it runs in.
+  const workspace = target.adapter === 'anthropic' ? String(workspaceId || '').trim() : '';
+  if (workspace && !/^wrkspc_[A-Za-z0-9]+$/.test(workspace)) {
+    return failure('bad_workspace', 'A workspace ID looks like wrkspc_… — copy it from the Claude Console (Settings → Workspaces).');
+  }
+  target.workspaceId = workspace || null;
 
   let models;
   try {
     models = await deps.listModels({
       adapter: target.adapter, baseUrl: target.baseUrl, apiKey: key, providerKey: target.providerKey,
+      workspaceId: target.workspaceId,
     });
   } catch (err) {
+    if (/not scoped to a workspace/i.test(err.message || '')) {
+      return failure('needs_workspace', `This ${target.label} key belongs to the organization, not to one workspace. `
+        + 'Paste the Workspace ID (Claude Console → Settings → Workspaces, it starts with wrkspc_) and Connect again — '
+        + 'or create the key inside a workspace.');
+    }
     const verdict = classifyFailure({ status: err.status ?? null, message: err.message, code: err.code });
     if (verdict.kind === FAILURE.CREDENTIAL) return failure('invalid_key', `API key is invalid.${keyHint(entry, key)}`);
     if (err.status === 404) {
@@ -202,6 +215,7 @@ async function connectProvider({
     ...(existing ? {} : { priority: await deps.aiProviders.nextPriority() }),
     isFree: target.isFree, baseUrl: target.baseUrl, modelChain: chain, apiKey: key,
     catalogKey: target.catalogKey, updatedBy,
+    ...(target.adapter === 'anthropic' ? { workspaceId: target.workspaceId || '' } : {}),
   });
   await deps.aiProviders.saveDiscoveredModels(target.providerKey, {
     models: models.map((m) => ({
