@@ -33,8 +33,6 @@ CREATE INDEX IF NOT EXISTS idx_raise_otp_team_id               ON raise_otp(team
 -- ── Finding #2: drop redundant duplicate indexes ─────────────────────────────
 -- REVERSIBLE but a real change — CONFIRM real index usage with
 --   SELECT indexrelname, idx_scan FROM pg_stat_user_indexes WHERE relname = '<table>';
--- before dropping. Uncomment to apply.
--- DROP INDEX IF EXISTS idx_driver_profiles_group_id;          -- covered by driver_profiles_group_id_unique
--- DROP INDEX IF EXISTS idx_group_pinned_messages_group_id;    -- covered by group_pinned_messages_group_id_key
+-- before dropping. Uncomment to apply. (The driver_profiles, group_pinned_messages
+-- and facebook_lead_sms_mirrors duplicates were dropped by migration 0072.)
 -- DROP INDEX IF EXISTS idx_dispatch_team_drivers_profile;     -- covered by uniq_dispatch_active_driver_profile
--- DROP INDEX IF EXISTS idx_facebook_lead_sms_mirrors_lookup;  -- covered by the unique (chat_id,message_id) index

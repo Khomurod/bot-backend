@@ -117,6 +117,12 @@ audit report itself has been retired; the decisions that outlived it are here.
   FK indexes (safe) plus commented redundant-index drops (reversible). Run
   manually after reviewing index usage; it is **not** part of `schema.sql`.
   (A good candidate to convert into a forward migration once reviewed.)
+  Three of its redundant indexes were reviewed against production usage and
+  dropped by migration **0072** (October 2026): `idx_driver_profiles_group_id`,
+  `idx_group_pinned_messages_group_id` and `idx_facebook_lead_sms_mirrors_lookup`,
+  each identical to a UNIQUE constraint's own index. The baseline no longer
+  creates them, and the migration drops one only where that constraint exists
+  (`tests/duplicateIndexesPg.test.js`).
 - **Timestamp standardization (`timestamp` → `timestamptz`)** — DEFERRED, and
   deliberately so: the conversion **reinterprets** every stored value, because
   `ALTER COLUMN … TYPE timestamptz USING col AT TIME ZONE 'UTC'` assumes the
