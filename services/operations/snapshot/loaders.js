@@ -153,7 +153,7 @@ async function loadSnapshot(db = defaultDb) {
  */
 async function loadLayerSnapshot(db) {
   const [
-    people, personGroups, units, fuelAlerts, groupMembers, botUsers, telegramIdentities,
+    people, personGroups, units, groupMembers, botUsers, telegramIdentities,
     mileageProgress,
     personGroupHistory, notificationSettings,
   ] = await Promise.all([
@@ -167,7 +167,6 @@ async function loadLayerSnapshot(db) {
       `SELECT person_id, unit_number, samsara_vehicle_id, fleet_type, seat
          FROM driver_units WHERE ended_at IS NULL`
     ),
-    db.query(`SELECT id, group_id, status, created_at FROM fuel_stop_alerts WHERE status = 'watching'`),
     // Who the bot has seen in each chat, what role it guessed for them, and
     // which accounts are already spoken for. The last two are wrapped: a deploy
     // that has not applied 0049 costs the Telegram-identity checks and not the
@@ -197,7 +196,6 @@ async function loadLayerSnapshot(db) {
     personGroups: personGroups.rows,
     personGroupHistory: personGroupHistory.rows,
     units: units.rows,
-    fuelAlerts: fuelAlerts.rows,
     groupMembers: groupMembers.rows,
     botUsers: botUsers.rows,
     telegramIdentities: telegramIdentities.rows,

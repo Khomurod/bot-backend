@@ -94,7 +94,6 @@ test('NO OPERATIONAL SERVICE MESSAGES TELEGRAM DIRECTLY — that is the old patt
     'services/operations/learningPass.js',
     'services/retention/watch.js',
     'services/loads/lifecycleWatch.js',
-    'services/fuelStop/riskWatch.js',
     'services/safety/coach.js',
     'services/homeTime/returnToRoadWatch.js',
   ];
@@ -118,7 +117,6 @@ test('an engine either notifies or files a finding — never neither', () => {
     ['services/operations/learningPass.js', 'notify'],
     ['services/retention/watch.js', 'notify'],
     ['services/loads/lifecycleWatch.js', 'notify'],
-    ['services/fuelStop/riskWatch.js', 'notify'],
     ['services/safety/coach.js', 'notify'],
     ['services/homeTime/returnToRoadWatch.js', 'upsertFinding'],
   ];

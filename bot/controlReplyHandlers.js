@@ -11,7 +11,7 @@
  *
  * `next()` IS CALLED UNLESS THE REPLY WAS CONSUMED. Every other `bot.on('message')`
  * handler in this application calls it, and the group message pipeline
- * downstream — home time, fuel, the chat buffer — must keep seeing ordinary
+ * downstream — home time, the chat buffer — must keep seeing ordinary
  * traffic. Only a message that was an answer to one of Wenze's questions stops
  * here, because passing an answer on to the home-time parser is how a "yes"
  * becomes something else entirely.

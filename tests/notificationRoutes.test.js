@@ -101,11 +101,11 @@ test('a dropped minus sign is refused and the corrected id offered', async () =>
 test('the refusal names the field in words a person reads, not a JSON path', async () => {
   const { app } = loadApp({ knownGroups: { '-100999': { group_name: 'Fuel desk' } } });
   const res = await call(app, 'PUT', '/api/settings/notifications', {
-    categoryChatIds: { fuel: '100999' },
+    categoryChatIds: { load_lifecycle: '100999' },
   });
   assert.equal(res.status, 400);
-  assert.match(res.body.error, /^Fuel risks /, `read: ${res.body.error}`);
-  assert.equal(res.body.field, 'categoryChatIds.fuel', 'and the machine-readable path still travels');
+  assert.match(res.body.error, /^Load status /, `read: ${res.body.error}`);
+  assert.equal(res.body.field, 'categoryChatIds.load_lifecycle', 'and the machine-readable path still travels');
 });
 
 test('an unreachable chat is refused', async () => {
@@ -126,10 +126,10 @@ test('a private chat IS allowed — a small operation may want these in a DM', a
 test('CLEARING a destination never has to prove itself reachable', async () => {
   const { app, saw } = loadApp({ getChat: () => { throw new Error('chat not found'); } });
   const res = await call(app, 'PUT', '/api/settings/notifications', {
-    categoryChatIds: { fuel: '' },
+    categoryChatIds: { load_lifecycle: '' },
   });
   assert.equal(res.status, 200);
-  assert.deepEqual(saw.saved[0].categoryChatIds, { fuel: '' });
+  assert.deepEqual(saw.saved[0].categoryChatIds, { load_lifecycle: '' });
 });
 
 test('an unknown category is the operator\'s mistake, so 400 rather than 500', async () => {
@@ -156,8 +156,8 @@ test('the test send answers 200 with ok:false on a refusal — the request worke
 
 test('a preview sends a REAL notice, with a fresh key each time', async () => {
   const { app, saw } = loadApp();
-  await call(app, 'POST', '/api/settings/notifications/preview', { category: 'fuel' });
-  await call(app, 'POST', '/api/settings/notifications/preview', { category: 'fuel' });
+  await call(app, 'POST', '/api/settings/notifications/preview', { category: 'load_lifecycle' });
+  await call(app, 'POST', '/api/settings/notifications/preview', { category: 'load_lifecycle' });
   assert.equal(saw.notified.length, 2);
   assert.notEqual(saw.notified[0].discriminator, saw.notified[1].discriminator,
     'a fixed key would let a category be previewed exactly once, ever');

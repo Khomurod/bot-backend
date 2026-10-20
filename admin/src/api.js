@@ -24,7 +24,6 @@ export * from './api/facebookLeads';
 export * from './api/mileageBonus';
 export * from './api/homeTime';
 export * from './api/groupAccess';
-export * from './api/fuelMonitor';
 export * from './api/bot';
 export * from './api/settings';
 export * from './api/dispatchBoard';

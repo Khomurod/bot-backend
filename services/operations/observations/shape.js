@@ -24,7 +24,7 @@ const { RUN_STATES } = require('../../../lib/operations/runHealth');
  * asserts every entry is observable one way or the other.
  */
 const CUSTOM_INTEGRATIONS = new Set([
-  'recruiter_logins', 'ai_providers', 'eld_location_freshness', 'telegram_delivery',
+  'recruiter_logins', 'ai_providers', 'telegram_delivery',
   'notifications', 'notification_destination', 'samsara_safety_pipeline',
   'recruiting_after_hours', 'retention_chat_signals', 'home_time_manager_notices',
 ]);
@@ -32,8 +32,6 @@ const CUSTOM_INTEGRATIONS = new Set([
 /** When this process started, so a first pass that is not due yet is not "stopped". */
 const BOOTED_AT = Date.now();
 
-/** How stale a fleet position may be before the ELD feed is not answering. */
-const ELD_STALE_MINUTES = 180;
 /** A notice sitting undelivered this long means Telegram is not taking them. */
 const NOTICE_STUCK_MINUTES = 90;
 
@@ -79,6 +77,6 @@ function integration(key, { ok, detail = null, state = null, reason = null, bloc
 
 
 module.exports = {
-  CUSTOM_INTEGRATIONS, BOOTED_AT, ELD_STALE_MINUTES, NOTICE_STUCK_MINUTES,
+  CUSTOM_INTEGRATIONS, BOOTED_AT, NOTICE_STUCK_MINUTES,
   minutesSince, integration,
 };

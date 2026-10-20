@@ -104,7 +104,6 @@ test('an ordinary driver-group message reaches no removed feature', () => {
   // The surviving fan-out is intact: this is what the removal must not have cost.
   for (const kept of [
     'handleDriverGroupStatus',      // home time state machine
-    'handleFuelStopMessage',        // fuel monitor
     'processHomeTimeMessage',       // conversational home-time flow
     'applyAutoReaction',            // auto-reactions
     'recentMessageBuffer',          // rolling chat buffer
@@ -125,12 +124,14 @@ test('the API mounts no removed router, and still mounts the surviving ones', ()
     'createRouteControlRouter', 'createRouteScreenshotMediaRouter', 'getRouteMediaEditClient',
     // Driver raises and the Dispatcher Board (October 2026).
     'raisePublicRouter', 'createRaiseRouter', 'raiseRoutes',
+    // Fuel (October 2026).
+    'createFuelMonitorRouter',
   ]) {
     assert.ok(!api.includes(gone), `server/api.js must not mount ${gone}`);
   }
   for (const kept of [
     'createRemoteRoutes', 'createHealthRoutes', 'createLiveLocationsRouter',
-    'createHomeTimeRouter', 'createFuelMonitorRouter',
+    'createHomeTimeRouter',
     'createSettingsRouter', 'createRecruiterRouter', 'createQuestionsRoutes',
     'createBroadcastRoutes', 'createMileageBonusRoutes',
     'createLeadsProxyRoutes',
@@ -212,6 +213,26 @@ test("the driver-raise review and the Dispatcher Board's identity checks stay re
   assert.ok(read('server/routes/retiredRoutes.js').includes("'/raise'"), '/raise is a retired route');
 });
 
+test('everything fuel stays removed', () => {
+  // Removed at the owner's request, October 2026: the fuel-stop reminders, the
+  // fuel risk watch, the truck fuel readings and the Fuel Monitor page.
+  for (const gone of [
+    'services/fuelStopAlertService.js', 'services/fuelStop', 'lib/fuel',
+    'database/fuelMonitoring.js', 'database/truckFuelReadings.js',
+    'server/routes/fuelMonitorRoutes.js', 'admin/src/pages/FuelMonitorPage.jsx',
+    'admin/src/api/fuelMonitor.js',
+  ]) {
+    assert.equal(exists(gone), false, `${gone} must stay removed`);
+  }
+  assert.ok(!read('bot/handlers/groupCaptureHandlers.js').includes('handleFuelStop'),
+    'a driver-group message is not read for a fuel stop');
+  const roster = read('services/backgroundServices.js');
+  for (const gone of ['startFuelStopAlertService', 'startFuelRiskWatch']) {
+    assert.ok(!roster.includes(gone), `${gone} must not be started`);
+  }
+  assert.ok(!read('admin/src/components/AdminSidebar.jsx').includes('fuel_monitor'), 'no Fuel Monitor page');
+});
+
 test('BOL/POD forwarding stays removed, and so does the intake it replaced', () => {
   // Forwarding (Datatruck -> Telegram) was removed at the owner's request in
   // October 2026. The older intake/upload pipeline (drivers posting documents
@@ -265,7 +286,7 @@ test('the whole index.js module graph loads with no application env', () => {
     'services/birthdayService.js', 'services/groupStatusAiService.js',
     'services/employeeBirthdayWishService.js', 'services/facebookWebhookService.js',
     'services/dispatchEtaUpdateService.js', 'services/mileageBonusService.js',
-    'services/fuelStopAlertService.js', 'services/recruiterCallSyncService.js',
+    'services/recruiterCallSyncService.js',
     'services/ringCentralTokenRefreshService.js', 'services/roadBonusNotifierService.js',
     'services/homeTimeReminderService.js',
     'services/duplicateUnitCheckService.js', 'services/memoryWatchdog.js',

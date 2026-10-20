@@ -30,7 +30,7 @@
  * HONESTY: `chatSignalsAvailable` below says whether the table can answer at
  * all, so "no complaints" is never reported when the truthful answer is "we are
  * not listening". Missing data means unknown, never zero — the same rule the
- * fuel and identity layers hold to.
+ * identity layer holds to.
  */
 const { query } = require('./pool');
 

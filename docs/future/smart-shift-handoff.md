@@ -41,7 +41,6 @@ By now the following exist and are the raw material:
 | `operational_corrections` | What Wenze fixed by itself, and what was reverted | `database/operationalCorrections.js` |
 | `operational_notifications` | What was told to whom, and what failed to send | `database/operationalNotifications.js` |
 | `load_lifecycle` | Which loads moved phase, and which are stuck or contested | `database/loadLifecycle.js` |
-| `fuel_stop_alerts` + `lib/fuel/risk.js` | Who might not reach their fuel stop | `services/fuelStop/riskWatch.js` |
 | `driver_safety_events` | Patterns, and anything escalated to safety | `database/driverSafety.js` |
 | `driver_road_history`, `home_time_requests` | Who went home, who came back, who is overdue | `database/homeTime/` |
 | `recruiting_ai_conversations` | Candidates Wenze answered overnight, and the ones it handed back | `database/recruitingConversations.js` |
@@ -159,9 +158,9 @@ Start cheap. The table is additive later and nothing about the briefing changes.
 - **Never state a figure it did not read from a table.** The same rule as
   `lib/recruiting/replyGuard.js`, and for the same reason.
 - **Never replace a notice.** A handoff summarises what was already sent; it is
-  not a substitute for sending it at the time. If a fuel risk only ever reaches
-  anybody in a 6am briefing, the fuel feature is broken and the handoff is
-  hiding it.
+  not a substitute for sending it at the time. If a load conflict only ever
+  reaches anybody in a 6am briefing, the load watch is broken and the handoff
+  is hiding it.
 - **Never send an empty one.** A quiet shift gets one line. A daily message
   that is usually empty trains people to skip it, and then the one that matters
   is skipped too.

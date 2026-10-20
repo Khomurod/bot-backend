@@ -333,7 +333,7 @@ async function updateDriverProfile(id, data, opts = {}) {
 }
 
 // Set or clear a driver's Telegram identity (numeric user id + username) —
-// the single source of truth used to tag the driver in fuel/check-in
+// the single source of truth used to tag the driver in home-time
 // reminders. Direct UPDATE (not the upsert merge) so the admin can
 // explicitly clear it.
 async function setDriverProfileTelegramIdentity(groupId, { telegramUserId, telegramUsername } = {}) {

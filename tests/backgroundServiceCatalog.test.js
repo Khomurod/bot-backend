@@ -69,7 +69,7 @@ test('every key a service actually records under is in the catalog', () => {
 
 test('the workers on the critical list are the ones a person would be woken for', () => {
   const critical = CATALOG.filter((e) => e.critical).map((e) => e.key);
-  for (const key of ['consistency_sweep', 'load_lifecycle', 'fuel_risk', 'return_to_road',
+  for (const key of ['consistency_sweep', 'load_lifecycle', 'return_to_road',
     'safety_coach', 'retention_watch', 'samsara_safety_pipeline', 'notifications',
     'telegram_delivery', 'scheduler']) {
     assert.ok(critical.includes(key), `${key} should be critical`);

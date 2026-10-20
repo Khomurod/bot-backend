@@ -6,8 +6,7 @@
  * NOTE: This is the main app's own copy. It was previously borrowed from the
  * Samsara poller, which has since moved to its own repository/service, so the
  * main app keeps this local copy to stay fully self-contained. Live-location
- * features (dispatch ETA, fuel stop alerts, driver location monitor, EVO/TT
- * ELD) rely on this.
+ * features (dispatch ETA, driver location monitor, EVO/TT ELD) rely on this.
  */
 
 async function reverseGeocode(lat, lon) {

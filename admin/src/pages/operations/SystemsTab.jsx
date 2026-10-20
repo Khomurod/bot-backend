@@ -9,7 +9,7 @@ import useVisibleInterval from "../../utils/useVisibleInterval";
  * THE QUESTION EVERY OTHER SCREEN ANSWERS WRONG BY ACCIDENT. The rest of this
  * admin shows what a feature FOUND. None of it shows whether the feature ran —
  * and a pass that finds nothing writes nothing, so an empty Needs Attention
- * list and a fuel watch whose timer died after the last deploy look identical.
+ * list and a load watch whose timer died after the last deploy look identical.
  * This company has already lost weeks of staff alerts to exactly that: an
  * unconfigured destination silently discarded every notice while every feature
  * reported success.

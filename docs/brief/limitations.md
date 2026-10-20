@@ -25,6 +25,18 @@
   read by nothing, and its last `system_health_states` row is left behind;
   clearing them is the same separate, backed-up step. The shared Datatruck
   client stays. See `docs/architecture/retired-bol-pod.md`.
+- **Everything fuel was removed (2026-10)**, at the owner's request: no
+  gas-station recognition in driver groups, no fuel-stop reminders, no fuel risk
+  watch, no Fuel Monitor page (`/api/fuel-monitor` is 404), no `fuel`
+  notification category. `fuel_stop_alerts`, `fuel_monitor_inbox` and
+  `truck_fuel_readings` are still created by the schema and read by nothing;
+  the `fuel_risk`, `fuel_stop_alerts` and `eld_location_freshness` rows in
+  `system_health_states` and 105 old `fuel` notices are left for the same
+  backed-up cleanup. **There is no fleet-wide "ELD positions are stale" health
+  line any more** — it was computed from fuel readings; Live Locations,
+  return-to-road and the load watch report their own ELD failures. The sales
+  deck (`server/presentation/`) still shows fuel scenes, by the owner's choice.
+  See `docs/architecture/retired-fuel.md`.
 - **FleetView is archived, not present.** No `fleet/`, no `server/fleet/`, no
   `/update` SPA, no `/api/v1/*`. It is preserved at the git tag
   `archive/fleetview-disabled`, its tables were deliberately **not** dropped, and

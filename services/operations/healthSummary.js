@@ -27,7 +27,6 @@ const defaultDeps = () => ({
   loads: require('../../database/loadLifecycle'),
   safety: require('../../database/driverSafety'),
   runs: require('../../database/backgroundRuns'),
-  fuelReadings: require('../../database/truckFuelReadings'),
   aiProviders: require('../../database/aiProviders'),
   systemHealth: require('../../database/systemHealth'),
   observations: require('./healthObservations'),
@@ -232,7 +231,7 @@ async function getOperationsHealth(deps = defaultDeps()) {
     const status = deps.consistency.getConsistencyStatus();
     const [
       findings, coverage, telegramIdentities, duplicates, indexPresent, providers, homeTimeLive,
-      loadPhases, safety, safetyPoller, fuelReadings, systems, observed, learning, retention, notifyConfig,
+      loadPhases, safety, safetyPoller, systems, observed, learning, retention, notifyConfig,
       discards, controlReplies, controlSettings, controlOperators, controlQuestions,
       controlKnowledge, engineeringRequests, destinationProbe,
     ] = await Promise.all([
@@ -248,7 +247,6 @@ async function getOperationsHealth(deps = defaultDeps()) {
       // WHAT THE POLLER ITSELF SAW. See the safety block below: without this,
       // an empty events table cannot be told apart from a quiet fleet.
       Promise.resolve(deps.runs?.getRun?.('samsara_safety_pipeline')).catch(() => null),
-      Promise.resolve(deps.fuelReadings?.summariseFuelReadings?.()).catch(() => null),
       deps.systemHealth.summariseHealthStates().catch(() => null),
       Promise.resolve(deps.observations?.gatherAllObservations?.()).catch(() => null),
       deps.learning.summariseSuggestions().catch(() => null),
@@ -314,13 +312,6 @@ async function getOperationsHealth(deps = defaultDeps()) {
       // remove, left half-finished. `seenByPoller` above zero with `events` at
       // zero is a recorder problem; both at zero is a quiet fleet.
       safety: safety ? { ...safety, poller: pollerSeen(safetyPoller, safetyRecorded) } : safety,
-      // WHETHER SMART FUEL CAN ANSWER AT ALL. `comparable` is the number that
-      // matters: abnormal-consumption needs two readings far enough apart, and
-      // for the whole life of the feature that was ZERO because the watch
-      // handed the assessor hard-coded nulls. No findings with `comparable: 0`
-      // is not a healthy fleet, it is a blind one — and those two silences are
-      // indistinguishable without this.
-      fuel: fuelReadings,
       // WHETHER EVERY CONFIGURED CHAT STILL EXISTS. Counts and Telegram's own
       // words with ids removed (the probe sanitises them). `followFailed` above
       // zero is a group that moved and could not be followed.

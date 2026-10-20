@@ -120,7 +120,7 @@ function makeDeps(overrides = {}) {
       summariseCorrections: async () => ({ bySystem: 3, reverted: 2, revertedBySystem: 0 }),
     },
     findings: { summariseFindings: async () => ({ serious: 0, warning: 2 }) },
-    systemHealth: { summariseHealthStates: async () => ({ down: ['fuel_risk'] }) },
+    systemHealth: { summariseHealthStates: async () => ({ down: ['safety_coach'] }) },
     notify: async (n) => { calls.notified.push(n); return { recorded: true }; },
   };
   return { ...deps, ...overrides, calls };
@@ -137,7 +137,7 @@ test('in the morning it sends one summary, keyed by the day', async () => {
   assert.strictEqual(n.subjectType, 'control_digest');
   assert.strictEqual(n.question, undefined, 'a summary asks nothing — it has no buttons');
   assert.ok(n.lines.includes('Waiting for your answer: 2'));
-  assert.ok(n.lines.some((l) => /^Needs a look: /.test(l) && !/fuel_risk/.test(l)),
+  assert.ok(n.lines.some((l) => /^Needs a look: /.test(l) && !/safety_coach/.test(l)),
     'a worker is named by its label, never its key');
   assert.deepStrictEqual(deps.calls.keysChecked, [digestKeyFor('2026-10-05')]);
 });
@@ -220,9 +220,9 @@ test('a system switched off or waiting on a setting is never "all systems runnin
   assert.ok(out.lines.includes('Nothing is broken. Waiting on a setting: the leads bot.'));
 
   const both = composeDigest({
-    waiting: [], waitingTotal: 0, systemsDown: ['fuel'], systemsWaiting: ['leads'], now: MORNING,
+    waiting: [], waitingTotal: 0, systemsDown: ['safety'], systemsWaiting: ['leads'], now: MORNING,
   });
-  assert.ok(both.lines.includes('Needs a look: fuel.'));
+  assert.ok(both.lines.includes('Needs a look: safety.'));
   assert.ok(both.lines.includes('Waiting on a setting: leads.'));
 });
 

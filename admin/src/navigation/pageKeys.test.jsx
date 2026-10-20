@@ -104,7 +104,7 @@ describe("resolvePageKey", () => {
   });
 
   test("surrounding whitespace is tolerated", () => {
-    expect(resolvePageKey("  fuel_monitor  ")).toBe("fuel_monitor");
+    expect(resolvePageKey("  home_time  ")).toBe("home_time");
   });
 });
 

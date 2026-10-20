@@ -45,7 +45,7 @@ plus unit and driver parsed from the Telegram title (convention
 `WENZE UNIT # <unit> <NAME> (COMPANY DRIVER)`, parsed by
 `lib/drivers/driverGroupTitle.js`). `driver_profiles` hangs off it one-to-one.
 **Nearly every feature joins to `groups`** — surveys, broadcasts, dispatch, home
-time, fuel and bonuses.
+time and bonuses.
 
 **But a `groups` row is three real-world things at once** — a PERSON
 (`driver_birthday`), a TRUCK (`samsara_vehicle_id`, the unit parsed out of the
@@ -138,7 +138,7 @@ as a candidate and never merged. Guarded by `tests/personBackfillPlan.test.js`,
 - **Every operational fact names its person (migration 0026).** Nullable
   `person_id` on `driver_road_history`, `driver_home_status`,
   `home_time_requests`, `fuel_stop_alerts`, `route_assignments`,
-  `dispatch_team_drivers` and `mileage_bonus_progress` (the route and
+  `dispatch_team_drivers` and `mileage_bonus_progress` (the fuel, route and
   dispatch-team tables are now retired and unwritten), stamped **at write time**
   by a subquery on the group's open association (NULL when the layer has not met
   the group — never an error), filled once for existing rows, and mileage only
@@ -188,8 +188,8 @@ not `facebookCrypto` — the poller holds none of this app's secrets.
   - **Per-driver lookups go through `liveLocationResolver`** (Samsara → Factor →
     Leader, with transient retries): `/location`
     (`bot/handlers/dispatchCommandHandlers.js`), ETA updates and the `/status`
-    snapshot (`dispatchEtaUpdateService.js`), fuel alerts, and dispatch test
-    diagnostics.
+    snapshot (`dispatchEtaUpdateService.js`), and dispatch test diagnostics.
+    (Fuel alerts used it too, until fuel was removed in October 2026.)
   - **Batch/fleet fetches do NOT use it.** The Live Locations map
     (`liveLocationsService.js`) calls `samsaraLocationService` / `driveHosEldService`
     directly and re-implements the same provider order, and the duplicate-unit

@@ -18,7 +18,6 @@ const LeadsPage = lazy(() => import("./pages/LeadsPage"));
 const FinancePage = lazy(() => import("./pages/FinancePage"));
 const MileageBonusPage = lazy(() => import("./pages/MileageBonusPage"));
 const HomeTimePage = lazy(() => import("./pages/HomeTimePage"));
-const FuelMonitorPage = lazy(() => import("./pages/FuelMonitorPage"));
 const UsersPage = lazy(() => import("./pages/UsersPage"));
 const SettingsPage = lazy(() => import("./pages/SettingsPage"));
 const RecruiterKpiPage = lazy(() => import("./pages/RecruiterKpiPage"));
@@ -117,7 +116,6 @@ const PAGE_COMPONENTS = {
   company_birthdays: <CompanyBirthdaysPage />,
   mileage_bonus: <MileageBonusPage />,
   home_time: <HomeTimePage />,
-  fuel_monitor: <FuelMonitorPage />,
   users: <UsersPage />,
   // Three sidebar entries, one Settings page. "Settings" alone did not say
   // which settings, so the bare key is retired into LEGACY_PAGE_KEYS and each
@@ -233,7 +231,7 @@ export default function App() {
 
   if (!authed) {
     // After login, the URL is re-read so a person who arrived on
-    // `/admin#fuel_monitor` lands back on Fuel Monitor rather than the default.
+    // `/admin#home_time` lands back on Driver Home Time rather than the default.
     return (
       <LoginPage
         onLogin={(loginSession) => {

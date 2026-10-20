@@ -101,7 +101,7 @@ points at, or a row that claims to repeat itself.
 `registerGroupCaptureHandlers` and **before** `registerControlReplyHandlers`.
 
 - **After** the capture pipeline, so ordinary group handling — migration, pinned
-  snapshots, home time, fuel, the chat buffer — is entirely unchanged. A finance
+  snapshots, home time, the chat buffer — is entirely unchanged. A finance
   group that is also a driver group, which nobody has forbidden, must not lose
   its other handling because this one looked first.
 - **Before** the control channel, so a finance message is stored before anything

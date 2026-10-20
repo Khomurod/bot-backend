@@ -27,7 +27,6 @@ function context(overrides = {}) {
     identity: known({ displayName: 'JOHN DOE', openUnits: ['310'], openGroups: [7] }),
     homeTime: known({ state: 'road', stateSince: hoursAgo(200) }),
     loads: known({ movingPhase: null, orderId: null }),
-    fuel: known({ fuelPercent: 60, newestReadingAt: hoursAgo(1) }),
     safety: known({ events: 0, newestEventAt: null, windowDays: 30 }),
     retention: known({ goneQuiet: false, urgency: null }),
     ...overrides,
@@ -118,7 +117,7 @@ test('QUIET IN ONE PLACE AND BUSY IN ANOTHER IS A BROKEN FEED, and it says so', 
   const { deps, calls } = harness({
     ctx: context({
       retention: { known: true, goneQuiet: true, goneQuietSince: hoursAgo(48) },
-      fuel: { known: true, fuelPercent: 55, newestReadingAt: hoursAgo(2) },
+      safety: { known: true, events: 1, newestEventAt: hoursAgo(2), windowDays: 30 },
     }),
   });
   await pass.runContradictionPass({ now: NOW, deps });
@@ -155,21 +154,20 @@ test('one driver with two disagreements files two rows, not one blurred together
 
 // ── a mostly blank page is not a clean bill of health ────────────────────────
 
-test('COVERAGE TRAVELS WITH THE FINDING, because three unreadable sources is not "fine"', async () => {
+test('COVERAGE TRAVELS WITH THE FINDING, because two unreadable sources is not "fine"', async () => {
   const { deps, calls } = harness({
     ctx: context({
       homeTime: { known: true, state: 'home', stateSince: hoursAgo(72) },
       loads: { known: true, movingPhase: 'in_transit', orderId: 'ORD-9' },
-      fuel: { known: false },
       safety: { known: false },
       retention: { known: false },
     }),
   });
   await pass.runContradictionPass({ now: NOW, deps });
 
-  assert.deepEqual(calls.filed[0].evidence.coverage.missing, ['fuel', 'safety', 'retention']);
+  assert.deepEqual(calls.filed[0].evidence.coverage.missing, ['safety', 'retention']);
   assert.equal(calls.filed[0].evidence.coverage.known, 3);
-  assert.ok(calls.notified[0].lines.some((l) => /Read 3 of 6 sources/.test(l)),
+  assert.ok(calls.notified[0].lines.some((l) => /Read 3 of 5 sources/.test(l)),
     'and the reader is told, rather than left to assume the picture was complete');
 });
 

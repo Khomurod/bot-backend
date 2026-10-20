@@ -24,7 +24,7 @@
  * costs a signal; one recorded against the wrong person invents one.
  *
  * NEVER THROWS, NEVER BLOCKS. This runs inside the message handler that also
- * drives Home Time and the fuel monitor; a recording that fails costs the
+ * drives Home Time; a recording that fails costs the
  * recording and nothing else.
  */
 const { isStaff } = require('../../lib/identity/telegramResolution');

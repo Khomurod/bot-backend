@@ -11,7 +11,7 @@ the same permission, so a section named after the permission said nothing about
 what was in it.
 
 **Every admin screen has a URL now.** The page is the hash
-(`/admin#fuel_monitor`), so a screen can be bookmarked, pasted into a chat, or
+(`/admin#home_time`), so a screen can be bookmarked, pasted into a chat, or
 reached with Back — until Stage C3 `/admin` was the only URL the panel ever
 produced. A hash naming a page that has since become a tab opens where its
 content went (`#broadcast` → Communications); anything unrecognised opens Driver
@@ -268,37 +268,12 @@ file passed the 500-line limit.
   passed. An acknowledgement buys silence until it gets materially worse.
   `driver_retention_assessments`, `docs/architecture/driver-retention.md`.
 
-### Fuel monitor
+### Fuel (removed)
 
-The fuel team posts a gas-station location into a driver group → a watch row is
-recorded → a poller waits until the truck is within `radius_miles` → it replies to
-the original message tagging the driver. Detection is cheap-first (most messages
-never reach an AI call).
-
-**The risk watch** (`services/fuelStop/riskWatch.js`, every 20 minutes) answers
-what that poller cannot: a low tank, a truck that cannot reach the stop it was
-given, one that has driven past it, an instruction from last trip, and an
-abnormal burn rate. The operational low-fuel threshold is **30%**, which is the
-number the business asked for. Every finding goes to the configured operations
-chat and **never to a driver group** — an instruction from a rule nobody has
-watched running is how a fleet learns to ignore the bot.
-
-**The reachability plan** (`lib/fuel/planning.js`) turns "it cannot get there"
-into a sentence with the margin in it, rounded to what a range estimate from a
-tank percentage is actually worth — *about 180 miles*, never *182*. It
-**deliberately names no alternative station**: Wenze has no database of
-truck-accessible stops, prices or opening hours, so a confident suggestion about
-where to fuel a truck four hundred miles out would be an invented fact wearing
-the clothes of a plan. It says what is wrong, by how much, and leaves the choice
-to somebody who can see one. That restraint is the feature, and it is asserted
-structurally — the function has no parameter through which a station list could
-arrive, and the module imports nothing.
-
-A cannot-reach notice carries its **own** severity (`serious`) rather than the
-fuel category's catalogued `warning`, and the numbers the advice was written
-from travel with it as the facts its urgency is computed from — so what a notice
-says and what it is prioritised by cannot drift apart. See
-`docs/architecture/operational-notifications.md`.
+Fuel-stop reminders, the fuel risk watch, the truck fuel readings and the admin
+Fuel Monitor page were removed in October 2026 at the owner's request; a
+driver-group message is no longer read for a gas-station address. What went,
+what stayed and the tables left behind: `docs/architecture/retired-fuel.md`.
 
 ### When two features disagree about one driver
 
@@ -318,7 +293,7 @@ The two contradictions it can find today:
 - **home while working** — Home Time has them at home, the load board has the
   truck moving.
 - **quiet but active** — retention has them gone quiet while the fleet shows a
-  fuel reading or a safety event this morning. **This is not a retention
+  safety event this morning or a load in transit. **This is not a retention
   signal; it is a feed that stopped reporting**, and telling those apart is the
   whole reason for holding one picture of a driver in one place.
 
@@ -326,12 +301,13 @@ A third, *two trucks open at once*, stays in the pure module as a guard but is
 **not screened for**: `uniq_driver_units_open_person` makes it unrepresentable,
 so a fleet-wide scan for it would find nothing for ever.
 
-**Cost.** One set-based query over the fleet per tick; the six-query per-driver
+**Cost.** One set-based query over the fleet per tick; the five-query per-driver
 read runs only for what that screen returns, which is normally nothing. Reading
-every driver every fifteen minutes would be roughly 63,000 queries a day to
+every driver every fifteen minutes would be roughly 53,000 queries a day to
 answer a question that is almost always "no". The screen may over-select and
-must never under-select — a false candidate costs six queries, a missed one is a
-contradiction nobody hears about.
+must never under-select — a false candidate costs five queries, a missed one is a
+contradiction nobody hears about. (Six until the fuel section left the driver
+context in October 2026.)
 
 **Coverage travels with every finding**, because three unreadable sources and no
 contradictions found is not a clean bill of health, it is a mostly blank page.

@@ -81,7 +81,7 @@ in place — about thirty rows forever, deliberately not a run history. A worker
 joins it with one line:
 
 ```js
-await withRunRecord('fuel_risk', () => runFuelRiskCheck({}));
+await withRunRecord('retention_watch', () => runRetentionPass({}));
 ```
 
 `lib/operations/backgroundServiceCatalog.js` is the roster those keys are
@@ -131,10 +131,12 @@ pass; and configured is not the same as reachable.
 | every catalogued worker | its ledger row, through `classifyRun` |
 | `recruiter_logins` | **every** credentialed recruiter has `rc_auth_error`. One is a person's problem; all of them is an outage. None connected at all is `needs_human_attention` |
 | `ai_providers` | **every** enabled provider is in cooldown. One is the router doing its job. None enabled is `needs_human_attention`, and says the consequence: every AI feature is on its deterministic fallback |
-| `eld_location_freshness` | the newest row in `truck_fuel_readings` is over three hours old. One answer instead of four features going quiet separately |
 | `telegram_delivery` | a notice has been pending over 90 minutes — not a slow queue, a queue nothing is taking from |
 | `notifications` | any notice reached `abandoned` — the one failure that silences every other feature's alarm, which is how 101 staff alerts were lost once already |
 | `samsara_safety_pipeline` | the poller's own heartbeat has gone stale. It is a **separate Render service** sharing only this database, so it writes one row into the same ledger; without it, a dead poller and a quiet week are the same empty safety table |
+
+(`eld_location_freshness`, read from the fuel watch's readings, went with fuel
+in October 2026 — [`health-reporting.md`](health-reporting.md).)
 
 A source that cannot be read is **unknown, never failed**, and is dropped before
 the announcer sees it so three unreadable passes cannot announce an outage that

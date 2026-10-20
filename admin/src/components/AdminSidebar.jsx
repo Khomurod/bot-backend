@@ -7,7 +7,6 @@ const NAV_SECTIONS = [
     items: [
       { key: 'operations', icon: '🔎', label: 'Needs Attention' },
       { key: 'live_locations', icon: '📍', label: 'Live Locations' },
-      { key: 'fuel_monitor', icon: '⛽', label: 'Fuel Monitor' },
       { key: 'home_time', icon: '🏠', label: 'Driver Home Time' },
       { key: 'system_health', icon: '🩺', label: 'System & AI Health' },
       { key: 'finance', icon: '💵', label: 'Finance Monitor' },
@@ -68,8 +67,8 @@ const NAV_SECTIONS = [
  * whole nav needs the same permission, a section named "Admin" said nothing
  * about what was inside it, and collapsing it by default put those screens one
  * click further away than the rest for no reason. Recruiting is now its own
- * section instead of the tail of Operations, the operational monitors (Fuel,
- * Home Time, System health) moved OUT of "Team" into Operations where somebody
+ * section instead of the tail of Operations, the operational monitors (Home
+ * Time, System health) moved OUT of "Team" into Operations where somebody
  * looking for "is this working" would look, and Settings is a section rather
  * than a drawer.
  *

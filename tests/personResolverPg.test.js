@@ -44,7 +44,6 @@ function bind(harness) {
       roadHistory: require('../database/homeTime/roadHistory'),
       driverState: require('../database/homeTime/driverState'),
       requests: require('../database/homeTime/requests'),
-      fuel: require('../database/fuelMonitoring'),
       mileage: require('../database/mileageBonus'),
     };
   } finally {
@@ -137,10 +136,6 @@ test('every operational write carries the person from now on — and NULL, never
   });
   assert.equal(request.person_id, personId, 'home_time_requests');
 
-  const alert = await bound.fuel.createFuelStopAlert({
-    groupId: group.id, telegramGroupId: -102, sourceMessageId: 5, stationLat: 41.8, stationLng: -87.6,
-  });
-  assert.equal(alert.person_id, personId, 'fuel_stop_alerts');
 
   // Mileage is keyed on a NAME. One canonical person with that name → stamped.
   const progress = await bound.mileage.upsertDriverProgress({

@@ -38,9 +38,10 @@ feature it belongs to.
 - **Checks whose feature was removed find nothing, and still resolve.**
   `checks/retired.js` owns every key of a removed check — Route Control's, the
   Dispatcher Board's identity and person-link checks (`board.*`), the two
-  board-vs-Home-Time contradictions, and the driver-raise review's
+  board-vs-Home-Time contradictions, the driver-raise review's
   (`raise.driver_unplaced`, `raise.roster_not_rebuilt`,
-  `dispatch.team_driver_on_inactive_group`). A finding resolves only when a sweep
+  `dispatch.team_driver_on_inactive_group`), and fuel's
+  (`fuel.watch_on_inactive_group`). A finding resolves only when a sweep
   completes the module owning its key, so deleting a check with its feature
   would leave its open findings open for ever. The Board itself is now read only
   by Home Time ([`dispatcher-board.md`](../architecture/dispatcher-board.md)).
@@ -53,8 +54,8 @@ feature it belongs to.
   the profile's truck is the record; the person's open unit is brought to it,
   only when nobody else holds it), `identity.person_on_two_active_groups` and
   `identity.unit_contested` (a human decides). `checks/systems.js` reads across
-  features: `samsara.vehicle_on_two_active_groups`, `samsara.vehicle_link_disagrees`,
-  `fuel.watch_on_inactive_group` and `raise.progress_without_person` (one
+  features: `samsara.vehicle_on_two_active_groups`,
+  `samsara.vehicle_link_disagrees` and `raise.progress_without_person` (one
   aggregated finding about mileage-bonus rows — the name predates the raise
   review's removal and outlived it). The two auto actions live in
   `corrections/identityActions.js`, re-derive under lock, refuse when stale, and

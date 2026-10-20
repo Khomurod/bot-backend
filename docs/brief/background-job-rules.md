@@ -5,7 +5,7 @@ Part of [`APP_BRIEF.md`](../../APP_BRIEF.md). Its sibling
 what is true of ALL of them.
 
 Split out when the two together passed this repository's 500-line limit, and the
-line to split on was obvious: one document answers "what does the fuel watch
+line to split on was obvious: one document answers "what does the load watch
 do", the other answers "how would I know whether it ran, and what did it cost".
 
 ---
@@ -18,9 +18,9 @@ logged or dumped.
 
 Route Control (removed October 2026) resolved each active assignment's GPS
 separately, and each resolution fetched the **entire paginated fleet** — about
-fourteen thousand fetches a day for a hundred trucks. The duplicate-unit scan,
-the fuel watch and the load watch still ask for the same snapshot on their own
-timers.
+fourteen thousand fetches a day for a hundred trucks. The duplicate-unit scan
+and the load watch still ask for the same snapshot on their own timers (the
+fuel watch did too, until fuel was removed in October 2026).
 
 Sixty seconds is shorter than every caller's interval, and the data is already
 treated as approximate — nothing decides anything from a position without
@@ -181,7 +181,7 @@ code — a slider an operator sets, believing they have changed something:
 
 | Setting | Was | Now |
 |---|---|---|
-| `notification_settings.repeat_after_hours` | read by nothing; the fuel and load watches used their own module constants | a **ceiling** on every per-risk quiet window. Raising it quietens everything; it never lowers a floor, because a passed stop settling within a day is a property of the event, not a taste |
+| `notification_settings.repeat_after_hours` | read by nothing; the fuel and load watches used their own module constants | was made a **ceiling** on the fuel watch's per-risk quiet windows — its only reader. With fuel removed (October 2026) it is **read by nothing again**, and the admin has no field for it; the load watch keeps its own 24-hour constant. The control channel's re-ask window is a different setting (`control_settings.repeat_after_hours`) |
 | `ai_settings.call_log_retention_days` | read by nothing; the prune ran on a hardcoded 30 | the configured window drives the prune |
 | `ai_capabilities.may_propose` | documented in migration 0019 as "the enforcement point" | **still unenforced** — its sibling `may_auto_apply` is enforced by a schema CHECK, and this one is not read anywhere. Recorded here rather than quietly fixed, because deciding what "may propose" gates is a design question, not a wiring mistake |
 
@@ -212,14 +212,15 @@ here are all fixed-size, and the arithmetic is small enough to state exactly:
 | Table | Rows, for ever | Writes per day |
 |---|---|---|
 | `background_service_runs` | one per catalogued worker — **34** | ~2,340 UPSERTs (every worker, at every one of its own intervals) |
-| `truck_fuel_readings` | one per truck that reports telemetry — **~110** | ~7,900 UPSERTs (72 fuel passes × the trucks reporting) |
+| `truck_fuel_readings` | one per truck that reports telemetry — **~110** | ~7,900 UPSERTs (72 fuel passes × the trucks reporting) — **none since October 2026**: its only writer, the fuel watch, was removed and the table is kept unread |
 | `notification_discards` | one per category — **9** | one per DISTINCT notice thrown away, and zero once a destination is set |
 | `notification_discard_keys` | one per distinct notice key thrown away, bounded by the caller's discriminator | the same |
 | `operational_learning_suggestions` (widened, not added) | unchanged | unchanged — the pass runs twice a day |
 
-That is about **10,000 UPSERTs a day, ~7 a minute, against roughly 150 rows in
-total**. Nothing here accumulates: there is no run history, no reading history,
-no discarded-notice bodies. Each of those three was considered and refused, and
+That was about **10,000 UPSERTs a day, ~7 a minute, against roughly 150 rows in
+total**; without the fuel readings it is nearer 2,400 a day. Nothing here
+accumulates: there is no run history, no reading history, no discarded-notice
+bodies. Each of those three was considered and refused, and
 the refusals are written down in the migrations themselves (0038, 0039, 0041) so
 the next person to want a history sees why there isn't one.
 

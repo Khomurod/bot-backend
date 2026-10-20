@@ -28,7 +28,7 @@ error — and told nobody. 101 staff alerts were lost over several months.
 ## What exists now
 
 **One default chat, optional per-category overrides.** `lib/notifications/categories.js`
-is the catalogue: ten categories, each with a label, what lands there, a
+is the catalogue: nine categories, each with a label, what lands there, a
 severity, and — the field that decides whether an operator wants it in its own
 chat — whether a person normally has to do something about it.
 
@@ -46,13 +46,13 @@ category falls through to the default rather than waiting to be configured.
 const { notify } = require('services/notifications/send');
 
 await notify({
-  category: 'fuel',
-  title: 'Unit 310 may not reach its fuel stop',
-  lines: ['Range about 120 mi, stop 180 mi ahead'],
-  action: 'Reassign or call the driver',
-  subjectType: 'group', subjectId: group.id,
-  discriminator: `stop-${alert.id}`,   // what makes THIS event different
-  evidence: { milesToStop: 180, rangeMiles: 120 },
+  category: 'retention',
+  title: 'Unit 310 has gone quiet',
+  lines: ['No message in nine days; usually several a week'],
+  action: 'Worth a phone call',
+  subjectType: 'person', subjectId: personId,
+  discriminator: `${level}:${score}`,   // what makes THIS event different
+  evidence: { score, signals },
 });
 ```
 
@@ -122,15 +122,15 @@ was catalogued with.
 ### The level
 
 `priorityFor({ severity, facts })` returns `now` / `today` / `whenever` from
-**established numbers only** — a distance, a percentage, a count, an
-hours-until-due. It has no parameter a model could reach, and a test asserts
-that.
+**established numbers only** — today an hours-until-due and a count of drivers
+affected. (Fuel's range, miles-to-stop and tank percentage were the others,
+until fuel was removed in October 2026.) It has no parameter a model could
+reach, and a test asserts that.
 
 A caller may state the severity of **this** event, and it is used in preference
-to the category's. That is the point: `fuel` is catalogued as a `warning`,
-which is right for a truck at 28% twenty miles from a station and wrong for one
-that cannot reach its assigned stop at all — and the second is the one that
-costs money. **An unrecognised severity falls back to the category's, never to
+to the category's. That is the point: a category is catalogued at one
+severity, which is right for its ordinary notice and wrong for the rare one that
+is worse — and the worse one is the one that costs money. **An unrecognised severity falls back to the category's, never to
 the loudest reading**, so a typo cannot page anybody.
 
 Only a `now` explains itself, as one extra line. A `today` that argued its own
@@ -140,8 +140,8 @@ was urgent rather than only that it was.
 
 ### The hold
 
-`shouldSuppress` answers the question the notice key cannot: a fuel risk, a
-load contradiction and a retention signal about **one driver** arriving within
+`shouldSuppress` answers the question the notice key cannot: a safety
+escalation, a load contradiction and a retention signal about **one driver** arriving within
 minutes, each correctly deduplicated against itself, together reading as three
 problems rather than one person having one bad morning. Grouping is by person
 first, then group, then subject pair — never by category, since those three
@@ -156,11 +156,8 @@ discarded would be that failure with a nicer name.
 Two exceptions, both deliberate:
 
 - **a `now` is never held.** Whatever else somebody has been told, a thing that
-  gets worse by the hour is worth the interruption. A **critical fuel
-  percentage** is one on its own, with no assigned stop to measure against —
-  that was missed at first, so a truck at 6% with no open fuel watch produced
-  no facts at all, landed at `whenever`, and could be held for an hour. The
-  threshold is imported from `lib/fuel/risk.js` rather than copied.
+  gets worse by the hour is worth the interruption. (A critical fuel
+  percentage was one on its own until fuel was removed in October 2026.)
 - **the hold fails open.** A dependency map without the new read, or a read
   that errors, costs the hold and not the notice. Saying a thing twice is a
   nuisance; not saying it is the failure this application exists to remove.
@@ -172,12 +169,12 @@ Three things the first version of the hold got wrong, each found in review:
   ninety-seven together an hour later. Each notice already waiting for a
   subject now pushes the next a further window out.
 - **it counted notices nobody in that chat had seen.** With per-category
-  overrides, three fuel notices in the fuel team's chat could hold the first
-  safety notice in a safety chat. Both the recent-notice read and the stagger
+  overrides, three notices in one team's chat could hold the first safety
+  notice in a safety chat. Both the recent-notice read and the stagger
   count are scoped to the resolved destination.
 - **it created the duplicate it exists to prevent.** `noticeSentWithin` looked
-  only at `delivered`, and the fuel watch's discriminator carries the hour — so
-  a notice held at 10:30 was invisible, the key changed at 11:00, and a second
+  only at `delivered`, and the (since removed) fuel watch's discriminator
+  carried the hour — so a notice held at 10:30 was invisible, the key changed at 11:00, and a second
   copy went out. A `pending` row will still be said, so it now counts;
   `abandoned` does not, because it never will.
 
@@ -258,7 +255,7 @@ So the gap is reported in the two places an operator already looks:
   boolean.
 
 **A destination is never guessed.** Seeding the default from another feature's
-settings would put fuel risks and retention signals into a room chosen for a
+settings would put safety escalations and retention signals into a room chosen for a
 different audience, and that is a decision for a person. A missing settings row
 files nothing at all — a deploy in progress is not a misconfiguration.
 

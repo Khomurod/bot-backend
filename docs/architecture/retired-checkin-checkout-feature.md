@@ -86,7 +86,8 @@ it** — it was a *consumer* of shared GPS/Datatruck/ETA helpers, never a provid
   `services/etaRoutingService.js`, `lib/drivers/driverGroupTitle.js`,
   `services/geocoder.js` — all used by Dispatch ETA / GPS / load lookup.
 - **Fuel-stop reminders** (`services/fuelStopAlertService.js`) are a **separate**
-  feature and are untouched.
+  feature and are untouched. (They were themselves removed in October 2026 —
+  `retired-fuel.md`.)
 - Samsara safety alerts (external `samsara-integration` repo), recruiting/leads,
   RingCentral/Bitrix/Meta, birthdays, mileage bonus, raise approval — untouched.
 - `admin/src/pages/UsersPage.jsx` keeps the `loccheck:in/out` label map so any

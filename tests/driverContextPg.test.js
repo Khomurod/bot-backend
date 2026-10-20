@@ -126,19 +126,12 @@ test('a load merely ASSIGNED is not movement, so being home is not contradicted'
     assert.deepEqual(findContradictions(out), []);
   });
 
-test('fuel and safety come back per PERSON, so they survive a truck change',
+test('there is no fuel section — the readings went with the fuel watch',
   { skip: skipWithoutPg() }, async (t) => {
     const { h, ctx, people } = await setup(t);
     const person = await aDriver(h, people);
-    await h.query(
-      `INSERT INTO truck_fuel_readings (unit_number, person_id, fuel_percent, odometer_miles, recorded_at)
-       VALUES ('123', $1, 44, 100000, NOW() - INTERVAL '2 hours')`,
-      [person.id]
-    );
     const out = await ctx.getDriverContext(person.id);
-    assert.equal(out.fuel.known, true);
-    assert.equal(Number(out.fuel.fuelPercent), 44);
-    assert.ok(out.fuel.newestReadingAt);
+    assert.equal('fuel' in out, false);
   });
 
 test('a missing table is a GAP, never an empty section', { skip: skipWithoutPg() }, async (t) => {

@@ -87,10 +87,11 @@ until a date.
 - **Stood down** (`ECONOMY_PAUSED_KEYS`, `lib/operations/economyMode.js`):
   load control, the consistency sweep and everything that rides it
   (contradictions, owner questions, the daily digest), self-healing, the
-  learning pass, the duplicate-unit scan, decision grading, fuel risk and
-  fuel-stop reminders, retention and chat annotation, and the AI checks (group
-  status, model maintenance, the terms watcher, the safety coach). BOL/POD
-  forwarding headed the owner's list; it has since been removed outright.
+  learning pass, the duplicate-unit scan, decision grading, retention and chat
+  annotation, and the AI checks (group status, model maintenance, the terms
+  watcher, the safety coach). BOL/POD forwarding headed the owner's list, and
+  fuel risk and fuel-stop reminders were on it; both have since been removed
+  outright.
 - **Slowed, not stopped:** the Dispatcher Board is read every **4 hours**,
   because Home Time's home-in / home-out reads its snapshot, and that pass
   follows the read. A failed read retries at the normal pace.

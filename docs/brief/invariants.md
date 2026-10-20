@@ -169,8 +169,10 @@ repository-wide working rules. The highest-consequence items:
     `tests/retiredLeftoversPg.test.js`.
 16. **One great-circle implementation.** `lib/geo/distance.js` owns it, and
     `haversineMiles` is `haversineMeters` converted rather than a second
-    formula. Four consumers answer "is the truck there yet" from it — route
-    completion, tracking start, fuel-stop proximity, ETA remaining distance —
+    formula. Its consumers answer "is the truck there yet" from it — ETA
+    remaining distance (`services/etaRoutingService.js`, Live Locations' ETA),
+    return-to-road evidence and the load lifecycle (route completion and
+    fuel-stop proximity used it until Route Control and fuel were removed) —
     and two copies with two earth radii is two chances for those answers to
     disagree. `tests/geoDistance.test.js`.
 17. **A static page split into assets keeps an explicit allow-list.** `/remote`

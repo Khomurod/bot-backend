@@ -72,7 +72,7 @@ describe("a sample of calls from every domain still resolves", () => {
     // functions are gone, and these four are what that module still forwards.
     "getDispatchTestingGroups", "getScheduledMessages", "getLeads", "getAiReports",
     "getEmployeeBirthdays", "getFacebookLeadPages", "getMileageBonusOverview",
-    "getHomeTimeOverview", "getGroupAccess", "getFuelMonitor",
+    "getHomeTimeOverview", "getGroupAccess",
     "getBotUsers", "getRecruiters",
     "getLiveLocationsConfig", "getSafetyEventSettings",
   ];

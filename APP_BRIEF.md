@@ -70,9 +70,10 @@ Business problems it solves:
 - Communicate with drivers at scale, in their own language (EN/RU/UZ), through
   the Telegram groups they already live in.
 - Give dispatch real-time truck location, load and ETA information.
-- Automate recurring operations work: bonuses, home-time, fuel stops,
-  birthday wishes. (BOL/POD document forwarding was removed in October 2026 —
-  `docs/architecture/retired-bol-pod.md`.)
+- Automate recurring operations work: bonuses, home-time, birthday wishes.
+  (BOL/POD document forwarding and everything fuel — stop reminders, the risk
+  watch, the Fuel Monitor — were removed in October 2026:
+  `docs/architecture/retired-bol-pod.md`, `docs/architecture/retired-fuel.md`.)
 - Capture and convert recruiting leads (Facebook/Meta, Indeed) and measure
   recruiter performance.
 
@@ -157,9 +158,9 @@ Hard constraints of this deployment:
 
 | User type | How they use it |
 |---|---|
-| **Drivers** | Their Telegram driver group is the whole interface: answer surveys, post `Status: Home/Ready/Rolling`, request home time, receive broadcasts, bonuses, fuel reminders. Also anonymous feedback in the bot's private chat. |
+| **Drivers** | Their Telegram driver group is the whole interface: answer surveys, post `Status: Home/Ready/Rolling`, request home time, receive broadcasts and bonuses. Also anonymous feedback in the bot's private chat. |
 | **Dispatchers** | `/load`, `/location`, `/status`, `/update` inside driver groups; receive automatic ETA updates; keep the Dispatcher Board current, which Home Time reads. |
-| **Admins / office staff** | The admin SPA at `/admin`: broadcasts, surveys, groups, leads, live map, home time, fuel, mileage bonuses, recruiter KPIs, settings. |
+| **Admins / office staff** | The admin SPA at `/admin`: broadcasts, surveys, groups, leads, live map, home time, mileage bonuses, recruiter KPIs, settings. |
 | **Accounting** | Mileage-bonus Paid/Rejected buttons in Telegram (allow-listed accounting users — see §5). |
 | **Recruiters** | Measured, not users: RingCentral call logs feed KPIs and the public `/recruiters` leaderboard. |
 | **The owner ("creator")** | A Telegram-only messaging panel in the bot's private chat, gated on one numeric user ID (`CREATOR_USER_ID` in `bot/creatorMessageManager.js`). Also **steers Wenze from the notifications group**: it asks one plain question per open finding it could fix but has not been permitted to, and a reply — *yes*, *no* and why, or *later* — applies, closes or postpones it, and a "no" is remembered so the same situation is not asked about again. Only accounts on the `control_operators` allow-list are obeyed. |
@@ -173,7 +174,7 @@ unchanged, so a reference to "§7" still means the same section.
 
 | Section | Read it when |
 |---|---|
-| [§4. Features and workflows](docs/brief/features.md) | You are touching any feature: driver comms, dispatch, payroll-adjacent flows, the Finance Monitor, fuel, the Groups page, the presenter remote, the Gross Grand Prix displays |
+| [§4. Features and workflows](docs/brief/features.md) | You are touching any feature: driver comms, dispatch, payroll-adjacent flows, the Finance Monitor, the Groups page, the presenter remote, the Gross Grand Prix displays |
 | [§4b. Home time](docs/brief/home-time.md) | You are touching home time: the home/road state machine, the three manager notices, request detection, automatic return-to-road detection, the cycle invariant |
 | [§4c. Recruiting and leads](docs/brief/recruiting.md) | The Facebook lead chain, whose number texts a candidate, after-hours answering, Teach Wenze, Customer Inquiries, recruiter KPIs, Safety's hire decisions posted from the recruiting group |
 | [§4a. The system checking itself, and the AI that helps](docs/brief/self-checking-and-ai.md) | Operational findings, tiered corrections, the audit trail |
@@ -232,6 +233,7 @@ by a number on every stage does not belong in the file everything else fits in.
 | Route Control's removal (October 2026) | `docs/architecture/retired-route-control.md` |
 | The driver-raise review's removal, and the Dispatcher Board's identity checks (October 2026) | `docs/architecture/retired-driver-raise.md`, `docs/architecture/dispatcher-board.md` |
 | BOL/POD document forwarding's removal (October 2026), and the tables it left | `docs/architecture/retired-bol-pod.md` |
+| Everything fuel's removal (October 2026): stop reminders, the risk watch, the readings, the ELD-freshness health line, and the tables they left | `docs/architecture/retired-fuel.md` |
 | Whose number texts a lead, WHICH message they send, and the RingCentral/TCR prerequisites | `docs/architecture/recruiter-sms-sender.md` |
 | The Gross Grand Prix displays (`/dispatch`, `/dispatchteam`): the Datatruck read budget, and what a public page may show | `docs/architecture/gross-race.md` |
 | Samsara settings (the shared `samsara_settings` row, the shared-secret envelope for its API key) and missing-video recovery | `docs/architecture/samsara-settings-and-video-recovery.md` |

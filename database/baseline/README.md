@@ -69,7 +69,7 @@ migrations has shipped everywhere.
 | 011 | `raise_approval` | raise_settings/rounds/submissions/picks/otp — retired, read by nothing |
 | 012 | `home_time` | home_time_settings, driver_home_status, driver_road_history, home_time_requests |
 | 013 | `bot_access_and_datatruck_docs` | bot_access_settings, datatruck_document_deliveries (retired, read by nothing) |
-| 014 | `fuel_monitoring` | fuel_stop_alerts, fuel_monitor_inbox |
+| 014 | `fuel_monitoring` | fuel_stop_alerts, fuel_monitor_inbox — retired and unread since fuel was removed in October 2026 (`docs/architecture/retired-fuel.md`); kept until a backed-up cleanup |
 | 015 | `driver_location` | driver_location_monitors, driver_location_checkins |
 | 016 | `bot_users_and_reactions` | bot_users, auto_reaction_rules |
 | 017 | `eld_and_message_groups` | eld_settings, message_group_settings |
@@ -94,6 +94,10 @@ migrations has shipped everywhere.
 > runs those after the baseline. Dropping them is a separate step with a backup —
 > see `docs/architecture/retired-driver-raise.md` and
 > `docs/architecture/retired-route-control.md`.
+>
+> Segment 014 belongs to fuel, removed in October 2026. It stays for the same
+> reason: migration 0026 adds `fuel_stop_alerts.person_id`. `truck_fuel_readings`
+> (migration 0038) is retired too. See `docs/architecture/retired-fuel.md`.
 
 > BOL/POD forwarding was removed in October 2026. `datatruck_document_deliveries`
 > (013) and `bol_pod_forwarding_settings` (021) are still created and read by

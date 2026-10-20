@@ -68,7 +68,7 @@ configuration", never a failure.
 | BOL/POD forwarding | none now — the feature, and its `datatruck_documents` key, were removed in October 2026 |
 | load control | `load_lifecycle` |
 | automatic checks and questions | `consistency_sweep`, `contradiction_pass`, `control_ask_pass`, `control_daily_digest`, `self_healing`, `learning_pass`, `duplicate_unit_scan`, `decision_verification` |
-| fuel | `fuel_risk`, `fuel_stop_alerts` |
+| fuel | none now — fuel, and its `fuel_risk` and `fuel_stop_alerts` keys, were removed in October 2026 ([retired-fuel.md](retired-fuel.md)) |
 | driver retention | `retention_watch`, `chat_annotation` |
 | AI checks | `group_status_ai`, `ai_model_maintenance`, `ai_policy_watcher`, `safety_coach` |
 

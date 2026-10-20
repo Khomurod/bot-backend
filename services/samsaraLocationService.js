@@ -71,10 +71,10 @@ function computePingAgeMinutes(pingTimeIso, now = new Date()) {
 function buildStatsUrl(apiBase, cursor) {
   const cleanBase = String(apiBase || DEFAULT_SAMSARA_API_BASE).replace(/\/+$/, '');
   const params = new URLSearchParams({
-    // GPS is what the map needs. `fuelPercents` and `obdOdometerMeters` are
-    // what the fuel work needs, and they ride along on a request that was
-    // already being made — asking for them separately would double the calls
-    // against a rate-limited API for data arriving in the same payload.
+    // GPS is what the map needs. `fuelPercents` and `obdOdometerMeters` ride
+    // along on a request that was already being made (the removed fuel watch
+    // read them; Live Locations still maps the tank level) — asking for them
+    // separately would double the calls against a rate-limited API.
     //
     // A vehicle that does not report them simply has no key for them, which the
     // reader treats as unknown rather than as zero. "No fuel reading" and "an
@@ -139,7 +139,7 @@ async function fetchVehicleStatsPage({ apiKey, apiBase, cursor }) {
  * Route Control (removed October 2026) resolved each active assignment's GPS
  * separately, and each resolution called this — ten active assignments meant
  * ten complete paginated fleet fetches every check interval. The
- * duplicate-unit scan, the fuel watch and the load watch each ask for the same
+ * duplicate-unit scan and the load watch each ask for the same
  * snapshot on their own timers too.
  *
  * Sixty seconds, because that is shorter than every caller's interval and the

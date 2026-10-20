@@ -61,6 +61,24 @@
       "service": "none — BOL/POD forwarding was removed in October 2026 (docs/architecture/retired-bol-pod.md). Still created by the baseline (013); read and written by nothing.",
       "danger": "The only record of which documents were forwarded to which group. Drop only in a deliberate cleanup with a backup first."
     },
+    "fuel_stop_alerts": {
+      "purpose": "Fuel-stop watches: one row per gas-station post from the Fuel Monitoring team in a driver group, with the geocoded station, radius, ETA-based next check and status (watching / notified / expired / error). `person_id` added by migration 0026.",
+      "status": "retired",
+      "service": "none — everything fuel was removed in October 2026 (docs/architecture/retired-fuel.md). Still created by the baseline (014) and altered by migration 0026; read and written by nothing, no longer person-stamped, and no longer read by the consistency snapshot.",
+      "danger": "Drop only in a deliberate cleanup with a backup first, together with removing segment 014 from the baseline."
+    },
+    "fuel_monitor_inbox": {
+      "purpose": "Every FUEL MONITORING DEPARTMENT message the bot saw in a company-driver group (UNIQUE group_id + message_id), pending or picked_up, so the Fuel Monitor's Refresh could retry a failed detection.",
+      "status": "retired",
+      "service": "none — everything fuel was removed in October 2026 (docs/architecture/retired-fuel.md). Still created by the baseline (014); read and written by nothing.",
+      "danger": "Holds the raw message text the fuel team posted. Drop only in a deliberate cleanup with a backup first."
+    },
+    "truck_fuel_readings": {
+      "purpose": "One row per truck, updated in place: the latest fuel % and odometer plus an older baseline the fuel risk watch measured abnormal burn against.",
+      "status": "retired",
+      "service": "none — the fuel risk watch, its only writer, was removed in October 2026 (docs/architecture/retired-fuel.md), as were its readers (driver context, the contradiction screen, the health summary and the eld_location_freshness observation). Still created by migration 0038.",
+      "danger": "Drop only in a deliberate cleanup with a backup first."
+    },
     "gmaps_settings": {
       "purpose": "Single-row (id=1) Google Maps Platform config for Route Control. Server key encrypted at rest.",
       "status": "retired",

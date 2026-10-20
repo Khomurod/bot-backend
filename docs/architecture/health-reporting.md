@@ -334,3 +334,15 @@ Two more of the same shape, found in the same sweep and fixed the same way:
 against the previous commit. One of them, in the retention watch, already had
 the right NAME — "a database failure is a reported error, not a crash and not a
 false all-clear" — and asserted the plural field that nothing reads.
+
+## An observation whose only source is gone goes with it
+
+`eld_location_freshness` answered "is the ELD feed still answering?" from the
+newest row in `truck_fuel_readings`, which only the fuel watch wrote. When fuel
+was removed (October 2026) the observation would have read `unknown` for ever —
+a health line that can never observe anything, which `unknown` filtering then
+hides, so it is silence presented as coverage. It was removed with its
+catalogue entry rather than left in place. The ELDs are still read by Live
+Locations, return-to-road detection and the load watch, each of which reports
+its own failures. A stale `system_health_states` row for the key remains until
+the backed-up cleanup ([retired-fuel.md](retired-fuel.md)).
