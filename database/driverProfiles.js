@@ -268,6 +268,7 @@ async function upsertDriverProfileByGroupId(data, opts = {}) {
   );
   const row = res.rows[0] || null;
   if (!row) return null;
+  forgetGroupRows();
   if (opts.syncGroup !== false) {
     await syncGroupFromDriverProfile(row, {
       syncStatus: opts.syncStatus === true,
@@ -348,6 +349,7 @@ async function setDriverProfileTelegramIdentity(groupId, { telegramUserId, teleg
   // COALESCE-preserved old id, and the resolver needs the new one — a Telegram
   // id is the hard anchor that proves two chats are one person.
   fireProfileSavedHook(res.rows[0]);
+  forgetGroupRows();
   return getDriverProfileByGroupId(Number(groupId)).catch(() => res.rows[0] || null);
 }
 
@@ -380,6 +382,7 @@ async function backfillDriverProfileTelegramUserId({ groupId, telegramUserId, us
   );
   // A filled id is a new hard anchor, and this path has no admin save behind it.
   if ((res.rowCount || 0) > 0) fireProfileSavedHook(res.rows[0]);
+  forgetGroupRows();
   return (res.rowCount || 0) > 0;
 }
 

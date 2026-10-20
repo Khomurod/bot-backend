@@ -54,9 +54,21 @@ function rememberGroupRow(row, now = Date.now()) {
   rows.set(key, { row: { ...row }, at: now });
 }
 
-/** A `groups` row changed: the next read goes to the table. */
+/**
+ * Bumped by every forget: anything else that caches what groups or driver
+ * profiles say (services/driverGroupDirectoryService.js) compares it, so a
+ * write is never hidden behind a cache.
+ */
+let generation = 0;
+
+/** A `groups` row (or a driver profile) changed: the next read goes to the table. */
 function forgetGroupRows() {
   rows.clear();
+  generation += 1;
+}
+
+function groupDataGeneration() {
+  return generation;
 }
 
 module.exports = {
@@ -64,4 +76,5 @@ module.exports = {
   cachedGroupRow,
   rememberGroupRow,
   forgetGroupRows,
+  groupDataGeneration,
 };

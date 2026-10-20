@@ -336,3 +336,26 @@ test('an unterminated comment or string can cost a label, never leak one', () =>
     assert.ok(!label.includes('trudy'), `the label leaked a name: ${label}`);
   }
 });
+
+test('A WRITE IS NOT A READ: an upsert with no RETURNING costs only the round trip', () => {
+  meter.reset();
+  const bytes = meter.recordQuery({ rows: [], rowCount: 1 }, 'INSERT INTO operational_findings (a) VALUES (1) ON CONFLICT DO NOTHING');
+  assert.equal(bytes, 200);
+  assert.equal(meter.snapshot().rows, 0);
+});
+
+test('each table is estimated by ITS OWN row size once sampled, not one shared average', () => {
+  meter.reset();
+  const small = Array.from({ length: 10 }, (_, i) => ({ id: i }));
+  // Enough calls that a sample is taken, then an estimate follows it.
+  let last = 0;
+  for (let i = 0; i < 60; i += 1) last = meter.recordQuery({ rows: small }, 'SELECT id FROM mileage_bonus_progress');
+  assert.ok(last < 10 * 400, `a 10-row read of tiny rows is not priced at 400 B a row (${last})`);
+});
+
+test('a statement is labelled by its own table, not a subquery\'s', () => {
+  const { labelForQuery } = require('../lib/database/queryLabel');
+  assert.equal(labelForQuery('SELECT g.*, (SELECT count(*) FROM driver_person_groups p WHERE p.group_id = g.id) FROM groups g'), 'groups');
+  assert.equal(labelForQuery('SELECT * FROM (SELECT id FROM groups) sub'), 'groups', 'a read of only a subquery falls back inside it');
+  assert.equal(labelForQuery('WITH before AS (SELECT 1 FROM groups) INSERT INTO safety_approval_messages VALUES (1)'), 'safety_approval_messages');
+});

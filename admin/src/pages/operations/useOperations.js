@@ -27,10 +27,12 @@ import useVisibleInterval from '../../utils/useVisibleInterval';
 
 /**
  * The sweep runs every 15 minutes, so polling faster only costs egress without
- * ever showing anything new. `useVisibleInterval` additionally stops entirely
- * while the tab is hidden and fires once on return.
+ * ever showing anything new — every minute was ~90 MB a month of findings
+ * evidence re-read for a page left open (October 2026); five minutes still
+ * catches each sweep. `useVisibleInterval` additionally stops entirely while
+ * the tab is hidden and fires once on return.
  */
-export const REFRESH_MS = 60000;
+export const REFRESH_MS = 5 * 60 * 1000;
 
 /** One page of correction history. Revert lives only on that tab. */
 export const HISTORY_PAGE_SIZE = 50;
