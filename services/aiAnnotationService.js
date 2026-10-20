@@ -24,6 +24,9 @@ const {
   GROQ_AI_FALLBACK_MODELS,
 } = require('./groqClient');
 const { isAiAvailable } = require('./ai/registry');
+const {
+  KEYWORD_SKIP_VERSION, splitByLeavingCue, unreadAnnotation,
+} = require('./retention/leavingCue');
 
 const MODEL_VERSION = 'groq-v1-annotator';
 const ANNOTATOR_GROQ_MODELS = parseModelList(
@@ -271,7 +274,7 @@ async function annotateBatch(batch) {
   return annotateBatchViaGroq(batch);
 }
 
-async function persistAnnotations(annotations) {
+async function persistAnnotations(annotations, modelVersion = MODEL_VERSION) {
   if (!annotations.length) return 0;
 
   // Single multi-row UPSERT. chat_log_id is PK, so re-annotations overwrite.
@@ -293,7 +296,7 @@ async function persistAnnotations(annotations) {
       a.is_acknowledgement,
       a.toxic,
       a.entities ? JSON.stringify(a.entities) : null,
-      MODEL_VERSION
+      modelVersion
     );
   });
 
@@ -319,15 +322,24 @@ async function persistAnnotations(annotations) {
   return res.rowCount || annotations.length;
 }
 
-async function annotateChatLogs(logs, opts = {}) {
-  if (!Array.isArray(logs) || logs.length === 0) return 0;
+async function annotateChatLogs(allLogs, opts = {}) {
+  if (!Array.isArray(allLogs) || allLogs.length === 0) return 0;
+  // ONLY A MESSAGE THAT MAY BE ABOUT LEAVING IS READ BY A MODEL (the owner's
+  // decision, October 2026 — `services/retention/leavingCue.js`). The rest are
+  // recorded as unread `no_signal` without a call, so neither this pass nor an
+  // AI report ever sends them, and they are not selected again.
+  const { toRead: logs, skipped } = splitByLeavingCue(allLogs);
+  const skippedWritten = await persistAnnotations(
+    skipped.map((l) => unreadAnnotation(l.id)), KEYWORD_SKIP_VERSION
+  );
+  if (logs.length === 0) return skippedWritten;
   // Asked of the ROSTER, not of the environment: a key that lives only in
   // Admin → Settings → AI is a configured key, and the master switch being off
   // is a reason to do nothing that an env-var check could never see at all.
-  if (!(await isAiAvailable())) return 0;
+  if (!(await isAiAvailable())) return skippedWritten;
   const onProgress = typeof opts.onProgress === 'function' ? opts.onProgress : () => {};
 
-  let totalWritten = 0;
+  let totalWritten = skippedWritten;
   for (let i = 0; i < logs.length; i += BATCH_SIZE) {
     const batch = logs.slice(i, i + BATCH_SIZE).map((log) => ({
       id: log.id,

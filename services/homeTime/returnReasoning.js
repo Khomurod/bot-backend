@@ -82,7 +82,10 @@ async function reviewReturnEvidence({ verdict, load = null, homeHours = null } =
       capability: CAPABILITY,
       userText: buildPrompt({ verdict, load, homeHours }),
       expects: 'json',
-      validate: (p) => (typeof p?.returned === 'boolean'
+      // `(text, parsed)` — the router's order. Reading the FIRST argument as
+      // the answer checked `.returned` on a string, so every reply from every
+      // model failed and each review walked the whole fallback chain.
+      validate: (_text, parsed) => (typeof parsed?.returned === 'boolean'
         ? true
         : { message: 'expected {"returned": boolean}' }),
     });

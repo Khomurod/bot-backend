@@ -96,12 +96,23 @@ cannot be read records nothing.
   admin, or in three or more active driver groups), and a standing that cannot
   be read counts as staff.
 - `services/retention/chatAnnotator.js` (every 15 min, `chat_annotation` in the
-  run ledger) classifies at most 120 recorded messages per pass, OLDEST FIRST
-  so a backlog drains instead of being overtaken, with the
-  existing `aiAnnotationService` — intent, sentiment, language — into
-  `chat_message_annotations`, which the retention watch reads. It reports
-  `blocked` while capture is off, and a FAILED pass when messages wait and none
-  could be annotated. The message text goes to the configured AI providers.
+  run ledger) takes at most 120 recorded messages per pass, OLDEST FIRST
+  so a backlog drains instead of being overtaken, through the
+  existing `aiAnnotationService` into `chat_message_annotations`, which the
+  retention watch reads. It reports `blocked` while capture is off, and a
+  FAILED pass when messages wait and none could be annotated.
+- **ONLY A MESSAGE THAT MAY BE ABOUT LEAVING IS SENT TO A MODEL** (the
+  owner's decision, October 2026: the AI must not read every driver message).
+  `services/retention/leavingCue.js` checks each message for a leaving cue in
+  English, Russian and Uzbek (Latin and Cyrillic) — wide on purpose, since a
+  cue only buys a model call and the model still decides. Every other message
+  is recorded as `intent = 'no_signal'` with `model_version =
+  'keyword-prefilter-v1'` and everything else NULL, without a call. The gate
+  sits inside `annotateChatLogs`, so an on-demand AI report cannot send them
+  either. Model calls fell from about 90 a day to a handful.
+  **Consequence:** `complaints` and `negative_sentiment` are now scored only
+  from the few messages that pass the gate, so in practice they almost never
+  fire; `quit_signal` is the chat signal that remains, as the owner asked.
 
 ### The 30-day ceiling is not a choice
 
