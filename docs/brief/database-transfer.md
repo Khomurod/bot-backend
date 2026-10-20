@@ -19,7 +19,11 @@ Three mechanisms now keep it in view and in check:
 - **A meter.** `database/pool.js` is the single query boundary, so every result
   feeds `database/transferMeter.js`, which estimates the bytes read this month
   (sampled result sizes plus a moving average of bytes-per-row — measuring every
-  row would double the work of every large query). `database/transferUsage.js`
+  row would double the work of every large query). Since October 2026 it counts
+  only **rows a query returned** (an INSERT/UPDATE without RETURNING reports
+  `rowCount` 1 and sends no row back — ~1.6M upserts a month had been charged as
+  reads) and keeps the average **per table** once a table has been sampled (one
+  shared average made a table's share follow its row count, not its bytes). `database/transferUsage.js`
   persists it to `database_transfer_usage` (one row per UTC month, one UPSERT a
   minute) so a Render restart does not reset the month.
 - **And WHAT is spending it.** A percentage tells somebody to worry; a table
@@ -35,7 +39,11 @@ Three mechanisms now keep it in view and in check:
   diagnostics endpoint. Comments and quoted literals are blanked out **before**
   the match, in one left-to-right pass (stripping comments first mangles a
   literal containing `--`). Double quotes are left alone, because in PostgreSQL
-  those delimit an identifier and that is the thing being looked for.
+  those delimit an identifier and that is the thing being looked for. A
+  statement is labelled by its **own** table, found with every parenthesised
+  part blanked first: the driver-group directory begins with a subquery on
+  `driver_person_groups` and was charged to that table for its whole `groups`
+  read.
   The meter keeps per-table bytes, queries and rows, and `/api/system/
   database-usage` returns the ten biggest as `breakdown`.
 
@@ -145,10 +153,24 @@ What the move changed:
   service adopts that row on boot, and every flush adds to it. Until the row is
   zeroed and the service restarted, the banner keeps warning about the old
   project's month. The move's runbook includes that step.
+  **As of 20 October it had not been zeroed:** the row read 7.88 GB and 5.26M
+  queries while this project's own statistics counted 2.37M statements since
+  the copy — the "146%" banner was mostly the old project's month.
 - **Row security is on for every table.** The new project switches it on for
   each table it is given, including the 62 the old one left off. It does not
   restrict the applications, which connect as the tables' owner, and a table a
   later migration creates is treated the same way.
+
+## The admin pages (October 2026)
+
+- **The driver-group directory** (~45 columns × every group, three subqueries,
+  ~155 KB; the largest single read, ~300 MB a month) is cached for **30
+  seconds** and shared by concurrent callers
+  (`services/driverGroupDirectoryService.js`). Any write to a group or a driver
+  profile clears it at once through `database/groupRowCache.js`'s generation,
+  so an edit never looks unsaved.
+- **Needs Attention polls every 5 minutes** (the checks run every 15), and the
+  Systems tab every 2; both stop while the tab is hidden.
 
 ## What one driver message costs
 

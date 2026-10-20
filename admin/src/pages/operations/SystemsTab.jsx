@@ -135,7 +135,8 @@ export default function SystemsTab({ flash }) {
   }, []);
 
   useEffect(() => { load(); }, [load]);
-  useVisibleInterval(load, 60000);
+  // Every two minutes: the workers it shows report every 10–15 minutes.
+  useVisibleInterval(load, 120000);
 
   if (loading && !data) return <div className="muted">Loading…</div>;
 

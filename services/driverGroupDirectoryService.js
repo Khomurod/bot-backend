@@ -1,4 +1,5 @@
 const db = require('../database/db');
+const { groupDataGeneration } = require('../database/groupRowCache');
 const {
   buildDriverDisplayName,
   buildNormalizedDriverKey,
@@ -173,12 +174,41 @@ function indexCanonicalDriverGroups(rows, opts = {}) {
   return new Map(projected.map((row) => [Number(row.group_id), row]));
 }
 
+/**
+ * THE SOURCE ROWS ARE CACHED FOR 30 SECONDS. This read is ~45 columns × every
+ * group with three subqueries (~155 KB), and one page load asks for it two or
+ * three times; it was the largest single read of the database (~300 MB a
+ * month, October 2026). A write to a group or a driver profile clears it at
+ * once (database/groupRowCache.js generation), so an edit is never shown as
+ * not saved; a change made elsewhere (an identity link) shows within 30 s.
+ * Concurrent callers share one read.
+ */
+const DIRECTORY_TTL_MS = 30 * 1000;
+const directoryCache = new Map();
+
+async function directorySourceRows(includeNonDrivers) {
+  const key = includeNonDrivers ? 'all' : 'drivers';
+  const generation = groupDataGeneration();
+  const hit = directoryCache.get(key);
+  if (hit && hit.generation === generation && Date.now() - hit.at < DIRECTORY_TTL_MS) return hit.rows;
+  const rows = db.listGroupDirectorySourceRows({ includeNonDrivers });
+  directoryCache.set(key, { generation, at: Date.now(), rows });
+  try {
+    return await rows;
+  } catch (err) {
+    directoryCache.delete(key);
+    throw err;
+  }
+}
+
 async function listCanonicalDriverGroups({ operational = false, includeNonDrivers = true } = {}) {
-  const rows = await db.listGroupDirectorySourceRows({ includeNonDrivers });
+  const rows = await directorySourceRows(includeNonDrivers);
   return buildCanonicalDriverGroups(rows, { operational });
 }
 
 module.exports = {
+  DIRECTORY_TTL_MS,
+  __clearDirectoryCacheForTests: () => directoryCache.clear(),
   buildBaseDirectoryRow,
   buildCanonicalDriverGroups,
   indexCanonicalDriverGroups,

@@ -63,6 +63,12 @@ const state = {
   pendingRows: 0,
   /** Moving average of bytes per row, seeded from a typical admin row. */
   bytesPerRow: 400,
+  /**
+   * The same average PER TABLE, once a table has been sampled. One shared
+   * average made each table's estimate follow its row COUNT rather than its
+   * bytes: 115 rows of ~27 bytes read as 14% of the traffic (October 2026).
+   */
+  bytesPerRowByLabel: new Map(),
   queriesSinceSample: 0,
   notifiedThresholds: [],
   /**
@@ -205,7 +211,16 @@ function usageByLabel({ limit = 10 } = {}) {
 function recordQuery(result, text) {
   rollMonthIfNeeded();
   const rows = Array.isArray(result?.rows) ? result.rows : [];
-  const rowCount = Number.isFinite(result?.rowCount) ? result.rowCount : rows.length;
+  // ROWS RETURNED, not `rowCount`. An INSERT/UPDATE without RETURNING reports
+  // rowCount 1 and sends no row back; counting it as a row read charged ~1.6M
+  // upserts a month as reads (October 2026).
+  const rowCount = rows.length;
+  let label = 'other';
+  try {
+    label = labelForQuery(text);
+  } catch (_) {
+    // A label is a nicety; the meter is not.
+  }
 
   state.queriesSinceSample += 1;
   let bytes = null;
@@ -215,12 +230,18 @@ function recordQuery(result, text) {
     if (bytes != null && rows.length > 0) {
       const perRow = bytes / rows.length;
       state.bytesPerRow = (EMA_ALPHA * perRow) + ((1 - EMA_ALPHA) * state.bytesPerRow);
+      const known = state.bytesPerRowByLabel.get(label);
+      if (known !== undefined || state.bytesPerRowByLabel.size < MAX_LABELS) {
+        state.bytesPerRowByLabel.set(label, known === undefined ? perRow : (EMA_ALPHA * perRow) + ((1 - EMA_ALPHA) * known));
+      }
     }
   }
   if (bytes == null) {
-    // Estimated from the moving average. The +200 is the protocol and row
-    // overhead every query pays even when it returns nothing.
-    bytes = Math.round((rowCount * state.bytesPerRow) + 200);
+    // Estimated from the moving average — this table's once it has been
+    // sampled. The +200 is the protocol and row overhead every query pays
+    // even when it returns nothing.
+    const perRow = state.bytesPerRowByLabel.get(label) ?? state.bytesPerRow;
+    bytes = Math.round((rowCount * perRow) + 200);
   }
 
   state.totalBytes += bytes;
@@ -233,7 +254,7 @@ function recordQuery(result, text) {
   // Attribution is additive and best-effort: it must never be able to change
   // the total above, which is the number the warnings fire on.
   try {
-    attribute(labelForQuery(text), bytes, rowCount);
+    attribute(label, bytes, rowCount);
   } catch (_) {
     // A breakdown is a nicety; the meter is not.
   }
@@ -309,6 +330,7 @@ function reset(now = new Date()) {
   state.pendingQueries = 0;
   state.pendingRows = 0;
   state.bytesPerRow = 400;
+  state.bytesPerRowByLabel = new Map();
   state.queriesSinceSample = 0;
   state.notifiedThresholds = [];
   state.byLabel = new Map();
