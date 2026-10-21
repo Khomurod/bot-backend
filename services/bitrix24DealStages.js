@@ -10,7 +10,8 @@
  * not hold a queue lease or a button press open.
  *
  * `crm.deal.update` IS THE ONLY WRITE, and only services/hiringStages/actions.js
- * calls it, after a person pressed the button.
+ * calls it, after a person pressed the button. `callBitrix` is exported for
+ * readers (services/homeTime/violationAlerts.js), which never write.
  *
  * A failure THROWS `BitrixError` (with `.retryable` for a network failure or a
  * 5xx). The callers decide: the reviewer tries again later, a button press
@@ -160,6 +161,9 @@ async function moveDealToStage(dealId, stageId, opts) {
 
 module.exports = {
   BitrixError,
+  // The bounded call itself, for a reader with its own field list (the
+  // home-time violation alerts read pipeline 33's own fields). Reads only.
+  callBitrix: call,
   TIMEOUT_MS,
   MAX_ROWS,
   dealUrl,

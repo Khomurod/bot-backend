@@ -25,8 +25,9 @@ const {
 const { buildSettingsPatch } = require('../homeTimeRouteHelpers');
 const { checkChatIdColumns } = require('../../../services/telegramChatIdCheck');
 const { getGroupByTelegramId } = require('../../../database/groups');
+const { webhookSecretIsSet } = require('../../../services/homeTime/violationAlerts');
 
-const CHAT_ID_COLUMNS = ['completed_notify_group_id', 'internal_clarification_group_id'];
+const CHAT_ID_COLUMNS = ['completed_notify_group_id', 'internal_clarification_group_id', 'violation_alerts_chat_id'];
 
 function createHomeTimeSettingsRoutes({ authMiddleware, telegram }) {
   const router = express.Router();
@@ -53,6 +54,19 @@ function createHomeTimeSettingsRoutes({ authMiddleware, telegram }) {
       const previous = await ht.getHomeTimeSettings();
       const silencing = isSilencingTransition(previous, patch);
 
+      // Violation alerts: nothing is sent until a group is saved, and switching
+      // them on (again) re-arms the baseline — cards already in a violation
+      // stage are recorded, not posted, so a backlog never reaches the group.
+      const violationGroup = patch.violation_alerts_chat_id !== undefined
+        ? patch.violation_alerts_chat_id : previous?.violation_alerts_chat_id;
+      if (patch.violation_alerts_enabled === true && !violationGroup) {
+        return res.status(400).json({ error: 'Save the violation alerts group before switching them on.' });
+      }
+      if (patch.violation_alerts_chat_id === null) patch.violation_alerts_enabled = false;
+      if (patch.violation_alerts_enabled === true && previous?.violation_alerts_enabled !== true) {
+        patch.violation_alerts_baselined_at = null;
+      }
+
       const settings = await ht.updateHomeTimeSettings(patch);
 
       // Turning driver messaging off must stop every ALREADY-SCHEDULED reminder
@@ -64,7 +78,7 @@ function createHomeTimeSettingsRoutes({ authMiddleware, telegram }) {
           console.error('[HOME-TIME API] silent-mode transition failed:', e.message);
         });
       }
-      res.json({ settings });
+      res.json({ settings: { ...settings, violation_webhook_secret_set: webhookSecretIsSet() } });
     } catch (err) {
       console.error('[HOME-TIME API] settings update failed:', err.message);
       res.status(500).json({ error: 'Failed to update settings.' });

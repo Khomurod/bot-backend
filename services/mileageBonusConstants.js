@@ -32,7 +32,15 @@ function csvValues(value) {
 // stored without the leading @).
 const ACCOUNTING_USERNAMES = csvValues(process.env.MILEAGE_BONUS_ACCOUNTING_USERNAMES);
 if (!ACCOUNTING_USERNAMES.length) ACCOUNTING_USERNAMES.push('cameron_acc', 'Ellaaccounting');
+// The same two people by their immutable Telegram ids (found in the groups'
+// member lists on 20 October 2026). A username can be changed or taken over;
+// an id cannot, so once ids are known they are what grants authority. Also
+// used by the home-time violation alerts' Charged / Not charging buttons.
 const ACCOUNTING_USER_IDS = new Set(csvValues(process.env.MILEAGE_BONUS_ACCOUNTING_USER_IDS));
+if (!ACCOUNTING_USER_IDS.size) {
+  ACCOUNTING_USER_IDS.add('6504395610'); // @cameron_acc
+  ACCOUNTING_USER_IDS.add('8245947790'); // @Ellaaccounting
+}
 
 // Tagged on the notification card so accounting is pinged.
 const ACCOUNTING_MENTIONS = ['@cameron_acc', '@Ellaaccounting'];

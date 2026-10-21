@@ -75,6 +75,7 @@ prefixed key and may never claim a reserved key or `super_`/`admin_` prefix
 | `/ringcentral/connect/:sessionToken`, `/ringcentral/oauth/*` | Session token — single-use, 30-minute `ringcentral_connect_sessions` row; `oauth_state` binds the redirect to the callback. Public because a recruiter has no admin session |
 | `ALL /webhook`, `ALL /rc-webhook` | Raw-body proxied to the Python worker; signature verified there |
 | `/api/internal/*` | `internalSharedSecretGuard` (`LEADS_INTERNAL_SHARED_SECRET`) |
+| `POST`/`GET /api/integrations/bitrix/home-time-violation` | `?token=` compared in constant time with `HOME_TIME_VIOLATION_WEBHOOK_SECRET`; unset → refused. Takes only a deal id, re-reads the card from Bitrix, answers 202 (`docs/architecture/home-time-violation-alerts.md`) |
 | `POST /api/dat-ui/inspect` | Loopback only |
 | `/`, `/health`, `/api/health`, Meta compliance pages (`/privacy-policy.html`, `/terms-of-use`, `/user-data-deletion`) | Public |
 | `/presentation`, `/presentation/*.css`, `/presentation/*.js` | Public — the **owner-facing product deck**, served from an explicit asset allow-list in `healthRoutes.js` |
@@ -88,16 +89,16 @@ Numeric user IDs are the only stable Telegram identity — usernames are
 reassignable. The creator panel checks a hardcoded numeric `CREATOR_USER_ID`
 (`bot/creatorMessageManager.js`), and new gates should be ID-only.
 
-**Two existing gates use a documented ID-or-username pattern** — know this before
-you assume either is ID-only:
+**Two existing gates — know how each one decides before you assume:**
 
 | Gate | Behavior |
 |---|---|
-| Mileage-bonus Paid/Rejected (`services/mileageBonusConstants.js` `isAccountingUser`) | checks `MILEAGE_BONUS_ACCOUNTING_USER_IDS` **only if that list is non-empty**; otherwise falls back to a username allow-list with hardcoded defaults |
+| Mileage-bonus Paid/Rejected and home-time violation Charged / Not charging (`services/mileageBonusConstants.js` `isAccountingUser`) | **ID-only since 21 October 2026**: `MILEAGE_BONUS_ACCOUNTING_USER_IDS`, defaulting to the two accountants' Telegram ids (Cameron 6504395610, Ella 8245947790). The username list is still exported for mentions, but no longer grants authority |
 | Home-time managers (`services/homeTimeRequestConstants.js` `isHomeTimeManager`) | **recognition, not authority** — home time is reported, never approved, so nothing is gated on being a manager. The list is the three built-in managers, plus anything in `HOME_TIME_MANAGER_USERNAMES` / `_USER_IDS` (or the retired `HOME_TIME_APPROVER_*` names); an override ADDS people and can never drop one |
 
 Both are deliberate: *"once immutable IDs are configured, usernames no longer
-grant authority."* Configuring the IDs in the environment is what hardens them.
+grant authority."* The accounting gate has its ids built in; the managers' list
+is hardened by configuring theirs.
 
 **The control channel is ID-only and always was.** `control_operators`
 (migration 0048) is the allow-list that decides whose reply in the notifications

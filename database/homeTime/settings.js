@@ -36,6 +36,9 @@ const SETTINGS_COLUMNS = [
   // Silent mode: whether the bot may message DRIVER groups at all, and where the
   // internal "staff must clarify these dates" alert goes when it may not.
   'driver_clarification_enabled', 'internal_clarification_group_id',
+  // Home-time violation alerts (Bitrix pipeline 33 → accounting). The baseline
+  // stamp is cleared on every switch-on so the next pass baselines again.
+  'violation_alerts_enabled', 'violation_alerts_chat_id', 'violation_alerts_baselined_at',
 ];
 
 async function updateHomeTimeSettings(patch = {}) {

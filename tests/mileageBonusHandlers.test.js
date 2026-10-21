@@ -38,7 +38,7 @@ function context(overrides = {}) {
   const answers = [];
   return {
     match: ['mbonus:paid:7', 'paid', '7'],
-    from: { id: 123, username: 'cameron_acc' },
+    from: { id: 6504395610, username: 'cameron_acc' },
     callbackQuery: { message: { message_id: 50, chat: { id: BONUS_GROUP_CHAT_ID } } },
     async answerCbQuery(text, options) { answers.push({ text, options }); },
     async editMessageText() {},

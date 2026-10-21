@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import HomeTimeEfficiencyTab from "./HomeTimeEfficiencyTab";
 import HomeTimeSettingsCard from "./HomeTimeSettingsCard";
+import ViolationAlertsCard from "./homeTime/ViolationAlertsCard";
 import { useHomeTimeOverview } from "./homeTime/useHomeTimeOverview";
 import { useHomeTimeImport } from "./homeTime/useHomeTimeImport";
 import { DriverListCard } from "./homeTime/DriverListCard";
@@ -92,6 +93,8 @@ export default function HomeTimePage() {
       <DriverListCard {...overview} />
 
       <HomeTimeSettingsCard settings={settings} saving={saving} onSave={saveSettings} />
+
+      <ViolationAlertsCard settings={settings} saving={saving} onSave={saveSettings} />
 
       <ScreenshotImportCard {...importer} />
 

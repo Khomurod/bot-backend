@@ -47,6 +47,7 @@ export const TIER_META = {
 /** Plain-language names for the checks, keyed by their check_key. */
 const CHECK_LABELS = {
   'home_time.closable_open_cycle': 'Home stay never closed',
+  'home_time.violation_card_incomplete': 'Bitrix home-time card with no "home since" date',
   'home_time.home_stay_past_allowance': 'Home longer than the allowance',
   'home_time.road_clock_past_allowance': 'On the road past the allowance',
   'home_time.ghost_home_status': 'Tracked driver whose group is gone',

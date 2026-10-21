@@ -53,6 +53,7 @@ const { createErrorHandler } = require('./middleware/failureResponse');
 const { createLeadsProxyRoutes } = require('./routes/leadsProxyRoutes');
 const { createFacebookConnectRoutes } = require('./routes/facebookConnectRoutes');
 const { createRingCentralConnectRoutes } = require('./routes/ringcentralConnect');
+const { createHomeTimeViolationWebhookRoutes } = require('./routes/homeTimeViolationWebhookRoutes');
 const { createMediaUploadRoutes } = require('./routes/mediaUploadRoutes');
 const { createDriverGroupsRoutes } = require('./routes/driverGroupsRoutes');
 const { createDriverProfilesRoutes } = require('./routes/driverProfilesRoutes');
@@ -155,6 +156,11 @@ app.use(createFacebookConnectRoutes({ db, internalSharedSecretGuard, proxyAuthGu
 
 // ─── Recruiter self-serve RingCentral login (public: the link is the credential) ───
 app.use(createRingCentralConnectRoutes());
+
+// ─── Bitrix robot → home-time violation alerts (public, behind a shared secret) ───
+// The secret rides in the query string (a Bitrix robot can set no header); the
+// route never throws to the error handler below, which logs the URL.
+app.use('/api/integrations', createHomeTimeViolationWebhookRoutes({ telegram: bot.telegram }));
 
 // ─── Media Upload ───
 // `stagingTelegram` is exposed so tests can stub its `callApi` to drive the
