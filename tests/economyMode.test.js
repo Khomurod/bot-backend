@@ -23,6 +23,10 @@ const { getServiceEntry } = require('../lib/operations/backgroundServiceCatalog'
 
 const NOW = Date.parse('2026-10-09T18:00:00Z');
 const UNTIL = '2026-10-21T00:00:00Z';
+// For the tests that read the REAL clock (the runtime module, not the pure
+// rules at NOW): a fixed UNTIL turned them red on the day it arrived, 21
+// October 2026. Three days from whenever the suite runs, inside the 14-day cap.
+const LIVE_UNTIL = new Date(Date.now() + 3 * 86400000).toISOString();
 const ECONOMY_PATH = path.resolve(__dirname, '../services/operations/economy.js');
 
 function withEnv(t, value) {
@@ -154,7 +158,7 @@ test('a service whose passes are all paused is held, and starts when the date pa
 });
 
 test('a service with even one pass that keeps running is started normally', (t) => {
-  withEnv(t, UNTIL);
+  withEnv(t, LIVE_UNTIL);
   const economy = freshEconomy();
   t.after(() => economy.cancelEconomyEnd());
   let started = 0;
@@ -189,7 +193,7 @@ test('with the switch off, every service starts and nothing is written', async (
 });
 
 test('the ledger says "paused until …" once per paused pass, as blocked — never as a failure', async (t) => {
-  withEnv(t, UNTIL);
+  withEnv(t, LIVE_UNTIL);
   const economy = freshEconomy();
   const writes = [];
   const noted = await economy.notePausedServices({
@@ -198,9 +202,9 @@ test('the ledger says "paused until …" once per paused pass, as blocked — ne
   assert.equal(noted, ECONOMY_PAUSED_KEYS.length);
   for (const w of writes) {
     assert.equal(w.status, 'blocked');
-    assert.match(w.error, /^paused to save database traffic until 2026-10-21/);
+    assert.equal(w.error, `paused to save database traffic until ${LIVE_UNTIL}`);
   }
-  assert.match(economy.describeEconomyAtBoot(), /^\[ECONOMY\] ON until 2026-10-21T00:00:00\.000Z/);
+  assert.ok(economy.describeEconomyAtBoot().startsWith(`[ECONOMY] ON until ${LIVE_UNTIL}`));
 });
 
 // ─── the roster honours it ───────────────────────────────────────────────────

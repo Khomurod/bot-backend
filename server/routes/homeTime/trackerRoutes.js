@@ -23,6 +23,7 @@ const {
   listCanonicalDriverGroups,
 } = require('../../../services/driverGroupDirectoryService');
 const { buildEfficiencyReport } = require('../../../services/homeTimeEfficiencyService');
+const { webhookSecretIsSet } = require('../../../services/homeTime/violationAlerts');
 const {
   resolveEfficiencySinceIso, displayName, resolveDriverType, buildDirectoryIndex,
 } = require('./rowShaping');
@@ -114,7 +115,11 @@ function createHomeTimeTrackerRoutes({ authMiddleware }) {
         };
       });
 
-      res.json({ settings, statuses, history: adjustedHistory });
+      res.json({
+        settings: settings && { ...settings, violation_webhook_secret_set: webhookSecretIsSet() },
+        statuses,
+        history: adjustedHistory,
+      });
     } catch (err) {
       console.error('[HOME-TIME API] overview failed:', err.message);
       res.status(500).json({ error: 'Failed to load home-time overview.' });

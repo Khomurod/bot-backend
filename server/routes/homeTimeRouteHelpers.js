@@ -61,6 +61,12 @@ function buildSettingsPatch(body = {}) {
     patch.driver_clarification_enabled = Boolean(b.driver_clarification_enabled);
   }
 
+  // Home-time violation alerts to accounting. The route refuses to switch them
+  // on without a group, and re-arms the go-live baseline on every switch-on.
+  if (b.violation_alerts_enabled !== undefined) {
+    patch.violation_alerts_enabled = Boolean(b.violation_alerts_enabled);
+  }
+
   const ranges = [
     ['road_allowance_weeks', 1, 52, 'road_allowance_weeks must be 1-52'],
     ['home_allowance_days', 1, 60, 'home_allowance_days must be 1-60'],
@@ -85,7 +91,7 @@ function buildSettingsPatch(body = {}) {
   //   completed_notify_group_id      — completed approval cards
   //   internal_clarification_group_id — the staff "clarify these dates" alert
   //                                     raised while driver messaging is off
-  for (const col of ['completed_notify_group_id', 'internal_clarification_group_id']) {
+  for (const col of ['completed_notify_group_id', 'internal_clarification_group_id', 'violation_alerts_chat_id']) {
     if (b[col] === undefined) continue;
     const gid = normalizeNotifyGroupId(b[col]);
     if (gid === null) return { error: `${col} must be a numeric Telegram chat id` };

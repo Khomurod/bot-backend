@@ -72,6 +72,7 @@ const {
   startBoardPresenceWatch,
   stopBoardPresenceWatch,
 } = require('./homeTime/boardPresenceWatch');
+const { startViolationAlerts, stopViolationAlerts } = require('./homeTime/violationAlerts');
 const {
   startLoadLifecycleWatch,
   stopLoadLifecycleWatch,
@@ -190,6 +191,9 @@ function startBackgroundServices({ telegram }) {
   // records it on the board because they work from it, so Wenze reads it there
   // rather than waiting for somebody to type a date.
   startBoardPresenceWatch(telegram);
+  // Bitrix pipeline 33 → accounting: the thirty-minute pass under the robot's
+  // webhook. Idle until switched on with a group (Home Time → Settings).
+  startViolationAlerts(telegram);
   // Works out what each load is actually doing from where the truck is, because
   // a board status is a plan and is routinely days out of date.
   launchUnlessPaused(['load_lifecycle'], () => startLoadLifecycleWatch());
@@ -283,6 +287,7 @@ function stopBackgroundServices() {
   try { stopHomeTimeReminderService(); } catch (err) { console.error('[SHUTDOWN] stopHomeTimeReminderService failed:', err.message); }
   try { stopReturnToRoadWatch(); } catch (err) { console.error('[SHUTDOWN] stopReturnToRoadWatch failed:', err.message); }
   try { stopBoardPresenceWatch(); } catch (err) { console.error('[SHUTDOWN] stopBoardPresenceWatch failed:', err.message); }
+  try { stopViolationAlerts(); } catch (err) { console.error('[SHUTDOWN] stopViolationAlerts failed:', err.message); }
   try { stopLoadLifecycleWatch(); } catch (err) { console.error('[SHUTDOWN] stopLoadLifecycleWatch failed:', err.message); }
   try { stopSafetyCoach(); } catch (err) { console.error('[SHUTDOWN] stopSafetyCoach failed:', err.message); }
   try { stopRetentionWatch(); } catch (err) { console.error('[SHUTDOWN] stopRetentionWatch failed:', err.message); }

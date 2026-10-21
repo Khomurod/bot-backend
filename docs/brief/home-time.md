@@ -452,3 +452,16 @@ marks the stay closed.
   wins and the other goes quiet.
 
 See `docs/architecture/home-time-evidence.md`.
+
+## Violation alerts to accounting come from Bitrix, not from here
+
+A company driver who came home before 28 days on the road, or stayed home more
+than 4 days, is posted in an accounting group to be charged, with Charged /
+Not charging buttons (accounting only). **The verdict is Bitrix pipeline 33's**
+("6. HOMETIME MONITORING", moved by an external script) — this section's own
+tracking, cycles and road bonus are not read and not changed. One alert per
+violation per home stay (`UNIQUE` deal + `UF_CRM_HT_FROM` + violation), a
+go-live baseline that posts nothing already in a violation stage, a webhook
+from a Bitrix robot plus a 30-minute reconciliation pass. Switch and group on
+the Home Time page; nothing is sent until both are saved. See
+`docs/architecture/home-time-violation-alerts.md`.

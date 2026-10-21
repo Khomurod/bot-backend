@@ -40,15 +40,15 @@ test('isAccountingUsername matches only the two accounting users (case/@ insensi
   assert.equal(isAccountingUsername(null), false);
 });
 
-test('isAccountingUser uses the compatibility username allow-list when IDs are not configured', () => {
-  if (ACCOUNTING_USER_IDS.size > 0) {
-    const allowedId = [...ACCOUNTING_USER_IDS][0];
-    assert.equal(isAccountingUser({ id: allowedId, username: 'renamed-user' }), true);
-    assert.equal(isAccountingUser({ id: 'not-allowed', username: 'cameron_acc' }), false);
-  } else {
-    assert.equal(isAccountingUser({ id: 123, username: 'cameron_acc' }), true);
-    assert.equal(isAccountingUser({ id: 456, username: 'not-accounting' }), false);
+test('isAccountingUser goes by Telegram id: a renamed account keeps its rights, a borrowed username gets none', () => {
+  // Without MILEAGE_BONUS_ACCOUNTING_USER_IDS the two accountants' ids are the
+  // default (found in the groups' member lists, 20 October 2026).
+  if (!process.env.MILEAGE_BONUS_ACCOUNTING_USER_IDS) {
+    assert.deepEqual([...ACCOUNTING_USER_IDS], ['6504395610', '8245947790']);
   }
+  const allowedId = [...ACCOUNTING_USER_IDS][0];
+  assert.equal(isAccountingUser({ id: allowedId, username: 'renamed-user' }), true);
+  assert.equal(isAccountingUser({ id: 'not-allowed', username: 'cameron_acc' }), false);
 });
 
 test('toMiles parses decimal strings and tolerates junk', () => {

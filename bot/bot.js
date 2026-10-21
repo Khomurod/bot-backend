@@ -24,6 +24,7 @@ const { registerFinanceCaptureHandlers } = require('./handlers/financeCaptureHan
 const { registerSafetyApprovalHandlers } = require('./handlers/safetyApprovalHandlers');
 const { registerHiringStageHandlers } = require('./handlers/hiringStageHandlers');
 const { registerControlReplyHandlers } = require('./controlReplyHandlers');
+const { registerHomeTimeViolationHandlers } = require('./handlers/homeTimeViolationHandlers');
 const {
   registerDispatchCommands,
   registerStatusCommand,
@@ -194,6 +195,11 @@ async function startBot() {
     // A reply that is not an answer falls straight through to the handlers
     // below, untouched.
     registerControlReplyHandlers(bot);
+
+    // Accounting's Charged / Not charging buttons on home-time violation alerts,
+    // and the reply that gives a "not charging" reason. Here, before the driver
+    // handlers, so that reply is consumed; anything else falls through.
+    registerHomeTimeViolationHandlers(bot);
 
     registerDatatruckPeerHandlers(bot);
     registerCreatorMessageManager(bot);
