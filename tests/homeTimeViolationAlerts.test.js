@@ -237,7 +237,7 @@ function appWith({ secret }) {
   app.use(express.urlencoded({ extended: false }));
   app.use('/api/integrations', createHomeTimeViolationWebhookRoutes({
     handle: async (dealId) => { calls.push(dealId); },
-    env: { HOME_TIME_VIOLATION_WEBHOOK_SECRET: secret },
+    resolveSecret: async () => secret || null,
   }));
   return { app, calls };
 }
@@ -258,8 +258,6 @@ test('no secret configured: the webhook refuses everything', async () => {
   const { app, calls } = appWith({ secret: '' });
   assert.equal((await hit(app, '/api/integrations/bitrix/home-time-violation?token=', { form: { deal_id: '5' } })).status, 401);
   assert.deepEqual(calls, []);
-  assert.equal(alerts.webhookSecretIsSet({}), false);
-  assert.equal(alerts.webhookSecretIsSet({ HOME_TIME_VIOLATION_WEBHOOK_SECRET: 'x' }), true);
 });
 
 test('Bitrix not connected is a blocked pass, not a failure; Bitrix down is a failure', async () => {

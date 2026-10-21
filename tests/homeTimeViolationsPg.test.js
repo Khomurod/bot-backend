@@ -104,3 +104,11 @@ test('the switch, the group and the baseline stamp live on the home-time setting
   assert.ok(await store.markBaselined());
   assert.equal(await store.markBaselined(), null, 'stamped once');
 });
+
+test('the webhook secret is stored on the settings row as written (encrypted), and replaced in place', { skip: skipWithoutPg() }, async (t) => {
+  const { store } = await setup(t);
+  assert.equal(await store.getWebhookSecretEncrypted(), null, 'none until created in the app');
+  await store.setWebhookSecretEncrypted('iv.tag.first');
+  await store.setWebhookSecretEncrypted('iv.tag.second');
+  assert.equal(await store.getWebhookSecretEncrypted(), 'iv.tag.second');
+});

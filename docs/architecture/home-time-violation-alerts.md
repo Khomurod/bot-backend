@@ -101,20 +101,32 @@ On the **Home Time** page (`admin/src/pages/homeTime/ViolationAlertsCard.jsx`),
 stored on `home_time_settings`: `violation_alerts_enabled`,
 `violation_alerts_chat_id` (reachability-checked like the other home-time
 groups; cleared → switched off; listed in `lib/telegram/chatMigration.js`).
-The switch cannot be turned on without a group. The webhook secret is the
-environment variable `HOME_TIME_VIOLATION_WEBHOOK_SECRET`; the card only shows
-whether it is set.
+The switch cannot be turned on without a group.
+
+**The webhook secret is created on the same page** (owner's ask, 21 October
+2026: no trip to the hosting panel). "Create webhook link"
+(`ViolationWebhookLink.jsx` → `POST /api/home-time/settings/violation-webhook-secret`)
+makes a random secret (`services/homeTime/violationWebhookSecret.js`), stores it
+**encrypted** in `home_time_settings.violation_webhook_secret_encrypted`
+(migration 0080; AES-256-GCM, the same key as the Bitrix webhook URL) and
+returns it **once**, so the page shows the full link to copy. It is never sent
+to the browser again: `publicViolationSettings` strips the column from every
+settings response and adds only `violation_webhook_secret_set`. Creating a new
+link replaces the old one at once. The webhook reads the secret at most once a
+minute. The environment variable `HOME_TIME_VIOLATION_WEBHOOK_SECRET` is only a
+fallback while no secret has been created in the app; a secret that no longer
+decrypts (the key changed) counts as not set — create a new link.
 
 ## Setting up Bitrix (once, by a Bitrix admin)
 
-1. Put a long random value in `HOME_TIME_VIOLATION_WEBHOOK_SECRET` (Coolify →
-   environment) and redeploy. Without it every webhook call is refused (401) and
-   alerts come only from the 30-minute pass.
+1. On the Home Time page, in "Home-time violation alerts", press **Create
+   webhook link** and copy the link (shown once). Without it every webhook call
+   is refused (401) and alerts come only from the 30-minute pass.
 2. In Bitrix24: CRM → Deals → pipeline **6. HOMETIME MONITORING** → **Automation
    rules**. On **each** of the three stages `DRIVERS AT HOME - EARLY`,
    `DRIVERS AT HOME - OVERSTAY` and `DRIVERS AT HOME - EARLY & OVERSTAYED`, add
    the robot **Webhook** (Outgoing webhook), triggered when the deal enters the
-   stage, with the URL:
+   stage, with the link from step 1 — it has the form:
 
    ```
    https://<admin domain>/api/integrations/bitrix/home-time-violation?token=<the secret>&deal_id={=Document:ID}
@@ -129,8 +141,9 @@ whether it is set.
 
 **The secret is in the URL** because a Bitrix robot cannot set a header. The
 app never logs it and the route never throws to the error handler (which logs
-URLs), but the reverse proxy's access log may record it — change it in the
-environment and in the three robots if it is ever exposed.
+URLs), but the reverse proxy's access log may record it — if it is ever
+exposed, create a new link on the Home Time page and paste it into the three
+robots.
 
 ## Tests
 

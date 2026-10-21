@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import WebhookLinkSection from "./ViolationWebhookLink";
 
 /**
  * Home-time violation alerts — Bitrix pipeline 33 → the accounting group.
@@ -10,8 +11,7 @@ import React, { useEffect, useState } from "react";
  *
  * Nothing is sent until a group is saved AND the switch is on. Switching on
  * records every card already in a violation stage without posting it. The
- * webhook secret is set in the server's environment; this card only says
- * whether it is.
+ * link the Bitrix robots call is created here (ViolationWebhookLink).
  */
 export default function ViolationAlertsCard({ settings, saving, onSave }) {
   const [group, setGroup] = useState(settings?.violation_alerts_chat_id || "");
@@ -70,13 +70,7 @@ export default function ViolationAlertsCard({ settings, saving, onSave }) {
           {settings.violation_alerts_baselined_at ? " — done for the current switch-on." : "."}
         </p>
 
-        <p className="home-time-muted" style={{ margin: 0 }}>
-          Bitrix webhook secret:{" "}
-          <b>{settings.violation_webhook_secret_set ? "set" : "not set"}</b>
-          {settings.violation_webhook_secret_set
-            ? " (in the server environment; it is never shown here)."
-            : " — set HOME_TIME_VIOLATION_WEBHOOK_SECRET in the server environment. Without it the Bitrix robot is refused and alerts arrive only from the 30-minute check."}
-        </p>
+        <WebhookLinkSection isSet={settings.violation_webhook_secret_set === true} />
       </div>
     </div>
   );

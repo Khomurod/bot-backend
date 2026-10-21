@@ -23,7 +23,7 @@ const {
   listCanonicalDriverGroups,
 } = require('../../../services/driverGroupDirectoryService');
 const { buildEfficiencyReport } = require('../../../services/homeTimeEfficiencyService');
-const { webhookSecretIsSet } = require('../../../services/homeTime/violationAlerts');
+const { publicViolationSettings } = require('../../../services/homeTime/violationWebhookSecret');
 const {
   resolveEfficiencySinceIso, displayName, resolveDriverType, buildDirectoryIndex,
 } = require('./rowShaping');
@@ -116,7 +116,7 @@ function createHomeTimeTrackerRoutes({ authMiddleware }) {
       });
 
       res.json({
-        settings: settings && { ...settings, violation_webhook_secret_set: webhookSecretIsSet() },
+        settings: publicViolationSettings(settings),
         statuses,
         history: adjustedHistory,
       });
@@ -144,7 +144,7 @@ function createHomeTimeTrackerRoutes({ authMiddleware }) {
       res.json({
         ...report,
         range: String(req.query.range || 'all'),
-        settings,
+        settings: publicViolationSettings(settings),
       });
     } catch (err) {
       console.error('[HOME-TIME API] efficiency failed:', err.message);

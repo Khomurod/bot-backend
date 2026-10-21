@@ -5,10 +5,11 @@
  * violation stage: POST (or GET) /api/integrations/bitrix/home-time-violation.
  *
  * PUBLIC, BEHIND A SHARED SECRET. Bitrix's "Webhook" robot can only call a URL,
- * so the secret travels as `?token=` and is compared in constant time with
- * HOME_TIME_VIOLATION_WEBHOOK_SECRET. No secret configured → every call is
- * refused. The token is never logged, and nothing here throws to the app's
- * error handler, which would log the URL it carries.
+ * so the secret travels as `?token=` and is compared in constant time with the
+ * one the app generated (services/homeTime/violationWebhookSecret.js; the
+ * HOME_TIME_VIOLATION_WEBHOOK_SECRET variable is the fallback). No secret
+ * configured → every call is refused. The token is never logged, and nothing
+ * here throws to the app's error handler, which would log the URL it carries.
  *
  * THE PAYLOAD IS A HINT. Only the deal id is taken from it; the card is read
  * again from Bitrix and its current stage decides. The answer is immediate
@@ -18,15 +19,18 @@
 
 const express = require('express');
 const { tokensMatch, dealIdFromWebhook } = require('../../lib/homeTime/violations');
-const { handleWebhookDeal, SECRET_ENV } = require('../../services/homeTime/violationAlerts');
+const { handleWebhookDeal } = require('../../services/homeTime/violationAlerts');
+const { resolveWebhookSecret } = require('../../services/homeTime/violationWebhookSecret');
 
-function createHomeTimeViolationWebhookRoutes({ telegram = null, handle = handleWebhookDeal, env = process.env } = {}) {
+function createHomeTimeViolationWebhookRoutes({
+  telegram = null, handle = handleWebhookDeal, resolveSecret = () => resolveWebhookSecret(),
+} = {}) {
   const router = express.Router();
 
-  const receive = (req, res) => {
+  const receive = async (req, res) => {
     try {
       const given = req.query?.token ?? req.body?.token;
-      if (!tokensMatch(given, env[SECRET_ENV])) {
+      if (!tokensMatch(given, await resolveSecret())) {
         return res.status(401).json({ error: 'Unauthorized' });
       }
       const dealId = dealIdFromWebhook(req.body || {}, req.query || {});
