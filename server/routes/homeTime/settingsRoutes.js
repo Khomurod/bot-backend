@@ -25,7 +25,7 @@ const {
 const { buildSettingsPatch } = require('../homeTimeRouteHelpers');
 const { checkChatIdColumns } = require('../../../services/telegramChatIdCheck');
 const { getGroupByTelegramId } = require('../../../database/groups');
-const { webhookSecretIsSet } = require('../../../services/homeTime/violationAlerts');
+const { publicViolationSettings, generateWebhookSecret } = require('../../../services/homeTime/violationWebhookSecret');
 
 const CHAT_ID_COLUMNS = ['completed_notify_group_id', 'internal_clarification_group_id', 'violation_alerts_chat_id'];
 
@@ -78,10 +78,24 @@ function createHomeTimeSettingsRoutes({ authMiddleware, telegram }) {
           console.error('[HOME-TIME API] silent-mode transition failed:', e.message);
         });
       }
-      res.json({ settings: { ...settings, violation_webhook_secret_set: webhookSecretIsSet() } });
+      res.json({ settings: publicViolationSettings(settings) });
     } catch (err) {
       console.error('[HOME-TIME API] settings update failed:', err.message);
       res.status(500).json({ error: 'Failed to update settings.' });
+    }
+  });
+
+  // The violation alerts' webhook secret: made here, stored encrypted, returned
+  // THIS ONCE so the page can show the link to paste into the Bitrix robots.
+  // Never readable again; creating another replaces it.
+  router.post('/settings/violation-webhook-secret', authMiddleware, async (req, res) => {
+    try {
+      const secret = await generateWebhookSecret();
+      console.log(`[HOME-TIME API] new violation webhook secret created by ${req.user?.username || req.user?.id || 'admin'}`);
+      res.json({ secret });
+    } catch (err) {
+      console.error('[HOME-TIME API] could not create the webhook secret:', err.message);
+      res.status(500).json({ error: 'Could not create the webhook link.' });
     }
   });
 

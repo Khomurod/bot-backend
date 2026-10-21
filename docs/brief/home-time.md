@@ -462,6 +462,7 @@ Not charging buttons (accounting only). **The verdict is Bitrix pipeline 33's**
 tracking, cycles and road bonus are not read and not changed. One alert per
 violation per home stay (`UNIQUE` deal + `UF_CRM_HT_FROM` + violation), a
 go-live baseline that posts nothing already in a violation stage, a webhook
-from a Bitrix robot plus a 30-minute reconciliation pass. Switch and group on
-the Home Time page; nothing is sent until both are saved. See
+from a Bitrix robot plus a 30-minute reconciliation pass. Switch, group and
+the robot's webhook link (created there, shown once, stored encrypted) on the
+Home Time page; nothing is sent until the switch and group are saved. See
 `docs/architecture/home-time-violation-alerts.md`.

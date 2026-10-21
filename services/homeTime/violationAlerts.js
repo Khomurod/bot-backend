@@ -29,8 +29,6 @@ const { safeSend } = require('../telegramHtml');
 const { withRunRecord } = require('../operations/runLedger');
 
 const SERVICE_KEY = 'home_time_violation_alerts';
-/** The webhook's shared secret lives in the environment (Coolify), never in the database. */
-const SECRET_ENV = 'HOME_TIME_VIOLATION_WEBHOOK_SECRET';
 const INCOMPLETE_KEY = 'home_time.violation_card_incomplete';
 const POLL_MS = 30 * 60 * 1000;
 const FIRST_TICK_DELAY_MS = 3 * 60 * 1000;
@@ -261,11 +259,6 @@ async function handleWebhookDeal(dealId, { telegram = null, deps = defaultDeps()
   }
 }
 
-/** Whether the webhook secret is configured — for the settings card, which never sees it. */
-function webhookSecretIsSet(env = process.env) {
-  return Boolean(String(env[SECRET_ENV] || '').trim());
-}
-
 // ── the timer ────────────────────────────────────────────────────────────────
 
 let timer = null;
@@ -306,8 +299,6 @@ function stopViolationAlerts() {
 
 module.exports = {
   SERVICE_KEY,
-  SECRET_ENV,
-  webhookSecretIsSet,
   INCOMPLETE_KEY,
   runViolationPass,
   handleWebhookDeal,

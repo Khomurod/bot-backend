@@ -20,6 +20,15 @@ export async function updateHomeTimeSettings(patch) {
   return res.json();
 }
 
+/** A new secret for the violation alerts' Bitrix webhook — returned this once, never again. */
+export async function createViolationWebhookSecret() {
+  const res = await fetch(`${API_BASE}/home-time/settings/violation-webhook-secret`, {
+    method: 'POST', headers: getHeaders(),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
 export async function updateHomeTimeStatus(groupId, patch) {
   const res = await fetch(`${API_BASE}/home-time/status/${groupId}`, {
     method: 'PUT', headers: getHeaders(), body: JSON.stringify(patch || {}),

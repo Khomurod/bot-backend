@@ -124,6 +124,19 @@ async function listDue(limit = 50) {
   return res.rows;
 }
 
+/** The webhook secret, ENCRYPTED — decrypting it is the service's business, not this file's. */
+async function getWebhookSecretEncrypted() {
+  const res = await query('SELECT violation_webhook_secret_encrypted FROM home_time_settings WHERE id = 1');
+  return res.rows[0]?.violation_webhook_secret_encrypted || null;
+}
+
+async function setWebhookSecretEncrypted(encrypted) {
+  await query(
+    'UPDATE home_time_settings SET violation_webhook_secret_encrypted = $1, updated_at = NOW() WHERE id = 1',
+    [encrypted]
+  );
+}
+
 async function countAbandoned() {
   const res = await query("SELECT COUNT(*)::int AS n FROM home_time_violation_notices WHERE state = 'abandoned'");
   return res.rows[0]?.n || 0;
@@ -201,6 +214,8 @@ module.exports = {
   markFailed,
   listDue,
   countAbandoned,
+  getWebhookSecretEncrypted,
+  setWebhookSecretEncrypted,
   getNotice,
   listByMessage,
   decide,
