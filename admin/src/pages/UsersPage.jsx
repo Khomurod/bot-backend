@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import * as api from "../api";
+import CompanyEmployeesTab from "./users/CompanyEmployeesTab";
 
 function formatDateTime(iso) {
   if (!iso) return "—";
@@ -18,7 +19,9 @@ const SOURCE_LABEL = {
 const FILTERS = [
   { key: "all", label: "All" },
   { key: "admins", label: "Admins" },
-  { key: "dispatch", label: "Dispatchers" },
+  // Was "Dispatchers": a filter on bot_users.source, which nothing fills in, so
+  // it was always empty. Since October 2026 it is the staff list itself.
+  { key: "employees", label: "Company Employees" },
   { key: "drivers", label: "Drivers" },
   { key: "unknown", label: "Unknown" },
   { key: "recent", label: "Recently seen" },
@@ -31,7 +34,10 @@ export default function UsersPage() {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
 
+  const showEmployees = filter === "employees";
+
   const fetchUsers = useCallback(async () => {
+    if (filter === "employees") return;
     setLoading(true);
     try {
       const data = await api.getBotUsers({ filter });
@@ -90,6 +96,8 @@ export default function UsersPage() {
         ))}
       </div>
 
+      {showEmployees ? <CompanyEmployeesTab /> : (
+      <>
       <div style={{ display: "flex", gap: "12px", alignItems: "center", marginBottom: "16px", flexWrap: "wrap" }}>
         <input
           type="text"
@@ -144,6 +152,8 @@ export default function UsersPage() {
             </tbody>
           </table>
         </div>
+      )}
+      </>
       )}
     </div>
   );

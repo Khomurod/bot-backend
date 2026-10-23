@@ -2,14 +2,12 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { DateTime } = require('luxon');
 
-const employeesToday = [{ id: 1, first_name: 'A', last_name: 'B', birthday: '1990-01-01' }];
+let employeesToday = [{ id: 1, first_name: 'ALPHA', last_name: 'BRAVO', birthday: '1990-01-01', american_name: 'Test Person', telegram_username: 'test_person' }];
 
 const settings = {
   timezone: 'Asia/Tashkent',
   send_hour: 0,
   send_minute: 0,
-  ai_instructions: 'Test instructions',
-  fallback_template: 'Hi <b>{names}</b>',
 };
 
 const claims = [];
@@ -34,9 +32,17 @@ const db = {
   unclaimServiceRun: async (service, runKey) => claimedKeys.delete(`${service}:${runKey}`),
 };
 
+// What reached Telegram: one entry per posted card.
 const sentMessages = [];
+let sendShouldFail = false;
+let failForEmployeeId = null;
+const photos = new Map();
+const rendered = [];
 
 require.cache[require.resolve('../database/db')] = { exports: db };
+require.cache[require.resolve('../database/companyEmployees')] = {
+  exports: { getPhoto: async (id) => photos.get(id) || null },
+};
 require.cache[require.resolve('../config/config')] = {
   exports: { employeeGroupId: '-100123' },
 };
@@ -44,32 +50,26 @@ require.cache[require.resolve('../bot/bot')] = {
   exports: {
     bot: {
       telegram: {
-        sendMessage: async (chatId, text) => {
-          sentMessages.push({ chatId, text });
+        sendPhoto: async (chatId, file, extra) => {
+          if (sendShouldFail || String(file.source) === `card:${failForEmployeeId}`) {
+            throw new Error('simulated telegram failure');
+          }
+          sentMessages.push({ chatId, file, caption: extra.caption, parseMode: extra.parse_mode });
         },
       },
     },
   },
 };
-let sendShouldFail = false;
 require.cache[require.resolve('../services/telegramHtml')] = {
-  exports: {
-    safeSend: async (fn) => fn(),
-    sanitizeCompanyReportHtmlForTelegram: (text) => text,
-    sendTelegramHtmlChunks: async (telegram, chatId, text) => {
-      if (sendShouldFail) throw new Error('simulated telegram failure');
-      await telegram.sendMessage(chatId, text);
-      return [{ message_id: 1 }];
-    },
-  },
+  exports: { safeSend: async (fn) => fn() },
 };
-require.cache[require.resolve('../services/employeeBirthdayMessage')] = {
+require.cache[require.resolve('../services/employees/birthdayCard')] = {
   exports: {
-    generateEmployeeBirthdayMessage: async () => ({
-      message: '<b>Happy Birthday!</b>',
-      provider: 'test',
-      model: null,
-    }),
+    renderBirthdayCard: async (employee, photo) => {
+      if (photo === 'broken') throw new Error('unsupported image format');
+      rendered.push({ id: employee.id, photo });
+      return `card:${employee.id}`;
+    },
   },
 };
 
@@ -105,8 +105,8 @@ test('send now claims daily key and blocks duplicate', async () => {
 
   const first = await runEmployeeBirthdayWishes({ claimDailyRun: true });
   assert.equal(first.sent, true);
-  assert.equal(claims.length, 1);
-  assert.equal(claims[0][1], `employee:${now.toISODate()}`);
+  // The employee's card first, then the day — written only once every card is out.
+  assert.deepEqual(claims.map((c) => c[1]), [`employee:${now.toISODate()}:1`, `employee:${now.toISODate()}`]);
 
   const second = await runEmployeeBirthdayWishes({ claimDailyRun: true });
   assert.equal(second.reason, 'already_sent');
@@ -176,8 +176,9 @@ test('failed send releases the claim so the next tick retries (no silent drop)',
 
   // First attempt: delivery fails -> must throw AND leave the run UNCLAIMED.
   sendShouldFail = true;
-  await assert.rejects(() => runEmployeeBirthdayWishes({ claimDailyRun: true }));
+  await assert.rejects(() => runEmployeeBirthdayWishes({ claimDailyRun: true }), /ALPHA BRAVO/);
   assert.equal(claimedKeys.has(`birthday:employee:${isoDate}`), false);
+  assert.equal(claimedKeys.has(`birthday:employee:${isoDate}:1`), false);
   assert.equal(sentMessages.length, 0);
 
   // Retry the same day: delivery succeeds, claim is taken, message sent once.
@@ -226,4 +227,75 @@ test('checkAndRunScheduled skips when daily run already claimed', async () => {
   assert.equal(sentMessages.length, 0);
 
   db.getEmployeeBirthdaySettings = origSettings;
+});
+
+function resetState() {
+  claims.length = 0;
+  claimedKeys.clear();
+  sentMessages.length = 0;
+  rendered.length = 0;
+  photos.clear();
+  sendShouldFail = false;
+  failForEmployeeId = null;
+}
+
+test('the card goes out as a photo with the owner\'s fixed caption and the tag', async () => {
+  resetState();
+  photos.set(1, Buffer.from('jpeg'));
+  const result = await runEmployeeBirthdayWishes({ claimDailyRun: true });
+  assert.equal(result.sent, true);
+  assert.equal(sentMessages.length, 1);
+  assert.equal(sentMessages[0].chatId, '-100123');
+  assert.equal(sentMessages[0].file.source, 'card:1');
+  assert.equal(sentMessages[0].parseMode, 'HTML');
+  assert.equal(
+    sentMessages[0].caption,
+    'Dear @test_person,\n\nWishing you all the best that life has to offer.\nTogether, we grow stronger and achieve more!'
+  );
+  assert.deepEqual(rendered, [{ id: 1, photo: photos.get(1) }]);
+});
+
+test('one card per employee; a failed one is retried without re-posting the others', async () => {
+  resetState();
+  const saved = employeesToday;
+  employeesToday = [
+    { id: 1, first_name: 'ALPHA', last_name: 'BRAVO', birthday: '1990-01-01' },
+    { id: 2, first_name: 'CHARLIE', last_name: 'DELTA', birthday: '1991-01-01' },
+  ];
+  try {
+    failForEmployeeId = 2;
+    await assert.rejects(() => runEmployeeBirthdayWishes({ claimDailyRun: true }), /CHARLIE DELTA/);
+    assert.deepEqual(sentMessages.map((m) => m.file.source), ['card:1']);
+
+    failForEmployeeId = null;
+    const retry = await runEmployeeBirthdayWishes({ claimDailyRun: true });
+    assert.equal(retry.sent, true);
+    assert.equal(retry.names, 'CHARLIE DELTA');
+    assert.deepEqual(sentMessages.map((m) => m.file.source), ['card:1', 'card:2']);
+
+    const again = await runEmployeeBirthdayWishes({ claimDailyRun: true });
+    assert.equal(again.reason, 'already_sent');
+    assert.equal(sentMessages.length, 2);
+  } finally {
+    employeesToday = saved;
+  }
+});
+
+test('a stored photo that no longer decodes posts the card with initials instead', async () => {
+  resetState();
+  photos.set(1, 'broken');
+  const result = await runEmployeeBirthdayWishes({ claimDailyRun: true });
+  assert.equal(result.sent, true);
+  assert.deepEqual(rendered, [{ id: 1, photo: null }]);
+  assert.equal(sentMessages.length, 1);
+});
+
+test('a card another pass is still posting leaves the day open, so its failure is retried', async () => {
+  resetState();
+  const isoDate = DateTime.now().setZone('Asia/Tashkent').toISODate();
+  claimedKeys.add(`birthday:employee:${isoDate}:1`); // another pass holds it
+  const result = await runEmployeeBirthdayWishes({ claimDailyRun: true });
+  assert.equal(result.reason, 'already_sent');
+  assert.equal(sentMessages.length, 0);
+  assert.equal(claimedKeys.has(`birthday:employee:${isoDate}`), false);
 });

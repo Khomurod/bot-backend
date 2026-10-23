@@ -355,8 +355,9 @@ stay in §4a. The provider terms watcher is
   returning HTTP 200 with an empty or truncated body. The router records that as
   a SUCCESS and stops looking, so the consumer's parser rejects the text and the
   feature drops to its canned fallback with another provider left unasked.
-  `groupStatusAiClassifier`, `datatruckBanterMessage` and `employeeBirthdayMessage`
-  each hand the router a validator that IS their parser — one function, so the
+  `groupStatusAiClassifier` and `datatruckBanterMessage` (and, until it was
+  replaced by the owner's fixed caption in October 2026,
+  `employeeBirthdayMessage`) each hand the router a validator that IS their parser — one function, so the
   floor the router enforces cannot drift from the floor the output must clear.
   `groqClient` forwards it as `validate`, and the router treats a failed verdict
   exactly like a provider failure and continues down the chain.

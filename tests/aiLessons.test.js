@@ -15,7 +15,7 @@ test('every escalating decision has a scope; anything else takes no lessons', ()
   for (const capability of Object.keys(ESCALATING)) {
     assert.ok(L.scopeFor(capability), `${capability} has no lesson scope`);
   }
-  assert.equal(L.scopeFor('employee_birthday_message'), null);
+  assert.equal(L.scopeFor('datatruck_banter'), null);
 });
 
 test('phone numbers are masked to their last four digits; a unit number is not', () => {

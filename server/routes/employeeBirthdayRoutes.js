@@ -20,8 +20,6 @@ function mapEmployeeBirthdaySettings(row) {
     timezone: row.timezone,
     sendHour: row.send_hour,
     sendMinute: row.send_minute,
-    aiInstructions: row.ai_instructions,
-    fallbackTemplate: row.fallback_template,
     updatedAt: row.updated_at,
   };
 }
@@ -156,13 +154,9 @@ function createEmployeeBirthdayRoutes({ db, config, authMiddleware, bot }) {
 
   router.put('/api/employee-birthdays/settings', authMiddleware, async (req, res) => {
     try {
-      const {
-        timezone,
-        sendHour,
-        sendMinute,
-        aiInstructions,
-        fallbackTemplate,
-      } = req.body || {};
+      // The caption is the owner's fixed text (migration 0084), so the old AI
+      // instructions and fallback template are no longer read or accepted.
+      const { timezone, sendHour, sendMinute } = req.body || {};
 
       if (!timezone || typeof timezone !== 'string') {
         return res.status(400).json({ error: 'timezone is required' });
@@ -179,22 +173,10 @@ function createEmployeeBirthdayRoutes({ db, config, authMiddleware, bot }) {
       if (!Number.isInteger(minute) || minute < 0 || minute > 59) {
         return res.status(400).json({ error: 'sendMinute must be 0–59' });
       }
-      if (typeof aiInstructions !== 'string' || !aiInstructions.trim()) {
-        return res.status(400).json({ error: 'aiInstructions is required' });
-      }
-      if (typeof fallbackTemplate !== 'string' || !fallbackTemplate.trim()) {
-        return res.status(400).json({ error: 'fallbackTemplate is required' });
-      }
-      if (!fallbackTemplate.includes('{names}')) {
-        return res.status(400).json({ error: 'fallbackTemplate must include {names}' });
-      }
-
       const updated = await db.updateEmployeeBirthdaySettings({
         timezone: timezone.trim(),
         sendHour: hour,
         sendMinute: minute,
-        aiInstructions: aiInstructions.trim().slice(0, 4000),
-        fallbackTemplate: fallbackTemplate.trim().slice(0, 4000),
       });
       res.json(mapEmployeeBirthdaySettings(updated));
     } catch (err) {

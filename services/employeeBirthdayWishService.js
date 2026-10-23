@@ -1,12 +1,26 @@
 /**
- * Employee birthday wishes: configurable TZ schedule, AI messages, admin send actions.
+ * Employee birthday wishes: configurable TZ schedule, admin send actions.
+ *
+ * ONE POST PER EMPLOYEE (owner, 23 October 2026): the company's birthday card
+ * with their photo, full first name and American name, captioned with the
+ * owner's fixed text and a tag of their Telegram account. The caption is never
+ * written by a model. See docs/architecture/employee-birthday-cards.md.
+ *
+ * EXACTLY ONCE PER EMPLOYEE PER DAY. A scheduled or "send now" pass claims
+ * `employee:<day>:<id>` before posting each card and releases it if the post
+ * fails, so two overlapping passes never post the same card twice, and a
+ * failure is retried without re-posting the cards that already went out.
+ * `employee:<day>` is written only by a pass that posted every card for the
+ * day itself — it is what lets the hourly tick skip the day with one read.
  */
 const { DateTime } = require('luxon');
 const db = require('../database/db');
+const employeesDb = require('../database/companyEmployees');
 const config = require('../config/config');
 const { bot } = require('../bot/bot');
-const { safeSend, sendTelegramHtmlChunks, sanitizeCompanyReportHtmlForTelegram } = require('./telegramHtml');
-const { generateEmployeeBirthdayMessage } = require('./employeeBirthdayMessage');
+const { safeSend } = require('./telegramHtml');
+const { renderBirthdayCard } = require('./employees/birthdayCard');
+const { birthdayCaption } = require('./employees/birthdayText');
 const { createDailyWakeTimer } = require('./dailyWakeSchedule');
 
 const DEFAULT_TZ = 'Asia/Tashkent';
@@ -29,6 +43,26 @@ function formatNamesList(employees) {
   return employees.map((e) => `${e.first_name} ${e.last_name}`.trim()).join(', ');
 }
 
+/** Render and post one employee's card. Throws when Telegram refuses it. */
+async function postBirthdayCard(employee) {
+  const photo = await employeesDb.getPhoto(employee.id);
+  let card;
+  try {
+    card = await renderBirthdayCard(employee, photo);
+  } catch (err) {
+    // A stored photo that no longer decodes must not cost anyone their
+    // birthday: the card goes out with the initials instead.
+    if (!photo) throw err;
+    console.warn(`[EMP-BIRTHDAY] Photo for employee ${employee.id} unreadable, posting without it:`, err.message);
+    card = await renderBirthdayCard(employee, null);
+  }
+  await safeSend(() => bot.telegram.sendPhoto(
+    config.employeeGroupId,
+    { source: card, filename: 'happy-birthday.jpg' },
+    { caption: birthdayCaption(employee), parse_mode: 'HTML' }
+  ));
+}
+
 async function runEmployeeBirthdayWishes({ claimDailyRun = false, employeeIds = null } = {}) {
   if (!config.employeeGroupId) {
     return { sent: false, reason: 'no_employee_group' };
@@ -49,49 +83,45 @@ async function runEmployeeBirthdayWishes({ claimDailyRun = false, employeeIds = 
     return { sent: false, reason: 'no_birthdays', isoDate };
   }
 
-  // Claim the day FIRST so two overlapping ticks can never both send (no
-  // duplicates), but RELEASE the claim if delivery fails so the next tick
-  // retries later the same day instead of silently dropping the wish.
-  const runKey = `employee:${isoDate}`;
-  if (claimDailyRun) {
-    const claimed = await db.claimServiceRun('birthday', runKey);
-    if (!claimed) {
-      return { sent: false, reason: 'already_sent', isoDate, names: formatNamesList(employees) };
+  const dayKey = `employee:${isoDate}`;
+  if (claimDailyRun && await db.hasServiceRun('birthday', dayKey)) {
+    return { sent: false, reason: 'already_sent', isoDate, names: formatNamesList(employees) };
+  }
+
+  const posted = [];
+  const failed = [];
+  let claimedElsewhere = 0;
+  for (const employee of employees) {
+    const key = `${dayKey}:${employee.id}`;
+    // Claimed elsewhere: that pass is posting this card, or already has.
+    if (claimDailyRun && !(await db.claimServiceRun('birthday', key))) {
+      claimedElsewhere += 1;
+      continue;
+    }
+    try {
+      await postBirthdayCard(employee);
+      posted.push(employee);
+    } catch (err) {
+      if (claimDailyRun) await db.unclaimServiceRun('birthday', key).catch(() => {});
+      failed.push(employee);
+      console.error(`[EMP-BIRTHDAY] Card for employee ${employee.id} failed:`, err.message);
     }
   }
 
-  let message;
-  let provider;
-  try {
-    ({ message, provider } = await generateEmployeeBirthdayMessage(
-      employees,
-      settings.ai_instructions,
-      settings.fallback_template
-    ));
-
-    // Sanitize to Telegram-safe HTML so an unsupported tag from the AI can
-    // never trigger a 400 parse error that would otherwise burn the day.
-    const safeMessage = sanitizeCompanyReportHtmlForTelegram(message);
-    await sendTelegramHtmlChunks(bot.telegram, config.employeeGroupId, safeMessage);
-  } catch (err) {
-    if (claimDailyRun) {
-      await db.unclaimServiceRun('birthday', runKey).catch(() => {});
-    }
-    throw err;
+  if (failed.length) {
+    // Thrown so the scheduler retries soon; the cards already posted are claimed.
+    throw new Error(`Could not post the birthday card for: ${formatNamesList(failed)}`);
   }
+  // The day is closed only by a pass that saw every card through itself: a
+  // card another pass is still posting may yet fail and need the retry.
+  if (claimDailyRun && claimedElsewhere === 0) await db.claimServiceRun('birthday', dayKey);
 
-  const names = formatNamesList(employees);
-  console.log(`[EMP-BIRTHDAY] Sent wish (${provider}) to employee group for: ${names}`);
-
-  return {
-    sent: true,
-    reason: 'sent',
-    isoDate,
-    names,
-    provider,
-    messagePreview: message.slice(0, 200),
-    count: employees.length,
-  };
+  if (!posted.length) {
+    return { sent: false, reason: 'already_sent', isoDate, names: formatNamesList(employees) };
+  }
+  const names = formatNamesList(posted);
+  console.log(`[EMP-BIRTHDAY] Posted ${posted.length} birthday card(s) to the employee group: ${names}`);
+  return { sent: true, reason: 'sent', isoDate, names, count: posted.length };
 }
 
 async function sendCustomEmployeeGroupMessage(message) {

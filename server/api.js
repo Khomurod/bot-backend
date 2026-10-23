@@ -64,6 +64,7 @@ const { createLeadsRoutes } = require('./routes/leadsRoutes');
 const { createAiReportsRoutes } = require('./routes/aiReportsRoutes');
 const { createMessageManagerRoutes } = require('./routes/messageManagerRoutes');
 const { createEmployeeBirthdayRoutes } = require('./routes/employeeBirthdayRoutes');
+const { createCompanyEmployeesRouter } = require('./routes/companyEmployeesRoutes');
 
 const adminBuildDir = path.join(__dirname, '..', 'admin', 'build');
 const adminSpaIndexPath = path.join(adminBuildDir, 'index.html');
@@ -272,6 +273,7 @@ app.use(createAiReportsRoutes({
 }));
 app.use(createMessageManagerRoutes({ authMiddleware: legacyAuthMiddleware, bot }));
 app.use(createEmployeeBirthdayRoutes({ db, config, authMiddleware: legacyAuthMiddleware, bot }));
+app.use('/api/company-employees', createCompanyEmployeesRouter({ authMiddleware: legacyAuthMiddleware }));
 
 // ─── Removed features: their old page URLs answer 410 Gone ───
 // Mounted immediately before the SPA catch-all so a surviving route always

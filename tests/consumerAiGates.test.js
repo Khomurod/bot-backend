@@ -106,7 +106,8 @@ test('no consumer still reads an AI key constant from a client module', () => {
     'services/datatruckBanterMessage.js',
     'services/aiAnnotationService.js',
     'services/groupStatusAiClassifier.js',
-    'services/employeeBirthdayMessage.js',
+    // `services/employeeBirthdayMessage.js` went when the birthday post became
+    // the owner's fixed caption on a card (October 2026): no model writes it.
     // `server/services/dispatchParser/aiRequests.js` was here until the Dispatch
     // Center was removed — it held the Groq and Gemini reads for the Send Load
     // tab's rate-confirmation parser, and went with it. The same is true of

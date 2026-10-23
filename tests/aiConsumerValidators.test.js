@@ -37,7 +37,6 @@ require.cache[require.resolve('../services/groqClient')] = {
 };
 
 const { generateDatatruckBanterMessage, parseBanterResponse } = require('../services/datatruckBanterMessage');
-const { generateEmployeeBirthdayMessage, parseBirthdayMessageResponse } = require('../services/employeeBirthdayMessage');
 const { classifyDriverGroups } = require('../services/groupStatusAiClassifier');
 
 /** Run one generation and hand back the options the module passed the router. */
@@ -62,22 +61,10 @@ test('banter gives the router a validator, and it rejects what parseBanterRespon
   assert.equal(opts.validateResult('You still cannot do this — step it up, bot.'), true);
 });
 
-test('birthday gives the router a validator, and it honours the 20-character floor', async () => {
-  const employees = [{ first_name: 'Jane', last_name: 'Doe' }];
-  const opts = await optsFrom(() => generateEmployeeBirthdayMessage(employees, 'Be cheerful.', 'Hi {names}'));
-  assert.equal(typeof opts.validateResult, 'function');
-
-  assert.equal(parseBirthdayMessageResponse(''), null);
-  assert.equal(parseBirthdayMessageResponse('Happy birthday!'), null); // 15 characters
-  assert.notEqual(opts.validateResult(''), true);
-  assert.notEqual(opts.validateResult('Happy birthday!'), true);
-  assert.equal(opts.validateResult('<b>Happy Birthday</b> Jane — have a great one!'), true);
-});
-
 test('the group-status model override still reaches the router', async () => {
   // GROUP_STATUS_AI_GROQ_MODEL is the feature's own model preference, and its
-  // two siblings (DATATRUCK_BANTER_GROQ_MODEL, EMPLOYEE_BIRTHDAY_GROQ_MODEL)
-  // both survived the rewrite. A deployment that sets this one and is silently
+  // sibling DATATRUCK_BANTER_GROQ_MODEL survived the rewrite (the third,
+  // EMPLOYEE_BIRTHDAY_GROQ_MODEL, went with the AI birthday message). A deployment that sets this one and is silently
   // ignored has no way to discover that from the outside.
   const before = process.env.GROUP_STATUS_AI_GROQ_MODEL;
   process.env.GROUP_STATUS_AI_GROQ_MODEL = 'a-deliberately-chosen-model';

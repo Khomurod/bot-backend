@@ -185,7 +185,7 @@ test('text for people, and every non-decision, is one pass in the admin\'s order
     providers: [claude({ priority: 1 }), groq()],
     respond: (args) => ({ text: 'Happy birthday!', model: args.model, payload: {}, usage: null }),
   });
-  const out = await router.runCapability({ capability: 'employee_birthday_message', userText: 'write' });
+  const out = await router.runCapability({ capability: 'datatruck_banter', userText: 'write' });
   assert.equal(out.provider, 'anthropic');
   assert.equal(calls.length, 1);
   assert.equal(out.stage, undefined);
@@ -208,7 +208,7 @@ test('assessAnswer: under the bar, no confidence, or "unclear" is unsure', () =>
   assert.equal(assessAnswer('safety_approval_reading', {
     confidence: 99, decisions: [{ decision: 'unclear' }],
   }).why, 'said_unclear');
-  assert.equal(escalates('employee_birthday_message'), false);
+  assert.equal(escalates('datatruck_banter'), false);
   assert.equal(escalates('home_time_intent'), true);
 });
 
@@ -265,7 +265,7 @@ test('the owner\'s lessons are in a decision\'s prompt, after the caller\'s own 
   const system = calls[0].messages[0].content;
   assert.ok(system.startsWith('Read it. Answer with JSON only.'));
   assert.ok(system.includes('ok go means approved'));
-  await router.runCapability({ capability: 'employee_birthday_message', userText: 'write' });
+  await router.runCapability({ capability: 'datatruck_banter', userText: 'write' });
   assert.ok(!JSON.stringify(calls[1].messages).includes('ok go means approved'), 'text for people takes no lessons');
 });
 
