@@ -45,6 +45,24 @@ function promptText(args) {
   return [args.systemText, args.userText].filter(Boolean).join('\n');
 }
 
+/**
+ * The owner's lessons for this kind of decision (services/ai/learning), after
+ * the caller's own instructions — as a system message when the caller sent
+ * `messages`, since requestShape then drops systemText.
+ */
+function withLessons(args, lessons) {
+  if (!lessons) return args;
+  if (Array.isArray(args.messages) && args.messages.length) {
+    let at = 0;
+    while (at < args.messages.length && args.messages[at]?.role === 'system') at += 1;
+    return {
+      ...args,
+      messages: [...args.messages.slice(0, at), { role: 'system', content: lessons }, ...args.messages.slice(at)],
+    };
+  }
+  return { ...args, systemText: args.systemText ? `${args.systemText}\n\n${lessons}` : lessons };
+}
+
 /** Ask for a confidence, unless the caller's own prompt already defines one. */
 function withConfidence(args) {
   if (!needsConfidenceInstruction(promptText(args))) return args;
@@ -80,17 +98,32 @@ function unavailable(err) {
 }
 
 /**
- * @param {object} args          runCapability's arguments
+ * @param {object} args          runCapability's arguments. `args.learning`
+ *   ({ context, ask, subjectKey? }) says what to ask the owner if the answer is
+ *   still not sure at the end — see services/ai/learning/hooks.js.
  * @param {Function} askTier     (args) => Promise<result>; the router's one-pass runner
+ * @param {object} [hooks]       { lessonsFor(capability), onUncertain(args, result) }
  * @returns {Promise<object>} the router's result, plus {stage, confidence, uncertain}
  */
-async function runEscalated(args, askTier) {
+async function runEscalated(args, askTier, hooks = {}) {
   // Not a decision, a Gemini-native request, or a caller that pinned an
   // adapter: one pass over the roster, exactly as before.
   if (!escalates(args.capability) || args.contents || args.requireAdapter || args.expects !== 'json') {
     return askTier(args);
   }
-  const asked = withConfidence(args);
+  let lessons = '';
+  try {
+    lessons = hooks.lessonsFor ? await hooks.lessonsFor(args.capability) : '';
+  } catch (_) {
+    lessons = '';
+  }
+  const asked = withConfidence(withLessons(args, lessons));
+  const finish = (result) => {
+    if (result.uncertain && hooks.onUncertain) {
+      try { hooks.onUncertain(args, result); } catch (_) { /* never the caller's problem */ }
+    }
+    return result;
+  };
   const assess = (result) => {
     const parsed = parsedOf(result);
     // No JSON object at all (nothing parseable, or a bare list) is not a
@@ -115,14 +148,16 @@ async function runEscalated(args, askTier) {
   ]) {
     try {
       const better = await askTier({ ...asked, providerFilter: filter, chainOverride });
-      return tagged(better, stage, assess(better));
+      return finish(tagged(better, stage, assess(better)));
     } catch (err) {
       if (!unavailable(err)) throw err;
     }
   }
 
-  if (free) return tagged(free, 'free', freeAssessment);
+  if (free) return finish(tagged(free, 'free', freeAssessment));
   throw freeFailure;
 }
 
-module.exports = { runEscalated, withConfidence, TIERS };
+module.exports = {
+  runEscalated, withConfidence, withLessons, TIERS,
+};

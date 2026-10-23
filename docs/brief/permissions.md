@@ -110,6 +110,9 @@ managed from Settings → Telegram groups with every change audited, and the las
 enabled operator cannot be removed. Being in the group — or being a Telegram
 admin of it — grants nothing. See
 [`docs/architecture/control-channel.md`](../architecture/control-channel.md).
+The same allow-list decides whose plain-words answer to an AI learning question
+becomes a lesson ([`ai-learning.md`](../architecture/ai-learning.md)); a
+stranger's answer is consumed and never kept.
 
 A correction applied this way is attributed `telegram:<id>`, a third initiator
 form beside `admin:<id>` and `system`. It counts as a person, which is what

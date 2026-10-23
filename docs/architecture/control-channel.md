@@ -440,6 +440,16 @@ named in a closing "Could not read …" line instead of being reported as
 "no questions" or "all systems running". The summary carries no question and
 no buttons, and is off whenever the control channel is off.
 
+## Learning questions are not control questions
+
+When AI is still not sure after Claude, Wenze asks the owner a different kind of
+question in the same group — "how should I read this?" — answered in plain
+words with no buttons ([`ai-learning.md`](ai-learning.md)). Those notices carry
+**no `question_json`**, so this channel's reply handler passes them on, their
+answers are read by `bot/handlers/lessonReplyHandlers.js`, and none of the
+counts above (the standing cap, the daily budget, the morning summary) see them.
+The same allow-list, `control_operators`, decides whose answer is kept.
+
 ## What the control channel deliberately does NOT do
 
 - auto-apply a remembered `approve`. That would be autopilot through a side

@@ -6,6 +6,7 @@ import ProviderOrderCard from "./ai/ProviderOrderCard";
 import AddProviderPanel from "./ai/AddProviderPanel";
 import PolicyWatcherCard from "./ai/PolicyWatcherCard";
 import ResponsibilitiesCard from "./ai/ResponsibilitiesCard";
+import LessonsCard from "./ai/LessonsCard";
 
 /**
  * A capability key as a person would say it. The keys are code identifiers, and
@@ -234,6 +235,12 @@ export default function AiTab() {
       )}
 
       <ResponsibilitiesCard flash={flash} />
+
+      <LessonsCard
+        learningEnabled={settings.learningEnabled}
+        onToggle={(on) => saveSettings({ learningEnabled: on })}
+        flash={flash}
+      />
 
       <PolicyWatcherCard providers={providers} flash={flash} />
 

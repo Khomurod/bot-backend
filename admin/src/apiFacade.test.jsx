@@ -53,6 +53,8 @@ test("no two forwarded modules export the same name", () => {
 });
 
 test("the public surface stays at its known size", () => {
+  // 215 with Settings -> AI's lessons (October 2026): `getAiLessons`,
+  // `removeAiLesson` and `skipAiLearningQuestion`.
   // 212 after the Finance Monitor (October 2026): Settings -> Finance's four
   // calls (`getFinanceSettings`, `getFinanceStatus`, `validateFinanceChat`,
   // `updateFinanceSettings`) and the Finance page's nine (the message, money
@@ -70,7 +72,7 @@ test("the public surface stays at its known size", () => {
   // Tracking and QBQ/SOS, and 205 when api.js was first split into domain
   // modules. Growing this is fine — update the number. A DROP that is not a
   // deliberate feature removal means a call site somewhere just broke.
-  expect(Object.keys(api).length).toBeGreaterThanOrEqual(212);
+  expect(Object.keys(api).length).toBeGreaterThanOrEqual(215);
 });
 
 describe("a sample of calls from every domain still resolves", () => {

@@ -132,6 +132,7 @@ async function readAndPropose(thread, deps) {
     transcript: conversation.buildTranscript(messages, { rootMessageId: thread.rootMessageId, safetyUserIds: settings.safetyUserIds }),
     stages,
     currentStage,
+    subjectKey: `${thread.chatId}:${thread.rootMessageId}`,
   });
   const verified = verifyStageAnswer(answer.parsed, {
     stages, currentStageId: lookup.deal?.stageId ?? null, searchable: conversation.searchableText(messages),

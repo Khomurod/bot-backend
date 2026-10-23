@@ -415,6 +415,17 @@ async function runProviders({
 }
 
 /**
+ * Learning (services/ai/learning/hooks.js) is required on first use, not at
+ * load: it reaches the database, and the router is loaded by modules that
+ * never make a decision.
+ */
+function learningHooks() {
+  // eslint-disable-next-line global-require
+  const { lessonsFor, onUncertain } = require('./learning/hooks');
+  return { lessonsFor, onUncertain };
+}
+
+/**
  * Run one capability. A decision whose free answer is not sure enough is asked
  * again of Claude, then of another strong model (services/ai/escalation.js);
  * everything else is one pass over the roster, as it always was.
@@ -423,7 +434,7 @@ async function runProviders({
  * @throws {AiUnavailableError}
  */
 function runCapability(args = {}) {
-  return runEscalated(args, runProviders);
+  return runEscalated(args, runProviders, learningHooks());
 }
 
 module.exports = {

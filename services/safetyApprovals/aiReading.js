@@ -114,6 +114,13 @@ async function readOnce({ postText, safetyText, fileNames, images }, deps) {
     extraParts: extraParts.length ? extraParts : null,
     expects: 'json',
     validate: validateShape,
+    // Still not sure after Claude: the owner is asked, and the answer is a
+    // lesson for the next reading (services/ai/learning).
+    learning: {
+      context: `Safety replied "${String(safetyText || '').slice(0, 300)}" to a recruiter's post: `
+        + `"${String(postText || '(photos only)').slice(0, 150)}"`,
+      ask: 'What did Safety decide here (approved or not approved), and how should I read replies like this?',
+    },
   });
 
   // Not sure even after Claude (services/ai/escalation.js): no decision — the

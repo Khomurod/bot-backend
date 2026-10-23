@@ -254,6 +254,7 @@ that area**, and run the tests it names.
 | Samsara settings, the shared-secret envelope for its API key, missing-video recovery | [`docs/architecture/samsara-settings-and-video-recovery.md`](docs/architecture/samsara-settings-and-video-recovery.md) |
 | The Bitrix assignee lookup, recruiter↔Bitrix mapping, Bitrix connection settings | [`docs/architecture/recruiter-sms-bitrix.md`](docs/architecture/recruiter-sms-bitrix.md) |
 | Where AI may change stored operational state, and the verdict on each | [`docs/architecture/ai-decisions.md`](docs/architecture/ai-decisions.md) |
+| Asking the owner when AI is still not sure after Claude: one question at a time, plain-words answers, lessons kept in the person's own words, accounting's "Not charging" reasons | [`docs/architecture/ai-learning.md`](docs/architecture/ai-learning.md) |
 | How a decision is reached, why `hold` and `unknown` are opposites, and what a mode may never do | [`docs/architecture/decisions.md`](docs/architecture/decisions.md) |
 | Where an operational notice goes, and what it may never say | [`docs/architecture/operational-notifications.md`](docs/architecture/operational-notifications.md) |
 | Answering Wenze in Telegram: who may be obeyed, what a reply may choose, and why the bot never touches source code | [`docs/architecture/control-channel.md`](docs/architecture/control-channel.md) |

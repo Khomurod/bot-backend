@@ -94,6 +94,8 @@ none.
 - **Not charging** — recorded at once (so nobody else can answer), then the
   presser is asked in a force-reply why. Their reply — only theirs, only once —
   is written into the message. Until then it reads "waiting for … to reply".
+  The reason is also kept as a `home_time` lesson for the AI readers, without
+  the driver's name ([`ai-learning.md`](ai-learning.md)).
 
 ## Settings
 

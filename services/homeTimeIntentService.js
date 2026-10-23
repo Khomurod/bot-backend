@@ -277,7 +277,7 @@ async function classifyHomeTimeMessage(input = {}) {
   const {
     transcript = '', triggerText = '', todayIso = null, senderIsDriver = null,
     hasOpenClarification = false, openQuestion = null,
-    knownHomeStart = null, knownReturnToRoad = null,
+    knownHomeStart = null, knownReturnToRoad = null, learningSubject = null,
   } = input;
   const today = todayIso || DateTime.now().setZone(TZ).toISODate();
 
@@ -314,6 +314,14 @@ async function classifyHomeTimeMessage(input = {}) {
       userText: prompt,
       maxOutputTokens: 320,
       validateParsed: (p) => typeof p?.intent === 'string',
+      // Still not sure after Claude: the owner is asked once about this
+      // message, and the answer is a lesson for the next reading.
+      learning: learningSubject && String(triggerText || '').trim() ? {
+        subjectKey: learningSubject,
+        context: `In a driver's chat: "${String(triggerText).slice(0, 300)}"`,
+        ask: 'Is this a request for home time, a driver saying they are home or back on the road, or neither? '
+          + 'How should I read messages like this?',
+      } : null,
     });
     const intent = normalizeIntent(parsed.intent);
     // Server-side guardrail: a plan or a question is never an actual state change,

@@ -207,6 +207,9 @@ async function callGeminiText(opts = {}) {
       validate: typeof opts.validateResult === 'function' ? (text) => opts.validateResult(text) : null,
       timeoutMs: opts.timeoutMs ?? null,
       generation: { maxTokens: opts.maxOutputTokens ?? configuredMax ?? 800 },
+      // What to ask the owner if the answer is still not sure after Claude
+      // (services/ai/learning). Absent for every caller that does not say.
+      learning: opts.learning || null,
     });
     return {
       text: result.text,
