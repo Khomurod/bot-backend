@@ -284,3 +284,11 @@ test('still not sure at the end: the owner is asked — only when the caller sai
   await sure.router.runCapability({ ...decision, learning });
   assert.equal(sure.uncertain.length, 0, 'a sure answer asks nobody');
 });
+
+test('with chat messages, the lessons come after the caller\'s own system messages', () => {
+  const { withLessons } = require('../services/ai/escalation');
+  const out = withLessons({
+    messages: [{ role: 'system', content: 'rules A' }, { role: 'system', content: 'rules B' }, { role: 'user', content: 'hi' }],
+  }, 'LESSONS');
+  assert.deepEqual(out.messages.map((m) => m.content), ['rules A', 'rules B', 'LESSONS', 'hi']);
+});

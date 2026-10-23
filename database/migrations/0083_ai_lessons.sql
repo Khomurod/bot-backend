@@ -45,6 +45,13 @@ CREATE TABLE IF NOT EXISTS ai_learning_questions (
   CONSTRAINT uniq_ai_learning_question_subject UNIQUE (capability, subject_key)
 );
 
+-- ONE QUESTION OUT AT A TIME, held by the database: two passes that both saw
+-- "nothing out" (two unsure decisions at once, or one and the hourly tick)
+-- cannot both mark a question asked — the second gets a unique violation and
+-- treats it as "a question is already waiting".
+CREATE UNIQUE INDEX IF NOT EXISTS uniq_ai_learning_one_asked
+  ON ai_learning_questions ((TRUE)) WHERE status = 'asked';
+
 -- The ask pass reads "is one out?" and "the oldest waiting" on every run.
 CREATE INDEX IF NOT EXISTS idx_ai_learning_questions_status
   ON ai_learning_questions (status, created_at);

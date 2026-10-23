@@ -27,9 +27,14 @@ function answerDeps(over = {}) {
     },
     store: {
       async getQuestion() { return over.question === undefined ? { ...QUESTION } : over.question; },
-      async claimAnswer(id, a) { calls.claims.push(a); return over.claim === undefined ? { ...QUESTION, status: 'answered' } : over.claim; },
+      async answerWithLesson(id, a) {
+        calls.claims.push(a);
+        if (over.claim === null) return null;
+        const lesson = { ...a.lesson, statement: a.answerText, source: 'owner_answer', questionId: id };
+        calls.lessons.push(lesson);
+        return { question: { ...QUESTION, status: 'answered' }, lesson };
+      },
       async skipQuestion() { return { ...QUESTION, status: 'skipped' }; },
-      async addLesson(l) { calls.lessons.push(l); return { id: 3, ...l }; },
     },
     operators: { async isControlOperator(id) { return String(id) === '42'; } },
     runCapability: over.runCapability || (async () => ({ text: '"ok go" from Safety means approved.' })),
@@ -72,11 +77,12 @@ test('a stranger is consumed, never answered, and teaches nothing', async () => 
   assert.equal(calls.acks.length, 0);
 });
 
-test('a redelivered reply, or a second operator, writes nothing', async () => {
+test('a redelivered reply, or a second operator, writes nothing and is not thanked twice', async () => {
   const { deps, calls } = answerDeps({ claim: null });
   const out = await handleLessonReply(reply(), deps);
   assert.equal(out.outcome, 'already_answered');
   assert.equal(calls.lessons.length, 0);
+  assert.equal(calls.acks.length, 0);
 });
 
 test('an already answered question is said so and nothing is kept', async () => {
@@ -116,6 +122,13 @@ function askDeps(over = {}) {
   };
   return { deps, calls };
 }
+
+test('two passes at once: the database\'s one-asked index makes the second one wait', async () => {
+  const { deps, calls } = askDeps();
+  deps.store.markAsked = async () => { throw Object.assign(new Error('duplicate key'), { code: '23505' }); };
+  assert.equal((await askNextQuestion(deps)).reason, 'waiting_for_answer');
+  assert.equal(calls.notified.length, 0);
+});
 
 test('one at a time: nothing goes out while a question waits for an answer', async () => {
   const { deps, calls } = askDeps({ current: { ...QUESTION } });

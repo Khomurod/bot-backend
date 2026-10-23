@@ -50,16 +50,18 @@ test('an answer is claimed once and its lesson is linked; a removed lesson is ke
   const { aiLessons } = await setup(t);
   const q = await aiLessons.queueQuestion(Q());
   await aiLessons.markAsked(q.id);
-  const claimed = await aiLessons.claimAnswer(q.id, { answerText: 'CLEAN means MVR passed', telegramUserId: 42 });
-  assert.equal(claimed.status, 'answered');
-  assert.equal(await aiLessons.claimAnswer(q.id, { answerText: 'again', telegramUserId: 42 }), null);
-  assert.equal(await aiLessons.skipQuestion(q.id, { telegramUserId: 42 }), null);
-
-  const lesson = await aiLessons.addLesson({
-    scope: 'hiring', source: 'owner_answer', about: 'Which stage? — "CLH sent"',
-    statement: 'CLEAN means MVR passed', understoodAs: 'CLEAN = MVR passed.', questionId: q.id,
-    createdByTelegramId: 42, createdByName: 'Owner',
+  const lessonArgs = {
+    scope: 'hiring', about: 'Which stage? — "CLH sent"', understoodAs: 'CLEAN = MVR passed.', createdByName: 'Owner',
+  };
+  const saved = await aiLessons.answerWithLesson(q.id, {
+    answerText: 'CLEAN means MVR passed', telegramUserId: 42, lesson: lessonArgs,
   });
+  assert.equal(saved.question.status, 'answered');
+  assert.equal(saved.lesson.statement, 'CLEAN means MVR passed');
+  assert.equal(saved.lesson.source, 'owner_answer');
+  assert.equal(await aiLessons.answerWithLesson(q.id, { answerText: 'again', telegramUserId: 42, lesson: lessonArgs }), null);
+  assert.equal(await aiLessons.skipQuestion(q.id, { telegramUserId: 42 }), null);
+  const lesson = saved.lesson;
   assert.equal((await aiLessons.getQuestion(q.id)).lessonId, lesson.id);
   assert.equal((await aiLessons.listActiveLessons('hiring')).length, 1);
   assert.equal((await aiLessons.listActiveLessons('safety')).length, 0);
@@ -89,4 +91,44 @@ test('accounting reasons are a lesson source; anything else is refused by the sc
   const ok = await aiLessons.addLesson({ scope: 'home_time', source: 'accounting_reason', about: 'early', statement: 'sick child' });
   assert.equal(ok.source, 'accounting_reason');
   await assert.rejects(aiLessons.addLesson({ scope: 'home_time', source: 'a_model', about: 'x', statement: 'y' }));
+});
+
+test('a lesson that fails to insert rolls the claim back, so the answer can be given again', {
+  skip: skipWithoutPg(),
+}, async (t) => {
+  const { aiLessons } = await setup(t);
+  const q = await aiLessons.queueQuestion(Q());
+  await aiLessons.markAsked(q.id);
+  await assert.rejects(aiLessons.answerWithLesson(q.id, {
+    answerText: 'x', telegramUserId: 42, lesson: { scope: null, about: 'a' },
+  }));
+  assert.equal((await aiLessons.getQuestion(q.id)).status, 'asked');
+  const saved = await aiLessons.answerWithLesson(q.id, {
+    answerText: 'x', telegramUserId: 42, lesson: { scope: 'hiring', about: 'a' },
+  });
+  assert.equal(saved.question.status, 'answered');
+});
+
+test('the database lets only one question be out at a time', {
+  skip: skipWithoutPg(),
+}, async (t) => {
+  const { aiLessons } = await setup(t);
+  const a = await aiLessons.queueQuestion(Q({ subjectKey: 'a' }));
+  const b = await aiLessons.queueQuestion(Q({ subjectKey: 'b' }));
+  await aiLessons.markAsked(a.id);
+  await assert.rejects(aiLessons.markAsked(b.id), (err) => err.code === '23505');
+});
+
+test('owner answers are fetched before accounting reasons, whatever their age', {
+  skip: skipWithoutPg(),
+}, async (t) => {
+  const { aiLessons } = await setup(t);
+  await aiLessons.addLesson({ scope: 'home_time', source: 'owner_answer', about: 'o', statement: 'owner rule' });
+  for (let i = 0; i < 3; i += 1) {
+    // eslint-disable-next-line no-await-in-loop
+    await aiLessons.addLesson({ scope: 'home_time', source: 'accounting_reason', about: 'a', statement: `reason ${i}` });
+  }
+  const top = await aiLessons.listActiveLessons('home_time', { limit: 2 });
+  assert.equal(top[0].statement, 'owner rule');
+  assert.equal(top[1].statement, 'reason 2');
 });

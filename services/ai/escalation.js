@@ -53,7 +53,12 @@ function promptText(args) {
 function withLessons(args, lessons) {
   if (!lessons) return args;
   if (Array.isArray(args.messages) && args.messages.length) {
-    return { ...args, messages: [{ role: 'system', content: lessons }, ...args.messages] };
+    let at = 0;
+    while (at < args.messages.length && args.messages[at]?.role === 'system') at += 1;
+    return {
+      ...args,
+      messages: [...args.messages.slice(0, at), { role: 'system', content: lessons }, ...args.messages.slice(at)],
+    };
   }
   return { ...args, systemText: args.systemText ? `${args.systemText}\n\n${lessons}` : lessons };
 }

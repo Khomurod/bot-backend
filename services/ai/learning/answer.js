@@ -11,8 +11,10 @@
  *   3. WHO        the control channel's allow-list (`control_operators`).
  *                 Being in the group is not permission to teach Wenze; a
  *                 stranger's answer is consumed and never acted on or answered
- *   4. once       `claimAnswer` moves the question only while it is `asked`,
- *                 so a redelivered reply or a second person writes nothing
+ *   4. once       `answerWithLesson` moves the question only while it is
+ *                 `asked`, in the same transaction as the lesson, so a
+ *                 redelivered reply or a second person writes nothing and a
+ *                 failed insert loses nothing
  *
  * Then the answer is kept as a lesson — the person's OWN WORDS, which later
  * prompts are given — and Wenze says back what it understood ("Understood: …
@@ -103,21 +105,21 @@ async function handleLessonReply(reply, deps = defaultDeps()) {
       return { handled: true, outcome: 'skipped' };
     }
 
-    const claimed = await deps.store.claimAnswer(question.id, { answerText: words, telegramUserId });
-    if (!claimed) return { handled: true, outcome: 'already_answered' };
-
+    // Restated BEFORE the claim, so the claim and the lesson can be one
+    // transaction without holding it open across a model call.
     const understood = await understand(question, words, deps);
     const scope = scopeFor(question.capability);
-    await deps.store.addLesson({
-      scope,
-      source: 'owner_answer',
-      about: `${question.ask} — "${question.context}"`,
-      statement: words,
-      understoodAs: understood,
-      questionId: question.id,
-      createdByTelegramId: telegramUserId,
-      createdByName: fromName || null,
+    const saved = await deps.store.answerWithLesson(question.id, {
+      answerText: words,
+      telegramUserId,
+      lesson: {
+        scope,
+        about: `${question.ask} — "${question.context}"`,
+        understoodAs: understood,
+        createdByName: fromName || null,
+      },
     });
+    if (!saved) return { handled: true, outcome: 'already_answered' };
     invalidateLessons(scope);
     await say(understoodLine(understood));
     await deps.askNext();

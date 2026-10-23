@@ -71,8 +71,10 @@ proposed, the home-time gates decide). The lesson is for the next one.
 - `UNIQUE (capability, subject_key)` — a thread that keeps being unclear is one
   question, not one per message;
 - `askNextQuestion` sends only while **no** question is `asked` and unanswered,
-  the oldest queued first; `markAsked` moves only a `queued` row, so two passes
-  cannot both send it;
+  the oldest queued first; `markAsked` moves only a `queued` row, and the
+  partial unique index `uniq_ai_learning_one_asked` lets the database hold
+  only one `asked` row — two passes that both saw "nothing out" cannot both
+  send one (the second's unique violation reads as "waiting");
 - a send that reached nobody (no group configured, notifications off) puts the
   question back in line (`unmarkAsked`) instead of blocking everything behind it;
 - it runs after a question is queued, after one is answered or skipped, and on
@@ -99,8 +101,12 @@ since the notice has no `question_json`):
 3. **who** — the control channel's allow-list, `control_operators`. Being in the
    group is not permission to teach Wenze; a stranger's reply is consumed and
    never acted on or answered;
-4. **once** — `claimAnswer` moves the question only while it is `asked`, so a
-   redelivered reply or a second operator writes nothing.
+4. **once** — `answerWithLesson` moves the question only while it is `asked`
+   and writes the lesson in the same transaction, so a redelivered reply or a
+   second operator writes nothing, and a lesson that fails to insert rolls the
+   claim back rather than leaving an "answered" question with no lesson. The
+   restatement is made before the claim, so the transaction never waits on a
+   model.
 
 "skip", "pass", "next", "I don't know" skip it. Anything else becomes a lesson.
 
@@ -127,8 +133,10 @@ context for the home-time readers and are on the admin card with the rest.
 
 `runEscalated` asks `lessonsFor(capability)` for the **decisions only** (the
 capabilities in `lib/ai/escalation.js` `ESCALATING`) and adds the block after
-the caller's own instructions — as a system message when the caller sent
-`messages`. `lib/ai/lessons.js` maps a capability to a scope (`home_time`,
+the caller's own instructions — as a system message right after the caller's
+own leading system messages when it sent `messages`. The owner's answers are
+fetched before accounting's reasons (ordered before the limit), so a pile of
+reasons can never push an answer out. `lib/ai/lessons.js` maps a capability to a scope (`home_time`,
 `safety`, `hiring`, `driver_profiles`, `control`, `recruiting`); text written for
 people takes none. The block lists the owner's answers first, then accounting's
 reasons, newest first, at most 20, and says that lessons never override the

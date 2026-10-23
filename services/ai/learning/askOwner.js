@@ -38,7 +38,14 @@ async function askNextQuestion(deps = defaultDeps()) {
     if (await deps.store.currentQuestion()) return { asked: false, reason: 'waiting_for_answer' };
     const next = await deps.store.nextQueuedQuestion();
     if (!next) return { asked: false, reason: 'nothing_queued' };
-    const claimed = await deps.store.markAsked(next.id);
+    let claimed;
+    try {
+      claimed = await deps.store.markAsked(next.id);
+    } catch (err) {
+      // uniq_ai_learning_one_asked: another pass asked one a moment ago.
+      if (err && err.code === '23505') return { asked: false, reason: 'waiting_for_answer' };
+      throw err;
+    }
     if (!claimed) return { asked: false, reason: 'claimed_elsewhere' };
 
     const notice = questionNotice(claimed);

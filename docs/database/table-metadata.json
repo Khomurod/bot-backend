@@ -299,7 +299,7 @@
       "status": "active",
       "service": "bot (services/ai/learning: queued from an uncertain decision, sent one at a time, answered by reply), admin (Settings -> AI -> What Wenze learned from you: counts, the question out now, Skip)",
       "sourceOfTruth": "What was asked and what came back. The lesson itself lives in ai_lessons.",
-      "danger": "ONE OUT AT A TIME is enforced by reading status = 'asked' before sending, and markAsked / claimAnswer only move a row in the expected state, so a redelivered reply or a second pass writes nothing. `context` is an excerpt of a driver's, candidate's or Safety's message with phone numbers masked, capped at 500 characters."
+      "danger": "ONE OUT AT A TIME is held by the partial unique index uniq_ai_learning_one_asked (only one row may be 'asked'), and markAsked / answerWithLesson only move a row in the expected state, so a redelivered reply or a second pass writes nothing. The answer and its lesson are one transaction. `context` is an excerpt of a driver's, candidate's or Safety's message with phone numbers masked, capped at 500 characters."
     },
     "ai_lessons": {
       "purpose": "What Wenze learned: the owner's plain-words answers to its questions, and accounting's reasons for not charging a home-time violation (migration 0083). Every later prompt for a decision in the same scope is given them.",
