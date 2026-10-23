@@ -90,8 +90,8 @@ until a date.
 - **Kept running:** driver chats and home-time requests (with their
   reminders), Samsara alerts (a separate service), Facebook and SMS leads and
   the after-hours answers, money codes, scheduled broadcasts, the delivery of
-  every notice, birthdays, mileage and road bonuses, ETA updates and
-  return-to-road detection.
+  every notice, birthdays, mileage and road bonuses and return-to-road
+  detection. (The ETA updates were here until their removal on 2026-10-23.)
 - **Stood down** (`ECONOMY_PAUSED_KEYS`, `lib/operations/economyMode.js`):
   load control, the consistency sweep and everything that rides it
   (contradictions, owner questions, the daily digest), self-healing, the

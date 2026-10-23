@@ -63,7 +63,6 @@ stub('database/financeDocuments.js', {
 });
 stub('services/documents/pdfTextExtraction.js', {
   extractTextFromPdf: async () => ({ text: pdfText, usedPdfOcr: false }),
-  extractTextFromImage: async () => ({ text: '', usedPdfOcr: false }),
   isWeakDispatchRawText: () => false,
 });
 stub('services/aiImagePrep.js', {

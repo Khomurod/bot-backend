@@ -107,7 +107,6 @@ test('an ordinary driver-group message reaches no removed feature', () => {
     'processHomeTimeMessage',       // conversational home-time flow
     'applyAutoReaction',            // auto-reactions
     'recentMessageBuffer',          // rolling chat buffer
-    'upsertGroupPinnedMessageSnapshot', // pinned context
     'recordGroupMessageSeen',       // bot-visibility diagnostic
   ]) {
     assert.ok(pipeline.includes(kept), `the group pipeline must still call ${kept}`);
@@ -263,14 +262,64 @@ test('BOL/POD forwarding stays removed, and so does the intake it replaced', () 
     'the Datatruck client never uploads documents');
 });
 
+test('the dispatcher ETA updates, /update, /status, /load and the pinned-load reading stay removed', () => {
+  // Removed at the owner's request, 23 October 2026: loads are read from the
+  // Dispatcher Board and Datatruck, not from a pinned message or a screenshot.
+  // /location (live truck location) and Live Locations' own ETA stay.
+  for (const gone of [
+    'services/dispatchEtaUpdateService.js', 'services/statusSnapshotDetached.js',
+    'services/dispatchPinnedContextService.js', 'services/pinnedContext',
+    'services/recentLoadSelection.js', 'services/loadTextPatterns.js',
+    'services/driverStatusLookupService.js', 'server/services/dispatchParserService.js',
+    'server/services/dispatchParser', 'server/routes/dispatchEtaRoutes.js',
+    'database/dispatchEta.js', 'bot/dispatchStatusLookupHandlers.js',
+    'bot/dispatchStatusLookupSession.js', 'admin/src/api/dispatchEta.js',
+    'admin/src/pages/settings/dispatcherBoard/EtaTrackingCard.jsx',
+    'admin/src/pages/settings/dispatcherBoard/useEtaTracking.js',
+    'admin/src/pages/settings/dispatcherBoard/ToggleSwitch.jsx',
+    'admin/src/pages/settings/dispatcherBoard/helpers.js',
+  ]) {
+    assert.equal(exists(gone), false, `${gone} must stay removed`);
+  }
+  // No Telegram command of the removed feature is registered anywhere.
+  const offenders = [];
+  for (const file of sourceFiles()) {
+    // tests/ quotes the commands to forbid them; .claude/ holds agent
+    // worktrees (other checkouts), not this application's source.
+    if (file.startsWith(path.join(ROOT, 'tests')) || file.startsWith(path.join(ROOT, '.claude'))) continue;
+    const src = fs.readFileSync(file, 'utf8');
+    for (const m of src.matchAll(/\.command\(\s*['"`](update|status|load)['"`]/g)) {
+      offenders.push(`${path.relative(ROOT, file)}: /${m[1]}`);
+    }
+  }
+  assert.deepEqual(offenders, [], 'the /update, /status and /load commands must not be registered');
+  const bot = read('bot/bot.js') + read('bot/handlers/dispatchCommandHandlers.js');
+  assert.ok(!bot.includes('registerStatusCommand'), 'no /status registration');
+  assert.ok(!bot.includes('registerDispatchStatusLookupHandlers'), 'no test-hub status lookup');
+  assert.ok(bot.includes("bot.command('location'"), '/location must still be registered');
+  // No worker, no API, no pinned-message capture, no AI capability.
+  const roster = read('services/backgroundServices.js') + read('index.js');
+  assert.ok(!/DispatchEta/.test(roster), 'the ETA scheduler must not be started');
+  assert.ok(!read('server/api.js').includes('dispatchEtaRoutes'), 'no /api/dispatch ETA router');
+  assert.ok(!read('bot/handlers/groupCaptureHandlers.js').includes('upsertGroupPinnedMessageSnapshot'),
+    'a pinned message is not recorded');
+  assert.ok(!read('lib/ai/capabilityCatalog.js').includes('dispatch_load_extraction'),
+    'no AI capability reads a pinned load');
+  assert.ok(!read('lib/operations/backgroundServiceCatalog.js').includes("'dispatch_eta'"),
+    'no catalogued dispatch_eta worker');
+  // What stayed: Live Locations still routes through the ETA router.
+  assert.ok(exists('services/etaRoutingService.js'), 'Live Locations needs etaRoutingService');
+  assert.ok(exists('services/liveLocationResolver.js'), '/location needs the live-location resolver');
+});
+
 test('the baseline schema creates no removed feature table, and still creates the shared ones', () => {
   // As a deployed database runs it: the fresh-database-only stubs are proven
   // guarded in tests/retiredLeftovers.test.js.
   const { deployedBootSchema } = require('./helpers/freshOnlyStubs');
   const schema = deployedBootSchema(read('database/schema.sql'));
   const created = [...schema.matchAll(/CREATE TABLE IF NOT EXISTS (\w+)/g)].map((m) => m[1]);
-  const removed = created.filter((t) => /^(trailer|sos_|qbq_|fleet_|route_|gmaps_|raise_|dispatch_team|bol_pod_|datatruck_document|fuel_|truck_fuel)/.test(t)
-    || t === 'trailers');
+  const removed = created.filter((t) => /^(trailer|sos_|qbq_|fleet_|route_|gmaps_|raise_|dispatch_team|bol_pod_|datatruck_document|fuel_|truck_fuel|dispatch_eta_)/.test(t)
+    || ['trailers', 'group_recent_loads', 'group_pinned_messages'].includes(t));
   assert.deepEqual(removed, [], 'the baseline must not create a removed feature table');
   for (const kept of [
     'groups', 'drivers', 'admins', 'permissions', 'roles', 'admin_user_roles',
@@ -289,7 +338,7 @@ test('the whole index.js module graph loads with no application env', () => {
     'services/schedulerService.js', 'services/databaseUsageService.js',
     'services/birthdayService.js', 'services/groupStatusAiService.js',
     'services/employeeBirthdayWishService.js', 'services/facebookWebhookService.js',
-    'services/dispatchEtaUpdateService.js', 'services/mileageBonusService.js',
+    'services/mileageBonusService.js',
     'services/recruiterCallSyncService.js',
     'services/ringCentralTokenRefreshService.js', 'services/roadBonusNotifierService.js',
     'services/homeTimeReminderService.js',

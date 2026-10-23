@@ -10,6 +10,23 @@ git so they can be recovered.
 
 ---
 
+## Dispatcher ETA updates, /update, /status, /load and the pinned-load reading
+
+Removed 2026-10-23 at the owner's request ("полностью убрать функцию update и
+ETA" — remove the update and ETA function completely), together with reading
+the screenshot / pinned load: loads are read from the Dispatcher Board and
+Datatruck instead. Gone: the ETA scheduler (`dispatch_eta`), the ETA card on
+Settings → Dispatcher Board and its `/api/dispatch/testing-feature/*` API (now
+404), the `/update`, `/status` and `/load` commands with the test group's
+`/status` lookup, the pinned-load reading and its AI capability
+`dispatch_load_extraction`, the stored recent loads, and the recording of
+pinned messages. `/location` and Live Locations' own ETA stay. What was
+removed, what was kept (`etaRoutingService`, the Datatruck load service, the
+four tables) and why are in
+[`architecture/retired-dispatch-eta.md`](architecture/retired-dispatch-eta.md).
+
+---
+
 ## Fuel: stop reminders, the risk watch, readings and the Fuel Monitor
 
 Removed 2026-10 at the owner's request ("полностью все, что связано с топливом,
@@ -103,7 +120,8 @@ Tracking data layer, specifically so the same coercion was not written twice.
 Trailer Tracking was retired below and took both callers with it, leaving the
 helper with none.
 
-**`services/loadExtractionValidate.js`** and its test
+**`services/loadExtractionValidate.js`** and its test (the pinned-context
+reader it mentions was itself removed on 2026-10-23)
 (`hasMinimalStructuredLoad`, `groqFieldsLookComplete`, `normalizeLine`). Added
 in `48be20f` alongside `dispatchPinnedContextService.js`, and orphaned when that
 service was split into `services/pinnedContext/*`: `rules.js` grew its own
@@ -131,12 +149,12 @@ The `/dispatch` page: upload a rate confirmation, have a model turn it into a
 dispatch card, pick a driver's chat, send it. Removed with its parser, its AI
 capability, its three API calls and its per-group diagnostics expander.
 
-**The ETA schedules that shared the page were NOT removed.** That tab was the
-only UI for per-group ETA delivery and the global intervals, so deleting it
+**The ETA schedules that shared the page were NOT removed then.** That tab was
+the only UI for per-group ETA delivery and the global intervals, so deleting it
 would have turned a screen removal into a data change — settings editable only
 by hand in the database. It moved to **Settings → Dispatcher Board** as
-`EtaTrackingCard`, and its four `/api/dispatch/testing-feature/*` endpoints are
-unchanged down to the string.
+`EtaTrackingCard`, with its four `/api/dispatch/testing-feature/*` endpoints
+unchanged. The ETA feature itself was removed on 2026-10-23 (entry above).
 
 Nothing was dropped from the database and no table belonged to this feature.
 `/dispatch/*` answers **410** rather than falling through to the SPA, because the

@@ -59,7 +59,6 @@ true.
 | **Home-time dates** from a reply — `home_time_dates` | Dates on an open request | Normalised and policy-checked server-side; an unreasonable window is re-asked, never stored | **Remains automatic** |
 | **Home-time screenshot import** — `home_time_import` | Home-time records in bulk | Operator-initiated, reviewed on screen before applying | **Remains automatic**, because a person is already looking at it |
 | **Returned to Road** — `home_time_return_to_road` (`returnReasoning`) | Nothing directly | Consulted only on an already-ambiguous case; may raise it to confident **only when the coordinates already proved movement**, and may always stand one down | **Suggestion only, by construction.** The state change is a governed correction, capped and revertible |
-| **Pinned load details** — `dispatch_load_extraction` | Cached load context behind driver ETA messages | Deterministic destination inference beneath it; with too little, the driver is told there is no current load info rather than a wrong one | **Remains automatic** |
 | **Chat message labels** — `chat_annotation` | `chat_message_annotations` | None needed — gap-filling was removed, so an unlabelled message stays unlabelled instead of being invented | **Remains automatic** |
 | **Provider terms interpretation** — `policy_reading` | An AI policy finding | A provider is suspended only by an enumerated deterministic rule that never sees the model's output | **Remains automatic for the words; the suspension stays deterministic** |
 | **A moved terms page** — `policy_source_discovery` | The watched URL | Every candidate is fetched and verified first; AI only re-ranks among verified ones, and its answer must be one of them | **Remains automatic** |
@@ -75,6 +74,12 @@ true.
 Reading a gas station's address out of a fuel post (`fuel_stop_detection`),
 which created a fuel watch and messaged the driver, went with fuel in October
 2026 ([retired-fuel.md](retired-fuel.md)).
+
+Reading the pinned load details out of a rate confirmation
+(`dispatch_load_extraction`), which cached the load context behind the driver
+ETA messages, went with the dispatcher ETA updates on 23 October 2026
+([retired-dispatch-eta.md](retired-dispatch-eta.md)). Loads come from the
+Dispatcher Board and Datatruck, with no model in between.
 
 ## Text only — no record changes
 

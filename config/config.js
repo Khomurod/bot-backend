@@ -146,7 +146,6 @@ module.exports = {
   rcClientSecret: process.env.RC_CLIENT_SECRET || '',
   rcJwtToken: process.env.RC_JWT_TOKEN || '',
   rcApiBase: process.env.RC_API_BASE || 'https://platform.ringcentral.com',
-  dispatchEtaTestGroupId: String(process.env.DISPATCH_ETA_TEST_GROUP_ID || '-5289094495').trim(),
   googleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY || '',
   googleGeocodingApiBase: process.env.GOOGLE_GEOCODING_API_BASE || 'https://maps.googleapis.com/maps/api/geocode/json',
   googleRoutesApiBase: process.env.GOOGLE_ROUTES_API_BASE || 'https://routes.googleapis.com/directions/v2:computeRoutes',
@@ -196,10 +195,6 @@ module.exports = {
   leadsInternalSharedSecret: process.env.LEADS_INTERNAL_SHARED_SECRET,
   // Wenze Facebook Leads hub — auto-SMS mirrors + RC inbound forwards (same as leads-bot TELEGRAM_CHAT_ID)
   leadsTelegramChatId: String(process.env.TELEGRAM_CHAT_ID || '-5231255301').trim(),
-  // When false, load ingestion skips forwarding parse-failure hints to DISPATCH_ETA_TEST_GROUP_ID.
-  // Hardcoded default false (was set to false in the Render environment).
-  loadIngestNotifyExtractionFailure:
-    process.env.LOAD_INGEST_NOTIFY_EXTRACTION_FAILURE === 'true',
   // Bitrix24 incoming webhook — dual delivery for Facebook leads (default on).
   bitrix24Enabled: process.env.BITRIX24_ENABLED !== 'false',
   bitrix24WebhookUrl: normalizeOptionalEnv(process.env.BITRIX24_WEBHOOK_URL),

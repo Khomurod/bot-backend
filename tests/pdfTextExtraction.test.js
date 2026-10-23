@@ -17,12 +17,13 @@
  * here — so in a default run the env would have stopped it anyway. Verified
  * separately with `ENABLE_OCR=true node --test tests/pdfTextExtraction.test.js`,
  * where the OCR branch IS live and `allowOcr: false` is the only thing standing
- * in front of it: 4 pass, 0 fail.
+ * in front of it. (The image reader and its test went with the pinned-load
+ * reading, October 2026.)
  */
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { extractTextFromPdf, extractTextFromImage } = require('../services/documents/pdfTextExtraction');
+const { extractTextFromPdf } = require('../services/documents/pdfTextExtraction');
 
 /** Has tesseract.js been loaded into this process? */
 function tesseractLoaded() {
@@ -65,19 +66,13 @@ test('a PDF read with allowOcr:false never loads tesseract.js', async () => {
     'allowOcr:false must stop before getCreateWorker, not merely discard its output');
 });
 
-test('an image read with allowOcr:false returns nothing rather than loading the model', async () => {
-  const result = await extractTextFromImage(Buffer.from([0xff, 0xd8, 0xff]), { allowOcr: false });
-  assert.equal(result.text, '');
-  assert.equal(tesseractLoaded(), false);
-});
-
 test('a PDF with a real text layer is read without OCR either way', async () => {
   const result = await extractTextFromPdf(minimalPdf('INVOICE 42 TOTAL 500'), { allowOcr: false });
   assert.match(result.text, /INVOICE 42/);
   assert.equal(result.usedPdfOcr, false);
 });
 
-test('allowOcr defaults to true, so the dispatch caller keeps what it had', async () => {
+test('allowOcr defaults to true: OCR stays opt-OUT for a caller that names nothing', async () => {
   // The point is only that the option did not silently become opt-in for the
   // caller that never passes it; whether OCR then runs is ENABLE_OCR's call.
   const result = await extractTextFromPdf(minimalPdf('INVOICE 42 TOTAL 500'));

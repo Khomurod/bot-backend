@@ -288,7 +288,8 @@ and nothing writes new ones.
 `database/dispatchBoard.js`, `database/dispatchBoardSettings.js`,
 `server/routes/settings/dispatchBoardRoutes.js`, `lib/board/*`,
 `lib/identity/boardResolution.js`, the home-time pair above, Settings →
-Dispatcher Board (feed settings, the Feed card, and the automatic ETA updates
-card that lives on the same tab), and the background services
+Dispatcher Board (feed settings and the Feed card — the automatic ETA updates
+card that shared the tab went with the ETA feature on 2026-10-23,
+[`retired-dispatch-eta.md`](retired-dispatch-eta.md)), and the background services
 `dispatch_board_poll` and `home_time_board_presence` — both slowed, never paused,
 in economy mode ([`economy-mode.md`](economy-mode.md)).

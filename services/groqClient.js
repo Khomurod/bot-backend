@@ -13,7 +13,6 @@
 //   - aiAnnotationService.js (per-message classifier)
 //   - aiInsightsService.js   (narrative generation)
 //   - datUiInspectorService.js (DAT layout inspector)
-//   - dispatchPinnedContextService.js / dispatchParserService.js
 //
 require('dotenv').config();
 
@@ -36,7 +35,6 @@ const GROQ_AI_FALLBACK_MODELS = parseModelList(
 );
 
 const DEFAULT_MAX_RETRY_WAIT_MS = 35_000;
-const INTERACTIVE_MAX_RETRY_WAIT_MS = 8_000;
 
 function parseModelList(envValue, fallbackList) {
   const fromEnv = String(envValue || '')
@@ -223,5 +221,4 @@ module.exports = {
   GROQ_AI_FAST_MODEL,
   GROQ_AI_FALLBACK_MODELS,
   DEFAULT_MAX_RETRY_WAIT_MS,
-  INTERACTIVE_MAX_RETRY_WAIT_MS,
 };

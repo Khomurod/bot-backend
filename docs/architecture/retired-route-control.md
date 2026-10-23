@@ -27,7 +27,8 @@ group, and the route marked complete near the destination.
 
 - **Google Maps for ETA.** `services/etaRoutingService.js` uses
   `GOOGLE_MAPS_API_KEY` from the environment, never the GMaps settings row, so
-  ETA updates and Live Locations are untouched.
+  Live Locations is untouched (the driver ETA updates were too, until their own
+  removal on 2026-10-23 — `retired-dispatch-eta.md`).
 - **`admin/src/pages/routeControlGroupSearch.mjs`** stayed while the
   driver-raise panel imported its `driverTypeLabel`; it went with that page
   ([`retired-driver-raise.md`](retired-driver-raise.md)).

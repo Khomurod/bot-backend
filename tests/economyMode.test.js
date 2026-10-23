@@ -104,7 +104,7 @@ test('WHAT THE OWNER KEPT RUNNING is never on the pause list', () => {
   for (const kept of [
     'scheduler', 'home_time_reminders', 'facebook_webhooks', 'recruiter_logins', 'recruiting_after_hours',
     'finance_document_reader', 'finance_weekly_report', 'notification_drain',
-    'return_to_road', 'dispatch_eta', 'dispatch_board_poll', 'home_time_board_presence',
+    'return_to_road', 'dispatch_board_poll', 'home_time_board_presence',
   ]) {
     assert.equal(isEconomyPausedKey(kept), false, `${kept} must keep running`);
   }

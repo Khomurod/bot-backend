@@ -41,7 +41,7 @@ Separate repo: samsara-integration ── shares Postgres `groups` table ─┘ 
 ```
 
 `index.js` responsibilities: validate distinct Telegram polling tokens, run
-`db.initializeDatabase()`, wire Telegram instances into the ETA / location /
+`db.initializeDatabase()`, wire Telegram instances into the location /
 Facebook services, start the Express server + Telegraf bot + ~13 background
 services, spawn and supervise the Python leads-bot (exponential-backoff restart
 + circuit breaker; exit code 78 = permanent config error), and perform graceful
@@ -80,22 +80,20 @@ organization should converge toward.
 | **Home-time violation alerts** — Bitrix pipeline 33 → accounting | pure: `lib/homeTime/violations.js`; data: `database/homeTime/violationNotices.js` (migration 0079) + the three `violation_alerts_*` columns on `home_time_settings`; the pass and the webhook's work: `services/homeTime/violationAlerts.js` (reads Bitrix through `services/bitrix24DealStages.js` `callBitrix`); the webhook: `server/routes/homeTimeViolationWebhookRoutes.js`; the buttons and the reason: `bot/handlers/homeTimeViolationHandlers.js`; settings: `server/routes/homeTime/settingsRoutes.js`, `admin/src/pages/homeTime/ViolationAlertsCard.jsx`; the webhook secret (created in the app, stored encrypted, migration 0080): `services/homeTime/violationWebhookSecret.js`, `admin/src/pages/homeTime/ViolationWebhookLink.jsx` |
 | **Telegram identity** — which account is which human | the rule: `lib/identity/telegramResolution.js`; the table: `database/driverPeople/telegramIdentities.js` (migration 0049); the check: `services/operations/checks/telegramIdentity.js`; the write: `services/operations/corrections/telegramActions.js` (the matched candidate, or the one a person confirmed); the name comparison: `lib/drivers/nameTolerance.js` |
 | Unit-number & driver-name parsing from group titles | `lib/drivers/driverGroupTitle.js` (central parser, reused widely) |
-| **The Dispatcher Board** — read only for Home Time's home-in / home-out | pure: `lib/board/{parse,truck,rowKey,statusSemantics}.js`, `lib/drivers/fleetType.js`, `lib/identity/boardResolution.js` (which person a row names); settings: `database/dispatchBoardSettings.js`, `server/routes/settings/dispatchBoardRoutes.js`, `admin/src/pages/settings/DispatcherBoardTab.jsx` + `settings/dispatcherBoard/FeedCard.jsx` (and `EtaTrackingCard.jsx`, which arrived with the Dispatch Center's removal rather than by design); transport: `services/dispatchBoard/client.js`; the snapshot and its ONE writer: `database/dispatchBoard.js`, `services/dispatchBoard/poller.js`; rows to people at read time: `services/dispatchBoard/rowPeople.js`; the one reader: `lib/homeTime/boardPresence.js` + `services/homeTime/boardPresenceWatch.js`. The board checks, person-link correction and board-vs-Home-Time contradictions were removed in October 2026 (keys in `services/operations/checks/retired.js`; `docs/architecture/dispatcher-board.md`) |
+| **The Dispatcher Board** — read only for Home Time's home-in / home-out | pure: `lib/board/{parse,truck,rowKey,statusSemantics}.js`, `lib/drivers/fleetType.js`, `lib/identity/boardResolution.js` (which person a row names); settings: `database/dispatchBoardSettings.js`, `server/routes/settings/dispatchBoardRoutes.js`, `admin/src/pages/settings/DispatcherBoardTab.jsx` + `settings/dispatcherBoard/FeedCard.jsx` (the ETA card that sat beside it went with the ETA feature, October 2026); transport: `services/dispatchBoard/client.js`; the snapshot and its ONE writer: `database/dispatchBoard.js`, `services/dispatchBoard/poller.js`; rows to people at read time: `services/dispatchBoard/rowPeople.js`; the one reader: `lib/homeTime/boardPresence.js` + `services/homeTime/boardPresenceWatch.js`. The board checks, person-link correction and board-vs-Home-Time contradictions were removed in October 2026 (keys in `services/operations/checks/retired.js`; `docs/architecture/dispatcher-board.md`) |
 | **The control channel** — answering Wenze in Telegram | pure: `lib/control/{intent,askable,fingerprint,buttons}.js`; data: `database/{controlSettings,controlOperators,controlReplies,controlKnowledge}.js` + the question columns and health counts in `database/operationalNotifications.js` → `operationalNotificationHealth.js`; asking: `services/control/askPass.js` (on the consistency timer); the morning summary: `services/control/dailyDigest.js` → `lib/control/digest.js` + `database/controlDigest.js`; answering: `bot/controlReplyHandlers.js` → `services/control/replyHandler.js` (a typed reply) or `services/control/buttonHandler.js` (a tap on a question's buttons) → `services/control/answerQuestion.js` (shared) → `services/control/actions.js` (the ONLY writer; a choice question's Working / Not working goes to `services/operations/corrections/statusActions.js`); reading a reply the rules could not: `services/control/aiIntent.js` (the one AI seam, reached only on `unclear`); remembering: `services/control/memory.js`; admin: `server/routes/settings/controlRoutes.js`, `admin/src/pages/settings/control/{ControlChannelCard,RememberedAnswers}.jsx` |
 | **The Groups page** — five views over one list | the classifier: `admin/src/pages/groups/driverProfileShaping.js groupView`; the page: `admin/src/pages/GroupsPage.jsx` + `groups/*`; the open questions beside each row: `database/driverGroupDirectory.js`; retyping a chat: `services/operations/corrections/groupActions.js` (ends the person layer's placeholder named after the chat itself) |
-| Driver/unit fuzzy lookup vs group titles | `services/driverStatusLookupService.js` |
 | Truck GPS fallback chain (Samsara → Factor ELD → Leader ELD) | `services/liveLocationResolver.js` (orchestrator, `withTransientRetries`) |
 | Samsara GPS lookup | `services/samsaraLocationService.js` |
 | Factor / Leader ELD (Drive HoS platform) | `services/driveHosEldService.js` |
-| ETA / routing | `services/etaRoutingService.js`, `services/dispatchEtaUpdateService.js`, `services/dispatchPinnedContextService.js` |
-| Datatruck active-load lookups | `services/datatruckLoadService.js`, `services/datatruckApiService.js`, `services/recentLoadSelection.js`, `services/loadTextPatterns.js`, `services/loadWindowParse.js` |
+| ETA / routing (Live Locations) | `services/etaRoutingService.js` |
+| Datatruck active-load lookups | `services/datatruckLoadService.js`, `services/datatruckApiService.js`, `services/loadWindowParse.js` |
 | Geocoding | `services/geocoder.js` |
-| Dispatch Telegram commands (`/location`, `/status`, `/load`, `/update`) | `bot/dispatchStatusLookupHandlers.js`, `bot/dispatchStatusLookupSession.js` |
+| Dispatch Telegram command `/location` | `bot/handlers/dispatchCommandHandlers.js` (over `services/liveLocationResolver.js`) |
 | Datatruck peer-bot reactions/banter | `bot/datatruckPeerHandlers.js`, `services/datatruckPeerBotService.js`, `services/datatruckPeerPatterns.js`, `services/datatruckBanterMessage.js` |
-| Rate-con text extraction (for pinned context) | `server/services/dispatchParserService.js` `extractRateConRawTextFromFile` + `dispatchParser/{textExtraction,constants}.js` — the model-read half went with the Dispatch Center |
-| Automatic ETA updates — admin API / UI | `server/routes/dispatchEtaRoutes.js` (`/api/dispatch/testing-feature/*`), `admin/src/pages/settings/dispatcherBoard/{EtaTrackingCard.jsx,useEtaTracking.js,ToggleSwitch.jsx,helpers.js}` on the Dispatcher Board settings tab |
 | Gross Grand Prix displays (`/dispatch`, `/dispatchteam`) | pure: `services/grossRace/{week,standings}.js`; the held week and the Datatruck reads: `services/grossRace/feed.js` (`fetchOrdersByPickupDate` in `services/datatruckApiService.js`); `server/routes/grossRaceRoutes.js` (public `GET /api/gross-race`); `admin/src/pages/grossRace/`. `docs/architecture/gross-race.md` |
 | **Retired** | The Dispatch Center at `/dispatch` — Send Load, its rate-confirmation parser, and the per-group diagnostics expander. `docs/architecture/retired-dispatch-center.md` |
+| **Retired** | The dispatcher ETA updates, `/update`, `/status`, `/load`, the pinned-load reading and the stored recent loads (October 2026). `docs/architecture/retired-dispatch-eta.md` |
 
 ### 3. Recruiting / Lead Pipeline Module
 
@@ -167,8 +165,8 @@ organization should converge toward.
 | Deciding what may be read, and what a reading means | `lib/finance/documentPolicy.js` (intake, read path, outcome, backoff), `lib/finance/documentPrompt.js` (the fenced prompt, the validator, the whitelist) — both pure |
 | The weekly summary: when it is due, what it says, and sending it once | `lib/finance/schedule.js` (Monday 08:00 America/Chicago, DST-correct), `lib/finance/weeklyReport.js` (the words; it adds nothing up), `database/finance/reports.js` (every figure COUNT/SUM in SQL), `services/finance/weeklyReportService.js`, table `finance_reports` (migration 0054), worker key `finance_weekly_report` |
 | Reading the attachments, one at a time | `services/finance/documentReader.js`, `services/finance/telegramFileDownload.js`, table `finance_documents` (migration 0053), worker key `finance_document_reader` |
-| Getting text out of a PDF or an image | `services/documents/pdfTextExtraction.js` — shared with the pinned rate-confirmation reader; `allowOcr: false` is how finance keeps tesseract.js off its path entirely |
-| The photo/document shapes of a Telegram message | `lib/telegram/fileDescriptor.js` — moved out of `services/pinnedContext/pinnedSource.js`, which re-exports it |
+| Getting text out of a PDF | `services/documents/pdfTextExtraction.js` — the pinned rate-confirmation reader that shared it is gone; `allowOcr: false` is how finance keeps tesseract.js off its path entirely |
+| The photo/document shapes of a Telegram message | `lib/telegram/fileDescriptor.js` — moved out of the pinned-load reader, which is gone |
 
 | The one screen that shows the text | `server/routes/financeRoutes.js` (mounted `/api/finance`), `admin/src/pages/FinancePage.jsx` + `pages/finance/*`, `admin/src/api/financePage.js` |
 
@@ -277,8 +275,6 @@ repository exceeds 500 lines (`npm run lint:filesize`, no baseline).
 | `server/routes/settingsRoutes.js` | `server/routes/settings/{eld,ringcentral,messageGroup,samsara,safetyEvent,bitrix,retiredLeftovers}Routes.js` |
 | `server/routes/homeTimeRoutes.js` | `server/routes/homeTime/{rowShaping,tracker,import,settings,groupAccess}Routes.js` — registration ORDER is load-bearing |
 | `server/routes/facebookConnectRoutes.js` | `server/routes/facebookConnect/{connectPages,internal,oauth,inspection}Routes.js` — one guard per file, three different auth models |
-| `server/services/dispatchParserService.js` | `server/services/dispatchParser/{constants,textExtraction}.js` — was 9 modules; the seven that read a rate confirmation with a model went with the Dispatch Center |
-| `services/dispatchPinnedContextService.js` | `services/pinnedContext/*.js` |
 | `services/liveLocationsService.js` | `services/liveLocations/*.js` |
 | `services/aiInsightsService.js` | `services/aiInsights/*.js` |
 | `services/mileageBonusService.js` | `services/mileageBonus/*.js` — `runState.js` owns the run lock |
@@ -288,7 +284,7 @@ repository exceeds 500 lines (`npm run lint:filesize`, no baseline).
 
 Admin pages follow the same shape — a container that only lays out and wires,
 over `admin/src/pages/<area>/` holding data hooks and presentational sections:
-`dispatch/`, `homeTime/`, `broadcast/`, `liveLocations/`,
+`homeTime/`, `broadcast/`, `liveLocations/`,
 `groups/`, `facebookLeads/`, plus
 `admin/src/components/shared/` for the message-composer pieces.
 
@@ -304,7 +300,6 @@ over `admin/src/pages/<area>/` holding data hooks and presentational sections:
 | `facebook_lead_sms_mirrors` | Two-way SMS reply mis-routing / duplicates |
 | `service_runs` | Duplicate scheduled runs (e.g. the weekly finance report) |
 | `responses` (`ON CONFLICT (driver_id, question_id) DO NOTHING`) | Duplicate survey answers |
-| `dispatch_eta_updates` (`processing` claim + `FOR UPDATE SKIP LOCKED`) | Double-processing across instances |
 | `mileage_bonus_runs` | Double milestone runs |
 | `finance_messages` (`ON CONFLICT (chat_id, message_id) DO NOTHING`) and `finance_moneycodes` (`ON CONFLICT (message_ref_id, code_normalized)`) | A redelivered or replayed finance message becoming a second row, or a re-read double-counting a code |
 | `finance_documents` (UNIQUE `(chat_id, message_id, file_unique_id)`; claimed with `FOR UPDATE SKIP LOCKED` + attempts counted at claim) | The same attachment queued twice, two readers taking one document, and a crash loop retrying a poisoned row forever |

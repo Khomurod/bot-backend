@@ -16,7 +16,6 @@ const driverProfilesDb = require('./driverProfiles');
 const driversDb = require('./drivers');
 const groupMembersDb = require('./groupMembers');
 const questionsDb = require('./questions');
-const dispatchEtaDb = require('./dispatchEta');
 const scheduledMessagesDb = require('./scheduledMessages');
 const broadcastsDb = require('./broadcasts');
 const leadsDb = require('./leads');
@@ -298,7 +297,6 @@ module.exports = {
   ...driversDb,
   ...groupMembersDb,
   ...questionsDb,
-  ...dispatchEtaDb,
   ...scheduledMessagesDb,
   ...broadcastsDb,
   ...leadsDb,

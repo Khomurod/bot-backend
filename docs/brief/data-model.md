@@ -193,9 +193,9 @@ not `facebookCrypto` — the poller holds none of this app's secrets.
   does not fix the other.**
   - **Per-driver lookups go through `liveLocationResolver`** (Samsara → Factor →
     Leader, with transient retries): `/location`
-    (`bot/handlers/dispatchCommandHandlers.js`), ETA updates and the `/status`
-    snapshot (`dispatchEtaUpdateService.js`), and dispatch test diagnostics.
-    (Fuel alerts used it too, until fuel was removed in October 2026.)
+    (`bot/handlers/dispatchCommandHandlers.js`). (Fuel alerts used it too, until
+    fuel was removed in October 2026, and so did the ETA updates and `/status`
+    until they were removed on 2026-10-23.)
   - **Batch/fleet fetches do NOT use it.** The Live Locations map
     (`liveLocationsService.js`) calls `samsaraLocationService` / `driveHosEldService`
     directly and re-implements the same provider order, and the duplicate-unit

@@ -18,17 +18,13 @@ const { registerLocationCheckinHandlers } = require('./locationCheckinHandlers')
 const { registerCreatorMessageManager } = require('./creatorMessageManager');
 const { registerCreatorControlPanel } = require('./creatorBroadcastHandlers');
 const { registerAnonymousFeedbackHandlers } = require('./anonymousFeedbackHandlers');
-const { registerDispatchStatusLookupHandlers } = require('./dispatchStatusLookupHandlers');
 const { registerGroupCaptureHandlers } = require('./handlers/groupCaptureHandlers');
 const { registerFinanceCaptureHandlers } = require('./handlers/financeCaptureHandlers');
 const { registerSafetyApprovalHandlers } = require('./handlers/safetyApprovalHandlers');
 const { registerHiringStageHandlers } = require('./handlers/hiringStageHandlers');
 const { registerControlReplyHandlers } = require('./controlReplyHandlers');
 const { registerHomeTimeViolationHandlers } = require('./handlers/homeTimeViolationHandlers');
-const {
-  registerDispatchCommands,
-  registerStatusCommand,
-} = require('./handlers/dispatchCommandHandlers');
+const { registerDispatchCommands } = require('./handlers/dispatchCommandHandlers');
 const { registerStartHandler } = require('./handlers/startHandlers');
 const { registerSurveyCallbackHandlers } = require('./handlers/surveyCallbackHandlers');
 const { createBotSenders } = require('./senders');
@@ -61,13 +57,6 @@ let botInitialized = false;
 
 // ─── Rate-limit sleep helper ───
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
-
-// NOTE: the old status-toggle helpers (buildCollapsedStatusMessage,
-// buildStatusToggleMarkup, buildExpandedStatusMessage) were removed here.
-// They were unreachable: never called, never exported, no `status_toggle:`
-// callback handler exists anywhere, and buildExpandedStatusMessage referenced
-// dispatchEtaUpdateService functions that were never imported, so calling it
-// would have thrown a ReferenceError.
 
 function isPollingConflict(err) {
   const description = err?.response?.description || err?.message || '';
@@ -209,22 +198,17 @@ async function startBot() {
     // via copyMessage. Reuses the shared broadcast targeting service.
     registerCreatorControlPanel(bot);
 
-    // Dispatcher group commands: /load, /location, /update.
+    // Dispatcher group command: /location. (/load, /update and /status went
+    // with the dispatcher ETA feature, October 2026.)
     registerDispatchCommands(bot);
 
     // /start: group welcome + admin-grant deep link, private anonymous feedback.
     registerStartHandler(bot);
 
-    // Anonymous feedback flow (private chat only). Registered before the test-hub
-    // /status lookup so its private-chat /cancel and text handling take priority;
-    // it falls through (next) for group chats so group behavior is unchanged.
+    // Anonymous feedback flow (private chat only). Its private-chat /cancel and
+    // text handling run before the handlers below; it falls through (next) for
+    // group chats so group behavior is unchanged.
     registerAnonymousFeedbackHandlers(bot);
-
-    // Test hub: interactive driver lookup for /status (before driver-group /status).
-    registerDispatchStatusLookupHandlers(bot);
-
-    // Dispatcher status helper: always available, even if auto updates are disabled.
-    registerStatusCommand(bot);
 
     // Move / No / search-again on the Bitrix stage proposals in the
     // recruiting group's General topic (services/hiringStages/actions.js).

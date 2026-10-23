@@ -15,7 +15,6 @@ export * from './api/groups';
 export * from './api/questions';
 export * from './api/broadcast';
 export * from './api/media';
-export * from './api/dispatchEta';
 export * from './api/scheduled';
 export * from './api/leads';
 export * from './api/aiReports';

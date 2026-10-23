@@ -26,13 +26,17 @@ const SURVIVING_TABLES = [
   'scheduled_messages', 'admins', 'roles', 'permissions', 'role_permissions',
   'admin_user_roles', 'admin_audit_log', 'facebook_leads', 'recruiters',
   'ringcentral_calls', 'home_time_settings', 'mileage_bonus_notifications',
-  'driver_road_history', 'dispatch_eta_updates', 'safety_event_video_jobs',
+  'driver_road_history', 'safety_event_video_jobs',
   'database_transfer_usage', 'schema_migrations', 'bot_sent_messages',
   'employee_birthdays', 'bitrix_settings', 'bot_access_settings',
   // Survivors whose NAMES sit next to retired ones — the easiest to sweep up
   // by mistake. The Dispatcher Board stayed for Home Time (October 2026).
+  // `dispatch_eta_updates` was listed here until the dispatcher ETA feature
+  // was removed (October 2026); it is a leftover now. `chat_logs` and the AI
+  // insight tables share its old baseline segment and stay.
   'dispatch_board_settings', 'dispatch_board_rows', 'driver_people',
   'message_group_settings', 'mileage_bonus_progress',
+  'chat_logs', 'chat_message_annotations', 'ai_insights',
 ];
 
 test('the allow-list contains no table belonging to a surviving feature', () => {

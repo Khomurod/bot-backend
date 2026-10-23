@@ -240,13 +240,14 @@ test('a drop SURVIVES the next boot — schema.sql does not recreate it', { skip
 });
 
 test('THE OCTOBER 2026 GROUPS: dropped on a deployed database, they stay dropped', { skip: skipWithoutPg() }, async (t) => {
-  // Route Control, the driver-raise review, BOL/POD and fuel. Three of their
+  // Route Control, the driver-raise review, BOL/POD, fuel and the dispatcher
+  // ETA updates with the pinned-load reading. Three of their
   // tables are still created by the baseline — but only on a BRAND-NEW
   // database, for the first boot's migrations. A deployed database has the
   // ledger, so the next boot must not bring any of them back.
   const harness = await createPgHarness(t);
   const leftovers = await loadLeftovers(harness);
-  const groups = ['route_control', 'driver_raise', 'bol_pod', 'fuel'];
+  const groups = ['route_control', 'driver_raise', 'bol_pod', 'fuel', 'dispatch_eta'];
   const tables = leftovers.tablesForGroups(groups);
   const present = async () => (await harness.query(
     `SELECT table_name FROM information_schema.tables
@@ -261,6 +262,11 @@ test('THE OCTOBER 2026 GROUPS: dropped on a deployed database, they stay dropped
   await harness.query('CREATE TABLE IF NOT EXISTS schema_migrations (version TEXT PRIMARY KEY)');
   await harness.query('INSERT INTO route_assignments (group_id) VALUES (NULL)');
   await harness.query('CREATE TABLE raise_rounds (id SERIAL PRIMARY KEY)');
+  // The ETA tables as a deployed database has them: referencing groups, with rows.
+  await harness.query(`CREATE TABLE dispatch_eta_updates (
+    id SERIAL PRIMARY KEY, group_id INTEGER REFERENCES groups(id) ON DELETE CASCADE)`);
+  await harness.query('CREATE TABLE group_pinned_messages (id SERIAL PRIMARY KEY, group_id INTEGER)');
+  await harness.query('INSERT INTO group_pinned_messages (group_id) VALUES (1)');
 
   const result = await leftovers.dropRetiredTables({ groupKeys: groups });
   assert.deepEqual(result.blocked || [], [], JSON.stringify(result));

@@ -1,75 +1,20 @@
 /**
- * Dispatcher group commands: /load, /location, /update, and /status.
+ * Dispatcher group command: /location (live truck location).
  *
- * Moved verbatim from bot/bot.js. /status is registered separately
- * (registerStatusCommand) because bot.js must register the anonymous-feedback
- * and test-hub status-lookup handlers BETWEEN the other commands and /status —
- * their private-chat text handling has to take priority.
+ * Moved verbatim from bot/bot.js. /load, /update and /status lived here too
+ * until the owner removed the dispatcher ETA feature and the pinned-load
+ * reading on 23 October 2026 — see docs/architecture/retired-dispatch-eta.md.
+ * Loads are read from the Dispatcher Board and Datatruck now; /location reads
+ * only the telematics providers and never needed the load.
  */
-const db = require('../../database/db');
-const { readLoadContextWithFallbacks } = require('../../services/dispatchPinnedContextService');
 const { resolveLiveLocationForGroupTitle } = require('../../services/liveLocationResolver');
 const {
   buildLocationSummaryLines,
   buildStrictMismatchBlockMessage,
   isLocationDriverNameStrict,
 } = require('../../lib/drivers/driverGroupTitle');
-const {
-  triggerDispatchEtaNowByGroupId,
-  NO_CURRENT_LOAD_INFO_MESSAGE,
-} = require('../../services/dispatchEtaUpdateService');
-const { runStatusSnapshotDetached } = require('../../services/statusSnapshotDetached');
-const {
-  isDispatchEtaTestHub,
-  handleTestHubStatusCommand,
-} = require('../dispatchStatusLookupHandlers');
 
 function registerDispatchCommands(bot) {
-  // Summarize resolved load context (stored recent loads → pin → chat history). No GPS.
-  bot.command('load', async (ctx) => {
-    try {
-      const chatType = ctx.chat?.type;
-      if (chatType !== 'group' && chatType !== 'supergroup') {
-        await ctx.reply('Use /load inside a driver group chat.');
-        return;
-      }
-
-      const group = await db.getGroupByTelegramId(ctx.chat.id);
-      if (!group || group.group_type !== 'driver' || !group.active) {
-        await ctx.reply('This command works only in active driver groups.');
-        return;
-      }
-
-      const context = await readLoadContextWithFallbacks({
-        telegram: bot.telegram,
-        chatId: ctx.chat.id,
-        group,
-        groupId: group.id,
-      });
-
-      const lines = [];
-      // When Datatruck is the source, lead with the load number + status it now
-      // provides (the shared current-load service). Other fallback sources have
-      // no structured load id, so these lines are simply omitted for them.
-      if (context.loadIdentifier) lines.push(`Load #: ${context.loadIdentifier}`);
-      if (context.status) lines.push(`Status: ${context.status}`);
-      lines.push(
-        `Resolved from: ${context.source}`,
-        `Pickup: ${context.pickupSummary || '—'}`,
-        `Delivery: ${context.deliverySummary || '—'}`,
-        `Destination (routing): ${context.destinationQuery || '—'}`,
-      );
-      await ctx.reply(lines.join('\n'));
-    } catch (err) {
-      if (err?.code === 'LOAD_CONTEXT_NOT_FOUND') {
-        await ctx.reply(NO_CURRENT_LOAD_INFO_MESSAGE);
-        return;
-      }
-      console.error('[BOT] /load failed:', err.message);
-      await ctx.reply('Could not resolve load context right now.');
-    }
-  });
-
   // Dispatcher helper: post live truck location for this group's unit number.
   bot.command('location', async (ctx) => {
     try {
@@ -118,88 +63,6 @@ function registerDispatchCommands(bot) {
       await ctx.reply('Could not fetch live location right now. Please try again in a minute.');
     }
   });
-
-  // Dispatcher ETA helper: manually trigger immediate ETA update if feature is enabled.
-  bot.command('update', async (ctx) => {
-    try {
-      const chatType = ctx.chat?.type;
-      if (chatType !== 'group' && chatType !== 'supergroup') {
-        await ctx.reply('Use /update inside a driver group chat.');
-        return;
-      }
-
-      const group = await db.getGroupByTelegramId(ctx.chat.id);
-      if (!group || group.group_type !== 'driver' || !group.active) {
-        await ctx.reply('This command works only in active driver groups.');
-        return;
-      }
-
-      const setting = await db.getDispatchEtaSettingByGroupId(group.id);
-      if (!setting || !setting.enabled) {
-        await ctx.reply('ETA updates are currently turned off for this group.');
-        return;
-      }
-
-      await ctx.reply('Running ETA update now...');
-      const result = await triggerDispatchEtaNowByGroupId(group.id);
-      if (result?.success) {
-        await ctx.reply('ETA update sent.');
-        return;
-      }
-
-      if (result?.triggered === false && result?.reason === 'not_enabled_or_already_processing') {
-        await ctx.reply('ETA update is already running. Please wait a moment.');
-        return;
-      }
-
-      const detail = result?.error || 'Unknown error';
-      await ctx.reply(`ETA update failed: ${detail}`);
-    } catch (err) {
-      console.error('[BOT] /update failed:', err.message);
-      await ctx.reply('Could not run ETA update right now. Please try again shortly.');
-    }
-  });
 }
 
-// Dispatcher status helper: always available, even if auto updates are disabled.
-function registerStatusCommand(bot) {
-  bot.command('status', async (ctx) => {
-    try {
-      const chatType = ctx.chat?.type;
-      if (chatType !== 'group' && chatType !== 'supergroup') {
-        await ctx.reply('Use /status inside a driver group chat.');
-        return;
-      }
-
-      const testHub = await isDispatchEtaTestHub(ctx);
-      if (testHub) {
-        await handleTestHubStatusCommand(ctx);
-        return;
-      }
-
-      const group = await db.getGroupByTelegramId(ctx.chat.id);
-      if (!group || group.group_type !== 'driver' || !group.active) {
-        await ctx.reply('This command works only in active driver groups.');
-        return;
-      }
-
-      await ctx.reply('Building status update...');
-      const telegram = ctx.telegram;
-      const destinationChatId = ctx.chat.id;
-      const driverGroup = group;
-
-      runStatusSnapshotDetached({
-        telegram,
-        driverGroup,
-        destinationChatId,
-        targetMode: 'driver',
-        interactive: true,
-      }).catch(() => {});
-    } catch (err) {
-      console.error('[BOT] /status failed:', err.message);
-      await ctx.reply('Could not build current status right now. Please try again shortly.');
-    }
-  });
-}
-
-module.exports = { registerDispatchCommands, registerStatusCommand };
+module.exports = { registerDispatchCommands };

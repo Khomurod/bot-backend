@@ -36,6 +36,18 @@
   return-to-road and the load watch report their own ELD failures. The sales
   deck (`server/presentation/`) still shows fuel scenes, by the owner's choice.
   See `docs/architecture/retired-fuel.md`.
+- **The dispatcher ETA updates, `/update`, `/status`, `/load` and the
+  pinned-load reading were removed (2026-10-23)**, at the owner's request:
+  loads are read from the Dispatcher Board and Datatruck, never from a pinned
+  message or a screenshot, and a pinned message is no longer recorded. No
+  `dispatch_eta` worker, no ETA card on Settings → Dispatcher Board, no
+  `/api/dispatch/*` (404), no `dispatch_load_extraction` AI capability.
+  `dispatch_eta_updates`, `dispatch_eta_global_settings`, `group_recent_loads`
+  and `group_pinned_messages` are read by nothing and are on Settings → Retired
+  Leftovers' list (group `dispatch_eta`); the `dispatch_eta` health rows are
+  deleted by migration 0081. **`/location` and Live Locations' own ETA stay.**
+  The sales deck (`server/presentation/`) no longer lists the removed commands.
+  See `docs/architecture/retired-dispatch-eta.md`.
 - **FleetView is archived, not present.** No `fleet/`, no `server/fleet/`, no
   `/update` SPA, no `/api/v1/*`. It is preserved at the git tag
   `archive/fleetview-disabled`, its tables were deliberately **not** dropped, and
@@ -43,7 +55,8 @@
   mention in older docs as historical. See `docs/ARCHIVED_FEATURES.md`.
   **`/updater` in this repository was never FleetView** — it was the "Updaters"
   department of the SOS questionnaire, which went with QBQ/SOS. The Telegram
-  `/update` command is a live dispatcher ETA helper and is unrelated to both.
+  `/update` command (a dispatcher ETA helper) was unrelated to both, and was
+  itself removed with the ETA updates in October 2026.
 - **Retired features whose data was kept**: the driver location check-in /
   "Checked In / Checked Out" monitor (`driver_location_monitors`,
   `driver_location_checkins`), employee voting polls (`employee_votes*`), and the

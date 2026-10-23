@@ -42,19 +42,11 @@ CREATE INDEX IF NOT EXISTS idx_bot_sent_messages_forward_lookup
 CREATE INDEX IF NOT EXISTS idx_bot_sent_messages_recent
   ON bot_sent_messages (sent_at DESC NULLS LAST, id DESC);
 
--- TABLE: group_pinned_messages
--- Stores the latest pinned-message snapshot we observed in updates for each
--- driver group, so ETA parsing can use the newest pin event reliably.
-CREATE TABLE IF NOT EXISTS group_pinned_messages (
-  id SERIAL PRIMARY KEY,
-  group_id INTEGER NOT NULL UNIQUE REFERENCES groups(id) ON DELETE CASCADE,
-  telegram_group_id BIGINT NOT NULL,
-  pinned_message_id BIGINT NOT NULL,
-  pinned_message_json JSONB NOT NULL,
-  source_event_message_id BIGINT,
-  source_event_at TIMESTAMP,
-  created_at TIMESTAMP DEFAULT NOW(),
-  updated_at TIMESTAMP DEFAULT NOW()
-);
+-- group_pinned_messages (the latest pinned-message snapshot per driver group)
+-- is no longer created: its only reader, the pinned-load reading behind the
+-- ETA updates, /load and /status, was removed in October 2026
+-- (docs/architecture/retired-dispatch-eta.md). A deployed database keeps the
+-- table until an administrator drops it from Settings → Retired feature
+-- leftovers. See 008_dispatch_eta_and_loads.sql.
 
 -- Facebook Leads self-serve connect flow

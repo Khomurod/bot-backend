@@ -128,18 +128,6 @@ CREATE TABLE IF NOT EXISTS facebook_lead_sms_mirrors (
 ALTER TABLE facebook_lead_sms_mirrors
   ADD COLUMN IF NOT EXISTS source_type TEXT NOT NULL DEFAULT 'outbound_auto';
 
-ALTER TABLE group_pinned_messages ADD COLUMN IF NOT EXISTS group_id INTEGER;
-ALTER TABLE group_pinned_messages ADD COLUMN IF NOT EXISTS telegram_group_id BIGINT;
-ALTER TABLE group_pinned_messages ADD COLUMN IF NOT EXISTS pinned_message_id BIGINT;
-ALTER TABLE group_pinned_messages ADD COLUMN IF NOT EXISTS pinned_message_json JSONB;
-ALTER TABLE group_pinned_messages ADD COLUMN IF NOT EXISTS source_event_message_id BIGINT;
-ALTER TABLE group_pinned_messages ADD COLUMN IF NOT EXISTS source_event_at TIMESTAMP;
-ALTER TABLE group_pinned_messages ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW();
-ALTER TABLE group_pinned_messages ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW();
-
-CREATE INDEX IF NOT EXISTS idx_group_pinned_messages_updated_at
-  ON group_pinned_messages(updated_at DESC);
-
 -- ─── AI Reports (Human-in-the-Loop) ───
 CREATE TABLE IF NOT EXISTS ai_reports (
   id SERIAL PRIMARY KEY,

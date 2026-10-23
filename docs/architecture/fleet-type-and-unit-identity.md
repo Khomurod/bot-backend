@@ -135,7 +135,7 @@ it returns whichever row Postgres handed back first.
 | `checks/identity.js` `checkDuplicateUnits` | buckets by `fleet:unit`, and falls back to the bare number the moment ONE claimant is unplaceable |
 | `checks/identityLayer.js` | `unitsByNumber` returns a LIST (it silently kept only the last row before); `holdersInWay` decides who actually collides |
 | `services/duplicateUnitCheckService.js` | same bucketing for its legacy reports. Its Samsara link needed no change — the exclusivity rule already refuses to link a vehicle claimed by more than one group |
-| `services/driverStatusLookupService.js` | candidates carry `fleetType`, so a disambiguation list can say which truck each match is |
+| `services/driverStatusLookupService.js` (removed 2026-10-23 with `/status`, `retired-dispatch-eta.md`) | candidates carried `fleetType`, so a disambiguation list could say which truck each match was |
 | `services/broadcastTargetService.js` | see below — the one user-visible change |
 | admin | Lease Driver is selectable, labelled, and filterable; `driver_type` accepts `lease` through the API |
 

@@ -174,7 +174,7 @@ test('every provider down is an outage the consumers already know how to read â€
     (err) => {
       assert.equal(err.aiUnavailable, true);
       assert.equal(err.attemptErrors.length, 2, 'both providers were tried');
-      assert.equal(err.allRateLimited, true, 'the shape aiAnnotationService and dispatchParser already read');
+      assert.equal(err.allRateLimited, true, 'the shape aiAnnotationService already reads');
       return true;
     }
   );

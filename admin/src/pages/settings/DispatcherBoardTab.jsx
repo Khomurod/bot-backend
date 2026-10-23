@@ -2,8 +2,6 @@ import React, { useCallback, useEffect, useState } from "react";
 import * as api from "../../api";
 import { KeyField, NumField, Banner } from "./fields";
 import FeedCard from "./dispatcherBoard/FeedCard";
-import { EtaTrackingCard } from "./dispatcherBoard/EtaTrackingCard";
-import { useEtaTracking } from "./dispatcherBoard/useEtaTracking";
 
 /**
  * Settings → Dispatcher Board.
@@ -17,12 +15,8 @@ import { useEtaTracking } from "./dispatcherBoard/useEtaTracking";
  * counts and histograms, never rows: a settings screen has no business
  * rendering driver names or phone numbers to answer "did it connect".
  *
- * AUTOMATIC ETA UPDATES LIVE HERE TOO, and they arrived with the Dispatch
- * Center's removal rather than by design. They are a different thing from the
- * Board — one reads an external sheet, the other sends messages to drivers on a
- * schedule — but they are the two halves of "what this company's dispatchers
- * have Wenze doing", and this is the tab an administrator opens looking for
- * either. The alternative was a tab of its own for one card.
+ * The automatic ETA updates card that sat under the Board here went with the
+ * dispatcher ETA feature (October 2026, docs/architecture/retired-dispatch-eta.md).
  */
 
 function Row({ label, value }) {
@@ -67,10 +61,6 @@ function TestResult({ result }) {
 
 export default function DispatcherBoardTab() {
   const [settings, setSettings] = useState(null);
-  // The ETA card owns its own loading and errors; this page's banner is for the
-  // Board's own save and test, so the two never argue over one message slot.
-  const [etaMessage, setEtaMessage] = useState(null);
-  const eta = useEtaTracking(setEtaMessage);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -189,11 +179,6 @@ export default function DispatcherBoardTab() {
       <TestResult result={test} />
 
       <FeedCard />
-
-      <div style={{ marginTop: 24 }}>
-        <Banner message={etaMessage} />
-        <EtaTrackingCard {...eta} />
-      </div>
 
     </div>
   );

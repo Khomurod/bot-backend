@@ -60,10 +60,10 @@ migrations has shipped everywhere.
 | 002 | `feedback_questions` | questions/options/translations, responses |
 | 003 | `admins_and_bot_visibility` | admins, bot-visibility diagnostics |
 | 004 | `employee_engagement` | employee votes/polls, broadcasts, scheduled_messages |
-| 005 | `chat_logging` | chat_logs, bot_sent_messages, group_pinned_messages |
+| 005 | `chat_logging` | chat_logs, bot_sent_messages (group_pinned_messages no longer created — retired October 2026) |
 | 006 | `facebook_leads` | facebook_* connect/pages/webhooks/auto-message, ai_reports |
 | 007 | `birthdays_and_service_runs` | employee_birthdays(+settings), service_runs |
-| 008 | `dispatch_eta_and_loads` | dispatch_eta_*, group_recent_loads, annotations, ai_insights |
+| 008 | `dispatch_eta_and_loads` | indexes on surviving tables, annotations, ai_insights (dispatch_eta_* and group_recent_loads no longer created — retired October 2026) |
 | 009 | `mileage_bonus_and_leads` | mileage_bonus_*, leads |
 | 010 | `dispatch_teams` | dispatch_teams(+drivers/members) — retired, read by nothing |
 | 011 | `raise_approval` | raise_settings/rounds/submissions/picks/otp — retired, read by nothing |
@@ -98,6 +98,14 @@ migrations has shipped everywhere.
 > Segment 014 belongs to fuel, removed in October 2026. It stays for the same
 > reason: migration 0026 adds `fuel_stop_alerts.person_id`. `truck_fuel_readings`
 > (migration 0038) is retired too. See `docs/architecture/retired-fuel.md`.
+
+> The dispatcher ETA updates and the pinned-load reading were removed on
+> 2026-10-23. `dispatch_eta_updates`, `dispatch_eta_global_settings`,
+> `group_recent_loads` (008) and `group_pinned_messages` (005, with its column
+> catch-up in 006) are no longer created; no migration alters them, so they need
+> no fresh-database stub. A deployed database keeps them until an administrator
+> drops them from Settings → Retired feature leftovers (group `dispatch_eta`).
+> See `docs/architecture/retired-dispatch-eta.md`.
 
 > BOL/POD forwarding was removed in October 2026. `datatruck_document_deliveries`
 > (013) and `bol_pod_forwarding_settings` (021) are still created and read by

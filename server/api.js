@@ -43,7 +43,6 @@ const {
   requirePermission,
 } = require('./middleware/auth');
 
-const dispatchEtaRoutes = require('./routes/dispatchEtaRoutes');
 const { createFacebookLeadsRouter } = require('./routes/facebookLeadsRoutes');
 const { createAuthRoutes } = require('./routes/authRoutes');
 const { createHealthRoutes } = require('./routes/healthRoutes');
@@ -170,9 +169,8 @@ app.use(mediaUploadRouter);
 
 // ─── Feature routers on dedicated path prefixes ───
 
-// Dispatch routes expose live GPS, Telegram group IDs, and send-to-Telegram
-// actions — they must never be reachable without an admin token.
-app.use('/api/dispatch', legacyAuthMiddleware, dispatchEtaRoutes);
+// `/api/dispatch/*` is gone: the dispatcher ETA testing panel's endpoints went
+// with the ETA feature (October 2026, docs/architecture/retired-dispatch-eta.md).
 app.use('/api/facebook-leads', createFacebookLeadsRouter({ authMiddleware: legacyAuthMiddleware }));
 
 // ─── Driver Home-Time Tracking ───

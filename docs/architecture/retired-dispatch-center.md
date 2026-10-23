@@ -1,4 +1,4 @@
-# The Dispatch Center, and what survived it
+# The Dispatch Center, and what survived it (until October 2026)
 
 **Retired:** 2026-09 · **Pre-removal commit:** `051870e2338d2986011f826eb8c88fc03ebfd3fe`
 
@@ -24,6 +24,16 @@ This document exists because **most of the removal is about what was kept**.
 | `api.parseDispatchRateCon`, `api.sendDispatchToTelegram`, `api.getDispatchTestingGroupDetails` | exactly three from the admin's public surface, and the `apiFacade` floor moved by exactly three |
 
 ## What was kept, and why each one has a caller
+
+> **Since 2026-10-23 none of this section is current.** The owner removed the
+> dispatcher ETA updates, `/update`, `/status`, `/load` and the pinned-load
+> reading; the ETA card, the `/api/dispatch/testing-feature/*` endpoints,
+> `extractRateConRawTextFromFile`, `dispatchEtaUpdateService`, the pinned
+> context and `database/dispatchEta.js` all went, and so did
+> `dispatch_load_extraction`. `etaRoutingService` (Live Locations),
+> `liveLocationResolver` (`/location`) and everything `datatruck*` remain. See
+> [`retired-dispatch-eta.md`](retired-dispatch-eta.md). What follows is the
+> reasoning as it stood in September 2026.
 
 **The ETA schedules.** `EtaTrackingTab` was the ONLY user interface for
 per-group ETA delivery and the global intervals. Deleting it with the page would
@@ -72,20 +82,21 @@ shell maps by path like `/recruiters`. A bookmark to the old Dispatch Center
 therefore opens the race now — a page that says plainly what it is, not a
 section of the admin panel pretending to be the removed one.
 
-`/api/dispatch` is **not** retired: the ETA endpoints under it are live. The
-list holds page paths only.
+`/api/dispatch` is not in the retired list either — it held the ETA endpoints
+until October 2026, and since their removal every path under it answers 404
+like any unknown API path. The list holds page paths only.
 
 ## Tests that hold this in place
 
 ```
-node --test tests/api-surface.test.js            # /dispatch/* → 410 (/dispatch is the race); the ETA API 401 then 200;
-                                                 # /api/dispatch/groups → 404 WITH a valid token
+node --test tests/api-surface.test.js            # /dispatch/* → 410 (/dispatch is the race);
+                                                 # /api/dispatch/groups and the ETA API → 404 WITH a valid token
 node --test tests/retiredRoutes.test.js          # every retired prefix answers 410
 node --test tests/removedFeaturesStayRemoved.test.js
 node --test tests/consumerAiGates.test.js        # one fewer file to check
-npm test --prefix admin -- --run apiFacade       # the surface floor, moved by exactly three
+npm test --prefix admin -- --run apiFacade       # the surface floor (225 since the ETA removal)
 ```
 
-The `/api/dispatch/groups` check is asserted **with a valid token on purpose**.
-The mount is still guarded, so an anonymous request is refused at the gate: a
-401 there would prove the auth middleware works, not that the route is gone.
+The `/api/dispatch/groups` check is asserted **with a valid token on purpose**:
+a 401 from some guard would prove an auth middleware works, not that the route
+is gone.

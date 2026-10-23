@@ -62,13 +62,13 @@ and every API client function is exactly what it was.
 
 ### Dispatch and location
 
-- **Group commands** `/load`, `/location`, `/status`, `/update` resolve live GPS
-  and the current load (Datatruck → pinned message → chat history fallbacks).
-- **ETA updates** — `dispatchEtaUpdateService.js` claims per-group rows with
-  `FOR UPDATE SKIP LOCKED` and pushes periodic ETA messages. Configured in
-  **Settings → Dispatcher Board**, where the card moved when the Dispatch Center
-  was retired ([`retired-dispatch-center.md`](../architecture/retired-dispatch-center.md));
-  it is the only UI for those schedules, which is why it outlived the page.
+- **Group command** `/location` posts the truck's live GPS position
+  (`services/liveLocationResolver.js`: Samsara → Factor ELD → Leader ELD).
+- **The dispatcher ETA updates, `/load`, `/status` and `/update` were removed**
+  (2026-10-23, the owner's decision), together with the pinned-load reading:
+  loads come from the Dispatcher Board and Datatruck, never from a pinned
+  message or a screenshot. See
+  [`retired-dispatch-eta.md`](../architecture/retired-dispatch-eta.md).
 - **Live Locations** — authenticated admin map (`liveLocationsService.js`); map
   tile URL is served only to logged-in admins, never baked into the bundle.
 - **Route Control was removed** (October 2026, the owner's decision): no

@@ -59,7 +59,7 @@ after deploy on the live service.
 
 | # | What / Why | How to check |
 |---|---|---|
-| B1 | Bot responds in the test group. | **[MANUAL]** Send `/status` or `/location` in a driver test group. |
+| B1 | Bot responds in the test group. | **[MANUAL]** Send `/location` in a driver test group. |
 | B2 | Bot recognizes driver group. | **[MANUAL]** Confirm the group is `active` + `driver` type; unit parsed from title. |
 | B3 | **Bot does not duplicate messages.** | **[AUTO]** `tests/safeSend.test.js`, `botSentMessageRegistry.test.js`; **[MANUAL]** one action = one message. |
 | B4 | Bot can send management notifications. | **[MANUAL]** Trigger a management-group post; confirm single delivery. |
@@ -102,9 +102,9 @@ after deploy on the live service.
 | D2 | GPS lookup via Samsara. | **[AUTO]** `samsaraLocationService.test.js`; **[MANUAL]** `/location` in a group. |
 | D3 | GPS fallback via Factor ELD. | **[AUTO]** `driveHosEldService.test.js`; **[MANUAL]** with Samsara disabled for a unit. |
 | D4 | GPS fallback via Leader ELD. | **[AUTO]** `driveHosEldService.test.js` (Leader company key path). |
-| D5 | ETA lookup works. | **[AUTO]** `etaRoutingService.test.js`, `dispatchEtaUpdateService.test.js`. |
+| D5 | ETA lookup works (Live Locations). | **[AUTO]** `etaRoutingService.test.js`. |
 | D6 | Datatruck active load lookup works. | **[AUTO]** `datatruckLoadService.test.js`, `datatruckApiService.test.js`. |
-| D7 | Driver group result is accurate. | **[AUTO]** `driverStatusLookupService.test.js`; **[MANUAL]** spot-check a known driver. |
+| D7 | Driver group result is accurate. | **[AUTO]** `driverGroupTitle.test.js`; **[MANUAL]** spot-check a known driver with `/location`. |
 | D8 | **The Gross Grand Prix shows this week's race, and the page holds no token.** | **[AUTO]** `grossRaceStandings.test.js`, `grossRaceFeed.test.js`, `grossRaceRoutes.test.js`, `grossRacePageVersion.test.js`, `api-surface.test.js`; **[PROD]** `/dispatch` and `/dispatchteam` show *Live* within a minute of opening; the rule line under the header shows this week's dates; `/dispatchteam?celebrate` shows the leader over the 3D car; `/dispatch` turns to its next five every ten seconds; **Full screen** turns into **Exit full screen**; after an admin deploy, a screen left open reloads itself within about a minute. |
 
 ---

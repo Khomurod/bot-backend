@@ -45,7 +45,8 @@ broadcasts, Live Locations and home-time tracking.
 
 - **The Datatruck client.** `services/datatruckApiService.js` is shared by Live
   Locations, the mileage bonus, the Gross Grand Prix, return-to-road detection
-  and, through `services/datatruckLoadService.js`, load control and `/load`. `fetchOrdersByDocumentWindow`, written for this feature, is
+  and, through `services/datatruckLoadService.js`, load control (and `/load`,
+  until it was removed on 2026-10-23). `fetchOrdersByDocumentWindow`, written for this feature, is
   still used by Live Locations (`services/liveLocations/orders.js`). The client
   never uploads anything.
 - **The tables** `datatruck_document_deliveries` (the only record of what was

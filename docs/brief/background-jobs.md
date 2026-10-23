@@ -33,7 +33,6 @@ without any timer firing), `tests/jobQueueScheduler.test.js` and
 | `schedulerService` | 60s + hourly retention | delivers due `scheduled_messages`; hourly, releases a claim a dead process left in `processing` 2h+ past its time — never re-sent: a weekly message that missed one run carries on next week, anything else is marked `failed` (`last_run_status = 'interrupted'`) for a person (a PTI reminder sat stuck May–October 2026) |
 | `dataRetention` (on the scheduler's hourly retention tick) | 1h | prunes the seven tables that grow — safety events, AI call log, coaching, resolved findings, finished notices, resolved duplicate reports, `service_runs` idempotency keys. Catalogued `data_retention` and recorded through `withRunRecord`, so a prune that stops is visible; it used to report only to `console.error` |
 | `telegramDestinationProbe` | 6h, first 2 min after boot | asks Telegram about every configured destination chat; a group upgraded to a supergroup is followed to its new id everywhere (settings, `groups` row, queued notices) before a send has to fail on it. Catalogued `telegram_destination_probe`; see `docs/architecture/operational-notifications.md` |
-| `dispatchEtaUpdateService` | 90s | per-group ETA updates, `FOR UPDATE SKIP LOCKED` claims |
 | `birthdayService` (drivers) | sleeps to the next 08:00, re-checks hourly (was 60s) | wishes at an hour/timezone **hardcoded in the module** (08:00 America/Chicago) — there is no settings row or env var for it |
 | `employeeBirthdayWishService` | sleeps to the configured send time, re-checks hourly (was 60s) | wishes at the `send_hour` / `send_minute` / `timezone` from `employee_birthday_settings` |
 | `groupStatusAiService` | 60s | AI classification of group activity |
@@ -63,13 +62,14 @@ without any timer firing), `tests/jobQueueScheduler.test.js` and
 
 Event-driven (no timer) but equally live: the driver-group message pipeline
 (`bot/handlers/groupCaptureHandlers.js`) fans a single incoming message out to
-home-time detection, auto-reactions, pinned-context snapshots, and the
-recent-message buffer.
+home-time detection, auto-reactions and the recent-message buffer. (It also
+recorded pinned-message snapshots until the pinned-load reading was removed on
+2026-10-23.)
 
 **None of this depends on a browser.** Every job above is started by
 `index.js` at boot and stopped only by the shutdown coordinator; no route, no
 login and no admin page starts, feeds or keeps one alive. Birthdays,
-Samsara/ELD reads, dispatch ETA and the alert queues all continue with the
+Samsara/ELD reads and the alert queues all continue with the
 admin panel closed — the panel is a viewer, never the engine. (Nothing in `server/routes/**` calls a
 `start*Service`, and no route module holds an interval at all.)
 
@@ -114,7 +114,6 @@ retry.**
 | `service_runs` | a scheduled service firing twice for one due window |
 | `facebook_webhook_events` (`leadgen:<pageId>:<leadgen_id>`) | a re-delivered Meta lead being posted twice; `telegram_posted_at` stops a RETRIED event posting it again |
 | `facebook_lead_sms_mirrors` | an SMS reply being mirrored twice |
-| `dispatch_eta_updates` claim pattern (`FOR UPDATE SKIP LOCKED`) | two ticks working the same row |
 | `driver_road_history.bonus_posted_at` (atomic claim) | a completed road leg being announced twice |
 | `responses` UNIQUE `(driver_id, question_id)` | a driver answering one question twice |
 
@@ -247,6 +246,13 @@ The fuel-stop reminder (`fuelStopAlertService`, 150 s) and the fuel risk watch
 `truck_fuel_readings`'s writer and `/api/health → operations.fuel`. The Samsara
 vehicle-stats request now asks for `gps` only.
 `docs/architecture/retired-fuel.md`.
+
+## Dispatcher ETA updates (removed October 2026)
+
+The 90-second ETA scheduler (`dispatchEtaUpdateService`, catalogued
+`dispatch_eta`) was removed at the owner's request with `/update`, `/status`,
+`/load` and the pinned-load reading. Migration 0081 deletes its health rows.
+`docs/architecture/retired-dispatch-eta.md`.
 
 ## Safety coach (every 6 hours, first pass 20 minutes after boot)
 

@@ -15,7 +15,6 @@ import {
   updateDispatchBoardSettings,
   testDispatchBoardConnection,
   getDispatchBoardFeed,
-  getDispatchTestingGroups,
 } from "../../api";
 
 vi.mock("../../api", () => ({
@@ -23,10 +22,6 @@ vi.mock("../../api", () => ({
   updateDispatchBoardSettings: vi.fn(),
   testDispatchBoardConnection: vi.fn(),
   getDispatchBoardFeed: vi.fn(),
-  getDispatchTestingGroups: vi.fn(),
-  updateDispatchTestingGroup: vi.fn(),
-  updateAllDispatchTestingGroups: vi.fn(),
-  saveDispatchEtaGlobalIntervals: vi.fn(),
 }));
 
 const BASE = "https://script.example.com/macros/s/AKfycbX/exec";
@@ -67,16 +62,6 @@ beforeEach(() => {
   updateDispatchBoardSettings.mockResolvedValue(stored());
   testDispatchBoardConnection.mockResolvedValue({ connected: true, message: "Read 3 row(s) from the board." });
   getDispatchBoardFeed.mockResolvedValue(feed());
-  getDispatchTestingGroups.mockResolvedValue({
-    dispatchEtaTestGroupId: "",
-    globalDriverIntervalMinutes: 60,
-    globalTestIntervalMinutes: 60,
-    groups: [{
-      group_id: 1, group_name: "WENZE UNIT # 310", telegram_group_id: -1002,
-      eta_enabled: false, eta_enabled_driver: false, eta_enabled_test: false,
-      eta_interval_minutes: 60, eta_last_status: null, eta_next_run_at: null,
-    }],
-  });
 });
 
 async function open() {
@@ -211,22 +196,14 @@ test("a feed that cannot be read says so instead of rendering an empty board", a
   expect(screen.queryByText("Rows on the board now")).not.toBeInTheDocument();
 });
 
-test("AUTOMATIC ETA UPDATES ARE CONFIGURED HERE — the card outlived its page", async () => {
-  // This screen is the ONLY interface for per-group ETA delivery and the global
-  // intervals. Deleting it with the Dispatch Center would have turned a page
-  // removal into a data change: rows editable only by hand in the database.
+test("the automatic ETA updates card is gone with the ETA feature", async () => {
+  // The owner removed the dispatcher ETA updates in October 2026
+  // (docs/architecture/retired-dispatch-eta.md). The card that configured them
+  // sat under the Board here; nothing on this screen may bring it back, and the
+  // per-group diagnostics expander that went before it stays gone too.
   await open();
-  await waitFor(() => expect(getDispatchTestingGroups).toHaveBeenCalled());
-  expect(await screen.findByText("WENZE UNIT # 310")).toBeInTheDocument();
-});
-
-test("the per-group diagnostics expander did NOT come with it", async () => {
-  // It fetched pinned previews, coordinates and provider status on every click,
-  // reaching Telegram, Samsara and the ETA router — a debugging console on a
-  // settings page. Operations → System & AI Health answers that from recorded
-  // runs instead.
-  await open();
-  await waitFor(() => expect(getDispatchTestingGroups).toHaveBeenCalled());
+  await waitFor(() => expect(getDispatchBoardFeed).toHaveBeenCalled());
+  expect(screen.queryByText(/ETA Update Configuration/)).not.toBeInTheDocument();
   expect(screen.queryByText(/📋 Details/)).not.toBeInTheDocument();
   expect(screen.queryByText(/Live Status/)).not.toBeInTheDocument();
 });

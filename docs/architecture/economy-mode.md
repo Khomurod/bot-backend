@@ -81,8 +81,10 @@ configuration", never a failure.
 - the delivery of every notice;
 - birthdays;
 - bonuses;
-- ETA updates;
 - return-to-road detection.
+
+(The dispatcher ETA updates were on this list until they were removed on
+2026-10-23 — [`retired-dispatch-eta.md`](retired-dispatch-eta.md).)
 
 **Slowed:** the Dispatcher Board is read every **4 hours**, instead of every 5
 minutes. It is not paused, because Home Time's home-in/home-out pass reads its

@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * Getting raw TEXT out of a PDF or an image. Two callers, two appetites.
+ * Getting raw TEXT out of a PDF. One caller now: the Finance Monitor.
  *
  * A PDF's text layer first; OCR only when that layer is missing or unusable,
  * because OCR is slow and the worker is heavy. pdf-parse and tesseract.js are
@@ -9,8 +9,10 @@
  * both on every boot of a memory-constrained instance.
  *
  * `allowOcr` IS A CALLER'S DECISION, NOT A GLOBAL ONE. The rate-confirmation
- * reader wants every character it can get and accepts the cost. The Finance
- * Monitor's document reader passes `allowOcr: false` and means it: it drains
+ * reader that wanted every character it could get went with the pinned-load
+ * reading (October 2026, docs/architecture/retired-dispatch-eta.md), and with it
+ * the image reader `extractTextFromImage`, which had no other caller. The
+ * Finance Monitor's document reader passes `allowOcr: false` and means it: it drains
  * documents one at a time on a 512MB instance, it has an AI-vision path that
  * reads a scan far better than OCR does, and tesseract.js loading a ~5MB WASM
  * model in the middle of that drain is exactly the memory spike the sequential
@@ -22,8 +24,8 @@
  * override. The env switch is off by default for the memory reason above.
  *
  * `isWeakDispatchRawText` is what tells the caller the text is too poor to
- * trust — it flips the dispatch provider order to Gemini-first, and it is what
- * sends a finance document to AI vision instead of a text-only read.
+ * trust — here it decides whether OCR is even considered. (The name is
+ * historical: it was written for rate confirmations.)
  *
  * MOVED here from server/services/dispatchParser/textExtraction.js. It was
  * never dispatch-specific; leaving it there would have had a `services/finance`
@@ -39,10 +41,9 @@ const PDF_OCR_MAX_PAGES = 3;
 // fall back to AI vision where a caller has one.
 //
 // These two used to live in server/services/dispatchParser/constants.js, whose
-// only other export (MAX_INLINE_GEMINI_FILE_BYTES) had no importer left —
-// services/pinnedContext/constants.js carries its own copy. With this module
-// moved out, that file had no reader at all, so it is gone rather than left as
-// a two-line indirection nobody follows.
+// only other export (MAX_INLINE_GEMINI_FILE_BYTES) had no importer left. With
+// this module moved out, that file had no reader at all, so it is gone rather
+// than left as a two-line indirection nobody follows.
 const OCR_ENABLED = process.env.ENABLE_OCR === 'true';
 
 // Heavy deps — lazy-loaded on first use so they don't sit resident in memory
@@ -111,22 +112,6 @@ async function extractTextFromPdf(buffer, { allowOcr = true } = {}) {
   }
 }
 
-async function extractTextFromImage(buffer, { allowOcr = true } = {}) {
-  if (!allowOcr || !OCR_ENABLED) {
-    return { text: '', usedPdfOcr: false };
-  }
-  const worker = await getCreateWorker()('eng');
-  try {
-    const result = await worker.recognize(buffer);
-    return {
-      text: String(result?.data?.text || '').trim(),
-      usedPdfOcr: false,
-    };
-  } finally {
-    await worker.terminate();
-  }
-}
-
 function isWeakDispatchRawText(rawText) {
   const source = String(rawText || '');
   const normalized = source.replace(/\s+/g, ' ').trim();
@@ -141,6 +126,5 @@ function isWeakDispatchRawText(rawText) {
 
 module.exports = {
   extractTextFromPdf,
-  extractTextFromImage,
   isWeakDispatchRawText,
 };

@@ -107,12 +107,13 @@ test('no consumer still reads an AI key constant from a client module', () => {
     'services/aiAnnotationService.js',
     'services/groupStatusAiClassifier.js',
     'services/employeeBirthdayMessage.js',
-    'services/pinnedContext/loadContextFromText.js',
     // `server/services/dispatchParser/aiRequests.js` was here until the Dispatch
     // Center was removed — it held the Groq and Gemini reads for the Send Load
-    // tab's rate-confirmation parser, and went with it. A file that no longer
-    // exists cannot reintroduce the gate, and listing it would only fail on
-    // ENOENT and say nothing about the rule.
+    // tab's rate-confirmation parser, and went with it. The same is true of
+    // `services/pinnedContext/loadContextFromText.js`, which went with the
+    // pinned-load reading (October 2026). A file that no longer exists cannot
+    // reintroduce the gate, and listing it would only fail on ENOENT and say
+    // nothing about the rule.
   ];
   // Comments are stripped first: several of these files EXPLAIN the old gate,
   // and banning the explanation along with the code would push out the reason

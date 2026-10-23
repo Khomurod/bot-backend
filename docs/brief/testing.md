@@ -15,12 +15,15 @@ npm run build:schema:check                        # schema.sql is in sync with b
 ```
 
 - **The Node suite passes clean with no secrets and no database.** Verified
-  baseline (2026-10-20, deps installed, **with** `TEST_DATABASE_URL` against a
-  local PostgreSQL 16): **4837 tests, 4837 pass, 0 fail, 0 skipped**, exit 0,
-  over 486 test files of which 97 are `*Pg`. CI runs the non-`*Pg` files with
-  no application env at all and the `*Pg` files against a real Postgres; both
-  jobs fail on any skip. The admin suite is **432 pass in 54 files**, and the
-  Python leads tests are **81 pass**.
+  baseline (2026-10-23, after the dispatcher ETA removal, deps installed): the
+  386 non-`*Pg` files with no application env — **4040 tests, 0 skipped**, all
+  passing except one local-only sweep that tripped on an agent worktree under
+  `.claude/worktrees/` (CI has none) — and the 98 `*Pg` files against a local
+  PostgreSQL 16 — **794 tests, 794 pass, 0 fail, 0 skipped**. CI runs the
+  non-`*Pg` files with no application env at all and the `*Pg` files against a
+  real Postgres; both jobs fail on any skip. The admin suite is **430 pass in 54
+  files**; the Python leads tests were **81 pass** at the previous baseline
+  (2026-10-20) and are untouched by that removal.
   **A test that pins `now` must pin every other clock it reads.** One pinned
   `now` to 2026-09-20 while the health code compared it with the REAL process
   boot time; on the day the real clock passed the pinned one the answer flipped,
@@ -66,8 +69,8 @@ npm run build:schema:check                        # schema.sql is in sync with b
   pass/fail counts.** Never claim a test passed that you did not run.
 - **Prefer test endpoints over real sends** when validating manually:
   `POST /api/broadcast/test` (management group only),
-  `POST /api/questions/send-test`, the dispatch test hub
-  and the dispatch test hub (`DISPATCH_ETA_TEST_GROUP_ID`).
+  `POST /api/questions/send-test`. (The dispatch test hub,
+  `DISPATCH_ETA_TEST_GROUP_ID`, went with the ETA updates on 2026-10-23.)
 - **Never point a local process at production tokens or the production
   database.** `node index.js` with production env polls the production bot and
   sends real messages to real drivers.

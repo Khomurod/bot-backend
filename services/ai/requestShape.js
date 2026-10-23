@@ -9,14 +9,16 @@
 /**
  * OpenAI-shaped `messages` → Gemini's `contents` + `systemInstruction`.
  *
- * NOT a nicety. `requestPinnedContextFromGroq` and
- * `requestDispatchTemplateFromGroq` both pass the Groq fallback an EMPTY prompt and put
- * the entire document in `messages`. Without this, the moment the roster reached
- * a Gemini provider it would send `[{ parts: [{ text: '' }] }]` — an EMPTY
- * prompt — and a model asked nothing at all still returns well-formed JSON.
- * Both of those sites validate the SHAPE of the answer, not its truth, so a
- * guessed pickup address would have passed through as an extracted fact. A
- * confident wrong answer is worse than a failure, and this is how one gets made.
+ * NOT a nicety. The rate-confirmation readers this was written for
+ * (`requestPinnedContextFromGroq`, `requestDispatchTemplateFromGroq`, both gone
+ * now with the Dispatch Center and the pinned-load reading) passed the Groq
+ * fallback an EMPTY prompt and put the entire document in `messages`. Without
+ * this, the moment the roster reached a Gemini provider it would send
+ * `[{ parts: [{ text: '' }] }]` — an EMPTY prompt — and a model asked nothing at
+ * all still returns well-formed JSON. A caller that validates the SHAPE of the
+ * answer, not its truth, would pass a guessed address through as an extracted
+ * fact. A confident wrong answer is worse than a failure, and this is how one
+ * gets made — so any caller that sends `messages` keeps this protection.
  */
 function geminiTurnsFromMessages(messages, extraParts) {
   const systemParts = [];
