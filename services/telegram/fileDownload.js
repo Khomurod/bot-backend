@@ -1,12 +1,18 @@
 'use strict';
 
 /**
- * Getting one finance document's bytes out of Telegram, safely.
+ * Getting one attachment's bytes out of Telegram, safely.
+ *
+ * Used by Safety Approvals (services/safetyApprovals/worker.js) to read the
+ * photo or document a post carries. MOVED here from
+ * services/finance/telegramFileDownload.js when the Finance Monitor was
+ * removed (October 2026, docs/architecture/retired-finance-monitor.md); it was
+ * never finance-specific.
  *
  * THE URL TELEGRAM HANDS BACK CONTAINS THE BOT TOKEN. `getFileLink` returns
  * `https://api.telegram.org/file/bot<TOKEN>/...`, which is a live credential in
  * a string. It is never logged, never stored, never put in an error message,
- * and there is deliberately no column in `finance_documents` it could go in.
+ * and a caller must never give it a column to go in.
  * Every error raised here is constructed from a status code or an error NAME,
  * never from a message that might carry the URL through.
  *
@@ -25,10 +31,10 @@
 const DEFAULT_TIMEOUT_MS = 60_000;
 
 /** A download that failed, with a reason safe to store. */
-class FinanceDownloadError extends Error {
+class TelegramDownloadError extends Error {
   constructor(message, { kind = 'download_failed' } = {}) {
     super(message);
-    this.name = 'FinanceDownloadError';
+    this.name = 'TelegramDownloadError';
     this.kind = kind;
   }
 }
@@ -43,14 +49,14 @@ class FinanceDownloadError extends Error {
  * @param {{maxBytes:number, timeoutMs?:number}} limits
  * @returns {Promise<Buffer>}
  */
-async function downloadFinanceFile({ telegram, fetchImpl = fetch }, fileId, {
+async function downloadTelegramFile({ telegram, fetchImpl = fetch }, fileId, {
   maxBytes, timeoutMs = DEFAULT_TIMEOUT_MS,
 } = {}) {
   if (!telegram || typeof telegram.getFileLink !== 'function') {
-    throw new FinanceDownloadError('no Telegram client', { kind: 'no_client' });
+    throw new TelegramDownloadError('no Telegram client', { kind: 'no_client' });
   }
   if (!Number.isFinite(maxBytes) || maxBytes <= 0) {
-    throw new FinanceDownloadError('no size limit was given', { kind: 'bad_limit' });
+    throw new TelegramDownloadError('no size limit was given', { kind: 'bad_limit' });
   }
 
   let url;
@@ -59,7 +65,7 @@ async function downloadFinanceFile({ telegram, fetchImpl = fetch }, fileId, {
   } catch (err) {
     // `err.message` here can be a Telegram API error that quotes the request —
     // only the error's NAME crosses this line.
-    throw new FinanceDownloadError(
+    throw new TelegramDownloadError(
       `Telegram would not give a link for this file (${err?.name || 'error'})`,
       { kind: 'no_link' },
     );
@@ -73,12 +79,12 @@ async function downloadFinanceFile({ telegram, fetchImpl = fetch }, fileId, {
   try {
     response = await fetchImpl(url, {
       signal: controller.signal,
-      headers: { 'User-Agent': 'WenzeFinance/1.0' },
+      headers: { 'User-Agent': 'Wenze/1.0' },
     });
   } catch (err) {
     clearTimeout(timer);
     const aborted = err?.name === 'AbortError';
-    throw new FinanceDownloadError(
+    throw new TelegramDownloadError(
       aborted ? `the download did not finish within ${Math.round(timeoutMs / 1000)}s` : 'the download failed',
       { kind: aborted ? 'timeout' : 'network' },
     );
@@ -87,7 +93,7 @@ async function downloadFinanceFile({ telegram, fetchImpl = fetch }, fileId, {
   try {
     if (!response.ok) {
       // The status is safe; the URL that produced it is not.
-      throw new FinanceDownloadError(
+      throw new TelegramDownloadError(
         `Telegram answered ${response.status} for this file`,
         { kind: 'http_error' },
       );
@@ -97,7 +103,7 @@ async function downloadFinanceFile({ telegram, fetchImpl = fetch }, fileId, {
     const declared = Number(response.headers?.get?.('content-length'));
     if (Number.isFinite(declared) && declared > maxBytes) {
       controller.abort();
-      throw new FinanceDownloadError('the file is larger than the limit', { kind: 'too_large' });
+      throw new TelegramDownloadError('the file is larger than the limit', { kind: 'too_large' });
     }
 
     const buffer = await readCapped(response, maxBytes, controller);
@@ -120,7 +126,7 @@ async function readCapped(response, maxBytes, controller) {
   if (!body || typeof body.getReader !== 'function') {
     const whole = Buffer.from(await response.arrayBuffer());
     if (whole.length > maxBytes) {
-      throw new FinanceDownloadError('the file is larger than the limit', { kind: 'too_large' });
+      throw new TelegramDownloadError('the file is larger than the limit', { kind: 'too_large' });
     }
     return whole;
   }
@@ -136,11 +142,11 @@ async function readCapped(response, maxBytes, controller) {
     if (total > maxBytes) {
       controller.abort();
       await reader.cancel().catch(() => {});
-      throw new FinanceDownloadError('the file is larger than the limit', { kind: 'too_large' });
+      throw new TelegramDownloadError('the file is larger than the limit', { kind: 'too_large' });
     }
     chunks.push(Buffer.from(value));
   }
   return Buffer.concat(chunks, total);
 }
 
-module.exports = { downloadFinanceFile, FinanceDownloadError, DEFAULT_TIMEOUT_MS };
+module.exports = { downloadTelegramFile, TelegramDownloadError, DEFAULT_TIMEOUT_MS };

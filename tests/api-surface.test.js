@@ -150,6 +150,13 @@ test('GET /api/health, /health, HEAD; the removed dispatch APIs; the race displa
     });
     assert.equal(retiredSendTarget.status, 404, 'the Send Load group list is gone');
 
+    // The Finance page and Settings -> Finance went with the Finance Monitor
+    // (October 2026). Same rule: a valid token, so only "gone" can answer 404.
+    for (const retiredFinance of ['/api/finance/messages', '/api/settings/finance/status']) {
+      const res = await httpJson(server, 'GET', retiredFinance, { Authorization: `Bearer ${adminToken}` });
+      assert.equal(res.status, 404, `${retiredFinance} is gone`);
+    }
+
     await fs.promises.mkdir(adminDir, { recursive: true });
     if (!fs.existsSync(adminIndex)) {
       await fs.promises.writeFile(

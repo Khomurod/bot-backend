@@ -128,11 +128,6 @@ app.use(createHealthRoutes({
   // The general operational outbox: every notice a Phase 5 feature sends.
   summariseOperationalNotifications:
     require('../database/operationalNotifications').summariseNotifications,
-  // The finance document queue. Same reason as the three above, and the same
-  // lesson: a queue nobody drains fails silently, and payment evidence piling
-  // up unread is not something anybody would notice by looking.
-  summariseFinanceDocuments:
-    require('../database/financeDocuments').summariseDocuments,
   // Counts only: open findings, the last background correction pass, identity
   // coverage, home-stay integrity, model-listing freshness.
   getOperationsHealth: require('../services/operations/healthSummary').getOperationsHealth,
@@ -198,17 +193,7 @@ const { createAutoReactionsRouter } = require('./routes/autoReactionsRoutes');
 app.use('/api/auto-reactions', createAutoReactionsRouter({ authMiddleware: legacyAuthMiddleware }));
 
 const { createSettingsRouter } = require('./routes/settingsRoutes');
-const { createFinanceRouter } = require('./routes/financeRoutes');
 app.use('/api/settings', createSettingsRouter({ authMiddleware: legacyAuthMiddleware, telegram: bot.telegram }));
-// The Finance page. THE ONE PLACE captured payment text leaves the database,
-// and narrow on purpose: reads plus three actions that re-run machinery which
-// already exists. The Telegram deep link is built here from the stored ids and
-// is never accepted from the client.
-app.use('/api/finance', createFinanceRouter({
-  authMiddleware: legacyAuthMiddleware,
-  telegram: bot.telegram,
-  buildMessageUrl: require('../services/telegramUrl').buildTelegramMessageUrl,
-}));
 
 const { createRecruiterRouter } = require('./routes/recruiterRoutes');
 app.use('/api/recruiters', createRecruiterRouter({ authMiddleware: legacyAuthMiddleware }));

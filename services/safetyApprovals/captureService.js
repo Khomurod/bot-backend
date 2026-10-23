@@ -15,9 +15,8 @@
  * one of the people named as Safety that is a DECISION (a #Approved /
  * #NotApproved hashtag, or the words) queues a review — see queueReview.
  *
- * IT NEVER THROWS AT THE BOT. It returns a reason instead, like
- * services/finance/captureService.js, and logs ids only — these messages are
- * drivers' names and phone numbers.
+ * IT NEVER THROWS AT THE BOT. It returns a reason instead, and logs ids only —
+ * these messages are drivers' names and phone numbers.
  */
 
 const { shapeCapturedMessage } = require('../../lib/safetyApprovals/messageShape');

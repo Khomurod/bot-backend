@@ -21,7 +21,7 @@ async function seeded(t) {
   await h.query(`UPDATE message_group_settings SET road_bonus_group_id = $1, mileage_bonus_group_id = $2 WHERE id = 1`, [OLD, OTHER]);
   await h.query(
     `UPDATE operational_notification_settings SET default_chat_id = $2,
-       category_chat_ids = jsonb_build_object('fuel', $1::text, 'finance', $2::text) WHERE id = 1`,
+       category_chat_ids = jsonb_build_object('fuel', $1::text, 'retention', $2::text) WHERE id = 1`,
     [OLD, OTHER]
   );
   await h.query(`INSERT INTO groups (id, telegram_group_id, group_name, group_type, active)
@@ -47,7 +47,7 @@ test('every setting, the group row and the queued notices move to the new id —
     assert.deepEqual(mg, { r: NEW, m: OTHER }, 'a different chat is left alone');
     const ns = (await h.query('SELECT default_chat_id AS d, category_chat_ids AS c FROM operational_notification_settings')).rows[0];
     assert.equal(ns.d, OTHER);
-    assert.deepEqual(ns.c, { fuel: NEW, finance: OTHER }, 'only the routing entry naming the old chat moves');
+    assert.deepEqual(ns.c, { fuel: NEW, retention: OTHER }, 'only the routing entry naming the old chat moves');
     const g = (await h.query('SELECT telegram_group_id::text AS id FROM groups WHERE id = 230835')).rows[0];
     assert.equal(g.id, NEW);
 

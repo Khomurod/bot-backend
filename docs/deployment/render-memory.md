@@ -20,11 +20,11 @@ all background services loaded, before network/DB connect):
 
 Heavy libraries are lazy-loaded and cost nothing until first use:
 
-- `pdf-parse` (~20 MB RSS) — loads on first PDF text extraction.
-- `tesseract.js` + `eng.traineddata` — loads on first OCR.
+- `pdf-parse` (~20 MB RSS) — loads on first PDF text extraction (the Indeed
+  lead import is its one caller since the Finance Monitor was removed).
 - `nodemailer` — loads on first OTP email.
 
-Runtime memory pressure therefore comes from *work*, not boot: PDF/OCR jobs,
+Runtime memory pressure therefore comes from *work*, not boot: PDF jobs,
 multer uploads held in memory, AI document batches, and Telegram media buffers.
 
 ## Memory watchdog
@@ -62,8 +62,8 @@ sets them automatically):
    - RSS steadily **below 350–400 MB** → healthy headroom on the 512 MB
      instance; the app is fine.
    - RSS **repeatedly above 450 MB** → investigate, in this order: an upload
-     burst (multer buffers), PDF/OCR jobs (`pdf-parse`/`tesseract` load ~20 MB+
-     on first use), safety-event video handling, then the Python leads-bot
+     burst (multer buffers), PDF jobs (`pdf-parse` loads ~20 MB+ on
+     first use), safety-event video handling, then the Python leads-bot
      child's share of the instance (`ps`/Render metrics — it lives outside the
      Node heap cap).
    - `heapUsed` near **200 MB** → the Node heap cap

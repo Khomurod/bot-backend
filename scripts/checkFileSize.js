@@ -79,7 +79,6 @@ const EXCLUDED_FILE_PATTERNS = [
   /\.min\.(js|mjs|cjs|css)$/,
   /\.bundle\.(js|mjs|cjs)$/,
   /\.generated\.(js|mjs|cjs|jsx|ts|tsx|py)$/,
-  /(^|\/)eng\.traineddata$/,
   // Generated from database/baseline/*.sql by scripts/build-schema.js; the
   // segments it is assembled from ARE checked, and each is well under the limit.
   /(^|\/)database\/schema\.sql$/,

@@ -65,11 +65,11 @@ load.
   the load service; the mileage bonus and the Gross Grand Prix use the shared
   client. Datatruck, with the Dispatcher Board, is where loads come from now.
 - **`services/documents/pdfTextExtraction.js`** — the Finance Monitor's
-  document reader still pulls a PDF's text layer through it (with
-  `allowOcr: false`). The OCR branch remains selectable by a caller but no
-  current caller asks for it.
-- **`lib/telegram/fileDescriptor.js`** — the Finance Monitor's capture reads
-  attachments with it.
+  document reader still pulled a PDF's text layer through it (with
+  `allowOcr: false`). It went with the Finance Monitor later the same day, as
+  did `tesseract.js` ([`retired-finance-monitor.md`](retired-finance-monitor.md)).
+- **`lib/telegram/fileDescriptor.js`** — the Finance Monitor's capture read
+  attachments with it; it went with the Finance Monitor too.
 - **The Datatruck peer bot's load-message matcher** — now inside
   `services/datatruckPeerPatterns.js`.
 - **The tables** `dispatch_eta_updates`, `dispatch_eta_global_settings`,

@@ -89,9 +89,10 @@ until a date.
   passes, every held service starts by itself — no deploy, no restart.
 - **Kept running:** driver chats and home-time requests (with their
   reminders), Samsara alerts (a separate service), Facebook and SMS leads and
-  the after-hours answers, money codes, scheduled broadcasts, the delivery of
-  every notice, birthdays, mileage and road bonuses and return-to-road
-  detection. (The ETA updates were here until their removal on 2026-10-23.)
+  the after-hours answers, scheduled broadcasts, the delivery of every notice,
+  birthdays, mileage and road bonuses and return-to-road detection. (The ETA
+  updates and the Finance Monitor's money codes were here until their removal
+  on 2026-10-23.)
 - **Stood down** (`ECONOMY_PAUSED_KEYS`, `lib/operations/economyMode.js`):
   load control, the consistency sweep and everything that rides it
   (contradictions, owner questions, the daily digest), self-healing, the
@@ -123,12 +124,11 @@ those caches at once, the router clears the roster itself when it puts a
 provider on cooldown, and a success clears that provider's cached failure count
 just as `recordSuccess` does in the table. The effective ELD settings
 (`getEldConfig`, on the location resolver's hot path) are cached 5 minutes
-instead of 30 seconds, and a save clears them at once. So are the Finance
-Monitor's settings (`isFinanceChat` asks on every message in every chat): 10
-minutes instead of 30 seconds, cleared at once by `updateFinanceSettings`, the
-row's only writer. In both, a read already out when a save clears the cache
-still answers its own caller but is not kept, so a save can never be undone
-for the length of the TTL by a read that raced it.
+instead of 30 seconds, and a save clears them at once. A read already out when
+a save clears the cache still answers its own caller but is not kept, so a save
+can never be undone for the length of the TTL by a read that raced it. (The
+Finance Monitor's settings were cached the same way, until the Finance Monitor
+was removed on 2026-10-23.)
 
 ## The move to the company's project (9 October 2026)
 

@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * Fetching one document's bytes, and the two things that must never happen.
+ * Fetching one Telegram file's bytes, and the two things that must never happen.
  *
  * THE URL CONTAINS THE BOT TOKEN. `getFileLink` returns
  * `https://api.telegram.org/file/bot<TOKEN>/…`, which is a live credential in a
@@ -18,7 +18,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { downloadFinanceFile, FinanceDownloadError } = require('../services/finance/telegramFileDownload');
+const { downloadTelegramFile, TelegramDownloadError } = require('../services/telegram/fileDownload');
 
 const TOKEN = '7777777:AAFAKEfaketokenNEVERreal';
 const LINK = `https://api.telegram.org/file/bot${TOKEN}/documents/file_1.pdf`;
@@ -49,7 +49,7 @@ function streamingResponse(totalBytes, { chunk = 1024, headers = {}, status = 20
 
 test('a normal file comes back as a buffer', async () => {
   const fetchImpl = async () => streamingResponse(2048);
-  const buffer = await downloadFinanceFile({ telegram, fetchImpl }, 'f1', { maxBytes: 8 * 1024 * 1024 });
+  const buffer = await downloadTelegramFile({ telegram, fetchImpl }, 'f1', { maxBytes: 8 * 1024 * 1024 });
   assert.ok(Buffer.isBuffer(buffer));
   assert.equal(buffer.length, 2048);
 });
@@ -63,8 +63,8 @@ test('a declared size over the cap ends it before a byte is read', async () => {
     return res;
   };
   await assert.rejects(
-    () => downloadFinanceFile({ telegram, fetchImpl }, 'f1', { maxBytes: 1024 }),
-    (err) => err instanceof FinanceDownloadError && err.kind === 'too_large',
+    () => downloadTelegramFile({ telegram, fetchImpl }, 'f1', { maxBytes: 1024 }),
+    (err) => err instanceof TelegramDownloadError && err.kind === 'too_large',
   );
   assert.equal(read, false, 'the body must not be touched once the header has answered');
 });
@@ -73,7 +73,7 @@ test('the cap still holds when the header lies, or is missing', async () => {
   // No content-length at all, and ten times the cap arriving in chunks.
   const fetchImpl = async () => streamingResponse(10 * 1024, { chunk: 512 });
   await assert.rejects(
-    () => downloadFinanceFile({ telegram, fetchImpl }, 'f1', { maxBytes: 2048 }),
+    () => downloadTelegramFile({ telegram, fetchImpl }, 'f1', { maxBytes: 2048 }),
     (err) => err.kind === 'too_large',
   );
 });
@@ -86,7 +86,7 @@ test('the cap holds on a body that cannot be streamed', async () => {
     arrayBuffer: async () => new ArrayBuffer(9999),
   });
   await assert.rejects(
-    () => downloadFinanceFile({ telegram, fetchImpl }, 'f1', { maxBytes: 100 }),
+    () => downloadTelegramFile({ telegram, fetchImpl }, 'f1', { maxBytes: 100 }),
     (err) => err.kind === 'too_large',
   );
 });
@@ -131,7 +131,7 @@ test('NO ERROR EVER CARRIES THE URL OR THE TOKEN', async () => {
   for (const { deps } of cases) {
     let raised = null;
     try {
-      await downloadFinanceFile(deps, 'f1', { maxBytes: 1024, timeoutMs: 50 });
+      await downloadTelegramFile(deps, 'f1', { maxBytes: 1024, timeoutMs: 50 });
     } catch (err) {
       raised = err;
     }
@@ -149,7 +149,7 @@ test('a timeout is named as one, so the queue can tell it from a refusal', async
     throw err;
   };
   await assert.rejects(
-    () => downloadFinanceFile({ telegram, fetchImpl }, 'f1', { maxBytes: 1024, timeoutMs: 3000 }),
+    () => downloadTelegramFile({ telegram, fetchImpl }, 'f1', { maxBytes: 1024, timeoutMs: 3000 }),
     (err) => err.kind === 'timeout' && /3s/.test(err.message),
   );
 });
@@ -157,18 +157,18 @@ test('a timeout is named as one, so the queue can tell it from a refusal', async
 test('an HTTP status is reported, because a status is safe and a URL is not', async () => {
   const fetchImpl = async () => streamingResponse(0, { status: 404 });
   await assert.rejects(
-    () => downloadFinanceFile({ telegram, fetchImpl }, 'f1', { maxBytes: 1024 }),
+    () => downloadTelegramFile({ telegram, fetchImpl }, 'f1', { maxBytes: 1024 }),
     (err) => err.kind === 'http_error' && /404/.test(err.message),
   );
 });
 
 test('it refuses to run with no client and no limit rather than guessing one', async () => {
   await assert.rejects(
-    () => downloadFinanceFile({ telegram: null }, 'f1', { maxBytes: 10 }),
+    () => downloadTelegramFile({ telegram: null }, 'f1', { maxBytes: 10 }),
     (err) => err.kind === 'no_client',
   );
   await assert.rejects(
-    () => downloadFinanceFile({ telegram, fetchImpl: async () => streamingResponse(10) }, 'f1', {}),
+    () => downloadTelegramFile({ telegram, fetchImpl: async () => streamingResponse(10) }, 'f1', {}),
     (err) => err.kind === 'bad_limit',
   );
 });

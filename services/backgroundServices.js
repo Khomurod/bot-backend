@@ -102,14 +102,6 @@ const {
   startDispatchBoardPoller,
   stopDispatchBoardPoller,
 } = require('./dispatchBoard/poller');
-const {
-  startFinanceDocumentReader,
-  stopFinanceDocumentReader,
-} = require('./finance/documentReader');
-const {
-  startFinanceWeeklyReport,
-  stopFinanceWeeklyReport,
-} = require('./finance/weeklyReportService');
 const { reconcileTitles } = require('./driverGroupTitleSync');
 const {
   startSafetyApprovalWorker,
@@ -226,15 +218,6 @@ function startBackgroundServices({ telegram }) {
   // which has its own evidence rules. Does nothing at all until an
   // administrator saves an address and a token in Settings.
   startDispatchBoardPoller();
-  // Reads the attachments posted in the finance group, ONE AT A TIME. Stands
-  // down entirely — `blocked`, not `failed` — until the Finance Monitor is on
-  // and document capture with it. It needs the Telegram client to fetch a file,
-  // so it is started here rather than from the capture handler.
-  startFinanceDocumentReader({ telegram: telegram || null });
-  // Monday 08:00 America/Chicago, once per period and never twice — the claim
-  // is taken before any work, so a redeploy on a Monday morning cannot send
-  // the same report again. Stands down until the report is switched on.
-  startFinanceWeeklyReport({ telegram: telegram || null });
   // Reads Safety's replies in the recruiting group and posts each decision in
   // the approvals topic. `blocked` until Safety Approvals is switched on.
   startSafetyApprovalWorker({ telegram: telegram || null });
@@ -289,8 +272,6 @@ function stopBackgroundServices() {
   try { stopDuplicateUnitCheckService(); } catch (err) { console.error('[SHUTDOWN] stopDuplicateUnitCheckService failed:', err.message); }
   try { stopConsistencyService(); } catch (err) { console.error('[SHUTDOWN] stopConsistencyService failed:', err.message); }
   try { stopDispatchBoardPoller(); } catch (err) { console.error('[SHUTDOWN] stopDispatchBoardPoller failed:', err.message); }
-  try { stopFinanceDocumentReader(); } catch (err) { console.error('[SHUTDOWN] stopFinanceDocumentReader failed:', err.message); }
-  try { stopFinanceWeeklyReport(); } catch (err) { console.error('[SHUTDOWN] stopFinanceWeeklyReport failed:', err.message); }
   try { stopSafetyApprovalWorker(); } catch (err) { console.error('[SHUTDOWN] stopSafetyApprovalWorker failed:', err.message); }
   try { stopHiringStageWorker(); } catch (err) { console.error('[SHUTDOWN] stopHiringStageWorker failed:', err.message); }
   try { stopPolicyWatcher(); } catch (err) { console.error('[SHUTDOWN] stopPolicyWatcher failed:', err.message); }

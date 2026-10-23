@@ -148,33 +148,12 @@ organization should converge toward.
 | Bonus Telegram routing | `database/messageRoutingSettings.js` categories `mileageBonus` and `roadBonus`, admin `settings/TelegramGroupsTab.jsx` |
 | **Retired** | The 75¢/mile driver-raise review, its OTP, dispatch teams and the two raise routing categories (October 2026). Tables `dispatch_teams`, `dispatch_team_drivers`, `dispatch_team_members` and `raise_*` remain, unread. `docs/architecture/retired-driver-raise.md` |
 
-### 5a. Finance Monitor Module
+### 5a. Finance Monitor Module — retired
 
 | Concern | Current files |
 |---|---|
-| Reading a money code out of a message, and deciding whether it repeats one | `lib/finance/moneycode.js` (a façade over `moneycode/{labels,fields,values,parse}.js` — `PARSER_VERSION`, `STATUS`), `lib/finance/duplicates.js` (`REASON`, `decideDuplicate`) — all pure |
-| Whether a sentence REPORTS something or asks for it | `lib/finance/phrasing.js` (`classifyModality`) — pure, shared so "please void" and "please replace" cannot drift apart |
-| Was a code voided, and which one | `lib/finance/void/intent.js` (`classifyVoidLanguage`), `lib/finance/void/target.js` (`decideVoidTarget`) — pure; `services/finance/voidService.js` applies it |
-| Did one code replace another | `lib/finance/replacement.js` (pure; a higher evidence bar than a void — no "only code in scope" rung), `services/finance/replacementService.js` |
-| The state a code is in now, and how it got there | `database/financeMoneycodeLifecycle.js`, tables `finance_moneycodes.status`/`voided_*`/`replaced_by_id` and `finance_moneycode_events` (migration 0057) |
-| Offering an unclear message to a model, and refusing what it invents | `lib/finance/aiReading.js` (pure verification against the captured text), `services/finance/aiInterpret.js`, capability `finance_message_reading` |
-| Re-reading the backlog an older parser left | `services/finance/reparsePass.js`, worker key `finance_reparse` |
-| Which group is read, and the rule that it cannot be read until validated | `database/financeSettings.js`, `server/routes/settings/financeRoutes.js`, admin `settings/FinanceTab.jsx` |
-| Storing what was said, and what was read out of it | `database/financeMessages.js`, tables `finance_settings`, `finance_messages`, `finance_moneycodes` (migration 0052) |
-| The capture decision, and the bot seam above it | `services/finance/captureService.js`, `bot/handlers/financeCaptureHandlers.js` (thin: no chat id, no parser, no query) |
-| Deciding what may be read, and what a reading means | `lib/finance/documentPolicy.js` (intake, read path, outcome, backoff), `lib/finance/documentPrompt.js` (the fenced prompt, the validator, the whitelist) — both pure |
-| The weekly summary: when it is due, what it says, and sending it once | `lib/finance/schedule.js` (Monday 08:00 America/Chicago, DST-correct), `lib/finance/weeklyReport.js` (the words; it adds nothing up), `database/finance/reports.js` (every figure COUNT/SUM in SQL), `services/finance/weeklyReportService.js`, table `finance_reports` (migration 0054), worker key `finance_weekly_report` |
-| Reading the attachments, one at a time | `services/finance/documentReader.js`, `services/finance/telegramFileDownload.js`, table `finance_documents` (migration 0053), worker key `finance_document_reader` |
-| Getting text out of a PDF | `services/documents/pdfTextExtraction.js` — the pinned rate-confirmation reader that shared it is gone; `allowOcr: false` is how finance keeps tesseract.js off its path entirely |
-| The photo/document shapes of a Telegram message | `lib/telegram/fileDescriptor.js` — moved out of the pinned-load reader, which is gone |
-
-| The one screen that shows the text | `server/routes/financeRoutes.js` (mounted `/api/finance`), `admin/src/pages/FinancePage.jsx` + `pages/finance/*`, `admin/src/api/financePage.js` |
-
-Deliberately isolated: no foreign key out of the finance tables, no reader
-anywhere else, and nothing it stores feeds a decision. See
-[`finance-monitor.md`](finance-monitor.md), and
-[`finance-monitor-page.md`](finance-monitor-page.md) for the one screen that
-reads the text out.
+| **Retired** | The Finance Monitor (23 October 2026): money-code capture from the finance group, `lib/finance/*`, `services/finance/*`, `database/finance*`, `bot/handlers/financeCaptureHandlers.js`, the workers `finance_document_reader`, `finance_weekly_report` and `finance_reparse`, the capabilities `finance_message_reading` and `finance_document_extraction`, `/api/finance`, `/api/settings/finance*`, the Finance page and Settings → Finance. `services/documents/pdfTextExtraction.js`, `lib/telegram/fileDescriptor.js` and `tesseract.js` went with their last caller. The six `finance_*` tables remain, unread, droppable in Settings → Retired Leftovers (group `finance`). `docs/architecture/retired-finance-monitor.md` |
+| Getting one attachment's bytes out of Telegram (the token-bearing URL never logged or stored; the size refused before and during the transfer) | `services/telegram/fileDownload.js` (`downloadTelegramFile`) — moved out of `services/finance/`; its one caller is Safety Approvals' worker |
 
 ### 5b. Safety Approvals Module
 
@@ -299,12 +278,9 @@ over `admin/src/pages/<area>/` holding data hooks and presentational sections:
 | `facebook_webhook_events` (key `leadgen:<pageId>:<leadgen_id>`) | Duplicate lead creation from Meta webhook |
 | `facebook_seen_senders` | Duplicate Messenger sender handling |
 | `facebook_lead_sms_mirrors` | Two-way SMS reply mis-routing / duplicates |
-| `service_runs` | Duplicate scheduled runs (e.g. the weekly finance report) |
+| `service_runs` | Duplicate scheduled runs (e.g. a birthday wish sent twice after a restart) |
 | `responses` (`ON CONFLICT (driver_id, question_id) DO NOTHING`) | Duplicate survey answers |
 | `mileage_bonus_runs` | Double milestone runs |
-| `finance_messages` (`ON CONFLICT (chat_id, message_id) DO NOTHING`) and `finance_moneycodes` (`ON CONFLICT (message_ref_id, code_normalized)`) | A redelivered or replayed finance message becoming a second row, or a re-read double-counting a code |
-| `finance_documents` (UNIQUE `(chat_id, message_id, file_unique_id)`; claimed with `FOR UPDATE SKIP LOCKED` + attempts counted at claim) | The same attachment queued twice, two readers taking one document, and a crash loop retrying a poisoned row forever |
-| `service_runs('finance_weekly_report', 'weekly:<date>')` + the partial unique index on `finance_reports (period_start) WHERE status <> 'manual'` | The weekly money-code summary being sent twice — the redeploy-on-a-Monday case |
 
 ---
 

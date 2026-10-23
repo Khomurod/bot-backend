@@ -53,6 +53,11 @@ test("no two forwarded modules export the same name", () => {
 });
 
 test("the public surface stays at its known size", () => {
+  // 212 after the Finance Monitor (October 2026): Settings -> Finance's four
+  // calls (`getFinanceSettings`, `getFinanceStatus`, `validateFinanceChat`,
+  // `updateFinanceSettings`) and the Finance page's nine (the message, money
+  // code, event, document and report lists, re-read, retry, preview and
+  // send-now) went with it — exactly thirteen, from 225.
   // 225 after the dispatcher ETA feature (October 2026): its four ETA-schedule
   // calls (`getDispatchTestingGroups`, `saveDispatchEtaGlobalIntervals`,
   // `updateDispatchTestingGroup`, `updateAllDispatchTestingGroups`) went with
@@ -65,7 +70,7 @@ test("the public surface stays at its known size", () => {
   // Tracking and QBQ/SOS, and 205 when api.js was first split into domain
   // modules. Growing this is fine — update the number. A DROP that is not a
   // deliberate feature removal means a call site somewhere just broke.
-  expect(Object.keys(api).length).toBeGreaterThanOrEqual(225);
+  expect(Object.keys(api).length).toBeGreaterThanOrEqual(212);
 });
 
 describe("a sample of calls from every domain still resolves", () => {

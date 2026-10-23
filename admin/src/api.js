@@ -26,8 +26,6 @@ export * from './api/groupAccess';
 export * from './api/bot';
 export * from './api/settings';
 export * from './api/dispatchBoard';
-export * from './api/finance';
-export * from './api/financePage';
 export * from './api/safetyApprovals';
 export * from './api/samsara';
 export * from './api/notifications';

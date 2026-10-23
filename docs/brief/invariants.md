@@ -181,33 +181,10 @@ repository-wide working rules. The highest-consequence items:
     `express.static`: splitting one exposed file must not expose a directory.
     `tests/remoteRoute.test.js`, `tests/presentationPage.test.js`.
 
-18. **A captured payment message is never overwritten by what was read out of
-    it.** `finance_messages.text` is the record; `parse_status` / `parse_json` /
-    `parser_version` sit beside it. The money-code parser is provisional — it
-    has never been shown a real message — so a tightened one must be able to
-    re-read exactly the rows the provisional one produced, and that is only
-    possible while the original text is still there. Only a `parsed` message
-    produces a money-code row; `ambiguous` means the parser refused to pick,
-    which is an answer, not a failure. Capture cannot be switched on against a
-    chat nobody validated, a repeat is recorded and never acted on, and message
-    text never reaches the application log.
-    An attachment is queued, never fetched inside Telegram's message pipeline,
-    and read by a worker that holds exactly ONE document at a time — a memory
-    budget, not a preference, on a 512MB instance. `failed` ("could not fetch
-    it") retries on a ladder that stops; `needs_review` ("could not read it
-    well enough") never does, because a person is what it needs, and AI being
-    unavailable is always the second. What a model reads out of a document
-    fills that document's own row and feeds no total, no report figure and no
-    duplicate decision. The weekly summary is sent ONCE per period: the claim is
-    taken before any work and released if the send fails, so a redeploy cannot
-    repeat it and a failure cannot lose it. A period that began before the
-    monitor was switched on is recorded, never reported — "$0 issued" for a week
-    nobody was watching is the one wrong answer.
-    `tests/financeCapturePg.test.js`,
-    `tests/financeDocumentsPg.test.js`, `tests/financeDocumentReader.test.js`,
-    `tests/financeSettingsRoute.test.js`,
-    `tests/financeWeeklyReportService.test.js`, `tests/financeSchedule.test.js`,
-    `docs/architecture/finance-monitor.md`.
+18. *(Retired with its feature.)* "A captured payment message is never
+    overwritten by what was read out of it" held for the Finance Monitor, which
+    was removed on 2026-10-23. The number is kept so later references still
+    line up; see `docs/architecture/retired-finance-monitor.md`.
 
 - **A truck number alone is not globally unique, and nobody is merged on one.**
   Three fleets number their trucks independently: Company 001, Owner-Operator
@@ -400,70 +377,22 @@ See [`health-reporting.md`](../architecture/health-reporting.md).
 
 - **An error body says `error`.** `admin/src/api/http.js` reads that key; a
   route answering `{ message }` has its explanation discarded and renders as the
-  bare status line. The Finance settings routes did exactly that in three
-  places, so a 400 that named the problem precisely reached the admin as
-  `HTTP Error: 400`. The funnel now also accepts `message`, so the next author
-  who reaches for the other word is not silently swallowed.
+  bare status line. The Finance settings routes (removed with the Finance
+  Monitor, 2026-10-23) did exactly that in three places, so a 400 that named
+  the problem precisely reached the admin as `HTTP Error: 400`. The funnel now
+  also accepts `message`, so the next author who reaches for the other word is
+  not silently swallowed.
 - **A verdict is 200; an error is 4xx.** A validation endpoint that says "no"
   answered a question successfully. Returning 4xx makes the client throw, which
-  skips whatever the screen had written to render the verdict — on the Finance
-  tab that included the one-click fix for a dropped minus sign, unreachable for
-  the life of the feature.
+  skips whatever the screen had written to render the verdict — on the old
+  Finance tab that included the one-click fix for a dropped minus sign,
+  unreachable for most of the life of the feature.
 - **A chat that RECORDS and a chat that RECEIVES are validated differently.** A
   room whose traffic is stored verbatim must be a group; a report somebody reads
   may go to one person. The sign-flip check runs before either, so allowing a
   private destination never reopens the dropped-minus hole.
 
-See [`finance-monitor.md`](../architecture/finance-monitor.md) §4c–4d.
+The Finance Monitor these were learned on is retired
+([`retired-finance-monitor.md`](../architecture/retired-finance-monitor.md)); the
+rules are general and `admin/src/api/http.test.jsx` still holds the first.
 
-## Reading money out of a chat message
-
-- **The parser reads LABELS, not numbers.** The word in front of a number is
-  what tells a person which number it is. `Report Reference` is never a
-  candidate money code — two long numbers in one message is not two codes.
-- **Fuzzy on the label, exact on the value.** A label may be misspelled, spaced
-  oddly or missing its colon; a digit is copied verbatim or not taken. Only the
-  grouping a sender used is removed, which changes no digit. Labels under five
-  characters must match exactly, or ordinary words become labels.
-- **A request to void is not a void.** "please void this", "should we void
-  this?" and "working on it" change no money. Only a reported completed action
-  does, and only when its target is identifiable.
-- **Two hard signals disagreeing always goes to a person** — a message naming
-  one code while replying to another is the most dangerous case in the feature.
-  So does a bare "voided" with more than one candidate.
-- **Nothing is deleted.** A voided code keeps its digits, amount, original
-  message and issue time; the void adds a state, a time and the evidence.
-  `finance_moneycode_events` records every transition.
-- **Voided money leaves the ACTIVE total and stays in the report.** Overstating
-  what is outstanding is how a report stops being trusted; erasing the row is
-  how history stops being auditable.
-- **A code waiting on a person is still money that went out.** `needs_review`
-  is an unsettled void, not a void — it stays in the active total and is counted
-  separately as needing attention. Leaving it out hides real outstanding money
-  at the moment somebody needs to see it.
-- **A duplicate POSTING is not a duplicate PAYMENT.** The system may say a code
-  was posted twice. It may not say anybody was paid twice.
-- **A message doing two things is never read as one.** "Voided — replacement
-  below:" with a labelled code goes to a person: reading it as only a void
-  settled the status and dropped the new code in silence, so the money in it
-  would never have appeared anywhere.
-- **A time window bounds GUESSING, never reading.** Digits somebody wrote out
-  name one specific payment and are looked up over all of history; the window
-  only limits what a bare "voided" may be guessed to mean. And a labelled
-  reference is never a candidate code in a void or a replacement either — the
-  same rule as the parser's, in one shared place.
-- **A replacement needs MORE evidence than a void, never less.** A code issued
-  after a void is not automatically its replacement — that is a busy afternoon,
-  not a relationship. The message must say so AND name or reply to the code it
-  replaces; there is no "the only code in scope" fallback, which the void ladder
-  does have.
-- **AI reads meaning, never numbers.** Every digit a model returns is looked for
-  in the captured text and dropped if absent — a substring of a real code is a
-  different number and is refused. With no provider at all the feature behaves
-  as it does with one. A model's reading may hand a code to a person; it may
-  never void one or record a replacement.
-- **A re-read acts on what it newly understands.** A tightened parser that
-  changed a status and stopped there would leave codes the group itself declared
-  dead sitting in the active total.
-
-See [`finance-moneycode-reading.md`](../architecture/finance-moneycode-reading.md).

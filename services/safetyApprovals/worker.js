@@ -40,8 +40,8 @@ function log(text) {
 
 function defaultDownload(telegram) {
   // eslint-disable-next-line global-require
-  const { downloadFinanceFile } = require('../finance/telegramFileDownload');
-  return (fileId, limits) => downloadFinanceFile({ telegram }, fileId, limits);
+  const { downloadTelegramFile } = require('../telegram/fileDownload');
+  return (fileId, limits) => downloadTelegramFile({ telegram }, fileId, limits);
 }
 
 /** Drain what is due. Never throws; the summary is what withRunRecord records. */
