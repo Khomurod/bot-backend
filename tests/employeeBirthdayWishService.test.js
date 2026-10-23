@@ -30,7 +30,16 @@ const db = {
   },
   hasServiceRun: async (service, runKey) => claimedKeys.has(`${service}:${runKey}`),
   unclaimServiceRun: async (service, runKey) => claimedKeys.delete(`${service}:${runKey}`),
+  // A claim is "stale" in these tests when its key is in staleKeys.
+  releaseStaleServiceRun: async (service, runKey, minutes) => {
+    assert.equal(minutes, 10);
+    const key = `${service}:${runKey}`;
+    if (!staleKeys.has(key)) return false;
+    staleKeys.delete(key);
+    return claimedKeys.delete(key);
+  },
 };
+const staleKeys = new Set();
 
 // What reached Telegram: one entry per posted card.
 const sentMessages = [];
@@ -106,7 +115,7 @@ test('send now claims daily key and blocks duplicate', async () => {
   const first = await runEmployeeBirthdayWishes({ claimDailyRun: true });
   assert.equal(first.sent, true);
   // The employee's card first, then the day — written only once every card is out.
-  assert.deepEqual(claims.map((c) => c[1]), [`employee:${now.toISODate()}:1`, `employee:${now.toISODate()}`]);
+  assert.deepEqual(claims.map((c) => c[1]), [`employee:${now.toISODate()}:1`, `employee:${now.toISODate()}:1:sent`]);
 
   const second = await runEmployeeBirthdayWishes({ claimDailyRun: true });
   assert.equal(second.reason, 'already_sent');
@@ -186,7 +195,7 @@ test('failed send releases the claim so the next tick retries (no silent drop)',
   const retry = await runEmployeeBirthdayWishes({ claimDailyRun: true });
   assert.equal(retry.sent, true);
   assert.equal(sentMessages.length, 1);
-  assert.equal(claimedKeys.has(`birthday:employee:${isoDate}`), true);
+  assert.equal(claimedKeys.has(`birthday:employee:${isoDate}:1:sent`), true);
 });
 
 test('a successful send is not resent on a later tick', async () => {
@@ -204,7 +213,7 @@ test('a successful send is not resent on a later tick', async () => {
   assert.equal(sentMessages.length, 1);
 });
 
-test('checkAndRunScheduled skips when daily run already claimed', async () => {
+test('a day the previous version already wished (its day key) is not wished again', async () => {
   claims.length = 0;
   claimedKeys.clear();
   sentMessages.length = 0;
@@ -223,7 +232,7 @@ test('checkAndRunScheduled skips when daily run already claimed', async () => {
   });
 
   const result = await checkAndRunScheduled();
-  assert.equal(result, null);
+  assert.equal(result.reason, 'already_sent');
   assert.equal(sentMessages.length, 0);
 
   db.getEmployeeBirthdaySettings = origSettings;
@@ -235,6 +244,7 @@ function resetState() {
   sentMessages.length = 0;
   rendered.length = 0;
   photos.clear();
+  staleKeys.clear();
   sendShouldFail = false;
   failForEmployeeId = null;
 }
@@ -290,12 +300,31 @@ test('a stored photo that no longer decodes posts the card with initials instead
   assert.equal(sentMessages.length, 1);
 });
 
-test('a card another pass is still posting leaves the day open, so its failure is retried', async () => {
+test('a card another pass is still posting is left to it; a claim left by a stopped process is taken over', async () => {
   resetState();
   const isoDate = DateTime.now().setZone('Asia/Tashkent').toISODate();
-  claimedKeys.add(`birthday:employee:${isoDate}:1`); // another pass holds it
-  const result = await runEmployeeBirthdayWishes({ claimDailyRun: true });
-  assert.equal(result.reason, 'already_sent');
+  claimedKeys.add(`birthday:employee:${isoDate}:1`); // a fresh claim: another pass is posting
+  const busy = await runEmployeeBirthdayWishes({ claimDailyRun: true });
+  assert.equal(busy.reason, 'already_sent');
   assert.equal(sentMessages.length, 0);
-  assert.equal(claimedKeys.has(`birthday:employee:${isoDate}`), false);
+
+  staleKeys.add(`birthday:employee:${isoDate}:1`); // the same claim, now older than ten minutes
+  const recovered = await runEmployeeBirthdayWishes({ claimDailyRun: true });
+  assert.equal(recovered.sent, true);
+  assert.equal(sentMessages.length, 1);
+  assert.equal(claimedKeys.has(`birthday:employee:${isoDate}:1:sent`), true);
+});
+
+test('someone added with today\'s birthday after the cards went out still gets theirs', async () => {
+  resetState();
+  const saved = employeesToday;
+  try {
+    assert.equal((await runEmployeeBirthdayWishes({ claimDailyRun: true })).sent, true);
+    employeesToday = [...saved, { id: 7, first_name: 'LATE', last_name: 'ADDITION', birthday: '1995-01-01' }];
+    const later = await runEmployeeBirthdayWishes({ claimDailyRun: true });
+    assert.equal(later.names, 'LATE ADDITION');
+    assert.deepEqual(sentMessages.map((m) => m.file.source), ['card:1', 'card:7']);
+  } finally {
+    employeesToday = saved;
+  }
 });

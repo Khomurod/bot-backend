@@ -7,11 +7,13 @@
  * written by a model. See docs/architecture/employee-birthday-cards.md.
  *
  * EXACTLY ONCE PER EMPLOYEE PER DAY. A scheduled or "send now" pass claims
- * `employee:<day>:<id>` before posting each card and releases it if the post
- * fails, so two overlapping passes never post the same card twice, and a
- * failure is retried without re-posting the cards that already went out.
- * `employee:<day>` is written only by a pass that posted every card for the
- * day itself — it is what lets the hourly tick skip the day with one read.
+ * `employee:<day>:<id>` before posting each card, releases it if the post
+ * fails, and writes `employee:<day>:<id>:sent` once it is out. Two
+ * overlapping passes never post the same card twice; a failure is retried
+ * without re-posting the cards that already went out; a claim left by a
+ * process that stopped mid-post is taken over after STALE_CLAIM_MINUTES; and
+ * an employee added with today's birthday later in the day still gets a card,
+ * because nothing marks the whole day as done.
  */
 const { DateTime } = require('luxon');
 const db = require('../database/db');
@@ -24,6 +26,8 @@ const { birthdayCaption } = require('./employees/birthdayText');
 const { createDailyWakeTimer } = require('./dailyWakeSchedule');
 
 const DEFAULT_TZ = 'Asia/Tashkent';
+// Longer than any one post can take, retries and Telegram's rate-limit waits included.
+const STALE_CLAIM_MINUTES = 10;
 /**
  * Fallback schedule, used only if the settings row cannot be read at all.
  * Mirrors the schema defaults for `employee_birthday_settings` (00:00
@@ -63,6 +67,20 @@ async function postBirthdayCard(employee) {
   ));
 }
 
+/**
+ * May this pass post the card under `key`? No when it was already sent
+ * (`<key>:sent`), or when another pass claimed it less than
+ * STALE_CLAIM_MINUTES ago and may still be posting it. A claim older than that
+ * was left by a process that stopped mid-post (a deploy, a crash), so it is
+ * released and taken over — otherwise that employee would get no card all day.
+ */
+async function claimEmployeeCard(key) {
+  if (await db.hasServiceRun('birthday', `${key}:sent`)) return false;
+  if (await db.claimServiceRun('birthday', key)) return true;
+  if (!(await db.releaseStaleServiceRun('birthday', key, STALE_CLAIM_MINUTES))) return false;
+  return db.claimServiceRun('birthday', key);
+}
+
 async function runEmployeeBirthdayWishes({ claimDailyRun = false, employeeIds = null } = {}) {
   if (!config.employeeGroupId) {
     return { sent: false, reason: 'no_employee_group' };
@@ -84,20 +102,18 @@ async function runEmployeeBirthdayWishes({ claimDailyRun = false, employeeIds = 
   }
 
   const dayKey = `employee:${isoDate}`;
+  // Written only by the version before per-employee claims (until 23 October
+  // 2026), which sent one message for the whole day. Honoured so a deploy on
+  // such a day does not post that day's birthdays a second time.
   if (claimDailyRun && await db.hasServiceRun('birthday', dayKey)) {
     return { sent: false, reason: 'already_sent', isoDate, names: formatNamesList(employees) };
   }
 
   const posted = [];
   const failed = [];
-  let claimedElsewhere = 0;
   for (const employee of employees) {
     const key = `${dayKey}:${employee.id}`;
-    // Claimed elsewhere: that pass is posting this card, or already has.
-    if (claimDailyRun && !(await db.claimServiceRun('birthday', key))) {
-      claimedElsewhere += 1;
-      continue;
-    }
+    if (claimDailyRun && !(await claimEmployeeCard(key))) continue;
     try {
       await postBirthdayCard(employee);
       posted.push(employee);
@@ -105,16 +121,19 @@ async function runEmployeeBirthdayWishes({ claimDailyRun = false, employeeIds = 
       if (claimDailyRun) await db.unclaimServiceRun('birthday', key).catch(() => {});
       failed.push(employee);
       console.error(`[EMP-BIRTHDAY] Card for employee ${employee.id} failed:`, err.message);
+      continue;
+    }
+    if (claimDailyRun) {
+      await db.claimServiceRun('birthday', `${key}:sent`).catch((err) => {
+        console.warn(`[EMP-BIRTHDAY] Could not mark employee ${employee.id}'s card as sent:`, err.message);
+      });
     }
   }
 
   if (failed.length) {
-    // Thrown so the scheduler retries soon; the cards already posted are claimed.
+    // Thrown so the scheduler retries soon; the cards already posted are marked sent.
     throw new Error(`Could not post the birthday card for: ${formatNamesList(failed)}`);
   }
-  // The day is closed only by a pass that saw every card through itself: a
-  // card another pass is still posting may yet fail and need the retry.
-  if (claimDailyRun && claimedElsewhere === 0) await db.claimServiceRun('birthday', dayKey);
 
   if (!posted.length) {
     return { sent: false, reason: 'already_sent', isoDate, names: formatNamesList(employees) };
@@ -161,8 +180,8 @@ async function checkAndRunScheduled() {
   const isoDate = now.toISODate();
 
   if (!isPastEmployeeBirthdaySchedule(now, settings)) return null;
-  if (await db.hasServiceRun('birthday', `employee:${isoDate}`)) return null;
-
+  // No day-level shortcut: completion is per employee, so someone added with
+  // today's birthday after the morning's cards went out still gets theirs.
   return runEmployeeBirthdayWishes({ claimDailyRun: true });
 }
 

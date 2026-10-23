@@ -57,3 +57,11 @@ test('a very long name is shrunk to fit inside the panel, not cut off', async ()
   assert.ok(near(await pixel(card, 1060, 870), [157, 35, 33], 40));
   assert.ok(near(await pixel(card, 20, 870), [157, 35, 33], 40));
 });
+
+test('a name too wide even at the smallest size is squeezed to fit, never refused', async () => {
+  const wide = { ...employee, american_name: 'W'.repeat(80) };
+  const card = await renderBirthdayCard(wide, null);
+  const meta = await sharp(card).metadata();
+  assert.deepEqual([meta.width, meta.height], [1080, 1080]);
+  assert.ok(near(await pixel(card, 1060, 940), [157, 35, 33], 40));
+});

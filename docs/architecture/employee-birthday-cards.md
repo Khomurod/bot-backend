@@ -56,15 +56,26 @@ never broken markup.
 
 ## Exactly once per employee per day
 
-The scheduled pass and "Send today's wishes now" claim
-`service_runs('birthday', 'employee:<day>:<id>')` before posting each card and
-release it if the post fails. Two overlapping passes therefore never post the
-same card twice, and a failure is retried on the scheduler's fast cadence
-**without re-posting the cards that already went out**. `employee:<day>` is
-written only by a pass that posted every card for the day itself (a card
-another pass is still posting may yet fail and need the retry); the hourly tick
-skips the day on that one read. "Congratulate selected" claims nothing — it is a deliberate
-manual re-post.
+The scheduled pass and "Send today's wishes now" work **per employee**, in
+`service_runs('birthday', …)`:
+
+- `employee:<day>:<id>` is claimed before the card is posted and released if
+  the post fails, so a failure is retried on the scheduler's fast cadence
+  **without re-posting the cards that already went out**;
+- `employee:<day>:<id>:sent` is written once it is out, and is what makes a
+  later pass skip that employee;
+- a claim younger than ten minutes is a pass still posting and is left alone;
+  an older one was left by a process that stopped mid-post (a deploy, a crash)
+  and is released and taken over — otherwise that employee would get no card
+  all day;
+- **nothing marks the whole day as done**, so an employee added with today's
+  birthday after the morning's cards went out still gets theirs on the next
+  hourly tick.
+
+`employee:<day>` (no id) was written by the version before this one, which sent
+one message for the whole day; it is still honoured, so a deploy on such a day
+does not wish anyone twice. "Congratulate selected" claims nothing — it is a
+deliberate manual re-post.
 
 ## Company Employees (Users page)
 

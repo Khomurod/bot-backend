@@ -34,6 +34,7 @@ const FRAME = { left: 301, top: 325, size: 489 };
 const FIRST_NAME = { top: 846, size: 58, color: '#fcffff' };
 const AMERICAN_NAME = { top: 921, size: 58, color: '#b4b6b8' };
 const MAX_NAME_WIDTH = 760;
+const MIN_POINTS = 24;
 const STORED_PHOTO_SIZE = 800;
 
 function escapeMarkup(text) {
@@ -53,8 +54,14 @@ async function textLayer(text, { size, color }) {
         rgba: true,
       },
     }).png().toBuffer({ resolveWithObject: true });
-    if (info.width <= MAX_NAME_WIDTH || points <= 24) return { input: data, width: info.width };
-    points = Math.max(24, Math.floor(points * (MAX_NAME_WIDTH / info.width)));
+    if (info.width <= MAX_NAME_WIDTH) return { input: data, width: info.width };
+    if (points <= MIN_POINTS) {
+      // Still too wide at the smallest size: squeeze the image itself, since a
+      // layer wider than the card is refused outright and the card never posts.
+      const input = await sharp(data).resize({ width: MAX_NAME_WIDTH }).png().toBuffer();
+      return { input, width: MAX_NAME_WIDTH };
+    }
+    points = Math.max(MIN_POINTS, Math.floor(points * (MAX_NAME_WIDTH / info.width)));
   }
 }
 

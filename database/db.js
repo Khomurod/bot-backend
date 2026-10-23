@@ -132,6 +132,20 @@ async function unclaimServiceRun(serviceName, runKey) {
   return res.rowCount > 0;
 }
 
+// Release a claim only if it is older than `olderThanMinutes` — one left by a
+// process that stopped between claiming and finishing (a deploy, a crash).
+// A claim that young is a pass still working and is left alone.
+// Returns `true` if a stale claim was removed.
+async function releaseStaleServiceRun(serviceName, runKey, olderThanMinutes) {
+  const res = await query(
+    `DELETE FROM service_runs
+      WHERE service_name = $1 AND run_key = $2
+        AND ran_at < NOW() - make_interval(mins => $3)`,
+    [serviceName, runKey, olderThanMinutes]
+  );
+  return res.rowCount > 0;
+}
+
 
 // ─── Bot visibility diagnostics ───
 
@@ -285,6 +299,7 @@ module.exports = {
   claimServiceRun,
   hasServiceRun,
   unclaimServiceRun,
+  releaseStaleServiceRun,
   // Bot visibility diagnostics
   recordGroupMessageSeen,
   updateGroupBotAccess,

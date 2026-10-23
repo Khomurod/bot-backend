@@ -97,3 +97,13 @@ test('known Telegram accounts: bots left out, one row per account, newest name w
   assert.deepEqual(accounts.map((x) => [String(x.telegram_user_id), x.username, x.first_name]),
     [['10', 'new_name', 'New'], ['12', null, 'Plain']]);
 });
+
+test('a birthday claim is taken over only once it is older than the limit', { skip: skipWithoutPg() }, async (t) => {
+  const h = await createPgHarness(t, { extraDdl: ALL_MIGRATIONS });
+  const { db } = h.loadDataLayer(['db']);
+  assert.equal(await db.claimServiceRun('birthday', 'employee:2026-10-26:1'), true);
+  assert.equal(await db.releaseStaleServiceRun('birthday', 'employee:2026-10-26:1', 10), false, 'a fresh claim is a pass still working');
+  await h.query("UPDATE service_runs SET ran_at = ran_at - INTERVAL '11 minutes' WHERE run_key = 'employee:2026-10-26:1'");
+  assert.equal(await db.releaseStaleServiceRun('birthday', 'employee:2026-10-26:1', 10), true);
+  assert.equal(await db.claimServiceRun('birthday', 'employee:2026-10-26:1'), true);
+});
