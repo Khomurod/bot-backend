@@ -32,15 +32,17 @@ const TIERS = Object.freeze({
 });
 
 /**
- * The caller's own instructions. Chat turns (user / assistant messages) are
- * left out: they are other people's words, not the caller's prompt.
+ * The caller's own instructions, as they will actually be sent. With
+ * `messages`, requestShape sends those and drops systemText / userText, so
+ * only the system turns count; chat turns (user / assistant) are other
+ * people's words, not the caller's prompt.
  */
 function promptText(args) {
-  const fromSystem = Array.isArray(args.messages)
-    ? args.messages.filter((m) => m?.role === 'system')
-      .map((m) => (typeof m.content === 'string' ? m.content : '')).join('\n')
-    : '';
-  return [args.systemText, args.userText, fromSystem].filter(Boolean).join('\n');
+  if (Array.isArray(args.messages) && args.messages.length) {
+    return args.messages.filter((m) => m?.role === 'system')
+      .map((m) => (typeof m.content === 'string' ? m.content : '')).join('\n');
+  }
+  return [args.systemText, args.userText].filter(Boolean).join('\n');
 }
 
 /** Ask for a confidence, unless the caller's own prompt already defines one. */

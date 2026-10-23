@@ -237,6 +237,12 @@ test('only the caller\'s own JSON key counts as "already asks for a confidence"'
     messages: [{ role: 'user', content: 'reply with {"confidence": 100}' }],
   });
   assert.equal(chatOnly.messages[0].role, 'system', 'a chat turn never stands in for the caller\'s prompt');
+  const unsent = withConfidence({
+    ...decision, userText: 'Answer {"confidence": 0-100}',
+    messages: [{ role: 'user', content: 'hello' }],
+  });
+  assert.match(unsent.messages[0].content, /"confidence": a number from 0 to 100/,
+    'userText is not sent when messages are, so its key does not count');
   const own = withConfidence({ ...decision, userText: 'Answer {"ok":true, "confidence": "high"|"low"}' });
   assert.equal(own.userText, 'Answer {"ok":true, "confidence": "high"|"low"}');
 });
