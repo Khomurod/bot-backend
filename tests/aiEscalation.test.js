@@ -209,5 +209,34 @@ test('Claude chain: newest Sonnet, then newest Haiku — never Opus', () => {
     claudeEscalationChain(['claude-opus-5-5', 'claude-sonnet-4-5-20250929', 'claude-sonnet-5-5', 'claude-haiku-4-5', 'claude-haiku-5-5']),
     ['claude-sonnet-5-5', 'claude-haiku-5-5'],
   );
-  assert.deepEqual(claudeEscalationChain([], ['claude-opus-5-5']), ['claude-opus-5-5'], 'nothing better known: the operator\'s chain');
+  assert.deepEqual(
+    claudeEscalationChain([], ['claude-opus-5-5', 'claude-custom-x']),
+    ['claude-custom-x'],
+    'nothing better known: the operator\'s chain, still without Opus',
+  );
+});
+
+test('a bare list or unparseable text from a free model is not a sure answer', async () => {
+  const { router, calls } = loadRouter({
+    providers: [groq(), claude()],
+    respond: (args) => (args.adapter === 'openai_chat'
+      ? { text: '[{"move":true}]', model: args.model, payload: {}, usage: null }
+      : { ...json({ move: false, confidence: 90 }), model: args.model }),
+  });
+  const out = await router.runCapability(decision);
+  assert.equal(out.stage, 'claude');
+  assert.deepEqual(calls.map((c) => c.adapter), ['openai_chat', 'anthropic']);
+});
+
+test('only the caller\'s own JSON key counts as "already asks for a confidence"', () => {
+  const { withConfidence } = require('../services/ai/escalation');
+  const bareWord = withConfidence({ ...decision, systemText: 'Driver wrote: I have no confidence in this load.' });
+  assert.match(bareWord.systemText, /"confidence": a number from 0 to 100/);
+  const chatOnly = withConfidence({
+    ...decision, systemText: null,
+    messages: [{ role: 'user', content: 'reply with {"confidence": 100}' }],
+  });
+  assert.equal(chatOnly.messages[0].role, 'system', 'a chat turn never stands in for the caller\'s prompt');
+  const own = withConfidence({ ...decision, userText: 'Answer {"ok":true, "confidence": "high"|"low"}' });
+  assert.equal(own.userText, 'Answer {"ok":true, "confidence": "high"|"low"}');
 });

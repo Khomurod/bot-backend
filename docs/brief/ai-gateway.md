@@ -110,11 +110,14 @@ stay in §4a. The provider terms watcher is
   **85%** sure stands. Under 85%, with no confidence given, or answering
   "unclear", it goes to **Claude — the newest Sonnet, then the newest Haiku,
   never Opus**; if Claude cannot be reached, to another **paid** provider; if
-  nobody better answers, the free answer comes back marked `uncertain` and the
-  consumer treats it as no decision (Safety asks, the stage is not proposed,
-  the control question stands). A model's own confidence is not trusted alone:
-  "unclear" escalates at any confidence. The prompt gets one line asking for a
-  `"confidence"` unless it already defines one. **For these capabilities the
+  nobody better answers, the free answer comes back marked `uncertain`. The
+  control, Safety, hiring-stage and Teach Wenze readings treat that as no
+  decision (Safety asks, the stage is not proposed, the control question
+  stands); home time and driver profiles keep their own existing gates
+  (`docs/architecture/ai-decisions.md` rule 7). A model's own confidence is
+  not trusted alone: "unclear", no JSON object, or no confidence escalates.
+  The prompt gets one line asking for a `"confidence"` unless the caller's own
+  prompt already has a `"confidence":` key (chat turns are not looked at). **For these capabilities the
   free models outrank the order above**, Claude-first included; everything
   else — text written for people, batch jobs like driver status and chat
   labels — is one pass in the operator's order, unchanged. "Free tiers only"

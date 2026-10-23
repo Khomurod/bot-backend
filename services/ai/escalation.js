@@ -31,10 +31,16 @@ const TIERS = Object.freeze({
   strong: (p) => p.isFree !== true && p.adapter !== 'anthropic',
 });
 
+/**
+ * The caller's own instructions. Chat turns (user / assistant messages) are
+ * left out: they are other people's words, not the caller's prompt.
+ */
 function promptText(args) {
-  const fromMessages = Array.isArray(args.messages)
-    ? args.messages.map((m) => (typeof m?.content === 'string' ? m.content : '')).join('\n') : '';
-  return [args.systemText, args.userText, fromMessages].filter(Boolean).join('\n');
+  const fromSystem = Array.isArray(args.messages)
+    ? args.messages.filter((m) => m?.role === 'system')
+      .map((m) => (typeof m.content === 'string' ? m.content : '')).join('\n')
+    : '';
+  return [args.systemText, args.userText, fromSystem].filter(Boolean).join('\n');
 }
 
 /** Ask for a confidence, unless the caller's own prompt already defines one. */
@@ -85,9 +91,9 @@ async function runEscalated(args, askTier) {
   const asked = withConfidence(args);
   const assess = (result) => {
     const parsed = parsedOf(result);
-    // An answer that is a list, not one decision, has no single "sure".
-    if (!parsed || Array.isArray(parsed)) return { sure: true, confidence: null, why: null };
-    return assessAnswer(args.capability, parsed);
+    // No JSON object at all (nothing parseable, or a bare list) is not a
+    // sure answer: every escalating capability answers with one object.
+    return assessAnswer(args.capability, Array.isArray(parsed) ? null : parsed);
   };
 
   let free = null;
