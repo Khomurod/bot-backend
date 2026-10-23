@@ -19,6 +19,7 @@ const ANTHROPIC = path.resolve(__dirname, '../services/ai/adapters/anthropic.js'
 const PROVIDERS = path.resolve(__dirname, '../database/aiProviders.js');
 const CALL_LOG = path.resolve(__dirname, '../database/aiCallLog.js');
 const SETTINGS = path.resolve(__dirname, '../database/aiSettings.js');
+const HOOKS = path.resolve(__dirname, '../services/ai/learning/hooks.js');
 
 const {
   normaliseConfidence, assessAnswer, claudeEscalationChain, escalates,
@@ -37,8 +38,15 @@ const claude = (over = {}) => ({
 });
 const paid = (over = {}) => groq({ providerKey: 'openrouter', isFree: false, priority: 30, modelChain: ['big'], ...over });
 
-function loadRouter({ providers, settings = {}, respond }) {
+function loadRouter({ providers, settings = {}, respond, lessons = '' }) {
   for (const p of [ROUTER, REGISTRY, GATE]) delete require.cache[require.resolve(p)];
+  const uncertain = [];
+  require.cache[HOOKS] = {
+    exports: {
+      async lessonsFor() { return lessons; },
+      onUncertain(args, result) { uncertain.push({ args, result }); },
+    },
+  };
   require.cache[PROVIDERS] = {
     exports: {
       async getProvidersForRouter() { return providers; },
@@ -69,11 +77,11 @@ function loadRouter({ providers, settings = {}, respond }) {
   require.cache[GEMINI] = { exports: { callGeminiGenerate: adapterFor('gemini'), DEFAULT_TIMEOUT_MS: 1000 } };
   require.cache[ANTHROPIC] = { exports: { callAnthropicMessages: adapterFor('anthropic'), DEFAULT_TIMEOUT_MS: 1000 } };
   // eslint-disable-next-line global-require
-  return { router: require(ROUTER), calls };
+  return { router: require(ROUTER), calls, uncertain };
 }
 
 test.after(() => {
-  for (const p of [ROUTER, REGISTRY, GATE, OPENAI, GEMINI, ANTHROPIC, PROVIDERS, CALL_LOG, SETTINGS]) {
+  for (const p of [ROUTER, REGISTRY, GATE, OPENAI, GEMINI, ANTHROPIC, PROVIDERS, CALL_LOG, SETTINGS, HOOKS]) {
     delete require.cache[p];
   }
 });
@@ -245,4 +253,34 @@ test('only the caller\'s own JSON key counts as "already asks for a confidence"'
     'userText is not sent when messages are, so its key does not count');
   const own = withConfidence({ ...decision, userText: 'Answer {"ok":true, "confidence": "high"|"low"}' });
   assert.equal(own.userText, 'Answer {"ok":true, "confidence": "high"|"low"}');
+});
+
+test('the owner\'s lessons are in a decision\'s prompt, after the caller\'s own instructions', async () => {
+  const { router, calls } = loadRouter({
+    providers: [groq()],
+    lessons: '<lessons>\n1. ok go means approved\n</lessons>',
+    respond: byAdapter({ openai_chat: { move: false, confidence: 95 } }),
+  });
+  await router.runCapability(decision);
+  const system = calls[0].messages[0].content;
+  assert.ok(system.startsWith('Read it. Answer with JSON only.'));
+  assert.ok(system.includes('ok go means approved'));
+  await router.runCapability({ capability: 'employee_birthday_message', userText: 'write' });
+  assert.ok(!JSON.stringify(calls[1].messages).includes('ok go means approved'), 'text for people takes no lessons');
+});
+
+test('still not sure at the end: the owner is asked — only when the caller said what to ask', async () => {
+  const { router, uncertain } = loadRouter({
+    providers: [groq()],
+    respond: byAdapter({ openai_chat: { move: false, confidence: 40 } }),
+  });
+  const learning = { context: 'CLH sent?', ask: 'Which stage?' };
+  const out = await router.runCapability({ ...decision, learning });
+  assert.equal(out.uncertain, true);
+  assert.equal(uncertain.length, 1);
+  assert.equal(uncertain[0].args.learning, learning);
+
+  const sure = loadRouter({ providers: [groq()], respond: byAdapter({ openai_chat: { move: false, confidence: 95 } }) });
+  await sure.router.runCapability({ ...decision, learning });
+  assert.equal(sure.uncertain.length, 0, 'a sure answer asks nobody');
 });

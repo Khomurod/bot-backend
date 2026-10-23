@@ -34,6 +34,9 @@ const DEFAULTS = {
   requestTimeoutMs: 60_000,
   maxRetryWaitMs: 35_000,
   callLogRetentionDays: 30,
+  // Ask the owner in the notifications group when a model is still not sure
+  // after Claude (docs/architecture/ai-learning.md).
+  learningEnabled: true,
 };
 
 function mapSettings(row) {
@@ -45,6 +48,8 @@ function mapSettings(row) {
     requestTimeoutMs: row.request_timeout_ms,
     maxRetryWaitMs: row.max_retry_wait_ms,
     callLogRetentionDays: row.call_log_retention_days,
+    // Undefined before migration 0083 has run: the default, not "off".
+    learningEnabled: row.learning_enabled !== false,
     updatedBy: row.updated_by,
     updatedAt: row.updated_at,
   };
@@ -98,6 +103,7 @@ async function updateAiSettings(patch = {}, updatedBy = null) {
   set('request_timeout_ms', clamp(patch.requestTimeoutMs, 5_000, 300_000));
   set('max_retry_wait_ms', clamp(patch.maxRetryWaitMs, 0, 120_000));
   set('call_log_retention_days', clamp(patch.callLogRetentionDays, 1, 365));
+  set('learning_enabled', typeof patch.learningEnabled === 'boolean' ? patch.learningEnabled : undefined);
   set('updated_by', updatedBy);
   sets.push('updated_at = NOW()');
 

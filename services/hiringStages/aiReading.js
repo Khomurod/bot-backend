@@ -79,7 +79,9 @@ function validateShape(_text, parsed) {
  * @returns {Promise<{parsed: object|null, provider: string|null, model: string|null}>}
  * @throws {AiUnavailableError} when no model could be asked
  */
-async function readConversationStage({ transcript, stages, currentStage = null }, deps = {}) {
+async function readConversationStage({
+  transcript, stages, currentStage = null, subjectKey = null,
+}, deps = {}) {
   const run = deps.runCapability || runCapability;
   const answer = await run({
     capability: CAPABILITY,
@@ -87,6 +89,14 @@ async function readConversationStage({ transcript, stages, currentStage = null }
     userText: buildPrompt({ transcript, stages, currentStage }),
     expects: 'json',
     validate: validateShape,
+    // Still not sure after Claude: the owner is asked once per candidate
+    // thread, and the answer is a lesson for the next reading.
+    learning: {
+      subjectKey,
+      context: `${String(transcript || '').slice(-400)}`,
+      ask: `Has this candidate reached a later stage than ${currentStage ? `"${currentStage.name}"` : 'where they are'}? `
+        + 'Which one, and how should I read conversations like this?',
+    },
   });
   // Not sure even after Claude (services/ai/escalation.js): propose nothing.
   const parsed = answer?.uncertain ? { move: false } : (answer?.parsed ?? null);

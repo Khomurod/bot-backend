@@ -12,6 +12,7 @@
  *   ./settings/safetyEventRoutes.js   /safety-events*  dashcam music overlay
  *   ./settings/retiredLeftoversRoutes.js /retired-leftovers*  removed-feature cleanup
  *   ./settings/safetyApprovalRoutes.js /safety-approvals* Safety's hire decisions
+ *   ./settings/aiLessonsRoutes.js     /ai/lessons*     what Wenze learned from answers
  *
  * Two conventions hold across all of them: `authMiddleware` guards every route
  * (these read and write credentials), and a stored secret is NEVER returned in
@@ -28,6 +29,7 @@ const { createSafetyEventSettingsRouter } = require('./settings/safetyEventRoute
 const { createBitrixSettingsRouter } = require('./settings/bitrixRoutes');
 const { createAiSettingsRouter } = require('./settings/aiRoutes');
 const { createAiPolicyRouter } = require('./settings/aiPolicyRoutes');
+const { createAiLessonsRouter } = require('./settings/aiLessonsRoutes');
 const { createNotificationSettingsRouter } = require('./settings/notificationRoutes');
 const { createControlSettingsRouter } = require('./settings/controlRoutes');
 const { createRetiredLeftoversRouter } = require('./settings/retiredLeftoversRoutes');
@@ -46,6 +48,7 @@ function createSettingsRouter({ authMiddleware, telegram = null }) {
   router.use(createSafetyEventSettingsRouter(deps));
   router.use(createBitrixSettingsRouter(deps));
   router.use(createAiSettingsRouter(deps));
+  router.use(createAiLessonsRouter(deps));
   router.use(createNotificationSettingsRouter(deps));
   router.use(createControlSettingsRouter(deps));
   router.use(createAiPolicyRouter(deps));

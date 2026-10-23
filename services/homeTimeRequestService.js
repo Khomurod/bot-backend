@@ -260,6 +260,7 @@ async function processHomeTimeMessage(telegram, group, message, { statusResult =
       todayIso: todayIsoChicago(),
       senderIsDriver,
       hasOpenClarification: false,
+      learningSubject: message?.message_id != null ? `${group.id}:${message.message_id}` : null,
     });
 
     // AI-detected NON-exact actual status ("uyda", "men uydaman", "back rolling").

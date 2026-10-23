@@ -54,7 +54,11 @@ listed separately at the end because it needs far less care.
    floor and its precision guard, the policy check on a window, the operator
    reviewing an import, `needs_review` on a profile, movement proof before a
    return to road); for them `uncertain` changes who answered, not what the
-   answer may do. A higher confidence is never
+   answer may do. When the caller said what to ask, an answer still unsure
+   also becomes a question for the owner in the notifications group, and the
+   owner's plain-words answer is given to later prompts for that kind of
+   decision ([ai-learning.md](ai-learning.md)) — a lesson, never a decision:
+   it changes nothing that has already been decided. A higher confidence is never
    a licence to skip the deterministic checks below: they run on every answer,
    whichever model wrote it. See [`docs/brief/ai-gateway.md`](../brief/ai-gateway.md).
 

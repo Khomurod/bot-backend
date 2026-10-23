@@ -23,6 +23,7 @@ const { registerSafetyApprovalHandlers } = require('./handlers/safetyApprovalHan
 const { registerHiringStageHandlers } = require('./handlers/hiringStageHandlers');
 const { registerControlReplyHandlers } = require('./controlReplyHandlers');
 const { registerHomeTimeViolationHandlers } = require('./handlers/homeTimeViolationHandlers');
+const { registerLessonReplyHandlers } = require('./handlers/lessonReplyHandlers');
 const { registerDispatchCommands } = require('./handlers/dispatchCommandHandlers');
 const { registerStartHandler } = require('./handlers/startHandlers');
 const { registerSurveyCallbackHandlers } = require('./handlers/surveyCallbackHandlers');
@@ -179,6 +180,10 @@ async function startBot() {
     // A reply that is not an answer falls straight through to the handlers
     // below, untouched.
     registerControlReplyHandlers(bot);
+    // The owner's plain-words answer to a learning question (Wenze was not
+    // sure even after Claude). Right after the control channel, for the same
+    // reason: an answer is consumed, anything else falls through.
+    registerLessonReplyHandlers(bot);
 
     // Accounting's Charged / Not charging buttons on home-time violation alerts,
     // and the reply that gives a "not charging" reason. Here, before the driver

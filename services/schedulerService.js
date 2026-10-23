@@ -337,6 +337,13 @@ async function retentionTick() {
   } catch (err) {
     console.error('[SCHEDULER] Verification pass error:', err.message);
   }
+
+  // A QUESTION FOR THE OWNER THAT COULD NOT GO OUT when it was queued — no
+  // group set yet, the switch off, Telegram down. Rides this timer for the
+  // same reason as the passes above. One at a time, so this sends at most one
+  // and only while nothing else is waiting for an answer. Never throws.
+  // eslint-disable-next-line global-require
+  await require('./ai/learning/askOwner').askNextQuestion();
 }
 
 /**

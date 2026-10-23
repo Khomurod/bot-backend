@@ -18,6 +18,7 @@ const V = require('../../lib/homeTime/violations');
 const store = require('../../database/homeTime/violationNotices');
 const { isAccountingUser, ACCOUNTING_MENTIONS } = require('../../services/mileageBonusConstants');
 const { safeSend } = require('../../services/telegramHtml');
+const { recordAccountingReason } = require('../../services/ai/learning/accountingReasons');
 
 const SETTINGS_TTL_MS = 60 * 1000;
 let cachedChat = { id: null, at: 0 };
@@ -115,6 +116,8 @@ async function onReply(ctx, next) {
         await ctx.telegram.editMessageText(chatId, rows[0].telegram_message_id, undefined, decidedText(rows), {
           parse_mode: 'HTML', link_preview_options: { is_disabled: true },
         }).catch((err) => console.warn('[HOME-TIME-VIOLATION] could not add the reason:', err.message));
+        // The owner, 23 October 2026: learn from why accounting did not charge.
+        await recordAccountingReason(rows, msg.text.trim(), { name: nameOf(ctx.from || {}), telegramUserId: ctx.from?.id });
       }
     }
   } catch (err) {

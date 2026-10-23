@@ -124,6 +124,18 @@ stay in §4a. The provider terms watcher is
   still never reaches Claude. How many calls went to Claude is the Anthropic
   row of the provider health counts on Settings → AI. Guarded by
   `tests/aiEscalation.test.js`.
+- **Still not sure after Claude: the owner is asked, and Wenze learns
+  (owner, 23 October 2026).** Safety Approvals, the hiring-stage reader and the
+  home-time reader pass `learning` (what to show, what to ask); an answer that
+  ends `uncertain` queues one question in the notifications group (category
+  `ai_learning`) — in English, one at a time, no daily limit, no buttons. The
+  owner replies in plain words; an operator's (`control_operators`) reply is
+  kept as a lesson in their own words and said back as "Understood: … Saved".
+  Accounting's "Not charging" reasons are kept the same way (no driver name).
+  Every escalating decision's prompt is given its scope's lessons after the
+  caller's own instructions. Lessons are listed and removed on Settings → AI →
+  What Wenze learned from you, with the "Ask me when unsure" switch.
+  See `docs/architecture/ai-learning.md`.
 - **A picture goes to any model that can see it** (`lib/ai/vision.js`), free
   ones first — Gemini, Llama 4 on Groq, vision models on OpenRouter — and Claude
   when they are unsure; it used to be Gemini only. A model not known to read

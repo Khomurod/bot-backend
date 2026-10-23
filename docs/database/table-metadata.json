@@ -294,6 +294,20 @@
       "sourceOfTruth": "What a person decided, in their own words. It is NOT a permission: a standing permission to act lives in operational_check_settings.mode, where it is visible on a screen.",
       "danger": "A memory that matched too broadly would silence a real new problem about the same driver for ever \u2014 evidence_fingerprint is what stops that, and a changed condition is asked about again. A remembered `approve` is recorded and NEVER re-applied; only `dismiss` acts from memory. Contains the owner's own words, capped at 1000 characters; only counts leave through /api/health. A row is revoked, never deleted, so a behaviour change stays explained."
     },
+    "ai_learning_questions": {
+      "purpose": "The questions Wenze asks the owner in the notifications group when a model is still not sure after Claude (migration 0083). One per (capability, subject_key), so the same thread or message is asked about once; status queued -> asked -> answered or skipped.",
+      "status": "active",
+      "service": "bot (services/ai/learning: queued from an uncertain decision, sent one at a time, answered by reply), admin (Settings -> AI -> What Wenze learned from you: counts, the question out now, Skip)",
+      "sourceOfTruth": "What was asked and what came back. The lesson itself lives in ai_lessons.",
+      "danger": "ONE OUT AT A TIME is enforced by reading status = 'asked' before sending, and markAsked / claimAnswer only move a row in the expected state, so a redelivered reply or a second pass writes nothing. `context` is an excerpt of a driver's, candidate's or Safety's message with phone numbers masked, capped at 500 characters."
+    },
+    "ai_lessons": {
+      "purpose": "What Wenze learned: the owner's plain-words answers to its questions, and accounting's reasons for not charging a home-time violation (migration 0083). Every later prompt for a decision in the same scope is given them.",
+      "status": "active",
+      "service": "bot (written by the reply handler and the home-time violation reason; read into prompts by services/ai/learning/hooks.js), admin (Settings -> AI, listed and removed)",
+      "sourceOfTruth": "`statement` is the person's own words and is what prompts are given. `understood_as` is only Wenze's restatement, shown back for checking, never given to a prompt.",
+      "danger": "Removed, never deleted: removed_at is set and the row stays, so a change in behaviour stays explained. An accounting reason is kept WITHOUT the driver's name. A lesson is guidance for reading, never a decision, and never re-decides the case that raised it."
+    },
     "engineering_requests": {
       "purpose": "A code-level ask \u2014 \"this is a bug\", \"stop asking me this\" \u2014 recorded for a person to turn into a pull request by hand. Filed from a reply in the notification group or by an administrator.",
       "status": "active",

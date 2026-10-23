@@ -193,3 +193,29 @@ export async function getAiResponsibilities() {
   // could not be read, the card must say so rather than draw every switch off.
   return { groups: data.groups || [], automationError: data.automationError || null };
 }
+
+/** What Wenze learned from answers: { lessons, current, counts, scopes }. See docs/architecture/ai-learning.md. */
+export async function getAiLessons() {
+  const res = await fetch(`${API_BASE}/settings/ai/lessons`, { headers: getHeaders() });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+/** Take a lesson back. It is kept, marked removed, and no prompt is given it again. */
+export async function removeAiLesson(id) {
+  const res = await fetch(`${API_BASE}/settings/ai/lessons/${encodeURIComponent(id)}`, {
+    method: 'DELETE', headers: getHeaders(),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  const data = await res.json();
+  return data.lesson;
+}
+
+/** Skip the question waiting in the group, so the next one can be asked. */
+export async function skipAiLearningQuestion() {
+  const res = await fetch(`${API_BASE}/settings/ai/lessons/questions/skip`, {
+    method: 'POST', headers: getHeaders(),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
