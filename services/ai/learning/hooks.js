@@ -21,6 +21,9 @@ const { scopeFor, renderLessonsForPrompt, contextForChat } = require('../../../l
 
 const TTL_MS = 5 * 60 * 1000;
 const cache = new Map();
+// Bumped on every invalidation. A read that started before a lesson was
+// removed must not put the removed lesson back for five minutes.
+let generation = 0;
 
 function store() {
   // eslint-disable-next-line global-require
@@ -32,18 +35,20 @@ async function lessonsFor(capability, { now = Date.now(), lessons = store() } = 
   if (!scope) return '';
   const hit = cache.get(scope);
   if (hit && hit.expiresAt > now) return hit.text;
+  const startedAt = generation;
   let text = '';
   try {
     text = renderLessonsForPrompt(await lessons.listActiveLessons(scope));
   } catch (err) {
     console.warn('[AI LEARNING] lessons unavailable:', err.message);
   }
-  cache.set(scope, { text, expiresAt: now + TTL_MS });
+  if (startedAt === generation) cache.set(scope, { text, expiresAt: now + TTL_MS });
   return text;
 }
 
 /** After a lesson is added or removed. No scope clears them all. */
 function invalidateLessons(scope = null) {
+  generation += 1;
   if (scope) cache.delete(scope);
   else cache.clear();
 }

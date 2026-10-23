@@ -206,3 +206,25 @@ test('hooks: only a caller that said what to ask raises a question, masked', asy
   assert.equal(asked[0].confidence, 40);
   assert.ok(asked[0].subjectKey, 'a key is made when the caller gave none');
 });
+
+test('hooks: a read that started before a lesson was removed does not cache the removed lesson', async () => {
+  const hooks = require('../services/ai/learning/hooks');
+  hooks.invalidateLessons();
+  let release;
+  let reads = 0;
+  const slow = {
+    async listActiveLessons() {
+      reads += 1;
+      if (reads === 1) await new Promise((r) => { release = r; });
+      return reads === 1 ? [{ source: 'owner_answer', about: 'a', statement: 'removed rule' }] : [];
+    },
+  };
+  const pending = hooks.lessonsFor('safety_approval_reading', { now: 0, lessons: slow });
+  await new Promise((r) => setImmediate(r));
+  hooks.invalidateLessons('safety');
+  release();
+  await pending;
+  assert.equal(await hooks.lessonsFor('safety_approval_reading', { now: 1, lessons: slow }), '');
+  assert.equal(reads, 2, 'read again rather than served from a stale cache');
+  hooks.invalidateLessons();
+});
