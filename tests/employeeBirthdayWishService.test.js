@@ -46,6 +46,7 @@ const sentMessages = [];
 let sendShouldFail = false;
 let failForEmployeeId = null;
 let hangSend = false;
+let renderStall = null;
 const photos = new Map();
 const rendered = [];
 
@@ -83,6 +84,7 @@ require.cache[require.resolve('../services/employees/birthdayCard')] = {
   exports: {
     renderBirthdayCard: async (employee, photo) => {
       if (photo === 'broken') throw new Error('unsupported image format');
+      if (renderStall) await renderStall;
       rendered.push({ id: employee.id, photo });
       return `card:${employee.id}`;
     },
@@ -351,5 +353,22 @@ test('a send that hangs is abandoned at the deadline, so a takeover can never ra
     assert.equal(sentMessages.length, 0);
   } finally {
     hangSend = false;
+  }
+});
+
+test('a card that took longer than the deadline to prepare is never sent', async (t) => {
+  resetState();
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  let finishRender;
+  renderStall = new Promise((resolve) => { finishRender = resolve; });
+  try {
+    const run = runEmployeeBirthdayWishes({ claimDailyRun: true });
+    for (let i = 0; i < 20; i += 1) await new Promise((resolve) => setImmediate(resolve));
+    t.mock.timers.tick(3 * 60 * 1000); // the deadline passes while the card is still being drawn
+    finishRender();
+    await assert.rejects(run, /Could not post the birthday card/);
+    assert.equal(sentMessages.length, 0, 'a stalled worker must not post after its claim could be taken over');
+  } finally {
+    renderStall = null;
   }
 });

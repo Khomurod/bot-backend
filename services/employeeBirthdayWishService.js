@@ -49,26 +49,34 @@ function formatNamesList(employees) {
   return employees.map((e) => `${e.first_name} ${e.last_name}`.trim()).join(', ');
 }
 
-/** Render and post one employee's card. Throws when Telegram refuses it. */
+/**
+ * Render and post one employee's card. Throws when Telegram refuses it, or
+ * when the deadline passes first.
+ *
+ * THE DEADLINE STARTS WITH THE CLAIM, not with the send: the claim is taken
+ * just before this is called, and reading the photo or drawing the card can
+ * stall too. Past SEND_DEADLINE_MS the card is never sent — the signal is
+ * checked before sending and aborts a send already under way, retries
+ * included (the Telegram client has no request timeout of its own). So a pass
+ * whose claim could have been taken over (STALE_CLAIM_MINUTES) can never post
+ * after the takeover's card.
+ */
 async function postBirthdayCard(employee) {
-  const photo = await employeesDb.getPhoto(employee.id);
-  let card;
-  try {
-    card = await renderBirthdayCard(employee, photo);
-  } catch (err) {
-    // A stored photo that no longer decodes must not cost anyone their
-    // birthday: the card goes out with the initials instead.
-    if (!photo) throw err;
-    console.warn(`[EMP-BIRTHDAY] Photo for employee ${employee.id} unreadable, posting without it:`, err.message);
-    card = await renderBirthdayCard(employee, null);
-  }
-  // A hard deadline on the whole send, retries included. The Telegram client
-  // has no request timeout of its own, and a send still hanging when its claim
-  // is taken over (STALE_CLAIM_MINUTES) could land after the takeover's card —
-  // the same birthday posted twice. Aborted here, it cannot.
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), SEND_DEADLINE_MS);
   try {
+    const photo = await employeesDb.getPhoto(employee.id);
+    let card;
+    try {
+      card = await renderBirthdayCard(employee, photo);
+    } catch (err) {
+      // A stored photo that no longer decodes must not cost anyone their
+      // birthday: the card goes out with the initials instead.
+      if (!photo) throw err;
+      console.warn(`[EMP-BIRTHDAY] Photo for employee ${employee.id} unreadable, posting without it:`, err.message);
+      card = await renderBirthdayCard(employee, null);
+    }
+    if (controller.signal.aborted) throw new Error('the card took too long to prepare; it was not sent');
     await safeSend(() => bot.telegram.callApi('sendPhoto', {
       chat_id: config.employeeGroupId,
       photo: { source: card, filename: 'happy-birthday.jpg' },

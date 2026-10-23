@@ -67,14 +67,19 @@ The scheduled pass and "Send today's wishes now" work **per employee**, in
 - a claim younger than ten minutes is a pass still posting and is left alone;
   an older one was left by a process that stopped mid-post (a deploy, a crash)
   and is released and taken over — otherwise that employee would get no card
-  all day. **That is only safe because a card's send is abandoned after three
-  minutes** (an `AbortSignal` on the whole send, retries included): the
-  Telegram client has no timeout of its own, and a send still hanging at the
-  takeover could otherwise land after the new card — the birthday posted twice;
-- Telegram has no idempotency key for a photo, so the one window left is a
-  card Telegram accepted whose `:sent` write then failed (the database failing
-  in the second between two writes): after ten minutes it would be posted
-  again. A duplicate card was chosen over a missed birthday;
+  all day. **That is only safe because a card is abandoned three minutes after
+  its claim** — the deadline starts with the claim, not with the send, so a
+  pass that stalled reading the photo or drawing the card never sends it, and
+  an `AbortSignal` cancels a send still under way, retries included (the
+  Telegram client has no timeout of its own). A pass whose claim could have
+  been taken over can never post after the new card;
+- Telegram has no idempotency key for a photo and no way for a bot to ask
+  whether its message landed, so two windows remain where a card can be posted
+  twice: Telegram accepted it but the answer was lost (a timeout or abort
+  after delivery, so the claim is released for the retry), or Telegram
+  accepted it and the `:sent` write then failed. Both need a network or
+  database failure at that exact moment. A duplicate card was chosen over a
+  missed birthday — the same choice the earlier version made;
 - **nothing marks the whole day as done**, so an employee added with today's
   birthday after the morning's cards went out still gets theirs on the next
   hourly tick.
