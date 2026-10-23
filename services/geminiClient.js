@@ -175,38 +175,51 @@ function asLegacyGeminiFailure(err, models) {
   return failure;
 }
 
+/**
+ * A text (or JSON) request that used to go to Gemini alone.
+ *
+ * SINCE 23 OCTOBER 2026 IT GOES TO THE WHOLE ROSTER, in the admin's order, like
+ * every other request: the owner wants the free models to try first and Claude
+ * to settle what they are not sure of (services/ai/escalation.js). The models a
+ * caller names stay a preference for Gemini's own chain. Pictures go only to a
+ * model that can see them (lib/ai/vision.js). Callers that build Gemini-native
+ * `contents` themselves still use callGeminiGenerateContent, which stays on
+ * Gemini.
+ */
 async function callGeminiText(opts = {}) {
-  const systemText = opts.systemText ? String(opts.systemText) : '';
-  const userText = opts.userText != null ? String(opts.userText) : String(opts.promptText || '');
-  const parts = [{ text: userText }];
-  if (opts.extraParts?.length) {
-    parts.push(...opts.extraParts);
+  const models = Array.isArray(opts.models) && opts.models.length
+    ? uniqueGeminiModels(opts.models)
+    : null;
+  const json = /json/i.test(String(opts.responseMimeType || ''));
+  const { responseMimeType: _ignored, maxOutputTokens: configuredMax, ...extraConfig } = opts.generationConfig || {};
+  try {
+    const result = await runCapability({
+      // Which business decision this call serves — and what decides whether
+      // an unsure answer is checked by Claude.
+      capability: opts.capability || null,
+      preferProvider: 'gemini',
+      preferModels: models,
+      systemText: opts.systemText ? String(opts.systemText) : null,
+      userText: opts.userText != null ? String(opts.userText) : String(opts.promptText || ''),
+      extraParts: opts.extraParts?.length ? opts.extraParts : null,
+      generationConfig: Object.keys(extraConfig).length ? extraConfig : null,
+      expects: json ? 'json' : 'text',
+      validate: typeof opts.validateResult === 'function' ? (text) => opts.validateResult(text) : null,
+      timeoutMs: opts.timeoutMs ?? null,
+      generation: { maxTokens: opts.maxOutputTokens ?? configuredMax ?? 800 },
+    });
+    return {
+      text: result.text,
+      model: result.model,
+      payload: result.payload || {},
+      provider: result.provider || null,
+      stage: result.stage || null,
+      confidence: result.confidence ?? null,
+      uncertain: result.uncertain === true,
+    };
+  } catch (err) {
+    throw asLegacyGeminiFailure(err, models || resolveGeminiModels(opts));
   }
-
-  const contents = [{ parts }];
-  const generationConfig = {
-    maxOutputTokens: opts.maxOutputTokens ?? 800,
-    responseMimeType: opts.responseMimeType || 'text/plain',
-    ...(opts.generationConfig || {}),
-  };
-
-  const requestOpts = {
-    models: opts.models,
-    contents,
-    generationConfig,
-    maxRetryWaitMs: opts.maxRetryWaitMs,
-    validateResult: opts.validateResult,
-    // Which business decision this call serves. It was dropped here, so every
-    // Gemini consumer logged as unnamed activity no matter what it passed —
-    // callGeminiGenerateContent forwards it, but nothing ever reached that far.
-    capability: opts.capability || null,
-  };
-
-  if (systemText) {
-    requestOpts.systemInstruction = { parts: [{ text: systemText }] };
-  }
-
-  return callGeminiGenerateContent(requestOpts);
 }
 
 async function callGeminiJson(opts = {}) {
@@ -226,7 +239,16 @@ async function callGeminiJson(opts = {}) {
     },
   });
   const parsed = safeParseJsonObject(result.text);
-  return { parsed, text: result.text, model: result.model, payload: result.payload };
+  return {
+    parsed,
+    text: result.text,
+    model: result.model,
+    payload: result.payload,
+    provider: result.provider,
+    stage: result.stage,
+    confidence: result.confidence,
+    uncertain: result.uncertain,
+  };
 }
 
 module.exports = {

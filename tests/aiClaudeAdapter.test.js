@@ -59,7 +59,9 @@ test('one call: system text split out, low effort, no temperature, key in x-api-
   assert.equal(new Headers(calls[0].init.headers).get('x-api-key'), 'sk-ant-test');
   assert.ok(new Headers(calls[0].init.headers).get('anthropic-version'));
   assert.deepEqual(calls[0].body, {
-    model: 'claude-haiku-5-5', max_tokens: 300, system: 'Answer in JSON.',
+    model: 'claude-haiku-5-5', max_tokens: 300,
+    // The stable system text is marked for prompt caching (23 October 2026).
+    system: [{ type: 'text', text: 'Answer in JSON.', cache_control: { type: 'ephemeral' } }],
     messages: [{ role: 'user', content: 'Is this a quit?' }],
     output_config: { effort: 'low' },
   });
@@ -174,4 +176,21 @@ test('AN ORGANIZATION-LEVEL KEY WORKS: the workspace id travels as anthropic-wor
     adapter: 'anthropic', baseUrl: 'https://api.anthropic.com', apiKey: 'k', fetchImpl: listing.impl, workspaceId: 'wrkspc_01ABC',
   });
   assert.equal(new Headers(listing.calls[0].init.headers).get('anthropic-workspace-id'), 'wrkspc_01ABC');
+});
+
+test('a picture reaches Claude as an image block, beside the words (23 October 2026)', () => {
+  const { turns } = toAnthropicMessages([{
+    role: 'user',
+    content: [
+      { type: 'text', text: 'Read this CDL' },
+      { type: 'image_url', image_url: { url: 'data:image/jpeg;base64,QUJD' } },
+    ],
+  }]);
+  assert.deepEqual(turns, [{
+    role: 'user',
+    content: [
+      { type: 'text', text: 'Read this CDL' },
+      { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: 'QUJD' } },
+    ],
+  }]);
 });

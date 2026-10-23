@@ -61,14 +61,36 @@ function makeClient({
   });
 }
 
+/** One OpenAI multipart piece → an Anthropic content block, or null. */
+function toBlock(part) {
+  if (part?.type === 'text') return { type: 'text', text: String(part.text ?? '') };
+  if (part?.type === 'image_url') {
+    const m = String(part.image_url?.url || '').match(/^data:([^;]+);base64,(.+)$/);
+    if (m) return { type: 'image', source: { type: 'base64', media_type: m[1], data: m[2] } };
+  }
+  return null;
+}
+
+function textOf(content) {
+  if (Array.isArray(content)) return content.filter((p) => p?.type === 'text').map((p) => p.text || '').join('\n');
+  return String(content ?? '');
+}
+
 /** OpenAI-shaped messages → Anthropic's `system` string + user/assistant turns. */
 function toAnthropicMessages(messages) {
   const system = [];
   const turns = [];
   for (const m of messages || []) {
-    const text = String(m?.content ?? '');
-    if (m?.role === 'system') system.push(text);
-    else turns.push({ role: m?.role === 'assistant' ? 'assistant' : 'user', content: text });
+    if (m?.role === 'system') {
+      system.push(textOf(m.content));
+      continue;
+    }
+    const role = m?.role === 'assistant' ? 'assistant' : 'user';
+    // A turn with pictures keeps them, as image blocks (lib/ai/vision.js).
+    const content = Array.isArray(m?.content)
+      ? m.content.map(toBlock).filter(Boolean)
+      : String(m?.content ?? '');
+    turns.push({ role, content });
   }
   // The API wants a user turn first and will not take an empty conversation.
   if (!turns.length || turns[0].role !== 'user') turns.unshift({ role: 'user', content: '' });
@@ -122,7 +144,11 @@ async function callAnthropicMessages({
   }
   const { system, turns } = toAnthropicMessages(messages);
   const body = { model, max_tokens: maxTokens, messages: turns };
-  if (system) body.system = system;
+  // PROMPT CACHING (23 October 2026). The system text is the stable part of
+  // every call of a capability; marking it lets Anthropic reuse it, which is
+  // cheaper and faster. Below the model's minimum cacheable length the marker
+  // is simply ignored, so it costs nothing to always send.
+  if (system) body.system = [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }];
   if (acceptsEffort(model)) body.output_config = { effort: 'low' };
 
   let payload;

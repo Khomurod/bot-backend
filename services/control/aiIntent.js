@@ -177,6 +177,9 @@ async function readReplyWithAi(text, { offered = [], question = null, run = runC
       validate: (_text, candidate) => validateShape(candidate, offered),
       timeoutMs: 20000,
     });
+    // NOT SURE AFTER CLAUDE TOO (services/ai/escalation.js): the question
+    // stands, exactly as when the model itself says "unclear".
+    if (result?.uncertain) return unclear('not sure');
     parsed = result?.parsed;
   } catch (err) {
     // An outage, a switched-off capability, or every provider refusing the

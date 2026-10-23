@@ -68,6 +68,8 @@ async function pickPost({ recent, posts, safetyText }, deps = {}) {
     expects: 'json',
     validate: validateShape,
   });
+  // Not sure even after Claude: no post — Safety is asked instead.
+  if (answer?.uncertain) return null;
   const label = String(answer?.parsed?.post ?? '').trim().toUpperCase();
   const match = label.match(/^P(\d+)$/);
   if (!match) return null;
