@@ -49,6 +49,30 @@ function formatNamesList(employees) {
   return employees.map((e) => `${e.first_name} ${e.last_name}`.trim()).join(', ');
 }
 
+/** The card for `employee`, drawn with their stored photo when it still decodes. */
+async function prepareCard(employee) {
+  const photo = await employeesDb.getPhoto(employee.id);
+  try {
+    return await renderBirthdayCard(employee, photo);
+  } catch (err) {
+    // A stored photo that no longer decodes must not cost anyone their
+    // birthday: the card goes out with the initials instead.
+    if (!photo) throw err;
+    console.warn(`[EMP-BIRTHDAY] Photo for employee ${employee.id} unreadable, posting without it:`, err.message);
+    return renderBirthdayCard(employee, null);
+  }
+}
+
+/** `promise`, or a rejection the moment `signal` aborts — whichever comes first. */
+function untilAborted(promise, signal) {
+  return new Promise((resolve, reject) => {
+    const onAbort = () => reject(new Error('the card took too long to prepare; it was not sent'));
+    if (signal.aborted) { onAbort(); return; }
+    signal.addEventListener('abort', onAbort, { once: true });
+    promise.then(resolve, reject).finally(() => signal.removeEventListener('abort', onAbort));
+  });
+}
+
 /**
  * Render and post one employee's card. Throws when Telegram refuses it, or
  * when the deadline passes first.
@@ -65,17 +89,10 @@ async function postBirthdayCard(employee) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), SEND_DEADLINE_MS);
   try {
-    const photo = await employeesDb.getPhoto(employee.id);
-    let card;
-    try {
-      card = await renderBirthdayCard(employee, photo);
-    } catch (err) {
-      // A stored photo that no longer decodes must not cost anyone their
-      // birthday: the card goes out with the initials instead.
-      if (!photo) throw err;
-      console.warn(`[EMP-BIRTHDAY] Photo for employee ${employee.id} unreadable, posting without it:`, err.message);
-      card = await renderBirthdayCard(employee, null);
-    }
+    // Raced against the deadline: a photo read that never answers (the pool
+    // has no query timeout) must end this attempt, not hold the scheduler's
+    // tick open for good. Whatever finishes late is ignored.
+    const card = await untilAborted(prepareCard(employee), controller.signal);
     if (controller.signal.aborted) throw new Error('the card took too long to prepare; it was not sent');
     await safeSend(() => bot.telegram.callApi('sendPhoto', {
       chat_id: config.employeeGroupId,

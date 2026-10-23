@@ -372,3 +372,20 @@ test('a card that took longer than the deadline to prepare is never sent', async
     renderStall = null;
   }
 });
+
+test('a photo read that never answers ends the attempt at the deadline instead of hanging the pass', async (t) => {
+  resetState();
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  renderStall = new Promise(() => {}); // never settles
+  try {
+    const run = runEmployeeBirthdayWishes({ claimDailyRun: true });
+    for (let i = 0; i < 20; i += 1) await new Promise((resolve) => setImmediate(resolve));
+    t.mock.timers.tick(3 * 60 * 1000);
+    await assert.rejects(run, /Could not post the birthday card/);
+    assert.equal(sentMessages.length, 0);
+    const isoDate = DateTime.now().setZone('Asia/Tashkent').toISODate();
+    assert.equal(claimedKeys.has(`birthday:employee:${isoDate}:1`), false, 'released for the retry');
+  } finally {
+    renderStall = null;
+  }
+});
