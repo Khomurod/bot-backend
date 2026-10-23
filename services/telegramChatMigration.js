@@ -25,7 +25,6 @@ function defaultDeps() {
     caches: [
       require('../database/operationalNotificationSettings'),
       require('../database/messageRoutingSettings'),
-      require('../database/financeSettings'),
     ],
   };
   /* eslint-enable global-require */

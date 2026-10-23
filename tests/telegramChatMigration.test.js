@@ -29,9 +29,9 @@ test('a chat id is a canonical integer string or nothing', () => {
 });
 
 test('a routing map moves only the values naming the old chat', () => {
-  const out = rewriteChatMap({ fuel: '-111111', finance: -222222, safety: '-111111' }, '-111111', '-100999');
+  const out = rewriteChatMap({ fuel: '-111111', retention: -222222, safety: '-111111' }, '-111111', '-100999');
   assert.equal(out.changed, 2);
-  assert.deepEqual(out.map, { fuel: '-100999', finance: -222222, safety: '-100999' });
+  assert.deepEqual(out.map, { fuel: '-100999', retention: -222222, safety: '-100999' });
 });
 
 test('the owner is told in words, without an id', () => {
@@ -53,6 +53,10 @@ const NOT_DESTINATIONS = Object.freeze({
     'the driver-raise review was removed in October 2026; nothing sends there, and the column waits for the retired-feature cleanup',
   'bol_pod_forwarding_settings.central_group_id':
     'BOL/POD forwarding was removed in October 2026; nothing sends there, and the table waits for the retired-feature cleanup',
+  'finance_settings.chat_id':
+    'the Finance Monitor was removed in October 2026; nothing reads that group any more, and the table waits for the retired-feature cleanup',
+  'finance_settings.weekly_report_chat_id':
+    'the Finance Monitor was removed in October 2026; no weekly report is sent, and the table waits for the retired-feature cleanup',
 });
 
 test('every chat-id column in a *_settings table is a destination or has a stated reason not to be', () => {

@@ -74,10 +74,12 @@ Business problems it solves:
   Datatruck).
 - Automate recurring operations work: bonuses, home-time, birthday wishes.
   (BOL/POD document forwarding, everything fuel — stop reminders, the risk
-  watch, the Fuel Monitor — and the dispatcher ETA updates with `/update`,
-  `/status`, `/load` and the pinned-load reading were removed in October 2026:
+  watch, the Fuel Monitor — the dispatcher ETA updates with `/update`,
+  `/status`, `/load` and the pinned-load reading, and the Finance Monitor
+  (money codes) were removed in October 2026:
   `docs/architecture/retired-bol-pod.md`, `docs/architecture/retired-fuel.md`,
-  `docs/architecture/retired-dispatch-eta.md`.)
+  `docs/architecture/retired-dispatch-eta.md`,
+  `docs/architecture/retired-finance-monitor.md`.)
 - Capture and convert recruiting leads (Facebook/Meta, Indeed) and measure
   recruiter performance.
 
@@ -178,7 +180,7 @@ unchanged, so a reference to "§7" still means the same section.
 
 | Section | Read it when |
 |---|---|
-| [§4. Features and workflows](docs/brief/features.md) | You are touching any feature: driver comms, dispatch, payroll-adjacent flows, the Finance Monitor, the Groups page, the presenter remote, the Gross Grand Prix displays |
+| [§4. Features and workflows](docs/brief/features.md) | You are touching any feature: driver comms, dispatch, payroll-adjacent flows, the Groups page, the presenter remote, the Gross Grand Prix displays |
 | [§4b. Home time](docs/brief/home-time.md) | You are touching home time: the home/road state machine, the three manager notices, request detection, automatic return-to-road detection, the cycle invariant |
 | [§4c. Recruiting and leads](docs/brief/recruiting.md) | The Facebook lead chain, whose number texts a candidate, after-hours answering, Teach Wenze, Customer Inquiries, recruiter KPIs, Safety's hire decisions posted from the recruiting group |
 | [§4a. The system checking itself, and the AI that helps](docs/brief/self-checking-and-ai.md) | Operational findings, tiered corrections, the audit trail |
@@ -239,6 +241,7 @@ by a number on every stage does not belong in the file everything else fits in.
 | BOL/POD document forwarding's removal (October 2026), and the tables it left | `docs/architecture/retired-bol-pod.md` |
 | Everything fuel's removal (October 2026): stop reminders, the risk watch, the readings, the ELD-freshness health line, and the tables they left | `docs/architecture/retired-fuel.md` |
 | The dispatcher ETA updates, `/update`, `/status`, `/load` and the pinned-load reading's removal (October 2026), what stayed (`/location`, Live Locations' ETA), and the tables they left | `docs/architecture/retired-dispatch-eta.md` |
+| The Finance Monitor's removal (October 2026): money-code capture, its AI reading, the attachment reader, the weekly report, the Finance page and Settings → Finance; the Telegram file download that moved for Safety Approvals; the money-code tables it left | `docs/architecture/retired-finance-monitor.md` |
 | Whose number texts a lead, WHICH message they send, and the RingCentral/TCR prerequisites | `docs/architecture/recruiter-sms-sender.md` |
 | The Gross Grand Prix displays (`/dispatch`, `/dispatchteam`): the Datatruck read budget, and what a public page may show | `docs/architecture/gross-race.md` |
 | Samsara settings (the shared `samsara_settings` row, the shared-secret envelope for its API key) and missing-video recovery | `docs/architecture/samsara-settings-and-video-recovery.md` |

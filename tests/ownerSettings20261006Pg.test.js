@@ -3,8 +3,9 @@
 /**
  * The owner's 2026-10-06 decisions, against the real schema: driver messages
  * recorded (and the switch that turns it off), recruiting hours Monday–Friday
- * 07:00–17:00 Central with Wenze's own replies still off, and finance
- * documents read by AI.
+ * 07:00–17:00 Central with Wenze's own replies still off. (The third decision,
+ * finance documents read by AI, went with the Finance Monitor in October 2026;
+ * migration 0066 still sets it, on a table nothing reads.)
  */
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -53,12 +54,6 @@ test('recruiting hours are Mon–Fri 07:00–17:00 Central, and Wenze does not c
   assert.equal(at('2026-10-10T15:00:00Z'), false);
   assert.equal(at('2026-10-06T11:30:00Z'), false, '06:30 Central is before opening');
   assert.equal(at('2026-10-06T12:30:00Z'), true, '07:30 Central is open');
-});
-
-test('finance documents may be read by AI', { skip: skipWithoutPg() }, async (t) => {
-  const h = await setup(t);
-  const res = await h.query('SELECT ai_reading_enabled FROM finance_settings WHERE id = 1');
-  assert.equal(res.rows[0].ai_reading_enabled, true);
 });
 
 test('re-applying every migration changes nothing', { skip: skipWithoutPg() }, async (t) => {

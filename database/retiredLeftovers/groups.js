@@ -148,6 +148,23 @@ const RETIRED_GROUPS = Object.freeze({
       'group_pinned_messages',
     ]),
   }),
+  finance: Object.freeze({
+    label: 'Finance Monitor (money codes)',
+    removedAt: '2026-10',
+    note: 'Every message captured from the finance group verbatim, the money codes read '
+      + 'out of them with their voids, replacements and event trail, the posted '
+      + 'attachments and what was read from them, the weekly summaries, and the '
+      + 'settings row. Dropping these permanently destroys the money-code record — '
+      + 'the only ledger of which codes were posted, when, and which were voided.',
+    tables: Object.freeze([
+      'finance_moneycode_events',
+      'finance_documents',
+      'finance_moneycodes',
+      'finance_reports',
+      'finance_messages',
+      'finance_settings',
+    ]),
+  }),
   earlier: Object.freeze({
     label: 'Earlier retired features',
     removedAt: 'various',

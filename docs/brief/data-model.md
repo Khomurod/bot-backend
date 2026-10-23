@@ -201,28 +201,21 @@ not `facebookCrypto` — the poller holds none of this app's secrets.
     directly and re-implements the same provider order, and the duplicate-unit
     check uses Samsara only. So fixing the fallback chain in the resolver leaves
     the map unchanged — check both when you touch provider behavior.
-- **The finance tables stand apart from everything else, on purpose.**
-  `finance_settings` / `finance_messages` / `finance_moneycodes` /
-  `finance_moneycode_events` have no foreign
-  key to `groups`, to `driver_people` or to anything else: the finance group is
-  identified by its raw Telegram `chat_id`, and a money code is tied to the
-  message it came out of and to nothing further. Nothing in the driver, payroll
-  or home-time chain reads them, and nothing they hold feeds a decision — a
-  duplicate is recorded and never acted on. `finance_messages.text` is the
-  record and is never overwritten by the parse beside it, so a tightened parser
-  can re-read exactly the rows the provisional one produced. A money code
-  carries a lifecycle beside its digits — `status`, `voided_at`,
-  `void_message_ref_id`, `void_evidence`, `replaced_by_id`, `review_reason`
-  (migration 0057) — and **nothing in it is ever deleted**: a void adds state,
-  and `finance_moneycode_events` is the append-only trail of how each state was
-  reached, including whether a model contributed
-  (`docs/architecture/finance-monitor.md`).
-- **The Safety Approvals tables also stand apart** (migration 0069; 0077
+- **The finance tables are retired** (the Finance Monitor was removed on
+  2026-10-23). `finance_settings`, `finance_messages`, `finance_moneycodes`,
+  `finance_moneycode_events`, `finance_documents` and `finance_reports` were
+  created by migrations 0052–0054 and 0057, never by the baseline, and are read
+  and written by nothing. They are the only record of the money codes posted in
+  the finance group, so they stay until an administrator drops them (group
+  `finance` in Settings → Retired Leftovers) after a backup. Every foreign key
+  among them stays inside the set — none reaches `groups` or a driver table —
+  so the drop needs no `CASCADE` (`docs/architecture/retired-finance-monitor.md`).
+- **The Safety Approvals tables stand apart** (migration 0069; 0077
   lets a review have no post yet — a decision written on its own):
   `safety_approval_settings` / `safety_approval_messages` /
   `safety_approval_reviews` / `safety_approval_announcements` key on the raw
-  Telegram `chat_id` and touch no driver table. Unlike the finance record, the
-  captured recruiting messages are **deleted after 60 days** — they are
+  Telegram `chat_id` and touch no driver table. The captured recruiting
+  messages are **deleted after 60 days** — they are
   candidates' names and phones, kept only while a late Safety reply could
   still need them. What a model made of a reply is never stored, only the
   verified outcome (`docs/architecture/safety-approvals.md`).

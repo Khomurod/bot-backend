@@ -9,8 +9,8 @@
  * text here, and rendered as "HTTP Error: 400". Seen in production, on a screen
  * that failed on every blur of one field with no way to tell why.
  *
- * Those routes now use `error` like every other one. This file holds the other
- * half: the funnel accepts both words, so the next author who reaches for the
+ * Those routes were fixed to use `error`, and went with the Finance Monitor in
+ * October 2026. This file holds the other half, which stays: the funnel accepts both words, so the next author who reaches for the
  * wrong one is not silently swallowed too.
  */
 import { describe, expect, test } from "vitest";

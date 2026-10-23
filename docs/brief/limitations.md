@@ -48,6 +48,20 @@
   deleted by migration 0081. **`/location` and Live Locations' own ETA stay.**
   The sales deck (`server/presentation/`) no longer lists the removed commands.
   See `docs/architecture/retired-dispatch-eta.md`.
+- **The Finance Monitor was removed (2026-10-23)**, at the owner's request: no
+  group is read for money codes. No capture handler, no
+  `finance_document_reader`, `finance_weekly_report` or `finance_reparse`
+  worker, no `/api/finance` or `/api/settings/finance*` (404), no Finance page
+  or Settings → Finance, no `finance_message_reading` /
+  `finance_document_extraction` AI capability, no `finance` notification
+  category, no `financeDocuments` block in `/api/health`. The six `finance_*`
+  tables — the only money-code record — are read by nothing and are on Settings
+  → Retired Leftovers' list (group `finance`); export them before a drop if the
+  record may be wanted. Migration 0082 deletes the three workers' health rows.
+  `tesseract.js` and `eng.traineddata` went with their last caller. **The
+  Telegram file download Safety Approvals uses stays**, moved to
+  `services/telegram/fileDownload.js`. See
+  `docs/architecture/retired-finance-monitor.md`.
 - **FleetView is archived, not present.** No `fleet/`, no `server/fleet/`, no
   `/update` SPA, no `/api/v1/*`. It is preserved at the git tag
   `archive/fleetview-disabled`, its tables were deliberately **not** dropped, and
@@ -93,17 +107,16 @@
   which
   `App.jsx` reads from `window.location`. Pages are lazy-loaded behind a
   chunk-error boundary.
-- **Committed artifacts, not runtime logic**: `eng.traineddata` (Tesseract OCR
-  data for the optional OCR path of `services/documents/pdfTextExtraction.js`;
-  since the pinned-load reading was removed no caller turns OCR on) and
-  `birthdays.csv`
-  (read by `scripts/import-birthdays.js`). The old committed log snapshots and
-  the `scratch/`, `brain/`, `reports/` and `.cursor/` working directories have
-  been removed and gitignored — nothing in the application read them.
+- **Committed artifacts, not runtime logic**: `birthdays.csv`
+  (read by `scripts/import-birthdays.js`). `eng.traineddata`, the Tesseract OCR
+  model, was removed with `tesseract.js` on 2026-10-23: its last possible
+  caller, the Finance Monitor's PDF reader, went that day. The old committed
+  log snapshots and the `scratch/`, `brain/`, `reports/` and `.cursor/` working
+  directories have been removed and gitignored — nothing in the application
+  read them.
 - **Files over 500 lines are all generated or third-party.** `database/schema.sql`
-  is generated from `database/baseline/*.sql`; the two lockfiles are npm's;
-  `eng.traineddata` is a binary OCR model. Every hand-written source, style,
-  page and documentation file is at or under the limit, and
+  is generated from `database/baseline/*.sql`; the two lockfiles are npm's.
+  Every hand-written source, style, page and documentation file is at or under the limit, and
   `npm run lint:filesize` covers `.js/.jsx/.mjs/.cjs/.ts/.tsx/.py` plus
   `.css/.html/.md/.sql/.yml/.yaml` — 851 files. `.json` is the only source-like
   extension out of scope, and every JSON file over the limit is a lockfile.

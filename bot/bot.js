@@ -19,7 +19,6 @@ const { registerCreatorMessageManager } = require('./creatorMessageManager');
 const { registerCreatorControlPanel } = require('./creatorBroadcastHandlers');
 const { registerAnonymousFeedbackHandlers } = require('./anonymousFeedbackHandlers');
 const { registerGroupCaptureHandlers } = require('./handlers/groupCaptureHandlers');
-const { registerFinanceCaptureHandlers } = require('./handlers/financeCaptureHandlers');
 const { registerSafetyApprovalHandlers } = require('./handlers/safetyApprovalHandlers');
 const { registerHiringStageHandlers } = require('./handlers/hiringStageHandlers');
 const { registerControlReplyHandlers } = require('./controlReplyHandlers');
@@ -168,14 +167,10 @@ async function startBot() {
     // pipeline (migration, pinned snapshots, home-time, chat buffer).
     registerGroupCaptureHandlers(bot);
 
-    // Right after it, and an OBSERVER: it never consumes a message, so
-    // everything below still sees the traffic it always saw. Answers false for
-    // every chat until a person switches the Finance Monitor on and validates
-    // a group. See services/finance/captureService.js.
-    registerFinanceCaptureHandlers(bot);
-    // The same kind of observer for the recruiting group: answers no for every
-    // chat until Safety Approvals is switched on and pointed at one. See
-    // services/safetyApprovals/captureService.js.
+    // Right after it, and an OBSERVER for the recruiting group: it never
+    // consumes a message, so everything below still sees the traffic it always
+    // saw. Answers no for every chat until Safety Approvals is switched on and
+    // pointed at one. See services/safetyApprovals/captureService.js.
     registerSafetyApprovalHandlers(bot);
 
     // AFTER the capture pipeline, so an operator's reply is still recorded as

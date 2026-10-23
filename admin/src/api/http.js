@@ -32,9 +32,9 @@ export async function handleApiError(res) {
       // explanation discarded here and rendered as the bare status line — which
       // is exactly what the Finance settings screen did: the server said "this
       // is a 'private' chat, not a group", and the admin showed "HTTP Error:
-      // 400". Those routes now use `error` like every other one, and this
-      // fallback means the next author who reaches for the other word is not
-      // silently swallowed too.
+      // 400". Those routes used `error` afterwards (and went with the Finance
+      // Monitor in October 2026); this fallback means the next author who
+      // reaches for the other word is not silently swallowed.
       const base = errData.error || errData.message || errorMessage;
       code = errData.code || null;
       detail = errData.detail || null;

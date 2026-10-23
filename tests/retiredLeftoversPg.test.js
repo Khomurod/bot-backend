@@ -22,7 +22,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { createPgHarness, skipWithoutPg } = require('./helpers/pgHarness');
+const { createPgHarness, skipWithoutPg, allMigrationsSql } = require('./helpers/pgHarness');
 
 /**
  * A minimal stand-in for what a removed feature left behind: two tables with a
@@ -269,6 +269,47 @@ test('THE OCTOBER 2026 GROUPS: dropped on a deployed database, they stay dropped
   await harness.query('INSERT INTO group_pinned_messages (group_id) VALUES (1)');
 
   const result = await leftovers.dropRetiredTables({ groupKeys: groups });
+  assert.deepEqual(result.blocked || [], [], JSON.stringify(result));
+  assert.deepEqual(await present(), []);
+
+  await harness.applySchemaSql(); // the reboot
+  assert.deepEqual(await present(), [], 'a dropped leftover must not reappear after a restart');
+});
+
+test('THE FINANCE MONITOR: its tables, as the real migrations built them, drop and stay dropped', { skip: skipWithoutPg() }, async (t) => {
+  // Removed at the owner's request, 23 October 2026. Its six tables were never
+  // in the boot baseline: migrations 0052, 0053, 0054 and 0057 created them, so
+  // a deployed database has them with every foreign key those migrations made,
+  // including finance_moneycodes pointing at itself (duplicate_of_id,
+  // replaced_by_id). Built here from those exact files, with rows, so the drop
+  // meets the real shape rather than a stand-in.
+  // Run once, as the migrations ran once — NOT as `extraDdl`, which the harness
+  // re-applies on every simulated boot the way it re-applies schema.sql.
+  const harness = await createPgHarness(t);
+  await harness.query(allMigrationsSql((name) => /^005[2347]_finance_/.test(name)));
+  const leftovers = await loadLeftovers(harness);
+  const tables = leftovers.tablesForGroups(['finance']);
+  const present = async () => (await harness.query(
+    `SELECT table_name FROM information_schema.tables
+      WHERE table_schema = 'public' AND table_name = ANY($1::text[]) ORDER BY table_name`,
+    [tables],
+  )).rows.map((row) => row.table_name);
+  assert.deepEqual(await present(), [...tables].sort(), 'the migrations built every table in the group');
+
+  // A deployed database: the ledger exists, and the money-code record has rows.
+  await harness.query('CREATE TABLE IF NOT EXISTS schema_migrations (version TEXT PRIMARY KEY)');
+  await harness.query(`INSERT INTO finance_messages (id, chat_id, message_id, text)
+                       VALUES (1, '-1001', 10, 'Money Transfer code: 1491583146'),
+                              (2, '-1001', 11, 'Money Transfer code: 1491583146')`);
+  await harness.query(`INSERT INTO finance_moneycodes (id, message_ref_id, code, code_normalized)
+                       VALUES (1, 1, '1491583146', '1491583146')`);
+  await harness.query(`INSERT INTO finance_moneycodes (id, message_ref_id, code, code_normalized,
+                         duplicate_of_id, duplicate_reason)
+                       VALUES (2, 2, '1491583146', '1491583146', 1, 'same_code')`);
+  await harness.query(`INSERT INTO finance_moneycode_events (moneycode_id, event, message_ref_id)
+                       VALUES (1, 'issued', 1)`);
+
+  const result = await leftovers.dropRetiredTables({ groupKeys: ['finance'] });
   assert.deepEqual(result.blocked || [], [], JSON.stringify(result));
   assert.deepEqual(await present(), []);
 

@@ -303,43 +303,43 @@
     },
     "finance_settings": {
       "purpose": "Single row (id=1) for the Finance Monitor: whether Wenze records the money codes issued in a Telegram group, WHICH group (`chat_id`, NULL inherits FINANCE_GROUP_CHAT_ID), and when a person validated it. `enabled_at` is stamped the first time it is switched on and never moved, because the weekly report needs to tell \"no money codes that week\" from \"we were not watching that week\".",
-      "status": "active",
-      "service": "bot (capture handler), admin (Settings \u2192 Finance Monitor)",
+      "status": "retired",
+      "service": "none \u2014 the Finance Monitor was removed on 23 October 2026 (docs/architecture/retired-finance-monitor.md). Created by forward migrations (0052\u20130054, 0057), never by the baseline; read and written by nothing, and droppable in Settings \u2192 Retired Leftovers (group `finance`) after a backup.",
       "sourceOfTruth": "This row. `enabled` never inherits the environment \u2014 an env var must not be able to start reading a payment chat.",
       "danger": "`enabled = TRUE` starts storing every message in that group verbatim. It cannot be set without `chat_validated_at`, and that rule is enforced in database/financeSettings.js as well as in the route and on the admin screen \u2014 capturing payment messages from a chat nobody confirmed is the mistake this feature must not make."
     },
     "finance_messages": {
       "purpose": "Every message the finance group posted, captured verbatim. `text` IS the record; `parse_status` / `parse_json` / `parser_version` sit BESIDE it, never instead of it, so a tightened parser can re-read exactly the rows the provisional one produced. `reply_to_message_id` is captured because it is the strongest evidence for \"voided\" meaning THIS code, and `ai_read_at` marks the ONE model attempt a message ever gets. `parse_status` has seven values and `ambiguous` is one of them on purpose \u2014 a parser refusing to pick is an answer, not a failure.",
-      "status": "active",
-      "service": "bot (capture handler)",
+      "status": "retired",
+      "service": "none \u2014 the Finance Monitor was removed on 23 October 2026 (docs/architecture/retired-finance-monitor.md). Created by forward migrations (0052\u20130054, 0057), never by the baseline; read and written by nothing, and droppable in Settings \u2192 Retired Leftovers (group `finance`) after a backup.",
       "sourceOfTruth": "The Telegram group, as of `captured_at`. An edit updates `text` and the parse; `captured_at` records when Wenze first saw it and is never moved.",
       "danger": "PAYMENT DATA. This is the one place the group\u0027s text is meant to live \u2014 it is never copied into the application log, and the settings API answers with counts only. Capture is idempotent by UNIQUE (chat_id, message_id), so a Telegram redelivery is a no-op rather than a duplicate."
     },
     "finance_documents": {
       "purpose": "The attachments posted in the finance group, and a QUEUE for reading them. `status` / `attempt_count` / `next_attempt_at` / `processing_started_at` are the repository\u0027s durable-job shape: one row is claimed with FOR UPDATE SKIP LOCKED, attempts count AT CLAIM TIME so a crash loop stays bounded, and a failure carries an exact next-due timestamp. `extracted` holds what was read out of that one document and feeds nothing else.",
-      "status": "active",
-      "service": "bot (capture enqueues, services/finance/documentReader.js reads)",
+      "status": "retired",
+      "service": "none \u2014 the Finance Monitor was removed on 23 October 2026 (docs/architecture/retired-finance-monitor.md). Created by forward migrations (0052\u20130054, 0057), never by the baseline; read and written by nothing, and droppable in Settings \u2192 Retired Leftovers (group `finance`) after a backup.",
       "sourceOfTruth": "Telegram, by `file_unique_id` \u2014 `file_id` is per-bot and reissuable, which is why the uniqueness key uses the other one.",
       "danger": "PAYMENT DATA. `failed` (could not FETCH it, retries on a ladder) and `needs_review` (could not READ it well enough, never retries \u2014 a person is what it needs) are different answers and must never be merged; AI being unavailable is `needs_review`. NO COLUMN HOLDS THE FILE OR ITS URL: Telegram\u0027s download link embeds the bot token, so there is deliberately nowhere here it could go."
     },
     "finance_reports": {
       "purpose": "One weekly money-code summary per period, and the record that the period was handled. `totals` is SQL-derived, always \u2014 nothing a model read off a document is ever summed into a report. `body` is the text that was actually SENT, kept because \"what did last week\u0027s report say\" is a question people ask after a disagreement and recomputing it from today\u0027s data answers a different one.",
-      "status": "active",
-      "service": "bot (services/finance/weeklyReportService.js), admin (Settings \u2192 Finance Monitor)",
+      "status": "retired",
+      "service": "none \u2014 the Finance Monitor was removed on 23 October 2026 (docs/architecture/retired-finance-monitor.md). Created by forward migrations (0052\u20130054, 0057), never by the baseline; read and written by nothing, and droppable in Settings \u2192 Retired Leftovers (group `finance`) after a backup.",
       "sourceOfTruth": "This table, for what was reported. The figures themselves are always re-countable from finance_messages and finance_moneycodes.",
       "danger": "PAYMENT DATA in `body` and `totals`. The uniqueness is a PARTIAL index (`WHERE status <> \u0027manual\u0027`): an AUTOMATIC report happens to a period exactly once whatever restarts in between, while a manual send is a person\u0027s deliberate act and may happen twice. `suppressed_backfill` is a STATUS, not an absence \u2014 no row would look identical to a job that never ran, and \"$0 issued\" for a week nobody was watching is the one wrong answer."
     },
     "finance_moneycodes": {
       "purpose": "What the parser read out of a message with certainty \u2014 one row per code, only ever from a `parsed` message. `duplicate_of_id` + `duplicate_reason` record a repeat; `same_code` is a fact (a code is what gets spent) while `same_amount_recipient_window` is a suspicion (two $500 advances to one driver in a day is sometimes exactly right), and paired CHECKs keep the claim from being written half-formed. A code also has a LIFE: `status` (active | voided | replaced | needs_review | duplicate_posting), `voided_at`, `void_message_ref_id`, `void_evidence`, `void_confidence`, `replaced_by_id` and `review_reason`. NOTHING IS EVER DELETED \u2014 a void ADDS state, and the digits, amount, original message and issue time stay exactly as they were. A voided code later replaced KEEPS status `voided`, because that is the stronger statement about the money; the relationship still lands in `replaced_by_id`.",
-      "status": "active",
-      "service": "bot (capture service)",
+      "status": "retired",
+      "service": "none \u2014 the Finance Monitor was removed on 23 October 2026 (docs/architecture/retired-finance-monitor.md). Created by forward migrations (0052\u20130054, 0057), never by the baseline; read and written by nothing, and droppable in Settings \u2192 Retired Leftovers (group `finance`) after a backup.",
       "sourceOfTruth": "finance_messages.text, re-readable at any later parser version.",
       "danger": "PAYMENT DATA: money codes and amounts. A duplicate is RECORDED, never acted on \u2014 Wenze does not issue money codes and cannot recall one."
     },
     "finance_moneycode_events": {
       "purpose": "Append-only trail of how each money code reached its current state. The row in `finance_moneycodes` says WHAT is true; this says WHY \u2014 which finance message justified it, and whether the rules reached it alone (`decided_by = deterministic`), a model contributed (`ai`), or a person recorded it (`admin`). A state with no event behind it is a state nobody can explain.",
-      "status": "active",
-      "service": "bot (database/financeMoneycodeLifecycle.js), admin (Operations \u2192 Finance Monitor \u2192 Money codes \u2192 History)",
+      "status": "retired",
+      "service": "none \u2014 the Finance Monitor was removed on 23 October 2026 (docs/architecture/retired-finance-monitor.md). Created by forward migrations (0052\u20130054, 0057), never by the baseline; read and written by nothing, and droppable in Settings \u2192 Retired Leftovers (group `finance`) after a backup.",
       "sourceOfTruth": "This table. No route writes an event by hand; the admin reads them through GET /api/finance/moneycodes/:id/events.",
       "danger": "PAYMENT AUDIT DATA. Never delete a row \u2014 the trail is the evidence behind every voided or replaced code, and a void whose reason cannot be shown is a void nobody can defend."
     },

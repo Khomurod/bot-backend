@@ -11,7 +11,6 @@
  *   ./settings/samsaraRoutes.js       /samsara*        Samsara connection + video recovery
  *   ./settings/safetyEventRoutes.js   /safety-events*  dashcam music overlay
  *   ./settings/retiredLeftoversRoutes.js /retired-leftovers*  removed-feature cleanup
- *   ./settings/financeRoutes.js       /finance*        the Finance Monitor's group
  *   ./settings/safetyApprovalRoutes.js /safety-approvals* Safety's hire decisions
  *
  * Two conventions hold across all of them: `authMiddleware` guards every route
@@ -33,7 +32,6 @@ const { createNotificationSettingsRouter } = require('./settings/notificationRou
 const { createControlSettingsRouter } = require('./settings/controlRoutes');
 const { createRetiredLeftoversRouter } = require('./settings/retiredLeftoversRoutes');
 const { createRecruitingHoursRouter } = require('./settings/recruitingHoursRoutes');
-const { createFinanceSettingsRouter } = require('./settings/financeRoutes');
 const { createSafetyApprovalSettingsRouter } = require('./settings/safetyApprovalRoutes');
 
 function createSettingsRouter({ authMiddleware, telegram = null }) {
@@ -53,7 +51,6 @@ function createSettingsRouter({ authMiddleware, telegram = null }) {
   router.use(createAiPolicyRouter(deps));
   router.use(createRetiredLeftoversRouter(deps));
   router.use(createRecruitingHoursRouter(deps));
-  router.use(createFinanceSettingsRouter(deps));
   router.use(createSafetyApprovalSettingsRouter(deps));
 
   return router;

@@ -312,13 +312,64 @@ test('the dispatcher ETA updates, /update, /status, /load and the pinned-load re
   assert.ok(exists('services/liveLocationResolver.js'), '/location needs the live-location resolver');
 });
 
+test('the Finance Monitor stays removed: no capture, no reader, no report, no page', () => {
+  // Removed at the owner's request, 23 October 2026: money-code capture from the
+  // finance group, the AI reading of its messages and documents, the document
+  // reader, the re-read pass, the weekly report, the Finance page and
+  // Settings -> Finance. The Telegram file download Safety Approvals uses
+  // stayed, moved out of services/finance/.
+  for (const gone of [
+    'lib/finance', 'services/finance', 'database/finance', 'database/financeSettings.js',
+    'database/financeMessages.js', 'database/financeDocuments.js',
+    'database/financeMoneycodeLifecycle.js', 'bot/handlers/financeCaptureHandlers.js',
+    'server/routes/financeRoutes.js', 'server/routes/settings/financeRoutes.js',
+    'admin/src/pages/FinancePage.jsx', 'admin/src/pages/finance',
+    'admin/src/pages/settings/FinanceTab.jsx', 'admin/src/api/finance.js',
+    'admin/src/api/financePage.js',
+    // Their last users were the finance reader and capture.
+    'services/documents/pdfTextExtraction.js', 'lib/telegram/fileDescriptor.js',
+  ]) {
+    assert.equal(exists(gone), false, `${gone} must stay removed`);
+  }
+  const offenders = [];
+  for (const file of sourceFiles()) {
+    if (file.startsWith(path.join(ROOT, 'tests')) || file.startsWith(path.join(ROOT, '.claude'))) continue;
+    const src = fs.readFileSync(file, 'utf8');
+    for (const m of src.matchAll(/(?:require\(|from\s+)['"]([^'"]*\/finance[^'"]*)['"]/gi)) {
+      offenders.push(`${path.relative(ROOT, file)} -> ${m[1]}`);
+    }
+  }
+  assert.deepEqual(offenders, [], 'nothing may import a Finance Monitor module');
+  assert.ok(!read('bot/bot.js').includes('registerFinanceCaptureHandlers'), 'no finance capture handler');
+  assert.ok(!/Finance/.test(read('services/backgroundServices.js')), 'no finance worker is started');
+  assert.ok(!read('services/schedulerService.js').includes('finance_reparse'), 'no re-read pass');
+  assert.ok(!read('server/api.js').includes('/api/finance'), 'no /api/finance router');
+  assert.ok(!read('server/routes/settingsRoutes.js').includes('Finance'), 'no /api/settings/finance router');
+  assert.ok(!/['"]finance['"]/.test(read('admin/src/pages/SettingsPage.jsx')), 'no Finance settings tab');
+  assert.ok(!/'(settings_)?finance'/.test(read('admin/src/components/AdminSidebar.jsx')), 'no Finance nav entry');
+  const catalog = read('lib/ai/capabilityCatalog.js');
+  for (const key of ['finance_message_reading', 'finance_document_extraction']) {
+    assert.ok(!catalog.includes(key), `no AI capability ${key}`);
+  }
+  const workers = read('lib/operations/backgroundServiceCatalog.js');
+  for (const key of ['finance_document_reader', 'finance_weekly_report', 'finance_reparse']) {
+    assert.ok(!workers.includes(`'${key}'`), `no catalogued ${key} worker`);
+  }
+  assert.ok(!read('lib/notifications/categories.js').includes("key: 'finance'"), 'no finance notice category');
+  assert.ok(!read('lib/telegram/chatMigration.js').includes('finance_settings'), 'the finance chats are not followed');
+  assert.ok(!read('package.json').includes('tesseract.js'), 'nothing reads a scan with OCR any more');
+  // What stayed: Safety Approvals still downloads the file a post carries.
+  assert.ok(exists('services/telegram/fileDownload.js'), 'Safety Approvals needs the Telegram file download');
+  assert.ok(read('services/safetyApprovals/worker.js').includes('downloadTelegramFile'));
+});
+
 test('the baseline schema creates no removed feature table, and still creates the shared ones', () => {
   // As a deployed database runs it: the fresh-database-only stubs are proven
   // guarded in tests/retiredLeftovers.test.js.
   const { deployedBootSchema } = require('./helpers/freshOnlyStubs');
   const schema = deployedBootSchema(read('database/schema.sql'));
   const created = [...schema.matchAll(/CREATE TABLE IF NOT EXISTS (\w+)/g)].map((m) => m[1]);
-  const removed = created.filter((t) => /^(trailer|sos_|qbq_|fleet_|route_|gmaps_|raise_|dispatch_team|bol_pod_|datatruck_document|fuel_|truck_fuel|dispatch_eta_)/.test(t)
+  const removed = created.filter((t) => /^(trailer|sos_|qbq_|fleet_|route_|gmaps_|raise_|dispatch_team|bol_pod_|datatruck_document|fuel_|truck_fuel|dispatch_eta_|finance_)/.test(t)
     || ['trailers', 'group_recent_loads', 'group_pinned_messages'].includes(t));
   assert.deepEqual(removed, [], 'the baseline must not create a removed feature table');
   for (const kept of [

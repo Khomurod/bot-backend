@@ -10,6 +10,23 @@ git so they can be recovered.
 
 ---
 
+## The Finance Monitor (money codes)
+
+Removed 2026-10-23 at the owner's request. Gone: money-code capture from the
+finance Telegram group, the label-based money-code parser with its void and
+replacement reading, the AI capabilities `finance_message_reading` and
+`finance_document_extraction`, the attachment reader (`finance_document_reader`),
+the re-read pass after a parser change (`finance_reparse`), the weekly
+money-code summary (`finance_weekly_report`), the Finance page under Operations
+with `/api/finance/*`, and Settings → Finance with `/api/settings/finance*` (all
+now 404). The PDF text extraction, the attachment descriptor and `tesseract.js`
+went with their last caller. The Telegram file download Safety Approvals uses
+stayed, moved to `services/telegram/fileDownload.js`. The six `finance_*` tables
+— the only money-code record — are kept for the backed-up cleanup. Details in
+[`architecture/retired-finance-monitor.md`](architecture/retired-finance-monitor.md).
+
+---
+
 ## Dispatcher ETA updates, /update, /status, /load and the pinned-load reading
 
 Removed 2026-10-23 at the owner's request ("полностью убрать функцию update и

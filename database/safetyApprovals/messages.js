@@ -3,9 +3,8 @@
 /**
  * What the recruiting group said — the store behind Safety Approvals.
  *
- * `text` IS THE RECORD, verbatim, as in database/financeMessages.js. Photos and
- * documents are Telegram file ids: the bytes stay in Telegram, and only this
- * bot can fetch them.
+ * `text` IS THE RECORD, verbatim. Photos and documents are Telegram file ids:
+ * the bytes stay in Telegram, and only this bot can fetch them.
  *
  * CAPTURE IS IDEMPOTENT BY THE DATABASE. Telegram redelivers; the unique key
  * (chat_id, message_id) makes a second delivery an update, never a second row.

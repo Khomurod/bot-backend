@@ -11,9 +11,9 @@
  *
  * No environment variable can switch any of this on.
  *
- * As in database/financeSettings.js, only 42P01 (the table does not exist yet)
- * reads as "nothing configured"; any other failure is thrown, so an outage is
- * never mistaken for an administrator having switched the feature off.
+ * Only 42P01 (the table does not exist yet) reads as "nothing configured"; any
+ * other failure is thrown, so an outage is never mistaken for an administrator
+ * having switched the feature off.
  */
 
 const { query } = require('../pool');

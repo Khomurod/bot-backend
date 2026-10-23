@@ -3,10 +3,9 @@
 /**
  * The one place a recruiting-group message reaches Safety Approvals.
  *
- * DELIBERATELY THIN, like bot/handlers/financeCaptureHandlers.js: whether this
- * is the right chat, who is Safety and what to queue are decided in
- * services/safetyApprovals/captureService.js, where they can be tested
- * without a bot.
+ * DELIBERATELY THIN: whether this is the right chat, who is Safety and what
+ * to queue are decided in services/safetyApprovals/captureService.js, where
+ * they can be tested without a bot.
  *
  * `next()` IS ALWAYS CALLED. Capture is an observer and never consumes a
  * message. IT CANNOT THROW: a rejection inside a `bot.on('message')` handler

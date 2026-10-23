@@ -53,7 +53,7 @@ function renderMetaCompliancePage(title, bodyHtml) {
 
 function createHealthRoutes({
   db, config, countExhaustedInternalAlerts = null, countFailedManagerNotices = null,
-  summariseOperationalNotifications = null, summariseFinanceDocuments = null,
+  summariseOperationalNotifications = null,
   getOperationsHealth = null, getEconomyState = null,
 }) {
   const router = express.Router();
@@ -164,32 +164,8 @@ function createHealthRoutes({
         operationalNotifications = { available: false, error: err.message };
       }
     }
-    // The finance document queue. `needs_review` is not an error — it is work
-    // waiting for a person — but a number that only ever goes up is worth
-    // seeing, and `failed` means documents Wenze could not even fetch.
-    let financeDocuments = { available: false };
-    if (typeof summariseFinanceDocuments === 'function') {
-      try {
-        const s = await summariseFinanceDocuments();
-        financeDocuments = {
-          available: s.available,
-          pending: s.byStatus?.pending ?? 0,
-          needsReview: s.needsReview,
-          failed: s.failed,
-          read: s.byStatus?.read ?? 0,
-        };
-        if (s.failed > 0) {
-          console.warn(
-            `[HEALTH] ${s.failed} finance document(s) could not be fetched from Telegram after `
-            + 'every retry. They are recorded, not lost, but nothing will read them.'
-          );
-        }
-      } catch (err) {
-        financeDocuments = { available: false, error: err.message };
-      }
-    }
     const queues = {
-      homeTimeInternalAlerts, homeTimeManagerNotices, operationalNotifications, financeDocuments,
+      homeTimeInternalAlerts, homeTimeManagerNotices, operationalNotifications,
     };
     queueHealthCache = { checkedAt: now, queues };
     return queues;

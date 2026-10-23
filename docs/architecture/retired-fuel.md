@@ -71,8 +71,10 @@ runs, not resurrected from this table.
 - **The Samsara request itself** (`services/samsaraLocationService.js`) stays:
   Live Locations, ETA and return-to-road read its GPS. What it asked for on the
   fuel watch's behalf went in the cleanup below.
-- **"Fuel advance" in the Finance Monitor** is money-code wording
-  (`lib/finance/moneycode/*`), unrelated to this feature, and stays.
+- **"Fuel advance" in the Finance Monitor** was money-code wording
+  (`lib/finance/moneycode/*`), unrelated to this feature, and stayed — until the
+  Finance Monitor itself was removed on 2026-10-23
+  ([`retired-finance-monitor.md`](retired-finance-monitor.md)).
 - **The tables** `fuel_stop_alerts`, `fuel_monitor_inbox` and
   `truck_fuel_readings` (migration 0038) are read and written by nothing. They
   stay on a deployed database until an administrator drops them from

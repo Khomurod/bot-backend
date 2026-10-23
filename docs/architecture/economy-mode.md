@@ -76,15 +76,16 @@ configuration", never a failure.
 - driver chats and home-time requests, with their reminders;
 - Samsara (a separate service);
 - Facebook and SMS leads, including the after-hours answers;
-- money codes;
 - scheduled broadcasts;
 - the delivery of every notice;
 - birthdays;
 - bonuses;
 - return-to-road detection.
 
-(The dispatcher ETA updates were on this list until they were removed on
-2026-10-23 — [`retired-dispatch-eta.md`](retired-dispatch-eta.md).)
+(The dispatcher ETA updates and the Finance Monitor's money codes were on this
+list until they were removed on 2026-10-23 —
+[`retired-dispatch-eta.md`](retired-dispatch-eta.md),
+[`retired-finance-monitor.md`](retired-finance-monitor.md).)
 
 **Slowed:** the Dispatcher Board is read every **4 hours**, instead of every 5
 minutes. It is not paused, because Home Time's home-in/home-out pass reads its
