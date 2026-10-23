@@ -26,7 +26,9 @@ const { birthdayCaption } = require('./employees/birthdayText');
 const { createDailyWakeTimer } = require('./dailyWakeSchedule');
 
 const DEFAULT_TZ = 'Asia/Tashkent';
-// Longer than any one post can take, retries and Telegram's rate-limit waits included.
+// A card's send is abandoned after SEND_DEADLINE_MS, so a claim older than
+// STALE_CLAIM_MINUTES can only belong to a process that stopped mid-post.
+const SEND_DEADLINE_MS = 3 * 60 * 1000;
 const STALE_CLAIM_MINUTES = 10;
 /**
  * Fallback schedule, used only if the settings row cannot be read at all.
@@ -60,11 +62,22 @@ async function postBirthdayCard(employee) {
     console.warn(`[EMP-BIRTHDAY] Photo for employee ${employee.id} unreadable, posting without it:`, err.message);
     card = await renderBirthdayCard(employee, null);
   }
-  await safeSend(() => bot.telegram.sendPhoto(
-    config.employeeGroupId,
-    { source: card, filename: 'happy-birthday.jpg' },
-    { caption: birthdayCaption(employee), parse_mode: 'HTML' }
-  ));
+  // A hard deadline on the whole send, retries included. The Telegram client
+  // has no request timeout of its own, and a send still hanging when its claim
+  // is taken over (STALE_CLAIM_MINUTES) could land after the takeover's card —
+  // the same birthday posted twice. Aborted here, it cannot.
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), SEND_DEADLINE_MS);
+  try {
+    await safeSend(() => bot.telegram.callApi('sendPhoto', {
+      chat_id: config.employeeGroupId,
+      photo: { source: card, filename: 'happy-birthday.jpg' },
+      caption: birthdayCaption(employee),
+      parse_mode: 'HTML',
+    }, { signal: controller.signal }));
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /**

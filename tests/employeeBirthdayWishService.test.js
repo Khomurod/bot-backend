@@ -45,6 +45,7 @@ const staleKeys = new Set();
 const sentMessages = [];
 let sendShouldFail = false;
 let failForEmployeeId = null;
+let hangSend = false;
 const photos = new Map();
 const rendered = [];
 
@@ -59,11 +60,17 @@ require.cache[require.resolve('../bot/bot')] = {
   exports: {
     bot: {
       telegram: {
-        sendPhoto: async (chatId, file, extra) => {
+        callApi: async (method, payload, { signal } = {}) => {
+          assert.equal(method, 'sendPhoto');
+          assert.ok(signal instanceof AbortSignal, 'every card send carries a deadline');
+          const file = payload.photo;
           if (sendShouldFail || String(file.source) === `card:${failForEmployeeId}`) {
             throw new Error('simulated telegram failure');
           }
-          sentMessages.push({ chatId, file, caption: extra.caption, parseMode: extra.parse_mode });
+          if (hangSend) {
+            await new Promise((_, reject) => signal.addEventListener('abort', () => reject(new Error('aborted'))));
+          }
+          sentMessages.push({ chatId: payload.chat_id, file, caption: payload.caption, parseMode: payload.parse_mode });
         },
       },
     },
@@ -326,5 +333,23 @@ test('someone added with today\'s birthday after the cards went out still gets t
     assert.deepEqual(sentMessages.map((m) => m.file.source), ['card:1', 'card:7']);
   } finally {
     employeesToday = saved;
+  }
+});
+
+test('a send that hangs is abandoned at the deadline, so a takeover can never race it', async (t) => {
+  resetState();
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  hangSend = true;
+  try {
+    const run = runEmployeeBirthdayWishes({ claimDailyRun: true });
+    // Let the pass reach the send, then pass the three-minute deadline.
+    for (let i = 0; i < 20; i += 1) await new Promise((resolve) => setImmediate(resolve));
+    t.mock.timers.tick(3 * 60 * 1000);
+    await assert.rejects(run, /Could not post the birthday card/);
+    const isoDate = DateTime.now().setZone('Asia/Tashkent').toISODate();
+    assert.equal(claimedKeys.has(`birthday:employee:${isoDate}:1`), false, 'released for the retry');
+    assert.equal(sentMessages.length, 0);
+  } finally {
+    hangSend = false;
   }
 });
