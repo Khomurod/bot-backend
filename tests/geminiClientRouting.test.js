@@ -95,17 +95,28 @@ test('callGeminiText carries its generation config through', async () => {
   const { client, geminiCalls } = loadClient({ respond: answers('a reply') });
   await client.callGeminiText({ userText: 'hi', systemText: 'be brief', maxOutputTokens: 100 });
   assert.equal(geminiCalls[0].generationConfig.maxOutputTokens, 100);
-  assert.equal(geminiCalls[0].generationConfig.responseMimeType, 'text/plain');
+  assert.equal(geminiCalls[0].generationConfig.responseMimeType, undefined, 'plain text asks for no JSON mode');
   assert.deepEqual(geminiCalls[0].systemInstruction, { parts: [{ text: 'be brief' }] });
 });
 
-test('an OpenAI-shaped provider is NEVER asked to answer Gemini-shaped contents', async () => {
-  // Groq is priority 10 and would otherwise be first on the roster.
+test('a JSON request now follows the admin\'s order, like every other (23 October 2026)', async () => {
+  // Groq is priority 10, so it is asked first: the free models try first, and
+  // Claude settles what they are not sure of (services/ai/escalation.js).
   const { client, openaiCalls, geminiCalls } = loadClient({
     providers: [groq(), gemini()],
     respond: answers('{"ok":true}'),
   });
-  await client.callGeminiJson({ userText: 'hi' });
+  await client.callGeminiJson({ userText: 'hi, answer in JSON' });
+  assert.equal(openaiCalls.length, 1);
+  assert.equal(geminiCalls.length, 0);
+});
+
+test('an OpenAI-shaped provider is NEVER asked to answer Gemini-shaped contents', async () => {
+  const { client, openaiCalls, geminiCalls } = loadClient({
+    providers: [groq(), gemini()],
+    respond: answers('{"ok":true}'),
+  });
+  await client.callGeminiGenerateContent({ contents: [{ parts: [{ text: 'hi' }] }] });
   assert.equal(openaiCalls.length, 0);
   assert.equal(geminiCalls.length, 1);
 });

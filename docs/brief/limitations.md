@@ -94,7 +94,8 @@
   `App.jsx` reads from `window.location`. Pages are lazy-loaded behind a
   chunk-error boundary.
 - **Committed artifacts, not runtime logic**: `eng.traineddata` (Tesseract OCR
-  data, used by the PDF OCR that the pinned-context reader falls back to) and
+  data for the optional OCR path of `services/documents/pdfTextExtraction.js`;
+  since the pinned-load reading was removed no caller turns OCR on) and
   `birthdays.csv`
   (read by `scripts/import-birthdays.js`). The old committed log snapshots and
   the `scratch/`, `brain/`, `reports/` and `.cursor/` working directories have

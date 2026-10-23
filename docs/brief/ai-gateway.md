@@ -101,6 +101,37 @@ stay in §4a. The provider terms watcher is
   `round_robin` the card says the order is only a starting point. Guarded by
   `tests/aiProviderOrder.test.js`, `tests/aiProviderOrderPg.test.js` and
   `admin/src/pages/settings/ai/ProviderOrderCard.test.jsx`.
+- **Decisions: free models first, Claude when they are not sure (the owner,
+  23 October 2026).** For the capabilities that decide something
+  (`lib/ai/escalation.js` `ESCALATING`: home-time intent, dates, return to
+  road and screenshot import, driver profile extraction, control replies,
+  Safety Approvals, hiring stages, Teach Wenze), `services/ai/escalation.js`
+  asks the **free** providers first, in the order above. An answer at least
+  **85%** sure stands. Under 85%, with no confidence given, or answering
+  "unclear", it goes to **Claude — the newest Sonnet, then the newest Haiku,
+  never Opus**; if Claude cannot be reached, to another **paid** provider; if
+  nobody better answers, the free answer comes back marked `uncertain`. The
+  control, Safety, hiring-stage and Teach Wenze readings treat that as no
+  decision (Safety asks, the stage is not proposed, the control question
+  stands); home time and driver profiles keep their own existing gates
+  (`docs/architecture/ai-decisions.md` rule 7). A model's own confidence is
+  not trusted alone: "unclear", no JSON object, or no confidence escalates.
+  The prompt gets one line asking for a `"confidence"` unless the caller's own
+  prompt already has a `"confidence":` key (chat turns are not looked at). **For these capabilities the
+  free models outrank the order above**, Claude-first included; everything
+  else — text written for people, batch jobs like driver status and chat
+  labels — is one pass in the operator's order, unchanged. "Free tiers only"
+  still never reaches Claude. How many calls went to Claude is the Anthropic
+  row of the provider health counts on Settings → AI. Guarded by
+  `tests/aiEscalation.test.js`.
+- **A picture goes to any model that can see it** (`lib/ai/vision.js`), free
+  ones first — Gemini, Llama 4 on Groq, vision models on OpenRouter — and Claude
+  when they are unsure; it used to be Gemini only. A model not known to read
+  images is never offered one: it would answer about a picture it never saw.
+  `services/geminiClient.js` `callGeminiText` / `callGeminiJson` now go to the
+  whole roster; only Gemini-native `contents` stay on Gemini.
+- **Claude's system prompt is marked for prompt caching** (`cache_control`
+  `ephemeral`), so the stable instructions of a capability are reused cheaply.
 - **Adding a known provider is: pick it, paste the key, Connect.**
   `lib/ai/providerCatalog.js` (pure) holds what is public about nine providers
   — Groq, Gemini, OpenRouter, Anthropic Claude, Cerebras, Mistral, Together,

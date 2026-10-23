@@ -43,6 +43,8 @@ const { callOpenAiChat } = require('./adapters/openaiChat');
 const { callGeminiGenerate } = require('./adapters/gemini');
 const { callAnthropicMessages } = require('./adapters/anthropic');
 const { buildRequest, geminiTurnsFromMessages } = require('./requestShape');
+const { runEscalated } = require('./escalation');
+const { isVisionModel, hasImageParts } = require('../../lib/ai/vision');
 
 /** Every provider was unusable, cooled, or refused. The consumer degrades. */
 class AiUnavailableError extends Error {
@@ -60,18 +62,23 @@ class AiUnavailableError extends Error {
 
 /**
  * A capability that cannot be served by every adapter says so, and the roster
- * is filtered rather than the request quietly downgraded.
+ * is filtered rather than the request quietly downgraded. Gemini-native
+ * `contents` can only go to Gemini.
  *
- * The one real case today is the home-time screenshot import, which sends
- * images as `extraParts`. An OpenAI-compatible chat provider would accept the
- * text half of that request and answer confidently about a screenshot it never
- * saw — a wrong answer that looks exactly like a right one. Better to have no
- * provider and let the consumer degrade.
+ * PICTURES ARE NOT AN ADAPTER QUESTION ANY MORE (23 October 2026). They used
+ * to pin a request to Gemini; now every provider may take one, but only with a
+ * model that can see — `visionChain` below — because a text model asked about
+ * a screenshot answers confidently about a picture it never saw.
  */
-function requiredAdapterFor({ contents, extraParts, requireAdapter }) {
+function requiredAdapterFor({ contents, requireAdapter }) {
   if (requireAdapter) return requireAdapter;
-  if (contents || (extraParts && extraParts.length)) return 'gemini';
+  if (contents) return 'gemini';
   return null;
+}
+
+/** Only the models of `chain` that can look at a picture (lib/ai/vision.js). */
+function visionChain(provider, chain) {
+  return chain.filter((model) => isVisionModel(provider.adapter, model));
 }
 
 async function callOne(provider, model, request, { timeoutMs, expects, generation = {} }) {
@@ -181,7 +188,8 @@ function stripFences(text) {
 }
 
 /**
- * Run one capability through the roster.
+ * Run one capability through the roster, ONE pass (escalation calls this once
+ * per tier; see runCapability below).
  *
  * @param {object} args
  * @param {string} args.capability   a key from ai_capabilities, for the log
@@ -191,15 +199,17 @@ function stripFences(text) {
  * @param {'text'|'json'} [args.expects='text']
  * @param {Function} [args.validate] (text, parsed) => true | {message}
  * @param {string} [args.excludeProvider]  never ask this provider on this run
+ * @param {Function} [args.providerFilter]  (provider) => bool: the tier being asked
+ * @param {Function} [args.chainOverride]   (provider) => model ids to ask, in order
  * @returns {Promise<{text, parsed, provider, model, attempts}>}
  * @throws {AiUnavailableError}
  */
-async function runCapability({
+async function runProviders({
   capability = null, systemText = null, userText = null, messages = null,
   contents = null, extraParts = null, generationConfig = null, systemInstruction = null,
   expects = 'text', validate = null, timeoutMs = null,
   preferProvider = null, preferModels = null, generation = null, requireAdapter = null,
-  excludeProvider = null,
+  excludeProvider = null, providerFilter = null, chainOverride = null,
 } = {}) {
   const roster = await getRoster();
   if (!roster.available) {
@@ -222,13 +232,16 @@ async function runCapability({
   }
 
   const { settings } = roster;
-  const needsAdapter = requiredAdapterFor({ contents, extraParts, requireAdapter });
+  const needsAdapter = requiredAdapterFor({ contents, requireAdapter });
+  const withImages = hasImageParts(extraParts);
   // `excludeProvider`: the terms watcher may ask a model to help read GROQ's
   // documentation, and must not ask Groq — the provider under investigation
   // cannot be a dependency for investigating itself.
+  // `providerFilter`: the escalation tier being asked (services/ai/escalation.js).
   const usable = roster.providers
     .filter((p) => !needsAdapter || p.adapter === needsAdapter)
-    .filter((p) => !excludeProvider || p.providerKey !== excludeProvider);
+    .filter((p) => !excludeProvider || p.providerKey !== excludeProvider)
+    .filter((p) => typeof providerFilter !== 'function' || providerFilter(p));
 
   const ordered = eligibleProviders(usable, {
     now: Date.now(),
@@ -256,11 +269,13 @@ async function runCapability({
     const request = buildRequest(provider, {
       systemText, userText, messages, contents, extraParts, generationConfig, systemInstruction,
     });
-    const chain = chainFor(provider, { preferProvider, preferModels });
+    const asked = typeof chainOverride === 'function'
+      ? chainOverride(provider) : chainFor(provider, { preferProvider, preferModels });
+    const chain = withImages ? visionChain(provider, asked) : asked;
     if (!chain.length) {
       attemptErrors.push({
         provider: provider.providerKey, model: null, status: null,
-        kind: FAILURE.CREDENTIAL, message: 'no models configured',
+        kind: FAILURE.CREDENTIAL, message: withImages ? 'no model that can read pictures' : 'no models configured',
       });
       continue;
     }
@@ -399,7 +414,19 @@ async function runCapability({
   );
 }
 
+/**
+ * Run one capability. A decision whose free answer is not sure enough is asked
+ * again of Claude, then of another strong model (services/ai/escalation.js);
+ * everything else is one pass over the roster, as it always was.
+ *
+ * @returns {Promise<{text, parsed, provider, model, attempts, stage?, confidence?, uncertain?}>}
+ * @throws {AiUnavailableError}
+ */
+function runCapability(args = {}) {
+  return runEscalated(args, runProviders);
+}
+
 module.exports = {
-  AiUnavailableError, runCapability, buildRequest, stripFences,
+  AiUnavailableError, runCapability, runProviders, buildRequest, stripFences,
   chainFor, requiredAdapterFor, geminiTurnsFromMessages, setModelRefusalListener,
 };

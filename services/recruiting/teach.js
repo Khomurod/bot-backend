@@ -105,13 +105,14 @@ async function readStatement(statement, deps = defaultDeps()) {
   try {
     if (!(await deps.isCapabilityEnabled(CAPABILITY))) return fallback;
     const active = await deps.store.listActiveKnowledge().catch(() => []);
-    const { parsed } = await deps.runCapability({
+    const { parsed, uncertain } = await deps.runCapability({
       capability: CAPABILITY,
       userText: buildPrompt({ statement: String(statement || '').trim(), active }),
       expects: 'json',
       validate: validateReading,
     });
-    if (validateReading(parsed) !== true) return fallback;
+    // Not sure even after Claude: keep the words as written, unread.
+    if (uncertain || validateReading(parsed) !== true) return fallback;
 
     // A claimed replacement is only honoured when it names something that
     // actually exists and is actually active. A model naming a plausible id

@@ -121,12 +121,34 @@ test('"Free tiers only" still guarantees Claude is never called', async () => {
   assert.ok(calls.every((c) => c.adapter !== 'anthropic'));
 });
 
-test('an image capability is never sent to Claude, which would answer without seeing it', async () => {
+test('a picture goes to Claude WITH the picture, as an image part (23 October 2026)', async () => {
   const { router, calls } = loadRouter({ providers: [claude()], respond: ok });
+  await router.runCapability({
+    capability: 'x', userText: 'read this', extraParts: [{ inline_data: { mime_type: 'image/png', data: 'AA==' } }],
+  });
+  assert.equal(calls.length, 1);
+  const user = calls[0].messages.find((m) => m.role === 'user');
+  assert.deepEqual(user.content, [
+    { type: 'text', text: 'read this' },
+    { type: 'image_url', image_url: { url: 'data:image/png;base64,AA==' } },
+  ]);
+});
+
+test('a picture is never offered to a model that cannot see it', async () => {
+  const { router, calls } = loadRouter({ providers: [groq({ modelChain: ['llama-3.3-70b-versatile'] })], respond: ok });
   await assert.rejects(router.runCapability({
     capability: 'x', userText: 'read this', extraParts: [{ inline_data: { data: 'AA==' } }],
   }), (err) => err.aiUnavailable === true);
   assert.equal(calls.length, 0);
+});
+
+test('a free model that can see is asked about a picture, with only its vision models', async () => {
+  const { router, calls } = loadRouter({
+    providers: [groq({ modelChain: ['llama-3.3-70b-versatile', 'meta-llama/llama-4-scout-17b-16e-instruct'] })],
+    respond: ok,
+  });
+  await router.runCapability({ capability: 'x', userText: 'read', extraParts: [{ inline_data: { data: 'AA==' } }] });
+  assert.deepEqual(calls.map((c) => c.model), ['meta-llama/llama-4-scout-17b-16e-instruct']);
 });
 
 // ── the models are the operator's ──────────────────────────────────────────

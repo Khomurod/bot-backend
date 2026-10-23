@@ -41,6 +41,22 @@ listed separately at the end because it needs far less care.
    Settings → AI → AI Responsibilities. The switch is honoured in
    `services/ai/router.js`: a refused capability raises the same error as a
    provider outage, which is the path every consumer already falls back through.
+7. **An unsure answer is checked by a stronger model, and if it is still unsure
+   it decides nothing** (the owner, 23 October 2026). For the decisions in
+   `lib/ai/escalation.js`, a free model's answer under 85% confidence — or one
+   that says "unclear", or gives no confidence — is asked again of Claude
+   (Sonnet, then Haiku), then of another paid model if Claude is unreachable.
+   An answer still unsure comes back marked `uncertain`. The readings that
+   decide on their own — `control_reply_reading`, `safety_approval_reading`,
+   `hiring_stage_reading`, `recruiting_knowledge_reading` — treat that exactly
+   like rule 2's third answer. The home-time and driver-profile capabilities
+   keep the gates they already had, listed in the table below (the request
+   floor and its precision guard, the policy check on a window, the operator
+   reviewing an import, `needs_review` on a profile, movement proof before a
+   return to road); for them `uncertain` changes who answered, not what the
+   answer may do. A higher confidence is never
+   a licence to skip the deterministic checks below: they run on every answer,
+   whichever model wrote it. See [`docs/brief/ai-gateway.md`](../brief/ai-gateway.md).
 
 ## Decisions that can change stored information
 

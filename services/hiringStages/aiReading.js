@@ -88,7 +88,9 @@ async function readConversationStage({ transcript, stages, currentStage = null }
     expects: 'json',
     validate: validateShape,
   });
-  return { parsed: answer?.parsed ?? null, provider: answer?.provider ?? null, model: answer?.model ?? null };
+  // Not sure even after Claude (services/ai/escalation.js): propose nothing.
+  const parsed = answer?.uncertain ? { move: false } : (answer?.parsed ?? null);
+  return { parsed, provider: answer?.provider ?? null, model: answer?.model ?? null };
 }
 
 module.exports = {

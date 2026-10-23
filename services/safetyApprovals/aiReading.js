@@ -116,7 +116,9 @@ async function readOnce({ postText, safetyText, fileNames, images }, deps) {
     validate: validateShape,
   });
 
-  const verified = verifyReading(answer?.parsed ?? null, {
+  // Not sure even after Claude (services/ai/escalation.js): no decision — the
+  // reply is unclear and Safety is asked, never guessed for.
+  const verified = verifyReading(answer?.uncertain ? null : (answer?.parsed ?? null), {
     postText, safetyText, fileNames, photoCount: images.length,
   });
   return { ...verified, provider: answer?.provider ?? null, model: answer?.model ?? null };

@@ -39,6 +39,26 @@ function geminiTurnsFromMessages(messages, extraParts) {
   return { systemParts, turns };
 }
 
+/**
+ * Gemini-shaped extra parts (`{text}` and `{inline_data: {mime_type, data}}`)
+ * as OpenAI multipart content: text pieces and `image_url` data URIs. Both the
+ * OpenAI-compatible providers and the Claude adapter take this shape (the
+ * Claude adapter turns `image_url` into its own image block).
+ */
+function openAiParts(userText, extraParts) {
+  const parts = [{ type: 'text', text: userText || '' }];
+  for (const part of extraParts || []) {
+    const inline = part?.inline_data || part?.inlineData;
+    if (inline?.data) {
+      const mime = inline.mime_type || inline.mimeType || 'image/jpeg';
+      parts.push({ type: 'image_url', image_url: { url: `data:${mime};base64,${inline.data}` } });
+    } else if (typeof part?.text === 'string') {
+      parts.push({ type: 'text', text: part.text });
+    }
+  }
+  return parts;
+}
+
 /** Prompt → the shape this provider's wire format wants. */
 function buildRequest(provider, {
   systemText, userText, messages, contents, extraParts, generationConfig, systemInstruction,
@@ -64,11 +84,20 @@ function buildRequest(provider, {
       generationConfig: generationConfig || {},
     };
   }
+  const extras = extraParts && extraParts.length ? extraParts : null;
+  if (messages && extras) {
+    // Pictures ride on the last user turn, as geminiTurnsFromMessages does.
+    const copy = messages.map((m) => ({ ...m }));
+    const last = [...copy].reverse().find((m) => m.role !== 'system' && m.role !== 'assistant');
+    if (last) last.content = openAiParts(typeof last.content === 'string' ? last.content : '', extras);
+    else copy.push({ role: 'user', content: openAiParts('', extras) });
+    return { messages: copy };
+  }
   const built = messages || [
     ...(systemText ? [{ role: 'system', content: systemText }] : []),
-    { role: 'user', content: userText || '' },
+    { role: 'user', content: extras ? openAiParts(userText, extras) : (userText || '') },
   ];
   return { messages: built };
 }
 
-module.exports = { buildRequest, geminiTurnsFromMessages };
+module.exports = { buildRequest, geminiTurnsFromMessages, openAiParts };
