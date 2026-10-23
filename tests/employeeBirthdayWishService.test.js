@@ -2,14 +2,12 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { DateTime } = require('luxon');
 
-const employeesToday = [{ id: 1, first_name: 'A', last_name: 'B', birthday: '1990-01-01' }];
+let employeesToday = [{ id: 1, first_name: 'ALPHA', last_name: 'BRAVO', birthday: '1990-01-01', american_name: 'Test Person', telegram_username: 'test_person' }];
 
 const settings = {
   timezone: 'Asia/Tashkent',
   send_hour: 0,
   send_minute: 0,
-  ai_instructions: 'Test instructions',
-  fallback_template: 'Hi <b>{names}</b>',
 };
 
 const claims = [];
@@ -32,11 +30,30 @@ const db = {
   },
   hasServiceRun: async (service, runKey) => claimedKeys.has(`${service}:${runKey}`),
   unclaimServiceRun: async (service, runKey) => claimedKeys.delete(`${service}:${runKey}`),
+  // A claim is "stale" in these tests when its key is in staleKeys.
+  releaseStaleServiceRun: async (service, runKey, minutes) => {
+    assert.equal(minutes, 10);
+    const key = `${service}:${runKey}`;
+    if (!staleKeys.has(key)) return false;
+    staleKeys.delete(key);
+    return claimedKeys.delete(key);
+  },
 };
+const staleKeys = new Set();
 
+// What reached Telegram: one entry per posted card.
 const sentMessages = [];
+let sendShouldFail = false;
+let failForEmployeeId = null;
+let hangSend = false;
+let renderStall = null;
+const photos = new Map();
+const rendered = [];
 
 require.cache[require.resolve('../database/db')] = { exports: db };
+require.cache[require.resolve('../database/companyEmployees')] = {
+  exports: { getPhoto: async (id) => photos.get(id) || null },
+};
 require.cache[require.resolve('../config/config')] = {
   exports: { employeeGroupId: '-100123' },
 };
@@ -44,32 +61,33 @@ require.cache[require.resolve('../bot/bot')] = {
   exports: {
     bot: {
       telegram: {
-        sendMessage: async (chatId, text) => {
-          sentMessages.push({ chatId, text });
+        callApi: async (method, payload, { signal } = {}) => {
+          assert.equal(method, 'sendPhoto');
+          assert.ok(signal instanceof AbortSignal, 'every card send carries a deadline');
+          const file = payload.photo;
+          if (sendShouldFail || String(file.source) === `card:${failForEmployeeId}`) {
+            throw new Error('simulated telegram failure');
+          }
+          if (hangSend) {
+            await new Promise((_, reject) => signal.addEventListener('abort', () => reject(new Error('aborted'))));
+          }
+          sentMessages.push({ chatId: payload.chat_id, file, caption: payload.caption, parseMode: payload.parse_mode });
         },
       },
     },
   },
 };
-let sendShouldFail = false;
 require.cache[require.resolve('../services/telegramHtml')] = {
-  exports: {
-    safeSend: async (fn) => fn(),
-    sanitizeCompanyReportHtmlForTelegram: (text) => text,
-    sendTelegramHtmlChunks: async (telegram, chatId, text) => {
-      if (sendShouldFail) throw new Error('simulated telegram failure');
-      await telegram.sendMessage(chatId, text);
-      return [{ message_id: 1 }];
-    },
-  },
+  exports: { safeSend: async (fn) => fn() },
 };
-require.cache[require.resolve('../services/employeeBirthdayMessage')] = {
+require.cache[require.resolve('../services/employees/birthdayCard')] = {
   exports: {
-    generateEmployeeBirthdayMessage: async () => ({
-      message: '<b>Happy Birthday!</b>',
-      provider: 'test',
-      model: null,
-    }),
+    renderBirthdayCard: async (employee, photo) => {
+      if (photo === 'broken') throw new Error('unsupported image format');
+      if (renderStall) await renderStall;
+      rendered.push({ id: employee.id, photo });
+      return `card:${employee.id}`;
+    },
   },
 };
 
@@ -105,8 +123,8 @@ test('send now claims daily key and blocks duplicate', async () => {
 
   const first = await runEmployeeBirthdayWishes({ claimDailyRun: true });
   assert.equal(first.sent, true);
-  assert.equal(claims.length, 1);
-  assert.equal(claims[0][1], `employee:${now.toISODate()}`);
+  // The employee's card first, then the day — written only once every card is out.
+  assert.deepEqual(claims.map((c) => c[1]), [`employee:${now.toISODate()}:1`, `employee:${now.toISODate()}:1:sent`]);
 
   const second = await runEmployeeBirthdayWishes({ claimDailyRun: true });
   assert.equal(second.reason, 'already_sent');
@@ -176,8 +194,9 @@ test('failed send releases the claim so the next tick retries (no silent drop)',
 
   // First attempt: delivery fails -> must throw AND leave the run UNCLAIMED.
   sendShouldFail = true;
-  await assert.rejects(() => runEmployeeBirthdayWishes({ claimDailyRun: true }));
+  await assert.rejects(() => runEmployeeBirthdayWishes({ claimDailyRun: true }), /ALPHA BRAVO/);
   assert.equal(claimedKeys.has(`birthday:employee:${isoDate}`), false);
+  assert.equal(claimedKeys.has(`birthday:employee:${isoDate}:1`), false);
   assert.equal(sentMessages.length, 0);
 
   // Retry the same day: delivery succeeds, claim is taken, message sent once.
@@ -185,7 +204,7 @@ test('failed send releases the claim so the next tick retries (no silent drop)',
   const retry = await runEmployeeBirthdayWishes({ claimDailyRun: true });
   assert.equal(retry.sent, true);
   assert.equal(sentMessages.length, 1);
-  assert.equal(claimedKeys.has(`birthday:employee:${isoDate}`), true);
+  assert.equal(claimedKeys.has(`birthday:employee:${isoDate}:1:sent`), true);
 });
 
 test('a successful send is not resent on a later tick', async () => {
@@ -203,7 +222,7 @@ test('a successful send is not resent on a later tick', async () => {
   assert.equal(sentMessages.length, 1);
 });
 
-test('checkAndRunScheduled skips when daily run already claimed', async () => {
+test('a day the previous version already wished (its day key) is not wished again', async () => {
   claims.length = 0;
   claimedKeys.clear();
   sentMessages.length = 0;
@@ -222,8 +241,151 @@ test('checkAndRunScheduled skips when daily run already claimed', async () => {
   });
 
   const result = await checkAndRunScheduled();
-  assert.equal(result, null);
+  assert.equal(result.reason, 'already_sent');
   assert.equal(sentMessages.length, 0);
 
   db.getEmployeeBirthdaySettings = origSettings;
+});
+
+function resetState() {
+  claims.length = 0;
+  claimedKeys.clear();
+  sentMessages.length = 0;
+  rendered.length = 0;
+  photos.clear();
+  staleKeys.clear();
+  sendShouldFail = false;
+  failForEmployeeId = null;
+}
+
+test('the card goes out as a photo with the owner\'s fixed caption and the tag', async () => {
+  resetState();
+  photos.set(1, Buffer.from('jpeg'));
+  const result = await runEmployeeBirthdayWishes({ claimDailyRun: true });
+  assert.equal(result.sent, true);
+  assert.equal(sentMessages.length, 1);
+  assert.equal(sentMessages[0].chatId, '-100123');
+  assert.equal(sentMessages[0].file.source, 'card:1');
+  assert.equal(sentMessages[0].parseMode, 'HTML');
+  assert.equal(
+    sentMessages[0].caption,
+    'Dear @test_person,\n\nWishing you all the best that life has to offer.\nTogether, we grow stronger and achieve more!'
+  );
+  assert.deepEqual(rendered, [{ id: 1, photo: photos.get(1) }]);
+});
+
+test('one card per employee; a failed one is retried without re-posting the others', async () => {
+  resetState();
+  const saved = employeesToday;
+  employeesToday = [
+    { id: 1, first_name: 'ALPHA', last_name: 'BRAVO', birthday: '1990-01-01' },
+    { id: 2, first_name: 'CHARLIE', last_name: 'DELTA', birthday: '1991-01-01' },
+  ];
+  try {
+    failForEmployeeId = 2;
+    await assert.rejects(() => runEmployeeBirthdayWishes({ claimDailyRun: true }), /CHARLIE DELTA/);
+    assert.deepEqual(sentMessages.map((m) => m.file.source), ['card:1']);
+
+    failForEmployeeId = null;
+    const retry = await runEmployeeBirthdayWishes({ claimDailyRun: true });
+    assert.equal(retry.sent, true);
+    assert.equal(retry.names, 'CHARLIE DELTA');
+    assert.deepEqual(sentMessages.map((m) => m.file.source), ['card:1', 'card:2']);
+
+    const again = await runEmployeeBirthdayWishes({ claimDailyRun: true });
+    assert.equal(again.reason, 'already_sent');
+    assert.equal(sentMessages.length, 2);
+  } finally {
+    employeesToday = saved;
+  }
+});
+
+test('a stored photo that no longer decodes posts the card with initials instead', async () => {
+  resetState();
+  photos.set(1, 'broken');
+  const result = await runEmployeeBirthdayWishes({ claimDailyRun: true });
+  assert.equal(result.sent, true);
+  assert.deepEqual(rendered, [{ id: 1, photo: null }]);
+  assert.equal(sentMessages.length, 1);
+});
+
+test('a card another pass is still posting is left to it; a claim left by a stopped process is taken over', async () => {
+  resetState();
+  const isoDate = DateTime.now().setZone('Asia/Tashkent').toISODate();
+  claimedKeys.add(`birthday:employee:${isoDate}:1`); // a fresh claim: another pass is posting
+  const busy = await runEmployeeBirthdayWishes({ claimDailyRun: true });
+  assert.equal(busy.reason, 'already_sent');
+  assert.equal(sentMessages.length, 0);
+
+  staleKeys.add(`birthday:employee:${isoDate}:1`); // the same claim, now older than ten minutes
+  const recovered = await runEmployeeBirthdayWishes({ claimDailyRun: true });
+  assert.equal(recovered.sent, true);
+  assert.equal(sentMessages.length, 1);
+  assert.equal(claimedKeys.has(`birthday:employee:${isoDate}:1:sent`), true);
+});
+
+test('someone added with today\'s birthday after the cards went out still gets theirs', async () => {
+  resetState();
+  const saved = employeesToday;
+  try {
+    assert.equal((await runEmployeeBirthdayWishes({ claimDailyRun: true })).sent, true);
+    employeesToday = [...saved, { id: 7, first_name: 'LATE', last_name: 'ADDITION', birthday: '1995-01-01' }];
+    const later = await runEmployeeBirthdayWishes({ claimDailyRun: true });
+    assert.equal(later.names, 'LATE ADDITION');
+    assert.deepEqual(sentMessages.map((m) => m.file.source), ['card:1', 'card:7']);
+  } finally {
+    employeesToday = saved;
+  }
+});
+
+test('a send that hangs is abandoned at the deadline, so a takeover can never race it', async (t) => {
+  resetState();
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  hangSend = true;
+  try {
+    const run = runEmployeeBirthdayWishes({ claimDailyRun: true });
+    // Let the pass reach the send, then pass the three-minute deadline.
+    for (let i = 0; i < 20; i += 1) await new Promise((resolve) => setImmediate(resolve));
+    t.mock.timers.tick(3 * 60 * 1000);
+    await assert.rejects(run, /Could not post the birthday card/);
+    const isoDate = DateTime.now().setZone('Asia/Tashkent').toISODate();
+    assert.equal(claimedKeys.has(`birthday:employee:${isoDate}:1`), false, 'released for the retry');
+    assert.equal(sentMessages.length, 0);
+  } finally {
+    hangSend = false;
+  }
+});
+
+test('a card that took longer than the deadline to prepare is never sent', async (t) => {
+  resetState();
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  let finishRender;
+  renderStall = new Promise((resolve) => { finishRender = resolve; });
+  try {
+    const run = runEmployeeBirthdayWishes({ claimDailyRun: true });
+    for (let i = 0; i < 20; i += 1) await new Promise((resolve) => setImmediate(resolve));
+    t.mock.timers.tick(3 * 60 * 1000); // the deadline passes while the card is still being drawn
+    finishRender();
+    await assert.rejects(run, /Could not post the birthday card/);
+    assert.equal(sentMessages.length, 0, 'a stalled worker must not post after its claim could be taken over');
+  } finally {
+    renderStall = null;
+  }
+});
+
+test('a photo read that never answers ends the attempt at the deadline instead of hanging the pass', async (t) => {
+  resetState();
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  renderStall = new Promise(() => {}); // never settles
+  try {
+    const run = runEmployeeBirthdayWishes({ claimDailyRun: true });
+    for (let i = 0; i < 20; i += 1) await new Promise((resolve) => setImmediate(resolve));
+    t.mock.timers.tick(3 * 60 * 1000);
+    await assert.rejects(run, /Could not post the birthday card/);
+    assert.equal(sentMessages.length, 0);
+    const isoDate = DateTime.now().setZone('Asia/Tashkent').toISODate();
+    assert.equal(claimedKeys.has(`birthday:employee:${isoDate}:1`), false, 'released for the retry');
+  } finally {
+    renderStall = null;
+  }
 });

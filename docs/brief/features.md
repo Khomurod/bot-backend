@@ -294,6 +294,20 @@ other chat, truck or Telegram account, is ended in the same transaction and
 reopened by the revert. A driver's name parsed out of a "WENZE UNIT #" title is
 never treated as a placeholder.
 
+### Employee birthdays
+
+On an employee's birthday the bot posts, for each employee, a **card in the
+company's template** to the employee group — their photo, full first name and
+American name — with the owner's **fixed caption** tagging their Telegram
+account. No model writes it (the AI birthday message was removed on
+2026-10-23). The staff list, its American names, Telegram accounts and photos
+are kept in Users → **Company Employees** (formerly the always-empty
+"Dispatchers" filter); names and dates on the Birthdays page. Telegram accounts
+can be *suggested* from the accounts the bot has seen — by display name, never
+by username — and a suggestion never overwrites one a person typed or
+confirmed. Exactly one card per employee per day. See
+[`docs/architecture/employee-birthday-cards.md`](../architecture/employee-birthday-cards.md).
+
 ### Recruiting and leads
 
 Moved to **[§4c. Recruiting and leads](recruiting.md)** — the Facebook lead

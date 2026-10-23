@@ -1,6 +1,6 @@
 /**
- * Employee birthdays + wish settings.
- * Extracted verbatim from database/db.js; db.js re-exports these.
+ * Employee birthdays + wish settings. db.js re-exports these; the American
+ * name, Telegram account and photo are in database/companyEmployees.js.
  */
 const { query } = require('./pool');
 
@@ -43,16 +43,6 @@ async function getEmployeeBirthdaysByIds(ids) {
   return res.rows;
 }
 
-const DEFAULT_EMPLOYEE_BIRTHDAY_AI_INSTRUCTIONS =
-  'Write a warm, professional birthday message for office staff at Wenze. '
-  + 'Be sincere and appreciative. Use different wording each time.';
-
-const DEFAULT_EMPLOYEE_BIRTHDAY_FALLBACK =
-  '🎉 <b>Happy Birthday!</b> 🎂\n\n'
-  + 'Today we celebrate: <b>{names}</b>!\n\n'
-  + 'Wishing you a fantastic day and a great year ahead!\n\n'
-  + '— <i>Wenze Management</i>';
-
 async function ensureEmployeeBirthdaySettings() {
   const existing = await query('SELECT id FROM employee_birthday_settings WHERE id = 1');
   if (existing.rows.length > 0) return;
@@ -61,18 +51,13 @@ async function ensureEmployeeBirthdaySettings() {
   const hour = Math.min(23, Math.max(0, parseInt(process.env.EMPLOYEE_BIRTHDAY_HOUR || '0', 10) || 0));
   const minute = Math.min(59, Math.max(0, parseInt(process.env.EMPLOYEE_BIRTHDAY_MINUTE || '0', 10) || 0));
 
+  // ai_instructions / fallback_template keep their column defaults and are no
+  // longer read: the caption is the owner's fixed text (migration 0084).
   await query(
-    `INSERT INTO employee_birthday_settings (
-       id, timezone, send_hour, send_minute, ai_instructions, fallback_template
-     ) VALUES (1, $1, $2, $3, $4, $5)
+    `INSERT INTO employee_birthday_settings (id, timezone, send_hour, send_minute)
+     VALUES (1, $1, $2, $3)
      ON CONFLICT (id) DO NOTHING`,
-  [
-    tz,
-    hour,
-    minute,
-    DEFAULT_EMPLOYEE_BIRTHDAY_AI_INSTRUCTIONS,
-    DEFAULT_EMPLOYEE_BIRTHDAY_FALLBACK,
-  ]
+    [tz, hour, minute]
   );
 }
 
@@ -82,25 +67,17 @@ async function getEmployeeBirthdaySettings() {
   return res.rows[0];
 }
 
-async function updateEmployeeBirthdaySettings({
-  timezone,
-  sendHour,
-  sendMinute,
-  aiInstructions,
-  fallbackTemplate,
-}) {
+async function updateEmployeeBirthdaySettings({ timezone, sendHour, sendMinute }) {
   await ensureEmployeeBirthdaySettings();
   const res = await query(
     `UPDATE employee_birthday_settings
      SET timezone = $1,
          send_hour = $2,
          send_minute = $3,
-         ai_instructions = $4,
-         fallback_template = $5,
          updated_at = NOW()
      WHERE id = 1
      RETURNING *`,
-    [timezone, sendHour, sendMinute, aiInstructions, fallbackTemplate]
+    [timezone, sendHour, sendMinute]
   );
   return res.rows[0];
 }

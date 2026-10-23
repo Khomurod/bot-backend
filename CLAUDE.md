@@ -251,6 +251,7 @@ that area**, and run the tests it names.
 | The driver-raise review's removal, and the dispatch-team and raise tables it left | [`docs/architecture/retired-driver-raise.md`](docs/architecture/retired-driver-raise.md) |
 | Whether a driver is actually home, what closes a cycle, and why a request is never evidence | [`docs/architecture/home-time-evidence.md`](docs/architecture/home-time-evidence.md) |
 | Home-time violation alerts to accounting: why Bitrix pipeline 33 decides (never the app's own home time), exactly once per violation per home stay, the go-live baseline, and who may press Charged / Not charging | [`docs/architecture/home-time-violation-alerts.md`](docs/architecture/home-time-violation-alerts.md) |
+| Employee birthday cards: one card per employee in the owner's template, the owner's fixed caption (never a model's), the Telegram tag, Users → Company Employees, and why a Telegram suggestion never overwrites a person | [`docs/architecture/employee-birthday-cards.md`](docs/architecture/employee-birthday-cards.md) |
 | Samsara settings, the shared-secret envelope for its API key, missing-video recovery | [`docs/architecture/samsara-settings-and-video-recovery.md`](docs/architecture/samsara-settings-and-video-recovery.md) |
 | The Bitrix assignee lookup, recruiter↔Bitrix mapping, Bitrix connection settings | [`docs/architecture/recruiter-sms-bitrix.md`](docs/architecture/recruiter-sms-bitrix.md) |
 | Where AI may change stored operational state, and the verdict on each | [`docs/architecture/ai-decisions.md`](docs/architecture/ai-decisions.md) |

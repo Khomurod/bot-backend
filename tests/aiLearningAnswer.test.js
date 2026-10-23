@@ -186,7 +186,7 @@ test('hooks: lessons are read once per scope and a failed read is "no lessons", 
   assert.match(await hooks.lessonsFor('hiring_stage_reading', { now: 0, lessons }), /The owner answered: "b"/);
   await hooks.lessonsFor('hiring_stage_reading', { now: 1000, lessons });
   assert.equal(reads, 1);
-  assert.equal(await hooks.lessonsFor('employee_birthday_message', { lessons }), '');
+  assert.equal(await hooks.lessonsFor('datatruck_banter', { lessons }), '');
   hooks.invalidateLessons();
   const broken = { async listActiveLessons() { throw new Error('db down'); } };
   assert.equal(await hooks.lessonsFor('safety_approval_reading', { now: 0, lessons: broken }), '');

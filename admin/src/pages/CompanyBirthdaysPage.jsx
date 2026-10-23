@@ -21,7 +21,7 @@ function formatSchedule(settings) {
 function wishResultMessage(result) {
   if (!result) return "Done.";
   if (result.sent) {
-    return `Sent birthday wishes to employee group for: ${result.names} (${result.provider || "ai"}).`;
+    return `Posted the birthday card(s) to the employee group for: ${result.names}.`;
   }
   if (result.reason === "already_sent") {
     return `Already sent today (${result.isoDate}). Scheduled run will be skipped.`;
@@ -46,8 +46,6 @@ export default function CompanyBirthdaysPage() {
     timezone: "Asia/Tashkent",
     sendHour: 0,
     sendMinute: 0,
-    aiInstructions: "",
-    fallbackTemplate: "",
   });
   const [savingSettings, setSavingSettings] = useState(false);
 
@@ -72,8 +70,6 @@ export default function CompanyBirthdaysPage() {
         timezone: data.timezone || "Asia/Tashkent",
         sendHour: data.sendHour ?? 0,
         sendMinute: data.sendMinute ?? 0,
-        aiInstructions: data.aiInstructions || "",
-        fallbackTemplate: data.fallbackTemplate || "",
       });
     } catch (err) {
       setStatus({ type: "error", text: err.message });
@@ -248,7 +244,7 @@ export default function CompanyBirthdaysPage() {
           <p>
             Manage office staff birthdays (soonest first).
             {settings ? (
-              <> Automatic AI wishes at <strong>{formatSchedule(settings)}</strong>.</>
+              <> Birthday cards are posted at <strong>{formatSchedule(settings)}</strong>. American names, Telegram accounts and photos are in Users → Company Employees.</>
             ) : (
               " Loading schedule..."
             )}
@@ -302,24 +298,6 @@ export default function CompanyBirthdaysPage() {
                 onChange={(e) => setSettingsForm((s) => ({ ...s, sendMinute: Number(e.target.value) }))}
               />
             </div>
-          </div>
-          <div className="form-group">
-            <label>AI instructions (tone and style — each send uses unique wording)</label>
-            <textarea
-              className="form-input"
-              rows={3}
-              value={settingsForm.aiInstructions}
-              onChange={(e) => setSettingsForm((s) => ({ ...s, aiInstructions: e.target.value }))}
-            />
-          </div>
-          <div className="form-group">
-            <label>Fallback template (use {"{names}"} placeholder; used if AI unavailable)</label>
-            <textarea
-              className="form-input"
-              rows={4}
-              value={settingsForm.fallbackTemplate}
-              onChange={(e) => setSettingsForm((s) => ({ ...s, fallbackTemplate: e.target.value }))}
-            />
           </div>
           <button className="btn btn-primary" type="submit" disabled={savingSettings}>
             {savingSettings ? "Saving..." : "Save settings"}
@@ -464,8 +442,8 @@ export default function CompanyBirthdaysPage() {
             </h3>
             <p>
               {confirmAction.type === 'delete' ? 'This will permanently remove this employee from the birthday list.' :
-               confirmAction.type === 'sendToday' ? "This sends today's birthday wishes to the employee group now and blocks the scheduled send for today." :
-               confirmAction.type === 'congratulate' ? `AI-generated birthday wishes will be sent for ${confirmAction.ids?.length} selected employee(s).` :
+               confirmAction.type === 'sendToday' ? "This posts today's birthday cards to the employee group now; the scheduled send will not post them again." :
+               confirmAction.type === 'congratulate' ? `Each selected employee's birthday card will be posted to the employee group (${confirmAction.ids?.length}).` :
                confirmAction.type === 'custom' ? 'This sends your custom message to the employee group.' :
                confirmAction.type === 'request' ? 'This sends a message asking all employees for their birthdays.' : 'Are you sure?'}
             </p>

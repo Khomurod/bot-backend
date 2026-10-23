@@ -19,6 +19,7 @@ export * from './api/scheduled';
 export * from './api/leads';
 export * from './api/aiReports';
 export * from './api/birthdays';
+export * from './api/companyEmployees';
 export * from './api/facebookLeads';
 export * from './api/mileageBonus';
 export * from './api/homeTime';

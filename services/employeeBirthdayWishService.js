@@ -1,15 +1,35 @@
 /**
- * Employee birthday wishes: configurable TZ schedule, AI messages, admin send actions.
+ * Employee birthday wishes: configurable TZ schedule, admin send actions.
+ *
+ * ONE POST PER EMPLOYEE (owner, 23 October 2026): the company's birthday card
+ * with their photo, full first name and American name, captioned with the
+ * owner's fixed text and a tag of their Telegram account. The caption is never
+ * written by a model. See docs/architecture/employee-birthday-cards.md.
+ *
+ * EXACTLY ONCE PER EMPLOYEE PER DAY. A scheduled or "send now" pass claims
+ * `employee:<day>:<id>` before posting each card, releases it if the post
+ * fails, and writes `employee:<day>:<id>:sent` once it is out. Two
+ * overlapping passes never post the same card twice; a failure is retried
+ * without re-posting the cards that already went out; a claim left by a
+ * process that stopped mid-post is taken over after STALE_CLAIM_MINUTES; and
+ * an employee added with today's birthday later in the day still gets a card,
+ * because nothing marks the whole day as done.
  */
 const { DateTime } = require('luxon');
 const db = require('../database/db');
+const employeesDb = require('../database/companyEmployees');
 const config = require('../config/config');
 const { bot } = require('../bot/bot');
-const { safeSend, sendTelegramHtmlChunks, sanitizeCompanyReportHtmlForTelegram } = require('./telegramHtml');
-const { generateEmployeeBirthdayMessage } = require('./employeeBirthdayMessage');
+const { safeSend } = require('./telegramHtml');
+const { renderBirthdayCard } = require('./employees/birthdayCard');
+const { birthdayCaption } = require('./employees/birthdayText');
 const { createDailyWakeTimer } = require('./dailyWakeSchedule');
 
 const DEFAULT_TZ = 'Asia/Tashkent';
+// A card's send is abandoned after SEND_DEADLINE_MS, so a claim older than
+// STALE_CLAIM_MINUTES can only belong to a process that stopped mid-post.
+const SEND_DEADLINE_MS = 3 * 60 * 1000;
+const STALE_CLAIM_MINUTES = 10;
 /**
  * Fallback schedule, used only if the settings row cannot be read at all.
  * Mirrors the schema defaults for `employee_birthday_settings` (00:00
@@ -27,6 +47,76 @@ let lastKnownSettings = FALLBACK_SEND;
 
 function formatNamesList(employees) {
   return employees.map((e) => `${e.first_name} ${e.last_name}`.trim()).join(', ');
+}
+
+/** The card for `employee`, drawn with their stored photo when it still decodes. */
+async function prepareCard(employee) {
+  const photo = await employeesDb.getPhoto(employee.id);
+  try {
+    return await renderBirthdayCard(employee, photo);
+  } catch (err) {
+    // A stored photo that no longer decodes must not cost anyone their
+    // birthday: the card goes out with the initials instead.
+    if (!photo) throw err;
+    console.warn(`[EMP-BIRTHDAY] Photo for employee ${employee.id} unreadable, posting without it:`, err.message);
+    return renderBirthdayCard(employee, null);
+  }
+}
+
+/** `promise`, or a rejection the moment `signal` aborts — whichever comes first. */
+function untilAborted(promise, signal) {
+  return new Promise((resolve, reject) => {
+    const onAbort = () => reject(new Error('the card took too long to prepare; it was not sent'));
+    if (signal.aborted) { onAbort(); return; }
+    signal.addEventListener('abort', onAbort, { once: true });
+    promise.then(resolve, reject).finally(() => signal.removeEventListener('abort', onAbort));
+  });
+}
+
+/**
+ * Render and post one employee's card. Throws when Telegram refuses it, or
+ * when the deadline passes first.
+ *
+ * THE DEADLINE STARTS WITH THE CLAIM, not with the send: the claim is taken
+ * just before this is called, and reading the photo or drawing the card can
+ * stall too. Past SEND_DEADLINE_MS the card is never sent — the signal is
+ * checked before sending and aborts a send already under way, retries
+ * included (the Telegram client has no request timeout of its own). So a pass
+ * whose claim could have been taken over (STALE_CLAIM_MINUTES) can never post
+ * after the takeover's card.
+ */
+async function postBirthdayCard(employee) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), SEND_DEADLINE_MS);
+  try {
+    // Raced against the deadline: a photo read that never answers (the pool
+    // has no query timeout) must end this attempt, not hold the scheduler's
+    // tick open for good. Whatever finishes late is ignored.
+    const card = await untilAborted(prepareCard(employee), controller.signal);
+    if (controller.signal.aborted) throw new Error('the card took too long to prepare; it was not sent');
+    await safeSend(() => bot.telegram.callApi('sendPhoto', {
+      chat_id: config.employeeGroupId,
+      photo: { source: card, filename: 'happy-birthday.jpg' },
+      caption: birthdayCaption(employee),
+      parse_mode: 'HTML',
+    }, { signal: controller.signal }));
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * May this pass post the card under `key`? No when it was already sent
+ * (`<key>:sent`), or when another pass claimed it less than
+ * STALE_CLAIM_MINUTES ago and may still be posting it. A claim older than that
+ * was left by a process that stopped mid-post (a deploy, a crash), so it is
+ * released and taken over — otherwise that employee would get no card all day.
+ */
+async function claimEmployeeCard(key) {
+  if (await db.hasServiceRun('birthday', `${key}:sent`)) return false;
+  if (await db.claimServiceRun('birthday', key)) return true;
+  if (!(await db.releaseStaleServiceRun('birthday', key, STALE_CLAIM_MINUTES))) return false;
+  return db.claimServiceRun('birthday', key);
 }
 
 async function runEmployeeBirthdayWishes({ claimDailyRun = false, employeeIds = null } = {}) {
@@ -49,49 +139,46 @@ async function runEmployeeBirthdayWishes({ claimDailyRun = false, employeeIds = 
     return { sent: false, reason: 'no_birthdays', isoDate };
   }
 
-  // Claim the day FIRST so two overlapping ticks can never both send (no
-  // duplicates), but RELEASE the claim if delivery fails so the next tick
-  // retries later the same day instead of silently dropping the wish.
-  const runKey = `employee:${isoDate}`;
-  if (claimDailyRun) {
-    const claimed = await db.claimServiceRun('birthday', runKey);
-    if (!claimed) {
-      return { sent: false, reason: 'already_sent', isoDate, names: formatNamesList(employees) };
-    }
+  const dayKey = `employee:${isoDate}`;
+  // Written only by the version before per-employee claims (until 23 October
+  // 2026), which sent one message for the whole day. Honoured so a deploy on
+  // such a day does not post that day's birthdays a second time.
+  if (claimDailyRun && await db.hasServiceRun('birthday', dayKey)) {
+    return { sent: false, reason: 'already_sent', isoDate, names: formatNamesList(employees) };
   }
 
-  let message;
-  let provider;
-  try {
-    ({ message, provider } = await generateEmployeeBirthdayMessage(
-      employees,
-      settings.ai_instructions,
-      settings.fallback_template
-    ));
-
-    // Sanitize to Telegram-safe HTML so an unsupported tag from the AI can
-    // never trigger a 400 parse error that would otherwise burn the day.
-    const safeMessage = sanitizeCompanyReportHtmlForTelegram(message);
-    await sendTelegramHtmlChunks(bot.telegram, config.employeeGroupId, safeMessage);
-  } catch (err) {
+  const posted = [];
+  const failed = [];
+  for (const employee of employees) {
+    const key = `${dayKey}:${employee.id}`;
+    if (claimDailyRun && !(await claimEmployeeCard(key))) continue;
+    try {
+      await postBirthdayCard(employee);
+      posted.push(employee);
+    } catch (err) {
+      if (claimDailyRun) await db.unclaimServiceRun('birthday', key).catch(() => {});
+      failed.push(employee);
+      console.error(`[EMP-BIRTHDAY] Card for employee ${employee.id} failed:`, err.message);
+      continue;
+    }
     if (claimDailyRun) {
-      await db.unclaimServiceRun('birthday', runKey).catch(() => {});
+      await db.claimServiceRun('birthday', `${key}:sent`).catch((err) => {
+        console.warn(`[EMP-BIRTHDAY] Could not mark employee ${employee.id}'s card as sent:`, err.message);
+      });
     }
-    throw err;
   }
 
-  const names = formatNamesList(employees);
-  console.log(`[EMP-BIRTHDAY] Sent wish (${provider}) to employee group for: ${names}`);
+  if (failed.length) {
+    // Thrown so the scheduler retries soon; the cards already posted are marked sent.
+    throw new Error(`Could not post the birthday card for: ${formatNamesList(failed)}`);
+  }
 
-  return {
-    sent: true,
-    reason: 'sent',
-    isoDate,
-    names,
-    provider,
-    messagePreview: message.slice(0, 200),
-    count: employees.length,
-  };
+  if (!posted.length) {
+    return { sent: false, reason: 'already_sent', isoDate, names: formatNamesList(employees) };
+  }
+  const names = formatNamesList(posted);
+  console.log(`[EMP-BIRTHDAY] Posted ${posted.length} birthday card(s) to the employee group: ${names}`);
+  return { sent: true, reason: 'sent', isoDate, names, count: posted.length };
 }
 
 async function sendCustomEmployeeGroupMessage(message) {
@@ -131,8 +218,8 @@ async function checkAndRunScheduled() {
   const isoDate = now.toISODate();
 
   if (!isPastEmployeeBirthdaySchedule(now, settings)) return null;
-  if (await db.hasServiceRun('birthday', `employee:${isoDate}`)) return null;
-
+  // No day-level shortcut: completion is per employee, so someone added with
+  // today's birthday after the morning's cards went out still gets theirs.
   return runEmployeeBirthdayWishes({ claimDailyRun: true });
 }
 
