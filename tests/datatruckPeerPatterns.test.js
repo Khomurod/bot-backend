@@ -31,3 +31,25 @@ test('isDatatruckLoadMessage detects load content', () => {
   assert.equal(isDatatruckLoadMessage('Unknown command. Please use a valid command.'), false);
   assert.equal(isDatatruckLoadMessage('Hey team, see you tomorrow'), false);
 });
+
+// The load-like cases below came over from tests/loadTextPatterns.test.js when
+// that module folded into datatruckPeerPatterns (its last reader) with the
+// pinned-load reading's removal, October 2026.
+test('isDatatruckLoadMessage: a load number with or without a hash', () => {
+  assert.equal(isDatatruckLoadMessage('Load 418911'), true);
+  assert.equal(isDatatruckLoadMessage('load 999999'), true);
+  assert.equal(isDatatruckLoadMessage('Load: 418911'), true);
+  assert.equal(isDatatruckLoadMessage('Load ID: ABC-12'), true);
+});
+
+test('isDatatruckLoadMessage: legacy dispatch markers still match', () => {
+  assert.equal(isDatatruckLoadMessage('MN>NJ'), true);
+  assert.equal(isDatatruckLoadMessage('Live-Drop'), true);
+  assert.equal(isDatatruckLoadMessage('RateConfirmation.pdf'), true);
+});
+
+test('isDatatruckLoadMessage: slash commands and plain chatter are not load content', () => {
+  assert.equal(isDatatruckLoadMessage('/location somewhere'), false);
+  assert.equal(isDatatruckLoadMessage('/status'), false);
+  assert.equal(isDatatruckLoadMessage(''), false);
+});

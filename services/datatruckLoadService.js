@@ -11,8 +11,10 @@
  * Read-only. Fails soft: when Datatruck is not configured (no API token /
  * company) every entry point cleanly returns null / [] and logs nothing noisy,
  * mirroring mileageBonusService. Results are memoized per driver for a short
- * TTL so the several consumers (ETA snapshots, location monitor, /load, admin
- * diagnostics) share one lookup and stay well under the API's rate limit.
+ * TTL so the several consumers (Live Locations, return-to-road, the load
+ * lifecycle watch) share one lookup and stay well under the API's rate limit.
+ * (/load, /status and the dispatcher ETA updates read it too until they were
+ * removed in October 2026 — docs/architecture/retired-dispatch-eta.md.)
  */
 const datatruck = require('./datatruckApiService');
 const { inferWindowsFromAiDateTimeStrings } = require('./loadWindowParse');
@@ -196,10 +198,10 @@ function extractUnitNumberRaw(order) {
 }
 
 /**
- * Normalize a raw Datatruck order into the load-context shape shared by
- * dispatchPinnedContextService consumers (pickupSummary / deliverySummary /
- * destinationQuery / windows / loadInfoComplete) plus the extra Datatruck-native
- * fields (orderId, status, miles, reference, stop addresses/times).
+ * Normalize a raw Datatruck order into the load-context shape (pickupSummary /
+ * deliverySummary / destinationQuery / windows / loadInfoComplete) plus the
+ * extra Datatruck-native fields (orderId, status, miles, reference, stop
+ * addresses/times).
  */
 function extractLoadFromOrder(order) {
   if (!order) return null;
@@ -356,39 +358,6 @@ async function resolveActiveLoadForUnit(unitNumber, { nowMs = Date.now() } = {})
   return load;
 }
 
-/**
- * Admin-diagnostics view: the group's active Datatruck load(s) mapped to the
- * exact `recentLoads` row shape the dispatch testing panel already renders.
- * Empty array when there is nothing to show (unconfigured / no match).
- */
-async function getAdminRecentLoadsForGroup(group, opts = {}) {
-  const load = await resolveActiveLoadForGroup(group, opts);
-  if (!load) return [];
-  const iso = (value) => {
-    if (!value) return null;
-    if (value instanceof Date) return value.toISOString();
-    return String(value);
-  };
-  return [
-    {
-      id: load.orderId,
-      telegramMessageId: null,
-      createdAt: null,
-      sourceMessageAt: null,
-      loadIdentifier: load.loadIdentifier,
-      pickupSummary: load.pickupSummary || '',
-      deliverySummary: load.deliverySummary || '',
-      destinationQuery: load.destinationQuery || '',
-      pickupWindowStart: iso(load.pickupWindowStart),
-      pickupWindowEnd: iso(load.pickupWindowEnd),
-      deliveryWindowStart: iso(load.deliveryWindowStart),
-      deliveryWindowEnd: iso(load.deliveryWindowEnd),
-      captionPreview: load.status ? `Status: ${load.status}` : '',
-      aiModel: '',
-    },
-  ];
-}
-
 /** Test/maintenance helper — drop the in-memory caches. */
 function clearCache() {
   loadCache.clear();
@@ -407,14 +376,13 @@ module.exports = {
   resolveActiveLoadForUnit,
   getNextStop,
   getLoadStatus,
-  getAdminRecentLoadsForGroup,
   clearCache,
   CACHE_TTL_MS,
   // ─── Shared "current load" service surface ─────────────────────────────────
   // Stable, intention-revealing names for the one place every feature reads a
   // driver/unit's current load from Datatruck. These are thin aliases over the
-  // resolve* functions above so /load, /status, dispatch ETA, and Live Locations
-  // all share the same source of truth and the same short-TTL cache.
+  // resolve* functions above so every reader shares the same source of truth
+  // and the same short-TTL cache.
   getCurrentLoadByDriver: resolveActiveLoadForDriver,
   getCurrentLoadByUnit: resolveActiveLoadForUnit,
   getCurrentLoadByGroup: resolveActiveLoadForGroup,

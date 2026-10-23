@@ -8,42 +8,51 @@
  * an empty answer still carries a description of every column the statement
  * would have returned. `SELECT * FROM scheduled_messages` described 22 columns
  * every minute; the dispatch-ETA claim described 18 every ninety seconds, with
- * no ETA schedule switched on at all. These pin the cheap shapes.
+ * no ETA schedule switched on at all (that poll went with the dispatcher ETA
+ * feature, October 2026). These pin the cheap shapes of the polls that remain;
+ * the home-time internal-alert sweep uses the same look-then-claim pattern the
+ * ETA claim introduced.
  */
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
 
 const POOL = path.resolve(__dirname, '../database/pool.js');
+const DB = path.resolve(__dirname, '../database/db.js');
 
-function loadWith(modulePath, respond) {
+function loadWith(modulePath, respond, stubPath = POOL) {
   const sent = [];
   const full = path.resolve(__dirname, modulePath);
   delete require.cache[full];
-  require.cache[POOL] = {
-    id: POOL, filename: POOL, loaded: true,
+  const previous = require.cache[stubPath];
+  require.cache[stubPath] = {
+    id: stubPath, filename: stubPath, loaded: true,
     exports: { query: async (text, params) => { sent.push(text.replace(/\s+/g, ' ').trim()); return respond(text, params); } },
   };
   try {
     // eslint-disable-next-line global-require
     return { mod: require(full), sent };
   } finally {
-    delete require.cache[POOL];
+    if (previous) require.cache[stubPath] = previous;
+    else delete require.cache[stubPath];
+    delete require.cache[full];
   }
 }
 
-test('NOTHING DUE: the ETA poll is one one-column look, and claims nothing', async () => {
-  const { mod, sent } = loadWith('../database/dispatchEta.js', () => ({ rows: [], rowCount: 0 }));
-  assert.deepEqual(await mod.claimDueDispatchEtaUpdates(20), []);
+const OUTBOX = '../database/homeTimeInternalAlertOutbox.js';
+
+test('NOTHING DUE: the internal-alert sweep is one one-column look, and claims nothing', async () => {
+  const { mod, sent } = loadWith(OUTBOX, () => ({ rows: [], rowCount: 0 }), DB);
+  assert.deepEqual(await mod.claimDueInternalAlerts(), []);
   assert.equal(sent.length, 1);
-  assert.match(sent[0], /^SELECT 1 FROM dispatch_eta_updates WHERE enabled = TRUE .* LIMIT 1$/);
+  assert.match(sent[0], /^SELECT 1 FROM home_time_requests WHERE internal_alert_state = 'pending' .* LIMIT 1$/);
 });
 
 test('something due: the claim runs, under the same predicate as the look', async () => {
-  const { mod, sent } = loadWith('../database/dispatchEta.js', (text) => (
+  const { mod, sent } = loadWith(OUTBOX, (text) => (
     /^SELECT 1/.test(text.trim()) ? { rows: [{ '?column?': 1 }], rowCount: 1 } : { rows: [{ id: 3 }], rowCount: 1 }
-  ));
-  assert.deepEqual(await mod.claimDueDispatchEtaUpdates(20), [{ id: 3 }]);
+  ), DB);
+  assert.deepEqual(await mod.claimDueInternalAlerts(), [{ id: 3 }]);
   assert.equal(sent.length, 2);
   const predicate = sent[0].match(/WHERE (.*) LIMIT 1$/)[1];
   assert.ok(sent[1].includes(predicate), 'the look and the claim cannot disagree about what is due');

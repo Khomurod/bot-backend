@@ -2,7 +2,7 @@
  * Group + user capture pipeline:
  *   - my_chat_member: activate/deactivate a group when the bot is added/removed;
  *   - middleware: auto-register the group and every user an update touches;
- *   - group message pipeline: supergroup migration, pinned-message snapshots,
+ *   - group message pipeline: supergroup migration,
  *     bot-visibility diagnostics, home-time status tracking, the rolling chat
  *     buffer, and approver-mention / date-reply detection.
  *
@@ -268,26 +268,16 @@ function registerGroupCaptureHandlers(bot) {
           });
         }
         const group = await db.getGroupByTelegramId(chat.id);
-        if (group && ctx.message?.pinned_message?.message_id) {
-          const sourceEventDate = Number.isFinite(ctx.message.date)
-            ? new Date(ctx.message.date * 1000).toISOString()
-            : null;
-          await db.upsertGroupPinnedMessageSnapshot({
-            groupId: group.id,
-            telegramGroupId: chat.id,
-            pinnedMessage: ctx.message.pinned_message,
-            sourceEventMessageId: ctx.message.message_id || null,
-            sourceEventAt: sourceEventDate,
-          });
-        }
 
         // Driver-group messages are recorded to chat_logs ONLY while the owner's
         // switch says so (driver_chat_capture_settings, migration 0065) — and
         // only for driver groups, only text a person wrote. Everything else in
         // every other chat is still not persisted. Load details are not scraped
-        // from Telegram either — /status and /load source the active load from
-        // the Datatruck OpenAPI (services/datatruckLoadService.js); pinned
-        // snapshots above remain the fallback.
+        // from Telegram at all: a pinned message is no longer recorded, because
+        // its only reader — the pinned-load reading behind /load, /status and
+        // the ETA updates — was removed in October 2026
+        // (docs/architecture/retired-dispatch-eta.md). Loads come from the
+        // Dispatcher Board and the Datatruck OpenAPI.
 
         // Bot-visibility diagnostic + home-time tracker for driver groups.
         // Recording "we saw a message" proves the bot can read this group

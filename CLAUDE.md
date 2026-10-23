@@ -269,7 +269,8 @@ that area**, and run the tests it names.
 | Economy mode: which background work stands down while the database's monthly transfer allowance is nearly spent, until when, and why it is never a throttle | [`docs/architecture/economy-mode.md`](docs/architecture/economy-mode.md) |
 | Database changes, migrations, deferred schema decisions | [`docs/database/`](docs/database/) |
 | What was deliberately removed and must not be resurrected | [`docs/ARCHIVED_FEATURES.md`](docs/ARCHIVED_FEATURES.md), [`docs/architecture/retired-*.md`](docs/architecture/) |
-| The Dispatch Center's removal, and the ETA schedules that outlived it | [`docs/architecture/retired-dispatch-center.md`](docs/architecture/retired-dispatch-center.md) |
+| The Dispatch Center's removal (the ETA schedules it kept went later, see the next row) | [`docs/architecture/retired-dispatch-center.md`](docs/architecture/retired-dispatch-center.md) |
+| The dispatcher ETA updates, `/update`, `/status`, `/load` and the pinned-load reading's removal, what stayed (`/location`, Live Locations' ETA, the Datatruck load service), and the tables they left | [`docs/architecture/retired-dispatch-eta.md`](docs/architecture/retired-dispatch-eta.md) |
 | Clearing a removed feature's leftover tables, roles and accounts | [`docs/architecture/retired-trailers-qbq-sos.md`](docs/architecture/retired-trailers-qbq-sos.md) |
 | Module ownership map | [`docs/architecture/module-map.md`](docs/architecture/module-map.md) |
 | Deployment checks | [`docs/deployment/pre-deploy-checklist.md`](docs/deployment/pre-deploy-checklist.md) |

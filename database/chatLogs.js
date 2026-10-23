@@ -1,9 +1,13 @@
 /**
- * Chat logs, bot-sent message registry, pinned-message snapshots, and
- * group recent loads.
+ * Chat logs and the bot-sent message registry.
  * Extracted verbatim from database/db.js; db.js re-exports these.
+ *
+ * The pinned-message snapshots and the group recent loads lived here until the
+ * pinned-load reading was removed (October 2026,
+ * docs/architecture/retired-dispatch-eta.md). Their tables are droppable in
+ * Settings -> Retired feature leftovers.
  */
-const { pool, query } = require('./pool');
+const { query } = require('./pool');
 
 // ─── Chat Logs ───
 
@@ -241,192 +245,6 @@ async function markBotSentMessageEdited(telegramChatId, telegramMessageId, newTe
   return res.rows[0] || null;
 }
 
-async function upsertGroupPinnedMessageSnapshot({
-  groupId,
-  telegramGroupId,
-  pinnedMessage,
-  sourceEventMessageId = null,
-  sourceEventAt = null,
-}) {
-  if (!groupId || !telegramGroupId || !pinnedMessage?.message_id) return null;
-
-  const res = await query(
-    `INSERT INTO group_pinned_messages (
-       group_id,
-       telegram_group_id,
-       pinned_message_id,
-       pinned_message_json,
-       source_event_message_id,
-       source_event_at,
-       updated_at
-     )
-     VALUES ($1, $2, $3, $4::jsonb, $5, $6, NOW())
-     ON CONFLICT (group_id)
-     DO UPDATE SET
-       telegram_group_id = EXCLUDED.telegram_group_id,
-       pinned_message_id = EXCLUDED.pinned_message_id,
-       pinned_message_json = EXCLUDED.pinned_message_json,
-       source_event_message_id = EXCLUDED.source_event_message_id,
-       source_event_at = EXCLUDED.source_event_at,
-       updated_at = NOW()
-     WHERE group_pinned_messages.source_event_at IS NULL
-        OR EXCLUDED.source_event_at IS NULL
-        OR EXCLUDED.source_event_at >= group_pinned_messages.source_event_at
-     RETURNING *`,
-    [
-      groupId,
-      telegramGroupId,
-      pinnedMessage.message_id,
-      JSON.stringify(pinnedMessage),
-      sourceEventMessageId,
-      sourceEventAt,
-    ]
-  );
-
-  return res.rows[0] || null;
-}
-
-async function getGroupPinnedMessageSnapshot(groupId) {
-  if (!groupId) return null;
-  const res = await query(
-    `SELECT *
-     FROM group_pinned_messages
-     WHERE group_id = $1
-     LIMIT 1`,
-    [groupId]
-  );
-  return res.rows[0] || null;
-}
-
-async function getGroupRecentLoads(groupId, limit = 2) {
-  if (!groupId) return [];
-  const safeLimit = Number.isInteger(limit) && limit > 0 ? limit : 2;
-  const res = await query(
-    `SELECT *
-     FROM group_recent_loads
-     WHERE group_id = $1
-     ORDER BY created_at DESC
-     LIMIT $2`,
-    [groupId, safeLimit]
-  );
-  return res.rows;
-}
-
-async function hasGroupRecentLoadForMessage(groupId, telegramMessageId) {
-  if (!groupId || telegramMessageId == null) return false;
-  const res = await query(
-    `SELECT 1 FROM group_recent_loads
-     WHERE group_id = $1 AND telegram_message_id = $2
-     LIMIT 1`,
-    [groupId, telegramMessageId]
-  );
-  return res.rows.length > 0;
-}
-
-async function hasAnyGroupRecentLoadForMessages(groupId, telegramMessageIds) {
-  if (!groupId || !Array.isArray(telegramMessageIds) || !telegramMessageIds.length) {
-    return false;
-  }
-  const res = await query(
-    `SELECT 1 FROM group_recent_loads
-     WHERE group_id = $1 AND telegram_message_id = ANY($2::bigint[])
-     LIMIT 1`,
-    [groupId, telegramMessageIds]
-  );
-  return res.rows.length > 0;
-}
-
-async function insertGroupRecentLoad(row) {
-  const {
-    groupId,
-    telegramMessageId,
-    sourceMessageAt = null,
-    contextSignature,
-    pickupSummary = '',
-    deliverySummary = '',
-    destinationQuery = '',
-    pickupWindowStart = null,
-    pickupWindowEnd = null,
-    deliveryWindowStart = null,
-    deliveryWindowEnd = null,
-    loadIdentifier = null,
-    captionPreview = null,
-    extractedRawJson = null,
-    aiModel = null,
-  } = row;
-
-  if (!groupId || !telegramMessageId || !contextSignature) {
-    throw new Error('insertGroupRecentLoad: groupId, telegramMessageId, and contextSignature are required');
-  }
-
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-
-    const ins = await client.query(
-      `INSERT INTO group_recent_loads (
-         group_id,
-         telegram_message_id,
-         source_message_at,
-         context_signature,
-         pickup_summary,
-         delivery_summary,
-         destination_query,
-         pickup_window_start,
-         pickup_window_end,
-         delivery_window_start,
-         delivery_window_end,
-         load_identifier,
-         caption_preview,
-         extracted_raw_json,
-         ai_model
-       )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14::jsonb, $15)
-       ON CONFLICT (group_id, telegram_message_id) DO NOTHING
-       RETURNING id`,
-      [
-        groupId,
-        telegramMessageId,
-        sourceMessageAt,
-        contextSignature,
-        pickupSummary,
-        deliverySummary,
-        destinationQuery,
-        pickupWindowStart,
-        pickupWindowEnd,
-        deliveryWindowStart,
-        deliveryWindowEnd,
-        loadIdentifier,
-        captionPreview,
-        extractedRawJson ? JSON.stringify(extractedRawJson) : null,
-        aiModel,
-      ]
-    );
-
-    if (ins.rows.length > 0) {
-      await client.query(
-        `DELETE FROM group_recent_loads
-         WHERE group_id = $1
-           AND id NOT IN (
-             SELECT id FROM group_recent_loads
-             WHERE group_id = $1
-             ORDER BY created_at DESC
-             LIMIT 2
-           )`,
-        [groupId]
-      );
-    }
-
-    await client.query('COMMIT');
-    return ins.rows[0] || null;
-  } catch (err) {
-    await client.query('ROLLBACK');
-    throw err;
-  } finally {
-    client.release();
-  }
-}
-
 async function getChatLogsForGroup(groupId, daysBack) {
   const res = await query(
     `SELECT c.*,
@@ -476,12 +294,6 @@ module.exports = {
   listBotSentMessages,
   getBotSentMessageById,
   markBotSentMessageEdited,
-  upsertGroupPinnedMessageSnapshot,
-  getGroupPinnedMessageSnapshot,
-  getGroupRecentLoads,
-  hasGroupRecentLoadForMessage,
-  hasAnyGroupRecentLoadForMessages,
-  insertGroupRecentLoad,
   getChatLogsForGroup,
   getChatLogsForActiveDriverGroups,
   deleteOldChatLogs,

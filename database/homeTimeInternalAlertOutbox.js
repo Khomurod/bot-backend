@@ -97,8 +97,9 @@ const ALERT_SENDER_COLUMNS = [
  * A ONE-COLUMN LOOK FIRST. This runs on every five-minute tick, economy mode
  * or not, and nearly always claims nothing — but an `UPDATE … RETURNING r.*`
  * describes all 46 columns of `home_time_requests` even when it returns no
- * row. Same pattern as `claimDueDispatchEtaUpdates`. An alert that falls due
- * between the look and the claim is simply taken on the next tick.
+ * row. The same look-then-claim pattern the retired dispatch-ETA claim used;
+ * tests/emptyPolls.test.js pins it. An alert that falls due between the look
+ * and the claim is simply taken on the next tick.
  */
 async function claimDueInternalAlerts({
   nowIso = null, limit = 10, leaseSeconds = DEFAULT_LEASE_SECONDS,

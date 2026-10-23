@@ -53,6 +53,11 @@ test("no two forwarded modules export the same name", () => {
 });
 
 test("the public surface stays at its known size", () => {
+  // 225 after the dispatcher ETA feature (October 2026): its four ETA-schedule
+  // calls (`getDispatchTestingGroups`, `saveDispatchEtaGlobalIntervals`,
+  // `updateDispatchTestingGroup`, `updateAllDispatchTestingGroups`) went with
+  // it, from 229 — the floor had been left at 189 while the surface grew, and
+  // is raised to the real size here so the next drop is noticed.
   // 189 after the Dispatch Center: `parseDispatchRateCon`,
   // `sendDispatchToTelegram` and `getDispatchTestingGroupDetails` went with the
   // Send Load tab and its diagnostics expander — exactly three, and the floor
@@ -60,7 +65,7 @@ test("the public surface stays at its known size", () => {
   // Tracking and QBQ/SOS, and 205 when api.js was first split into domain
   // modules. Growing this is fine — update the number. A DROP that is not a
   // deliberate feature removal means a call site somewhere just broke.
-  expect(Object.keys(api).length).toBeGreaterThanOrEqual(189);
+  expect(Object.keys(api).length).toBeGreaterThanOrEqual(225);
 });
 
 describe("a sample of calls from every domain still resolves", () => {
@@ -68,9 +73,9 @@ describe("a sample of calls from every domain still resolves", () => {
   // some names exist.
   const samples = [
     "login", "getGroups", "getQuestions", "sendBroadcast", "uploadMedia",
-    // The dispatch sample is now an ETA-schedule call: the three Send Load
-    // functions are gone, and these four are what that module still forwards.
-    "getDispatchTestingGroups", "getScheduledMessages", "getLeads", "getAiReports",
+    // No dispatch sample: the Send Load functions went with the Dispatch
+    // Center, and the four ETA-schedule calls with the ETA feature (Oct 2026).
+    "getScheduledMessages", "getLeads", "getAiReports",
     "getEmployeeBirthdays", "getFacebookLeadPages", "getMileageBonusOverview",
     "getHomeTimeOverview", "getGroupAccess",
     "getBotUsers", "getRecruiters",

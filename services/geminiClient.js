@@ -229,17 +229,11 @@ async function callGeminiJson(opts = {}) {
   return { parsed, text: result.text, model: result.model, payload: result.payload };
 }
 
-function getPinnedContextGeminiModels() {
-  const fromEnv = parseGeminiModelList(process.env.GEMINI_PINNED_CONTEXT_MODELS, []);
-  return fromEnv.length ? fromEnv : [...GEMINI_TEXT_MODELS];
-}
-
 module.exports = {
   GEMINI_API_KEY,
   asLegacyGeminiFailure,
   GEMINI_TEXT_MODELS,
   parseGeminiModelList,
-  getPinnedContextGeminiModels,
   safeParseJsonObject,
   stripJsonFences,
   isGeminiQuotaExhaustedError,

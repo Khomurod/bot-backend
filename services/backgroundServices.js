@@ -40,11 +40,6 @@ const {
   stopFacebookWebhookWorker,
 } = require('./facebookWebhookService');
 const {
-  configureDispatchEtaTelegram,
-  startDispatchEtaScheduler,
-  stopDispatchEtaScheduler,
-} = require('./dispatchEtaUpdateService');
-const {
   startMileageBonusService,
   stopMileageBonusService,
 } = require('./mileageBonusService');
@@ -165,17 +160,15 @@ function startBackgroundServices({ telegram }) {
   if (economyLine) console.log(economyLine);
 
   // Which Telegram client each service posts through, decided here rather than
-  // reached for. Dispatch ETA uses the main bot; Facebook leads use the leads
-  // bot, which is a DIFFERENT token posting into a different group, and mixing
-  // them up sends a candidate's SMS into a driver chat.
-  configureDispatchEtaTelegram(telegram);
+  // reached for. Facebook leads use the leads bot, which is a DIFFERENT token
+  // from the main bot's, posting into a different group, and mixing them up
+  // sends a candidate's SMS into a driver chat.
   // eslint-disable-next-line global-require
   const { getLeadsTelegram } = require('./leadsTelegramClient');
   configureFacebookLeadTelegram(getLeadsTelegram());
   console.log('[BOOT] Facebook lead Telegram delivery uses TELEGRAM_BOT_TOKEN (WenzeLeadBots).');
 
   startScheduler();
-  startDispatchEtaScheduler();
   startBirthdayService();
   startEmployeeBirthdayWishService();
   launchUnlessPaused(['group_status_ai'], () => startGroupStatusAiService());
@@ -276,7 +269,6 @@ function startBackgroundServices({ telegram }) {
 function stopBackgroundServices() {
   try { cancelEconomyEnd(); } catch (err) { console.error('[SHUTDOWN] cancelEconomyEnd failed:', err.message); }
   try { stopScheduler(); } catch (err) { console.error('[SHUTDOWN] stopScheduler failed:', err.message); }
-  try { stopDispatchEtaScheduler(); } catch (err) { console.error('[SHUTDOWN] stopDispatchEtaScheduler failed:', err.message); }
   try { stopBirthdayService(); } catch (err) { console.error('[SHUTDOWN] stopBirthdayService failed:', err.message); }
   try { stopEmployeeBirthdayWishService(); } catch (err) { console.error('[SHUTDOWN] stopEmployeeBirthdayWishService failed:', err.message); }
   try { stopGroupStatusAiService(); } catch (err) { console.error('[SHUTDOWN] stopGroupStatusAiService failed:', err.message); }

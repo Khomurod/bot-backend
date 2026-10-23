@@ -304,8 +304,9 @@ test('a timeout is transient and moves on rather than aborting', async () => {
 // ─── two defects the Stage 5c rewiring introduced ────────────────────────────
 
 test('an OpenAI-shaped `messages` prompt REACHES a Gemini provider', async () => {
-  // `requestPinnedContextFromGroq` and `requestDispatchTemplateFromGroq` call
-  // `callGroqWithFallback('')` and put the whole document in `messages`. When
+  // `requestPinnedContextFromGroq` and `requestDispatchTemplateFromGroq` (both
+  // removed since) called `callGroqWithFallback('')` and put the whole document
+  // in `messages`. Any caller may still do that. When
   // the roster reached a Gemini provider, `buildRequest` built contents from
   // `userText` alone — an EMPTY prompt. A model asked nothing at all still
   // returns well-formed JSON, and those two sites validate the shape rather

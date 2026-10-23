@@ -199,24 +199,9 @@ test('resolveActiveLoadForDriver returns null (not throw) when the API errors', 
   assert.equal(await svc.resolveActiveLoadForDriver('John Doe'), null);
 });
 
-test('getAdminRecentLoadsForGroup returns the admin recentLoads row shape', async () => {
-  const svc = loadService({ fetchActiveOrderForDriver: async () => SAMPLE_ORDER });
-  const rows = await svc.getAdminRecentLoadsForGroup({
-    group_name: 'WENZE UNIT # 2908 JOHN DOE (COMPANY DRIVER)',
-  });
-  assert.equal(rows.length, 1);
-  const row = rows[0];
-  assert.equal(row.id, '4021');
-  assert.equal(row.telegramMessageId, null);
-  assert.equal(row.loadIdentifier, 'W-77');
-  assert.equal(row.pickupSummary, 'Charlotte, NC 28273 | 2026-07-01T14:00:00.000Z');
-  assert.equal(row.destinationQuery, '5151 E Raines Rd, Memphis, TN 38118');
-  assert.equal(typeof row.deliveryWindowEnd, 'string');
-  assert.equal(row.aiModel, '');
-});
-
-test('getAdminRecentLoadsForGroup returns [] when no active order matches', async () => {
+test('resolveActiveLoadForGroup returns null when no active order matches', async () => {
+  // The admin ETA panel's row-shape view of this went with the dispatcher ETA
+  // feature (October 2026); the "nothing matches" half is still the contract.
   const svc = loadService({ fetchActiveOrderForDriver: async () => null });
-  const rows = await svc.getAdminRecentLoadsForGroup({ group_name: 'WENZE UNIT # 1 JANE ROE' });
-  assert.deepEqual(rows, []);
+  assert.equal(await svc.resolveActiveLoadForGroup({ group_name: 'WENZE UNIT # 1 JANE ROE' }), null);
 });

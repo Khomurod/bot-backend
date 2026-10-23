@@ -135,6 +135,19 @@ const RETIRED_GROUPS = Object.freeze({
       'truck_fuel_readings',
     ]),
   }),
+  dispatch_eta: Object.freeze({
+    label: 'Dispatcher ETA updates and pinned-load reading',
+    removedAt: '2026-10',
+    note: 'Per-group ETA schedules and their cached load context, the global ETA '
+      + 'intervals, the stored recent loads and the pinned-message snapshots. '
+      + 'Loads are read from the Dispatcher Board and Datatruck now.',
+    tables: Object.freeze([
+      'dispatch_eta_updates',
+      'dispatch_eta_global_settings',
+      'group_recent_loads',
+      'group_pinned_messages',
+    ]),
+  }),
   earlier: Object.freeze({
     label: 'Earlier retired features',
     removedAt: 'various',

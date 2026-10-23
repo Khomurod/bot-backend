@@ -1,119 +1,16 @@
--- ─── Dispatch ETA Testing Feature ─────────────────────────────────────────────
--- Per-group settings/state for automated ETA updates derived from pinned load
--- context + live telematics location.
-CREATE TABLE IF NOT EXISTS dispatch_eta_updates (
-  id SERIAL PRIMARY KEY,
-  group_id INTEGER NOT NULL UNIQUE REFERENCES groups(id) ON DELETE CASCADE,
-  enabled BOOLEAN NOT NULL DEFAULT FALSE,
-  target_mode TEXT NOT NULL DEFAULT 'driver',
-  interval_minutes INTEGER NOT NULL DEFAULT 60,
-  next_run_at TIMESTAMP NULL,
-  processing BOOLEAN NOT NULL DEFAULT FALSE,
-  processing_started_at TIMESTAMP NULL,
-  last_run_at TIMESTAMP NULL,
-  last_status TEXT NULL,
-  last_error TEXT NULL,
-  last_pinned_signature TEXT NULL,
-  cached_pickup TEXT NULL,
-  cached_delivery TEXT NULL,
-  cached_destination_query TEXT NULL,
-  cached_context_json JSONB NULL,
-  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
-  CONSTRAINT dispatch_eta_interval_check CHECK (interval_minutes BETWEEN 1 AND 1440)
-);
-
-ALTER TABLE dispatch_eta_updates ADD COLUMN IF NOT EXISTS enabled BOOLEAN NOT NULL DEFAULT FALSE;
-ALTER TABLE dispatch_eta_updates ADD COLUMN IF NOT EXISTS target_mode TEXT NOT NULL DEFAULT 'driver';
-ALTER TABLE dispatch_eta_updates ADD COLUMN IF NOT EXISTS interval_minutes INTEGER NOT NULL DEFAULT 60;
-ALTER TABLE dispatch_eta_updates ADD COLUMN IF NOT EXISTS next_run_at TIMESTAMP NULL;
-ALTER TABLE dispatch_eta_updates ADD COLUMN IF NOT EXISTS processing BOOLEAN NOT NULL DEFAULT FALSE;
-ALTER TABLE dispatch_eta_updates ADD COLUMN IF NOT EXISTS processing_started_at TIMESTAMP NULL;
-ALTER TABLE dispatch_eta_updates ADD COLUMN IF NOT EXISTS last_run_at TIMESTAMP NULL;
-ALTER TABLE dispatch_eta_updates ADD COLUMN IF NOT EXISTS last_status TEXT NULL;
-ALTER TABLE dispatch_eta_updates ADD COLUMN IF NOT EXISTS last_error TEXT NULL;
-ALTER TABLE dispatch_eta_updates ADD COLUMN IF NOT EXISTS last_pinned_signature TEXT NULL;
-ALTER TABLE dispatch_eta_updates ADD COLUMN IF NOT EXISTS cached_pickup TEXT NULL;
-ALTER TABLE dispatch_eta_updates ADD COLUMN IF NOT EXISTS cached_delivery TEXT NULL;
-ALTER TABLE dispatch_eta_updates ADD COLUMN IF NOT EXISTS cached_destination_query TEXT NULL;
-ALTER TABLE dispatch_eta_updates ADD COLUMN IF NOT EXISTS cached_context_json JSONB NULL;
-ALTER TABLE dispatch_eta_updates ADD COLUMN IF NOT EXISTS created_at TIMESTAMP NOT NULL DEFAULT NOW();
-ALTER TABLE dispatch_eta_updates ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP NOT NULL DEFAULT NOW();
-
-DO $$
-BEGIN
-  IF EXISTS (
-    SELECT 1
-    FROM information_schema.table_constraints
-    WHERE constraint_name = 'dispatch_eta_interval_check'
-      AND table_name = 'dispatch_eta_updates'
-  ) THEN
-    ALTER TABLE dispatch_eta_updates DROP CONSTRAINT dispatch_eta_interval_check;
-  END IF;
-END
-$$;
-
-ALTER TABLE dispatch_eta_updates
-  ADD CONSTRAINT dispatch_eta_interval_check
-  CHECK (interval_minutes BETWEEN 1 AND 1440);
-
-DO $$
-BEGIN
-  IF EXISTS (
-    SELECT 1
-    FROM information_schema.table_constraints
-    WHERE constraint_name = 'dispatch_eta_target_mode_check'
-      AND table_name = 'dispatch_eta_updates'
-  ) THEN
-    ALTER TABLE dispatch_eta_updates DROP CONSTRAINT dispatch_eta_target_mode_check;
-  END IF;
-END
-$$;
-
-ALTER TABLE dispatch_eta_updates
-  ADD CONSTRAINT dispatch_eta_target_mode_check
-  CHECK (target_mode IN ('driver', 'test'));
-
--- Single-row defaults for dispatch ETA intervals (admin-editable; applied to all rows by target_mode).
-CREATE TABLE IF NOT EXISTS dispatch_eta_global_settings (
-  id INTEGER PRIMARY KEY CHECK (id = 1),
-  driver_interval_minutes INTEGER NOT NULL DEFAULT 60,
-  test_interval_minutes INTEGER NOT NULL DEFAULT 60,
-  updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
-  CONSTRAINT dispatch_eta_global_intervals_check CHECK (
-    driver_interval_minutes BETWEEN 1 AND 1440
-    AND test_interval_minutes BETWEEN 1 AND 1440
-  )
-);
-
-INSERT INTO dispatch_eta_global_settings (id, driver_interval_minutes, test_interval_minutes)
-VALUES (1, 60, 60)
-ON CONFLICT (id) DO NOTHING;
-
--- Last two AI-extracted loads per driver group (text + window fields only; files stay on Telegram).
-CREATE TABLE IF NOT EXISTS group_recent_loads (
-  id SERIAL PRIMARY KEY,
-  group_id INTEGER NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
-  telegram_message_id BIGINT NOT NULL,
-  source_message_at TIMESTAMPTZ NULL,
-  context_signature TEXT NOT NULL,
-  pickup_summary TEXT NOT NULL DEFAULT '',
-  delivery_summary TEXT NOT NULL DEFAULT '',
-  destination_query TEXT NOT NULL DEFAULT '',
-  pickup_window_start TIMESTAMPTZ NULL,
-  pickup_window_end TIMESTAMPTZ NULL,
-  delivery_window_start TIMESTAMPTZ NULL,
-  delivery_window_end TIMESTAMPTZ NULL,
-  load_identifier TEXT NULL,
-  caption_preview TEXT NULL,
-  extracted_raw_json JSONB NULL,
-  ai_model TEXT NULL,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  UNIQUE (group_id, telegram_message_id)
-);
-
-CREATE INDEX IF NOT EXISTS idx_group_recent_loads_group_created
-  ON group_recent_loads (group_id, created_at DESC);
+-- ─── Retired: dispatcher ETA updates and the stored recent loads ──────────────
+-- This segment used to create dispatch_eta_updates, dispatch_eta_global_settings
+-- and group_recent_loads (and 005 created group_pinned_messages).
+-- The dispatcher ETA updates, /update, /status, /load and the pinned-load
+-- reading were removed (October 2026, see docs/architecture/retired-dispatch-eta.md).
+-- The baseline no longer creates them: it is applied on EVERY boot, so a table
+-- it created could never be dropped for good. A deployed database keeps its
+-- tables and rows until an administrator drops them from Settings → Retired
+-- feature leftovers, after a backup. No forward migration alters them, so no
+-- fresh-database stub is needed.
+--
+-- The rest of this segment — indexes on surviving tables and the AI insights
+-- pipeline — is live and stays.
 
 -- ─── Performance indexes for growing tables ───────────────────────
 -- responses: primary lookup is by question, which already has a unique
@@ -144,10 +41,6 @@ CREATE INDEX IF NOT EXISTS idx_broadcast_button_clicks_broadcast_id
 CREATE INDEX IF NOT EXISTS idx_scheduled_messages_pending_due
   ON scheduled_messages(scheduled_at)
   WHERE status = 'pending';
-
-CREATE INDEX IF NOT EXISTS idx_dispatch_eta_due
-  ON dispatch_eta_updates(next_run_at)
-  WHERE enabled = TRUE;
 
 -- groups: samsara lookups by samsara_vehicle_id and active driver filters.
 CREATE INDEX IF NOT EXISTS idx_groups_samsara_vehicle_id

@@ -64,7 +64,7 @@ The `chat_logs` table is **shared** and still required by active features:
 
 | Consumer | Function | Feature |
 |---|---|---|
-| `services/dispatchPinnedContextService.js` | `db.getChatLogsForGroup` | pinned-context load lookup (`/load`, ETA) — this survived the Dispatch Center's own removal |
+| `services/dispatchPinnedContextService.js` | `db.getChatLogsForGroup` | pinned-context load lookup (`/load`, ETA) — survived the Dispatch Center's removal, then was itself removed on 2026-10-23 (`retired-dispatch-eta.md`) |
 | `server/api.js` AI reports route | `db.getChatLogsForActiveDriverGroups`, `db.getChatLogsForGroup` | AI reports |
 | `services/aiAnnotationService.js`, `services/aiInsightsService.js` | direct `chat_logs` reads | AI management insights |
 | `services/schedulerService.js` | `db.deleteOldChatLogs(30)` | 30-day retention (hourly) |
