@@ -23,7 +23,7 @@ function registerStartHandler(bot) {
         return;
       }
       await ctx.reply(
-        'Wenze Feedback bot is active in this group for driver feedback, broadcasts, and ETA updates.',
+        'Wenze Feedback bot is active in this group for driver feedback and broadcasts.',
       );
       return;
     }
