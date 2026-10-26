@@ -224,23 +224,26 @@ sign-in check, the way it maps `/recruiters`.
 | `services/grossRace/standings.js` | which loads count, who they count for, targets, ranking, what the public payload holds (pure) |
 | `services/grossRace/feed.js` | the held week, when to read, the failure phrases |
 | `services/grossRace/pageVersion.js` | which build of the race page the server hands out |
-| `server/routes/grossRaceRoutes.js` | `GET /api/gross-race` |
+| `server/routes/grossRaceRoutes.js` | `GET /api/gross-race`, and the video's routes (serve, replace, status, pause, delete) |
+| `services/grossRace/celebrationVideo.js`, `videoPause.js` | the video on the server's disk, and whether it is paused |
+| `admin/src/pages/settings/GrossRaceTab.jsx`, `settings/grossRace/` | Settings → Gross Grand Prix: the video console and the Windows sound set-up |
 | `admin/src/pages/grossRace/` | the page, its stylesheet and fonts (Archivo, SIL OFL), the race feed; `pageVersion.js` decides when a screen reloads itself |
 | `admin/src/pages/grossRace/celebration/` | the 4 PM celebration: when and whom (pure), the three.js scene, the overlay, the car and its credits |
 
 ## Tests
 
 ```
-node --test tests/grossRaceStandings.test.js tests/grossRaceFeed.test.js tests/grossRaceRoutes.test.js tests/grossRacePageVersion.test.js tests/grossRaceVideo.test.js
+node --test tests/grossRaceStandings.test.js tests/grossRaceFeed.test.js tests/grossRaceRoutes.test.js tests/grossRacePageVersion.test.js tests/grossRaceVideo.test.js tests/grossRaceVideoConsole.test.js
 node --test tests/api-surface.test.js   # /dispatch and /dispatchteam serve the shell; /dispatch/* → 410
-npm test --prefix admin -- --run src/pages/grossRace
+npm test --prefix admin -- --run src/pages/grossRace src/pages/settings/GrossRaceTab.test.jsx
 ```
 
 ## The "Test sound" button
 
 The owner wanted a video with sound after the 4 PM celebration (16 October
-2026; see below). The office screens are Smart TVs, whose built-in browsers each decide
-for themselves whether a page may start sound without a click, so the board
+2026; see below). The office screens are Windows computers (the owner, 26
+October 2026; this page said Smart TVs before), and a browser decides for
+itself whether a page may start sound without a click, so the board
 that will play it carries a **Test sound** button that finds out
 (`admin/src/pages/grossRace/soundTest/`). **The video is `/dispatchteam`'s
 alone** (the owner, 16 October 2026): `/dispatch` keeps the car only, has no
@@ -283,3 +286,35 @@ On `/dispatchteam`, the company's video follows the car (the owner, 16 October
   16 October 2026, the day the video went live after four o'clock, a screen
   shows the celebration once when it opens (once per tab; `/dispatchteam`
   waits until the server has the video). Other days are unchanged.
+
+## Settings → Gross Grand Prix: the video console
+
+The owner (26 October 2026): manage the video from the admin panel, and know
+how to make a screen always play it with sound.
+
+- **See it**: whether there is one, its size and upload time, a player.
+- **Pause / Resume** — the video only; the car still celebrates at 4 PM.
+  Paused, `GET /api/gross-race?view=teams` answers `video: false`, so a screen
+  shows the car alone, and a screen already playing the video closes it on its
+  next poll (within about 30 seconds; `useCelebrationVideo` closes a video the
+  server no longer offers). The file stays. The setting is
+  `celebration-state.json` beside the video on the same volume, so it survives
+  a deploy, and it is NOT in the database on purpose: every screen asks every
+  30 seconds, and that answer is built without a query. A state file that
+  exists but cannot be read counts as **paused**, never as "play".
+- **Upload a new one** — MP4, at most 100 MB, with a progress bar (the same
+  `PUT /api/gross-race/video`, replaced only once all of it has arrived).
+- **Delete** — after a confirmation; the car plays alone.
+- `GET /api/gross-race/video/status`, `PUT /api/gross-race/video/paused`
+  `{ paused }` and `DELETE /api/gross-race/video` need a full admin, like the
+  upload. `GET /api/gross-race/video` stays public: the screens have no
+  sign-in, and the admin preview uses it while the video is paused.
+- **Always with sound (Windows).** A browser will not start sound on a page
+  nobody clicked, so the board falls back to playing muted. The tab gives the
+  command for a desktop shortcut, with this server's address filled in:
+  Chrome with `--kiosk` (full screen that survives the board's own reloads),
+  `--autoplay-policy=no-user-gesture-required` (sound may start by itself) and
+  `--user-data-dir` (a profile of its own, because Chrome ignores switches
+  handed to a profile that is already running), plus `shell:startup` to open
+  it when the computer starts. Edge takes the same switches. **Test sound** on
+  the board confirms it.

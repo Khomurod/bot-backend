@@ -371,10 +371,13 @@ $15,000-per-solo / $20,000-per-team-truck target; `/dispatch` races whoever
 created the loads, by gross alone, five to a screen. At 4:00 PM Chicago, every
 day, each board celebrates its leader for twelve seconds over a 3D car
 (`?celebrate` previews it); on `/dispatchteam` only, the company's video kept
-on the server follows the car, and a **Test sound** button shows what the TV
-can do. A screen reloads itself within about a minute
+on the server follows the car, and a **Test sound** button shows what the
+screen can do. **Settings → Gross Grand Prix** shows that video and pauses,
+replaces or deletes it (pausing stands down the video only, never the car),
+and gives the Windows shortcut command that opens the board full screen with
+sound allowed. A screen reloads itself within about a minute
 of an admin-panel deploy; on the office screens use the browser's own full
-screen (F11), because a reload ends the page's. Public, like
+screen (F11, or that shortcut's kiosk mode), because a reload ends the page's. Public, like
 `/recruiters`. **The server reads Datatruck with the app's own token and holds
 the week in memory; the page never sees a token.** See
 [`docs/architecture/gross-race.md`](../architecture/gross-race.md).

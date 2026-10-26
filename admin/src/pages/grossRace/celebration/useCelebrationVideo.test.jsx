@@ -35,6 +35,20 @@ describe("useCelebrationVideo", () => {
     expect(result.current.stage).toBe(null);
   });
 
+  test("paused or deleted on the server: a video waiting or playing is closed and the board is back", () => {
+    for (const stageBefore of ["ready", "playing"]) {
+      const { result, rerender } = setup();
+      rerender({ celebration: party });
+      if (stageBefore === "playing") rerender({ celebration: null });
+      expect(result.current.stage).toBe(stageBefore);
+      rerender({ celebration: stageBefore === "ready" ? party : null, available: false });
+      expect(result.current.stage).toBe(null);
+      expect(result.current.active.current).toBe(false);
+      rerender({ celebration: null, available: false });
+      expect(result.current.stage).toBe(null);
+    }
+  });
+
   test("not on the dispatchers' board, not without a video, not for a sound test", () => {
     for (const props of [{ enabled: false }, { available: false }, { testing: { current: true } }]) {
       const { result, rerender } = setup(props);

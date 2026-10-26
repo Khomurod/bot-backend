@@ -9,6 +9,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
  * Only a celebration that is not a sound test leads to it, and only when the
  * server has a video (`available`). `active` is a ref so the page's reload
  * check never reloads the screen in the middle of it.
+ *
+ * When the server stops saying there is one — paused or deleted in Settings →
+ * Gross Grand Prix — a video waiting or playing is closed on that poll and the
+ * board is back (the owner, 26 October 2026: pausing has to stop it on screen).
  */
 export default function useCelebrationVideo({ enabled, available, celebration, testing }) {
   const [stage, setStage] = useState(null); // null | "ready" | "playing"
@@ -32,6 +36,10 @@ export default function useCelebrationVideo({ enabled, available, celebration, t
     active.current = false;
     setStage(null);
   }, []);
+
+  useEffect(() => {
+    if (!available && stage) done();
+  }, [available, stage, done]);
 
   return { stage, active, done };
 }
