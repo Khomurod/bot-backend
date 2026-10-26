@@ -5,11 +5,11 @@
  * three.js and the model are loaded only when a celebration is near
  * (preloadCar(), a few minutes before 4 PM), never with the board itself, and
  * everything is released when the celebration ends: a screen that hangs on a
- * wall all day must not keep a WebGL context or 3 MB of model it no longer
+ * wall all day must not keep a WebGL context or a model it no longer
  * shows.
  *
- * The model is "Car Concept" (CC BY 4.0), with its sponsor marks removed and
- * the plate reading WENZE — see CREDITS.md beside it.
+ * The model is "Chevrolet Malibu Premier 2022" by Type_S (CC BY 4.0), with
+ * WENZE plates added front and back — see CREDITS.md beside it.
  */
 import carUrl from "./wenze-car.glb?url";
 

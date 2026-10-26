@@ -41,7 +41,7 @@ describe("CelebrationOverlay", () => {
     const { unmount } = render(<CelebrationOverlay winner={winner} view="teams" />);
     expect(screen.getByText("4:00 PM · 1st place team")).toBeInTheDocument();
     await waitFor(() => expect(document.querySelector(".gr-celebration-car.is-on")).not.toBeNull());
-    expect(screen.getByText(/“Car Concept” by Eric Chadwick.*CC BY 4\.0/)).toBeInTheDocument();
+    expect(screen.getByText(/“Chevrolet Malibu Premier 2022” by Type_S.*CC BY 4\.0/)).toBeInTheDocument();
     expect(scene.mount).toHaveBeenCalledWith(expect.any(HTMLCanvasElement), { durationMs: 12000 });
     unmount();
     expect(dispose).toHaveBeenCalledTimes(1);

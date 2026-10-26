@@ -159,11 +159,15 @@ celebration while nobody has any gross.
 - **`?celebrate` in the address shows it at once**, e.g.
   `/dispatchteam?celebrate`, to check a screen without waiting for four
   o'clock.
-- **The car** is Khronos' "Car Concept" (CC BY 4.0, Eric Chadwick / Darmstadt
-  Graphics Group). The Khronos and 3DCommerce marks are removed and the plate
-  reads WENZE. The credit is on screen while the car is. See
-  `admin/src/pages/grossRace/celebration/CREDITS.md`, and do not put the marks
-  back: the licence does not cover them.
+- **The car** is a Chevrolet Malibu Premier 2022 by Type_S (Sketchfab,
+  CC BY 4.0), since 26 October 2026 (the owner's choice; it replaced Khronos'
+  "Car Concept"). Its Chevrolet badges stay, at the owner's request; WENZE
+  plates are added front and back — the camera only ever circles the front
+  half, so the front plate is the one on screen. The credit is on screen while
+  the car is. See `admin/src/pages/grossRace/celebration/CREDITS.md` for what
+  was changed in the file. The scene reads the wheels' rims by name
+  (`/^Wheel\w*Rim$/`) for their contact shadows: a replacement model needs its
+  rims named that way, or the wheels lose their shadows.
 - **Two traps are already fixed. Keep the fixes.**
   - The car's floor placement uses PRECISE bounding boxes
     (`setFromObject(…, true)`). The wheels are turned, a turned part's quick
