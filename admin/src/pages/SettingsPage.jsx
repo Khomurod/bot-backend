@@ -37,10 +37,11 @@ const SafetyApprovalsTab = lazy(() => import("./settings/SafetyApprovalsTab"));
 const AutoReactionsPanel = lazy(() => import("./settings/bot/AutoReactionsPanel"));
 const GroupAccessPanel = lazy(() => import("./settings/bot/GroupAccessPanel"));
 const RetiredLeftoversTab = lazy(() => import("./settings/RetiredLeftoversTab"));
+const GrossRaceTab = lazy(() => import("./settings/GrossRaceTab"));
 
 const TAB_KEYS = [
   "location", "ringcentral", "groups", "samsara",
-  "board", "safety", "ai", "notifications", "reactions", "access", "leftovers",
+  "board", "safety", "ai", "notifications", "reactions", "access", "grossrace", "leftovers",
 ];
 
 /**
@@ -68,6 +69,7 @@ export default function SettingsPage({ initialTab }) {
         <button className={`btn ${tab === "notifications" ? "btn-primary" : "btn-ghost"} touch-target`} onClick={() => setTab("notifications")}>🔔 Notifications</button>
         <button className={`btn ${tab === "reactions" ? "btn-primary" : "btn-ghost"} touch-target`} onClick={() => setTab("reactions")}>😀 Auto Reactions</button>
         <button className={`btn ${tab === "access" ? "btn-primary" : "btn-ghost"} touch-target`} onClick={() => setTab("access")}>🔍 Bot Group Access</button>
+        <button className={`btn ${tab === "grossrace" ? "btn-primary" : "btn-ghost"} touch-target`} onClick={() => setTab("grossrace")}>🏁 Gross Grand Prix</button>
         <button className={`btn ${tab === "leftovers" ? "btn-primary" : "btn-ghost"} touch-target`} onClick={() => setTab("leftovers")}>🧹 Retired Leftovers</button>
       </div>
       <Suspense fallback={<div style={{ padding: 20, color: "#94a3b8" }}>Loading…</div>}>
@@ -81,6 +83,7 @@ export default function SettingsPage({ initialTab }) {
         {tab === "notifications" && <NotificationsTab />}
         {tab === "reactions" && <AutoReactionsPanel />}
         {tab === "access" && <GroupAccessPanel />}
+        {tab === "grossrace" && <GrossRaceTab />}
         {tab === "leftovers" && <RetiredLeftoversTab />}
       </Suspense>
     </div>

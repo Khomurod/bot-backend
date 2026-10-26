@@ -42,3 +42,4 @@ export * from './api/operations';
 export * from './api/ai';
 export * from './api/safetyMusic';
 export * from './api/system';
+export * from './api/grossRace';

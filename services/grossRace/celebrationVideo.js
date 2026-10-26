@@ -67,4 +67,28 @@ async function saveVideo(source, { file = videoPath(), maxBytes = MAX_BYTES } = 
   }
 }
 
-module.exports = { DEFAULT_PATH, MAX_BYTES, hasVideo, saveVideo, videoPath };
+/** What Settings → Gross Grand Prix shows: whether there is one, how big, since when. */
+function videoInfo(file = videoPath()) {
+  try {
+    const stat = fs.statSync(file);
+    if (stat.isFile() && stat.size > 0) return { exists: true, bytes: stat.size, updatedAt: stat.mtime.toISOString() };
+  } catch { /* no file is the ordinary "no video" */ }
+  return { exists: false, bytes: 0, updatedAt: null };
+}
+
+/**
+ * Remove it: the teams' board shows the car alone, and a screen in the middle
+ * of playing it closes it on its next poll (`video: false`). Resolves with
+ * whether there was a file to remove. A pause, if set, stays for the next one.
+ */
+async function deleteVideo(file = videoPath()) {
+  try {
+    await fs.promises.unlink(file);
+    return true;
+  } catch (err) {
+    if (err.code === 'ENOENT') return false;
+    throw err;
+  }
+}
+
+module.exports = { DEFAULT_PATH, MAX_BYTES, deleteVideo, hasVideo, saveVideo, videoInfo, videoPath };
