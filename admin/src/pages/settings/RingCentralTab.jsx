@@ -3,6 +3,7 @@ import * as api from "../../api";
 import { KeyField, NumField, Banner } from "./fields";
 import RecruiterCard from "./ringcentral/RecruiterCard";
 import BitrixCard from "./ringcentral/BitrixCard";
+import PageFailure from "../../components/PageFailure";
 
 // ─────────────────────────────── RingCentral tab ─────────────────────────────
 //
@@ -14,6 +15,11 @@ import BitrixCard from "./ringcentral/BitrixCard";
 //     lead go out from the assigned recruiter's number instead of the shared
 //     company line, so a recruiter with no sign-in or no Bitrix id is shown as
 //     such on their row rather than looking configured.
+//
+// When the settings or the recruiters cannot be read, the tab says so and
+// offers a retry INSTEAD of the form — as Settings → Live Location does. It
+// used to render against `settings === null` and throw ("This section has a
+// bug"), and a form drawn from defaults could save them over the stored values.
 
 export default function RingCentralTab() {
   const [settings, setSettings] = useState(null);
@@ -21,6 +27,7 @@ export default function RingCentralTab() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState(null);
+  const [loadError, setLoadError] = useState(null);
   const [test, setTest] = useState(null);
   const [testing, setTesting] = useState(false);
   const [form, setForm] = useState({
@@ -35,8 +42,10 @@ export default function RingCentralTab() {
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const [s, recs] = await Promise.all([api.getRingCentralSettings(), api.getRecruiters()]);
+      if (!s || typeof s !== "object") throw new Error("The server did not send the RingCentral settings.");
       setSettings(s);
       setRecruiters(recs);
       setForm((f) => ({
@@ -46,7 +55,10 @@ export default function RingCentralTab() {
         targetTalkMinutes: s.targetTalkMinutes ?? 150,
         targetOutbound: s.targetOutbound, targetRealConversations: s.targetRealConversations,
       }));
-    } catch (err) { setMessage({ type: "error", text: err.message }); }
+    } catch (err) {
+      setSettings(null);
+      setLoadError(err);
+    }
     finally { setLoading(false); }
   }, []);
   useEffect(() => { load(); }, [load]);
@@ -146,6 +158,9 @@ export default function RingCentralTab() {
   };
 
   if (loading) return <div className="loading"><div className="spinner"></div> Loading…</div>;
+  if (!settings) {
+    return <PageFailure error={loadError} where="RingCentral settings" onRetry={load} />;
+  }
 
   return (
     <div>
