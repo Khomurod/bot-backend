@@ -47,7 +47,7 @@ export default function CelebrationOverlay({ winner, view, onCar }) {
         <p className="gr-celebration-message">{MESSAGE}</p>
         {car === "on" && (
           <div className="gr-celebration-credit">
-            3D model: “Car Concept” by Eric Chadwick, © 2024 Darmstadt Graphics Group, CC BY 4.0, modified
+            3D model: “Chevrolet Malibu Premier 2022” by Type_S, CC BY 4.0, modified
           </div>
         )}
       </div>
