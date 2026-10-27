@@ -96,15 +96,19 @@ async function sendDue(deps, cfg) {
       graphVersion: cfg.graphVersion,
       events: [buildCapiEvent({ leadgenId: row.leadgen_id, eventName: row.event_name, eventTime: row.event_time })],
     });
-    if (res.ok) {
+    // Sent means Meta SAYS it received the event. A 200 reporting 0 received
+    // (or a body that would not parse) is a failed attempt and is retried —
+    // harmless, because Meta deduplicates on the event's own event_id.
+    if (res.ok && res.received > 0) {
       // eslint-disable-next-line no-await-in-loop
       if (await deps.store.markSent(row.id, cfg.datasetId)) out.sent += 1;
       continue;
     }
+    const error = res.ok ? 'Meta answered, but says it received no event' : res.error;
     out.failed += 1;
-    out.lastError = res.error;
+    out.lastError = error;
     // eslint-disable-next-line no-await-in-loop
-    if ((await deps.store.markFailed(row.id, res.error)) === 'gave_up') out.gaveUp += 1;
+    if ((await deps.store.markFailed(row.id, error)) === 'gave_up') out.gaveUp += 1;
   }
   return out;
 }
