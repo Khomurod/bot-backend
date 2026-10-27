@@ -2,17 +2,18 @@
 
 /**
  * Settings → Facebook ↔ Bitrix → Test, against a fake Meta and a fake Bitrix:
- * each check says pass / fail / not run in plain words, Meta's own error is
- * shown with the token taken out, a timeout is a failed check and not a
- * crash, a missing stage is named — and the Test NEVER sends a non-test
- * event: without a test event code nothing is sent at all.
+ * each check says pass / warning / fail / not run in plain words, Meta's own
+ * error is shown with the token taken out, a timeout is a failed check and not
+ * a crash, a missing stage is named — and the Test NEVER sends anything Meta
+ * would count: without a test event code nothing is sent at all, and with one
+ * the only send is an exact copy of an event Meta already received.
  */
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { runSettingsTest, PLACEHOLDER_LEADGEN_ID } = require('../services/metaCrm/settingsTest');
-const { readDataset, sendEvents } = require('../services/metaCrm/capiClient');
+const { runSettingsTest, TEST_EVENT_NAME } = require('../services/metaCrm/settingsTest');
+const { readTokenOwner, readDatasetQuality, sendEvents } = require('../services/metaCrm/capiClient');
 
 const TOKEN = 'EAAG-settings-test-token-123456';
 const ALL_STAGES = ['NEW', 'EXECUTING', 'UC_PBR3LM', 'UC_DISPATCH', 'UC_SAFETY', 'WON', 'LOSE'].map((id) => ({ STATUS_ID: id }));
@@ -22,16 +23,23 @@ const preview = {
   wouldSend: { Qualified: 3, Converted: 1, Lost: 0 },
   examples: [{ dealId: 5603, stageId: 'EXECUTING', eventName: 'Qualified' }],
 };
+// The Qualified event the sync already sent — check b may only ever repeat it.
+const ALREADY_SENT = { leadgen_id: '1668864698200916', event_name: 'Qualified', event_time: new Date('2026-10-26T18:30:00Z') };
+// Meta's real answer (27 Oct 2026) for an ID it cannot see OR a dataset with no events in 48 hours.
+const CODE_24 = {
+  ok: false, status: 400, code: 24, subcode: 2044055,
+  error: 'Meta 400 (code 24): The requested resource does not exist. Make sure that Dataset is healthy and there are at least some events being sent in the last 48h',
+};
 
 function fakes(over = {}) {
   const sent = [];
   const deps = {
-    readDataset: async () => ({ ok: true, id: '987654', name: 'Wenze CRM' }),
+    readTokenOwner: async () => ({ ok: true, id: '122100000000000001' }),
+    readDatasetQuality: async () => ({ ok: true }),
     sendEvents: async (args) => { sent.push(args); return { ok: true, received: 1 }; },
     listStageRows: async () => ALL_STAGES,
     preview: async () => preview,
-    latestLeadgenId: async () => '1668864698200916',
-    now: () => Date.parse('2026-10-27T15:00:00Z'),
+    latestRecentlySent: async () => ALREADY_SENT,
     ...over,
   };
   return { deps, sent };
@@ -45,7 +53,7 @@ test('everything in order, no test code: a, c and d pass, the test event is "not
   const c = byKey(result);
   assert.equal(result.passed, true);
   assert.equal(c.token.status, 'pass');
-  assert.match(c.token.message, /Wenze CRM/);
+  assert.match(c.token.message, /can see dataset 987654/);
   assert.equal(c.test_event.status, 'not_run');
   assert.match(c.test_event.message, /Events Manager → your CRM dataset → Test events/);
   assert.equal(c.bitrix.status, 'pass');
@@ -55,26 +63,109 @@ test('everything in order, no test code: a, c and d pass, the test event is "not
   assert.equal(sent.length, 0, 'no code, no send — of any kind');
 });
 
-test('with a test code: exactly ONE event, carrying test_event_code, about a real lead, with an id no real report uses', async () => {
-  const { deps, sent } = fakes();
+test('a correct Events Manager token: /me and dataset quality — never a read of the dataset object, which that token is refused', async () => {
+  const asked = [];
+  const { deps } = fakes({
+    readTokenOwner: async (a) => { asked.push(['me', a]); return { ok: true, id: '1' }; },
+    readDatasetQuality: async (a) => { asked.push(['quality', a]); return { ok: true }; },
+  });
+  const c = byKey(await runSettingsTest(values(), deps));
+  assert.equal(c.token.status, 'pass');
+  assert.deepEqual(asked.map(([k]) => k), ['me', 'quality']);
+  assert.equal(asked[1][1].datasetId, '987654');
+  assert.equal(c.token.detail, null);
+});
+
+test('Meta\'s code 24 (wrong ID, or no events in 48 hours) is a WARNING that still allows Save, with Meta\'s words', async () => {
+  const { deps } = fakes({ readDatasetQuality: async () => CODE_24 });
+  const result = await runSettingsTest(values(), deps);
+  const c = byKey(result);
+  assert.equal(c.token.status, 'warn');
+  assert.match(c.token.message, /no events in the last 48 hours/);
+  assert.match(c.token.message, /you can still save/);
+  assert.equal(c.token.detail.code, 24);
+  assert.equal(c.token.detail.subcode, 2044055);
+  assert.equal(result.passed, true, 'a new dataset must be savable');
+});
+
+test('a token made without the Dataset Quality API option is told apart, and is a warning', async () => {
+  const { deps } = fakes({ readDatasetQuality: async () => ({ ok: false, status: 403, code: 200, error: 'Meta 403 (code 200): Permissions error' }) });
+  const result = await runSettingsTest(values(), deps);
+  assert.equal(byKey(result).token.status, 'warn');
+  assert.match(byKey(result).token.message, /without the "Dataset Quality API" option/);
+  assert.equal(result.passed, true);
+});
+
+test('dataset quality times out or Meta breaks: a failed check, Save stays locked', async () => {
+  for (const quality of [{ ok: false, timedOut: true, error: 'x' }, { ok: false, status: 503, error: 'Meta 503' }]) {
+    const { deps } = fakes({ readDatasetQuality: async () => quality });
+    const result = await runSettingsTest(values(), deps);
+    assert.equal(byKey(result).token.status, 'fail');
+    assert.equal(result.passed, false);
+  }
+});
+
+test('with a test code: exactly ONE event, carrying test_event_code, an EXACT copy of a Qualified Meta already received', async () => {
+  const asked = [];
+  const { deps, sent } = fakes({ latestRecentlySent: async (name, datasetId) => { asked.push([name, datasetId]); return ALREADY_SENT; } });
   const result = await runSettingsTest(values({ testEventCode: 'TEST12345' }), deps);
   assert.equal(byKey(result).test_event.status, 'pass');
+  // Only an event THIS dataset received: Meta deduplicates within one dataset.
+  assert.deepEqual(asked, [[TEST_EVENT_NAME, '987654']]);
   assert.equal(sent.length, 1);
   assert.equal(sent[0].testEventCode, 'TEST12345');
   assert.equal(sent[0].events.length, 1);
-  assert.equal(sent[0].events[0].user_data.lead_id, 1668864698200916);
-  assert.match(sent[0].events[0].event_id, /^wenze-settings-test:/);
+  const event = sent[0].events[0];
+  // The real report's own id and time: Meta deduplicates it into the original.
+  assert.equal(event.event_id, 'bitrix:1668864698200916:Qualified');
+  assert.equal(event.event_name, 'Qualified');
+  assert.equal(event.event_time, Math.floor(ALREADY_SENT.event_time.getTime() / 1000));
+  assert.equal(event.user_data.lead_id, 1668864698200916);
 });
 
-test('the wire itself: a Test send puts test_event_code in the body, the token never in the URL', async () => {
+test('a test code but nothing sent to Meta recently: the test event is NOT run — no made-up lead, no send', async () => {
+  const { deps, sent } = fakes({ latestRecentlySent: async () => null });
+  const result = await runSettingsTest(values({ testEventCode: 'TEST1' }), deps);
+  const c = byKey(result);
+  assert.equal(c.test_event.status, 'not_run');
+  assert.match(c.test_event.message, /47 hours/);
+  assert.match(c.test_event.message, /does not keep an event out of ads/);
+  assert.equal(sent.length, 0);
+  assert.equal(result.passed, true);
+});
+
+test('a code-24 warning still lets the test event run; a ledger that cannot be read fails b without sending', async () => {
+  const warned = fakes({ readDatasetQuality: async () => CODE_24 });
+  await runSettingsTest(values({ testEventCode: 'TEST1' }), warned.deps);
+  assert.equal(warned.sent.length, 1);
+  const broken = fakes({ latestRecentlySent: async () => { throw new Error(`db down ${TOKEN}`); } });
+  const c = byKey(await runSettingsTest(values({ testEventCode: 'TEST1' }), broken.deps));
+  assert.equal(c.test_event.status, 'fail');
+  assert.ok(!c.test_event.message.includes(TOKEN));
+  assert.equal(broken.sent.length, 0);
+});
+
+test('Meta refusing the event\'s lead (subcode 2804036) is explained in plain words', async () => {
+  const { deps } = fakes({ sendEvents: async () => ({ ok: false, status: 400, code: 100, subcode: 2804036, error: 'Meta 400 (code 100): Invalid lead ID' }) });
+  const c = byKey(await runSettingsTest(values({ testEventCode: 'TEST1' }), deps));
+  assert.equal(c.test_event.status, 'fail');
+  assert.match(c.test_event.message, /does not recognise that lead ID/);
+});
+
+test('the wire itself: a Test send puts test_event_code in the body; the reads are GETs; the token never in a URL', async () => {
   const calls = [];
-  const fetchImpl = async (url, opts) => { calls.push({ url, opts }); return { ok: true, status: 200, json: async () => ({ events_received: 1, id: '987654' }) }; };
+  const fetchImpl = async (url, opts) => { calls.push({ url, opts }); return { ok: true, status: 200, json: async () => ({ events_received: 1, id: '1' }) }; };
   await sendEvents({ datasetId: '987654', token: TOKEN, graphVersion: 'v25.0', events: [{}], testEventCode: 'TEST1', fetchImpl });
-  await readDataset({ datasetId: '987654', token: TOKEN, graphVersion: 'v25.0', fetchImpl });
+  await readTokenOwner({ token: TOKEN, graphVersion: 'v25.0', fetchImpl });
+  await readDatasetQuality({ datasetId: '987654', token: TOKEN, graphVersion: 'v25.0', fetchImpl });
   assert.equal(JSON.parse(calls[0].opts.body).test_event_code, 'TEST1');
   for (const call of calls) assert.ok(!call.url.includes(TOKEN), 'never in a URL');
-  assert.equal(calls[1].opts.method, 'GET');
-  assert.equal(calls[1].opts.headers.Authorization, `Bearer ${TOKEN}`);
+  assert.match(calls[1].url, /\/v25\.0\/me\?fields=id$/);
+  assert.match(calls[2].url, /\/v25\.0\/dataset_quality\?dataset_id=987654$/);
+  for (const call of calls.slice(1)) {
+    assert.equal(call.opts.method, 'GET');
+    assert.equal(call.opts.headers.Authorization, `Bearer ${TOKEN}`);
+  }
 });
 
 test('Meta answering "0 events received" is a failed test event, not a pass', async () => {
@@ -84,15 +175,11 @@ test('Meta answering "0 events received" is a failed test event, not a pass', as
   assert.match(c.test_event.message, /received no event/);
 });
 
-test('no Facebook lead on record yet: the one test event uses the placeholder lead id', async () => {
-  const { deps, sent } = fakes({ latestLeadgenId: async () => null });
-  await runSettingsTest(values({ testEventCode: 'TEST1' }), deps);
-  assert.equal(String(sent[0].events[0].user_data.lead_id), PLACEHOLDER_LEADGEN_ID);
-});
-
-test('Meta refuses the token: a failed with Meta\'s code and words (token removed), b not run, Save not unlocked', async () => {
+test('Meta refuses the token: a failed with Meta\'s code and words (token removed), dataset never asked, b not run', async () => {
+  let qualityAsked = false;
   const { deps, sent } = fakes({
-    readDataset: async () => ({ ok: false, status: 400, code: 190, error: `Meta 400 (code 190): Invalid OAuth access token ${TOKEN}` }),
+    readTokenOwner: async () => ({ ok: false, status: 400, code: 190, error: `Meta 400 (code 190): Invalid OAuth access token ${TOKEN}` }),
+    readDatasetQuality: async () => { qualityAsked = true; return { ok: true }; },
   });
   const result = await runSettingsTest(values({ testEventCode: 'TEST1' }), deps);
   const c = byKey(result);
@@ -101,12 +188,13 @@ test('Meta refuses the token: a failed with Meta\'s code and words (token remove
   assert.match(c.token.message, /does not accept this access token/);
   assert.match(c.token.detail.metaError, /code 190/);
   assert.ok(!c.token.detail.metaError.includes(TOKEN));
+  assert.equal(qualityAsked, false);
   assert.equal(c.test_event.status, 'not_run');
   assert.equal(sent.length, 0);
 });
 
 test('Meta does not answer: a failed check in plain words, never a crash', async () => {
-  const { deps } = fakes({ readDataset: async () => ({ ok: false, timedOut: true, retryable: true, error: 'Meta did not answer in 15000ms' }) });
+  const { deps } = fakes({ readTokenOwner: async () => ({ ok: false, timedOut: true, retryable: true, error: 'Meta did not answer in 15000ms' }) });
   const c = byKey(await runSettingsTest(values(), deps));
   assert.equal(c.token.status, 'fail');
   assert.match(c.token.message, /did not answer in time/);

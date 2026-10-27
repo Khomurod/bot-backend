@@ -8,7 +8,10 @@
  * THE SERVER DOES NOT TRUST THE BROWSER. The panel keeps Save disabled until a
  * Test passed with the values in the form, but a save request is proven again
  * here: check (a) — Meta accepts the token and it can see the dataset — runs on
- * the values being saved, and a save that fails it stores nothing.
+ * the values being saved, and a save that FAILS it stores nothing. A warning
+ * (Meta cannot confirm the dataset: a new one with no events in 48 hours, or a
+ * token made without the Dataset Quality API option) saves — the same rule the
+ * panel's Test uses (settingsRules.judgeTokenAndDataset / testPassed).
  *
  * A SAVE WITHOUT A NEW TOKEN KEEPS THE STORED ONE (or the environment's, if
  * none was ever stored). Test does the same, so a dataset ID can be corrected
@@ -84,13 +87,13 @@ async function testSettings(body, { deps = defaultDeps() } = {}) {
   return { ...result, usedStoredToken: values.usedStoredToken };
 }
 
-/** Save — only what passes check (a) here, on the server, now. */
+/** Save — only what check (a) does not FAIL, here, on the server, now. */
 async function saveSettings(body, { by = null, deps = defaultDeps() } = {}) {
   const values = await effectiveValues(body, deps);
   const proof = await deps.checkTokenAndDataset({
     datasetId: values.datasetId, token: values.token, graphVersion: values.graphVersion,
   });
-  if (proof.status !== CHECK.PASS) {
+  if (proof.status === CHECK.FAIL) {
     const err = invalid(`Not saved: ${proof.message}`);
     err.check = proof;
     throw err;

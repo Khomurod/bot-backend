@@ -98,7 +98,7 @@ async function sendDue(deps, cfg) {
     });
     if (res.ok) {
       // eslint-disable-next-line no-await-in-loop
-      if (await deps.store.markSent(row.id)) out.sent += 1;
+      if (await deps.store.markSent(row.id, cfg.datasetId)) out.sent += 1;
       continue;
     }
     out.failed += 1;

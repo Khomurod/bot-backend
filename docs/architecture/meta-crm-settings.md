@@ -1,7 +1,7 @@
 # Settings → Facebook ↔ Bitrix: the Meta Conversions API for CRM credentials
 
 The owner, 27 October 2026: enter, **test**, then save the credentials for
-reporting Facebook leads' Bitrix hiring stages to Meta himself — no Coolify
+reporting Facebook leads' Bitrix hiring stages to Meta from the admin panel — no Coolify
 environment variables. The pass that uses them is
 `services/metaCrm/stageSync.js` (PR #316; see `docs/brief/recruiting.md`).
 
@@ -13,16 +13,36 @@ environment variables. The pass that uses them is
    ledger (`meta_crm_stage_sync`): when, events sent, failed, the last error.
 2. **Enter** the dataset ID, paste the access token, optionally an Events
    Manager **test event code** (used by Test only, never saved).
-3. **Test** runs four checks on the UNSAVED values, each pass / fail / not run
-   in plain words (`services/metaCrm/settingsTest.js`):
-   - **a. Token and dataset** — `GET /<dataset id>?fields=id,name` with the
-     token in the `Authorization` header. A read; nothing is sent. A failure
-     shows Meta's code and words (token removed) and a plain explanation
-     (`settingsRules.explainGraphError`).
-   - **b. Test event** — only with a test event code: ONE event, sent with
-     `test_event_code`, about the newest Facebook lead on record (a placeholder
-     id when there is none), with an `event_id` no real report uses. Without a
-     code: not run, with where to get one.
+3. **Test** runs four checks on the UNSAVED values, each pass / warning /
+   fail / not run in plain words (`services/metaCrm/settingsTest.js`):
+   - **a. Token and dataset** — two reads, nothing sent, the token in the
+     `Authorization` header: `GET /me?fields=id` (Meta accepts the token), then
+     `GET /dataset_quality?dataset_id=<id>` (the Dataset Quality API — the
+     token can see this dataset). The verdict is
+     `settingsRules.judgeTokenAndDataset`:
+
+     | Meta's answer | Result |
+     |---|---|
+     | `/me` refused (190 …), timed out | **fail** |
+     | dataset quality 200 | **pass** |
+     | dataset quality code 24 (subcode 2044055) | **warning** — Meta says this both for an ID the token cannot see and for a dataset with no events in the last 48 h, so the two cannot be told apart, and a new dataset must still save |
+     | dataset quality refused for a permission (10, 200–299, or 100 "Missing Permission") | **warning** — the token was generated without the "Dataset Quality API" option; it can still send |
+     | dataset quality timed out, 5xx, rate-limited, other | **fail** |
+
+     Anything that was not a plain yes shows Meta's code and words (token
+     removed) beside the plain explanation.
+   - **b. Test event** — only with a test event code, and only as an EXACT
+     copy (same `event_id` `bitrix:<lead>:Qualified`, same `event_time`) of a
+     Qualified event the sync sent **to the dataset being tested** in the last
+     47 hours whose time is still inside Meta's seven days
+     (`metaCrmEvents.latestRecentlySent`), sent with `test_event_code`. Meta
+     deduplicates on `event_id` + `event_name` for about 48 hours **within one
+     dataset**, so it counts once. The ledger records the dataset each event
+     was accepted into (`meta_crm_events.dataset_id`, migration 0087, written
+     by `markSent`); a row sent to another dataset, or before that column
+     existed (NULL), is never copied — otherwise a Test of a new dataset ID
+     would hand it a first, countable event (CodeRabbit, #318). With no such
+     event: not run, and why. Without a code: not run, with where to get one.
    - **c. Bitrix** — connected, and pipeline 0 still has all six mapped stage
      ids (`EXECUTING`, `UC_PBR3LM`, `UC_DISPATCH`, `UC_SAFETY`, `WON`, `LOSE`);
      a missing one is named.
@@ -30,9 +50,9 @@ environment variables. The pass that uses them is
      are Facebook leads, the events a pass WOULD send per name (what the
      ledger already holds is left out) and up to five example rows. Reads the
      ledger; records nothing, sends nothing.
-4. **Save** is disabled until a Test passed — check a passed and nothing that
-   ran failed — with exactly the values now in the form; any edit locks it
-   again (`admin/src/pages/settings/metaCrm/testGate.js`). Saving switches the
+4. **Save** is disabled until a Test passed — check a passed or warned and
+   nothing that ran failed — with exactly the values now in the form; any edit
+   locks it again (`admin/src/pages/settings/metaCrm/testGate.js`). Saving switches the
    sync on.
 5. **The switch** turns sending off without removing anything stored.
 6. The pass reads the settings on every run (cached 15 s, the cache dropped on
@@ -42,18 +62,28 @@ environment variables. The pass that uses them is
 ## Invariants — do not undo
 
 - **The server does not trust the browser.** `PUT /api/settings/meta-crm`
-  re-runs check a on the values being saved and stores NOTHING that fails it
-  (`services/metaCrm/settingsService.js saveSettings`). A disabled button is a
-  convenience, not the guard. `tests/metaCrmSettingsService.test.js`.
-- **A Test never sends a real event.** The only send in the Test path carries
-  `test_event_code`; without a code there is no send at all. A real pass
-  never passes a code. `tests/metaCrmSettingsTest.test.js`,
-  `tests/metaCrmStageSync.test.js`.
+  re-runs check a on the values being saved and stores NOTHING it FAILS
+  (`services/metaCrm/settingsService.js saveSettings`); a warning saves, by
+  the same rule the panel uses. A disabled button is a convenience, not the
+  guard. `tests/metaCrmSettingsService.test.js`.
+- **Check a never reads the dataset object.** `GET /<dataset id>` answers
+  "(#100) Missing Permission" to the Events Manager token even when it is
+  exactly right (its only permission is `read_ads_dataset_quality` — learned
+  with the owner's token, 27 October 2026); that is what made a correct token
+  fail every Test before this rule.
+- **A Test never sends anything Meta would count.** A test event code does
+  NOT keep an event out of ads — Meta may use test events for targeting and
+  measurement — and Meta refuses an event about a lead it does not know
+  (subcode 2804036), so there is no harmless made-up event. The only send in
+  the Test path is a duplicate of one Meta already received, carrying
+  `test_event_code`; without a code, or without such an event, there is no
+  send at all. A real pass never passes a code.
+  `tests/metaCrmSettingsTest.test.js`, `tests/metaCrmStageSync.test.js`.
 - **The token is a secret everywhere.** Encrypted at rest
   (`meta_crm_settings.token_encrypted`, `lib/security/facebookCrypto`); never
   returned by any GET (only `token_last4`); browser → server only in a
   request BODY; server → Meta in a body (sends) or the `Authorization` header
-  (the read) — never a URL or query string; never logged; and every error text
+  (the two reads) — never a URL or query string; never logged; and every error text
   on its way to the panel, a log or the run ledger goes through
   `lib/security/redactSecret.js` with the token it was made with.
 - **DB over env, NULL inherits.** `database/metaCrmSettings.js
@@ -87,10 +117,11 @@ environment variables. The pass that uses them is
 |---|---|
 | `database/migrations/0086_meta_crm_settings.sql` | the single row (`id = 1`), every value nullable |
 | `database/metaCrmSettings.js` | resolution, the 15-second cache and its invalidation, save, the switch |
-| `services/metaCrm/settingsRules.js` | pure: input rules, masking, Meta errors in plain words, when a Test counts as passed |
+| `services/metaCrm/settingsRules.js` | pure: input rules, masking, Meta errors in plain words, check a's verdict, when a Test counts as passed |
 | `services/metaCrm/settingsTest.js` | checks a–d |
 | `services/metaCrm/settingsService.js` | the page's view (with the last run), Test, Save, the switch |
-| `services/metaCrm/capiClient.js` | `sendEvents` (with `testEventCode`) and `readDataset` |
+| `services/metaCrm/capiClient.js` | `sendEvents` (with `testEventCode`), `readTokenOwner` (`/me`), `readDatasetQuality` |
+| `database/metaCrmEvents.js`, migration 0087 | the ledger, with the dataset each sent event went to; `latestRecentlySent` is what check b may duplicate |
 | `server/routes/settings/metaCrmRoutes.js` | `GET /meta-crm`, `POST /meta-crm/test`, `PUT /meta-crm`, `PUT /meta-crm/enabled` under `/api/settings`, behind `admin.full_access` |
 | `admin/src/pages/settings/MetaCrmTab.jsx`, `settings/metaCrm/` | the page |
 

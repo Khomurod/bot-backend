@@ -43,10 +43,10 @@ function fakeStore(leadgenByBitrix) {
       return inserted;
     },
     async listDue() { return rows.filter((r) => r.state === 'pending'); },
-    async markSent(id) {
+    async markSent(id, datasetId) {
       const r = rows.find((x) => x.id === id && x.state === 'pending');
       if (!r) return false;
-      Object.assign(r, { state: 'sent', attempts: r.attempts + 1 });
+      Object.assign(r, { state: 'sent', attempts: r.attempts + 1, datasetId });
       return true;
     },
     async markFailed(id, error) {
@@ -150,6 +150,9 @@ test("each Facebook lead's event reaches Meta once, however often its deal moves
   assert.equal(first.sent, 2);
   assert.deepEqual(sent.map((s) => s.events[0].event_name).sort(), ['Lost', 'Qualified']);
   assert.equal(sent[0].events.length, 1, 'one event per request');
+  // The ledger records which dataset accepted each event (the settings Test
+  // may only copy an event into the dataset that already has it).
+  assert.deepEqual(store.rows.filter((r) => r.state === 'sent').map((r) => r.datasetId), ['111222333', '111222333']);
 
   // The same lead moves on to Documents: still one "Qualified".
   const again = setup({ leads, deals: [deal(5603, 10, 'UC_PBR3LM')] });

@@ -45,9 +45,8 @@ function fakeDeps({ proof = 'pass', row = {} } = {}) {
       runSettingsTest: async (v) => { tested.push(v); return { passed: true, checks: [] }; },
       checkTokenAndDataset: async (v) => {
         proved.push(v);
-        return proof === 'pass'
-          ? { key: 'token', status: 'pass', message: 'ok' }
-          : { key: 'token', status: 'fail', message: 'Meta does not accept this access token.' };
+        if (proof === 'fail') return { key: 'token', status: 'fail', message: 'Meta does not accept this access token.' };
+        return { key: 'token', status: proof, message: proof === 'warn' ? 'could not confirm the dataset' : 'ok' };
       },
     },
   };
@@ -72,6 +71,13 @@ test('Save is refused when check (a) fails on the server, and nothing is stored'
   assert.equal(f.state.row.dataset_id, '111');
   assert.equal(f.state.row.token, OLD);
   assert.deepEqual(f.proved[0], { datasetId: '222', token: NEW, graphVersion: 'v25.0' });
+});
+
+test('Save goes through on a WARNING from check (a) — a new dataset with no events in 48 hours must be savable', async () => {
+  const f = fakeDeps({ proof: 'warn' });
+  await service.saveSettings({ datasetId: '222', token: NEW }, { by: 'owner', deps: f.deps });
+  assert.equal(f.state.row.dataset_id, '222');
+  assert.equal(f.state.row.token, NEW);
 });
 
 test('Save with a new token stores it, switches the sync on, and records who', async () => {

@@ -138,10 +138,14 @@ the same treatment home time got, and for the same reason.
   reported at all. **The owner enters, tests and saves the dataset ID and
   token in Settings → Facebook ↔ Bitrix** (`meta_crm_settings`, token
   encrypted; `META_CRM_DATASET_ID` / `META_CRM_CAPI_TOKEN` are only the
-  fallback for a value never saved there). Test checks the token against the
-  dataset, sends one TEST event only when given an Events Manager test code,
-  checks Bitrix's six stage ids and dry-runs a pass; Save unlocks only after a
-  passing Test of the same values and the server proves the token again. Idle
+  fallback for a value never saved there). Test checks the token (`/me`) and
+  that it can see the dataset (Dataset Quality API — Meta's "unknown ID / no
+  events in 48 h" answer is a warning that still saves), sends one TEST event
+  only when given an Events Manager test code and only as an exact copy of a
+  Qualified that same dataset already received in the last 47 h (a test
+  code does NOT keep an event out of ads; Meta refuses made-up leads), checks Bitrix's six stage
+  ids and dry-runs a pass; Save unlocks only after a Test of the same values
+  with no failure, and the server proves the token again by the same rule. Idle
   (`blocked`) while switched off there or while either value is missing
   everywhere. `docs/architecture/meta-crm-settings.md`. Guarded by
   `tests/metaCrmStageEvents.test.js`, `tests/metaCrmStageSync.test.js`,
