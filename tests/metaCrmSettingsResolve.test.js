@@ -55,6 +55,20 @@ test('a stored token this server cannot decrypt is reported, and the environment
   assert.equal(cfg.tokenSource, 'environment');
 });
 
+test('the row read: only "table not there yet" falls back to the environment; any other failure is thrown', async () => {
+  const { getMetaCrmSettingsRow } = require('../database/metaCrmSettings');
+  const original = console.warn;
+  console.warn = () => {};
+  try {
+    const missingTable = Object.assign(new Error('relation "meta_crm_settings" does not exist'), { code: '42P01' });
+    assert.equal(await getMetaCrmSettingsRow(async () => { throw missingTable; }), null);
+  } finally { console.warn = original; }
+  const outage = Object.assign(new Error('Connection terminated unexpectedly'), { code: 'ECONNRESET' });
+  await assert.rejects(getMetaCrmSettingsRow(async () => { throw outage; }), /Connection terminated/);
+  const row = { id: 1, enabled: false };
+  assert.deepEqual(await getMetaCrmSettingsRow(async () => ({ rows: [row] })), row);
+});
+
 test('the admin view carries the last four characters and never the token', () => {
   const view = adminView(resolveMetaCrmConfig({ dataset_id: '777', token_encrypted: 'enc:db', token_last4: 'DBTK' }, env(), decrypt));
   assert.equal(view.tokenLast4, 'DBTK');

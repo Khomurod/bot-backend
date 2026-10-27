@@ -35,14 +35,26 @@ function invalidateMetaCrmSettingsCache() {
   settingsCacheExpiresAt = 0;
 }
 
-/** The row, or null when it cannot be read — the env then answers alone. */
-async function getMetaCrmSettingsRow() {
+/**
+ * The row, or null when the table does not exist yet (migration 0086 not
+ * applied) — the environment then answers alone, as it did before the table.
+ *
+ * ANY OTHER READ ERROR IS THROWN, never turned into "no row". A null row
+ * resolves to `enabled: true` with the environment's credentials, so a
+ * transient database failure read as "nothing saved" would ignore an OFF switch
+ * saved here and send with the wrong credentials. Thrown, getMetaCrmConfig
+ * rejects and caches nothing, and the pass is a failed run that sends nothing.
+ */
+async function getMetaCrmSettingsRow(run = query) {
   try {
-    const res = await query('SELECT * FROM meta_crm_settings WHERE id = 1');
+    const res = await run('SELECT * FROM meta_crm_settings WHERE id = 1');
     return res.rows[0] || null;
   } catch (err) {
-    console.warn('[META-CRM] meta_crm_settings unavailable:', err.message);
-    return null;
+    if (err && err.code === '42P01') {
+      console.warn('[META-CRM] meta_crm_settings not migrated yet; using the environment:', err.message);
+      return null;
+    }
+    throw err;
   }
 }
 

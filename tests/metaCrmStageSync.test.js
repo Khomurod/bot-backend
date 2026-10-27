@@ -108,6 +108,14 @@ test('the settings are read on every pass (an async read of the saved row): a sa
   assert.equal(sent[0].testEventCode, undefined, 'a real pass never marks its events as tests');
 });
 
+test('the settings cannot be read: a FAILED pass that sends nothing — never "nothing saved, so the env and ON"', async () => {
+  const { deps, sent, bitrixCalls } = setup({ deals: [deal(1, 10, 'WON')], leads: { 10: '1668864698200916' } });
+  deps.config = async () => { throw new Error('Connection terminated unexpectedly'); };
+  await assert.rejects(runStageSyncPass({ deps }), /Connection terminated/);
+  assert.equal(bitrixCalls.length, 0);
+  assert.equal(sent.length, 0);
+});
+
 test('the dry run plans what a pass would send and records and sends nothing', async () => {
   const { deps, store, sent } = setup({
     deals: [deal(1, 10, 'WON'), deal(2, 11, 'EXECUTING'), deal(3, 12, 'NEW'), deal(4, 10, 'WON')],

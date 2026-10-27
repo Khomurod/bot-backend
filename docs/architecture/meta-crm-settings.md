@@ -62,6 +62,13 @@ environment variables. The pass that uses them is
   #316 keeps working untouched. `enabled` NULL is ON, because before this row
   the pass ran whenever both values were set. A stored token this server
   cannot decrypt counts as not stored — the env answers and the page says why.
+- **A settings row that cannot be read is a failure, not "nothing saved".**
+  Only a missing table (SQLSTATE `42P01`, migration 0086 not yet applied)
+  falls back to the environment; any other read error is thrown, nothing is
+  cached, and the pass is a failed run that sends nothing — otherwise a
+  database blip would resolve to `enabled: true` with the environment's
+  credentials and ignore an OFF switch saved here (CodeRabbit, #317).
+  `tests/metaCrmSettingsResolve.test.js`, `tests/metaCrmStageSync.test.js`.
 - **A save without a new token keeps the stored one** (and Test with the box
   empty tests the token in effect, and says so).
 - **Switched off and missing values are `blocked`, never a failure**, and say
