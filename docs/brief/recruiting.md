@@ -135,9 +135,17 @@ the same treatment home time got, and for the same reason.
   in Bitrix later sends nothing until somebody maps it. Once per lead per event
   (`meta_crm_events`); no name, phone or e-mail leaves; Bitrix is only read.
   Meta refuses events older than seven days, so a move older than that is not
-  reported at all. Idle (`blocked`) until `META_CRM_DATASET_ID` and the secret
-  `META_CRM_CAPI_TOKEN` are set. Guarded by `tests/metaCrmStageEvents.test.js`,
-  `tests/metaCrmStageSync.test.js`, `tests/metaCrmEventsPg.test.js`.
+  reported at all. **The owner enters, tests and saves the dataset ID and
+  token in Settings → Facebook ↔ Bitrix** (`meta_crm_settings`, token
+  encrypted; `META_CRM_DATASET_ID` / `META_CRM_CAPI_TOKEN` are only the
+  fallback for a value never saved there). Test checks the token against the
+  dataset, sends one TEST event only when given an Events Manager test code,
+  checks Bitrix's six stage ids and dry-runs a pass; Save unlocks only after a
+  passing Test of the same values and the server proves the token again. Idle
+  (`blocked`) while switched off there or while either value is missing
+  everywhere. `docs/architecture/meta-crm-settings.md`. Guarded by
+  `tests/metaCrmStageEvents.test.js`, `tests/metaCrmStageSync.test.js`,
+  `tests/metaCrmEventsPg.test.js` and the `tests/metaCrmSettings*` suites.
 - **Self-serve Page connect**: `/connect` in a leads group starts a
   session-token-gated OAuth flow; Page tokens are encrypted
   (`lib/security/facebookCrypto.js`).
