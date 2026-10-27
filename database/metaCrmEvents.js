@@ -9,7 +9,8 @@
  *                 moves Interested → Documents → Sent to Safety is one
  *                 "Qualified", not three;
  *   markSent      WHERE state = 'pending' — a sent row never becomes pending
- *                 again, so nothing turns a success into a retry;
+ *                 again, so nothing turns a success into a retry. It records
+ *                 the dataset Meta accepted the event into (migration 0087);
  *   markFailed    counts the attempt; the MAX_ATTEMPTS-th, or a row whose
  *                 event_time has left Meta's seven-day window, is `gave_up`.
  *
@@ -49,22 +50,26 @@ async function findRecordedKeys(plan) {
 }
 
 /**
- * The newest event of this name Meta has ALREADY received, recently enough to
- * be sent again as a duplicate, or null. The settings Test sends its one test
- * event as an exact copy of it — same `event_id`, same `event_time` — so Meta
- * folds it into the real one instead of counting a second conversion (Meta
+ * The newest event of this name Meta has ALREADY received INTO THIS DATASET,
+ * recently enough to be sent again as a duplicate, or null. Meta deduplicates
+ * within one dataset only, so a row sent to another dataset — or sent before
+ * the ledger recorded datasets (dataset_id NULL) — never matches. The
+ * settings Test sends its one test event as an exact copy of it — same
+ * `event_id`, same `event_time` — so Meta folds it into the real one instead
+ * of counting a second conversion (Meta
  * deduplicates on event_id + event_name for about 48 hours; 47 keeps a margin,
  * and the event's own time must still be inside the seven-day window).
  */
-async function latestRecentlySent(eventName) {
+async function latestRecentlySent(eventName, datasetId) {
+  if (!datasetId) return null;
   const res = await query(
     `SELECT leadgen_id, event_name, event_time FROM meta_crm_events
-      WHERE state = 'sent' AND event_name = $1
+      WHERE state = 'sent' AND event_name = $1 AND dataset_id = $2
         AND sent_at > NOW() - INTERVAL '47 hours'
         AND event_time > NOW() - INTERVAL '6 days 23 hours'
       ORDER BY sent_at DESC, id DESC
       LIMIT 1`,
-    [String(eventName)]
+    [String(eventName), String(datasetId)]
   );
   return res.rows[0] || null;
 }
@@ -110,11 +115,12 @@ async function listDue(limit = 200) {
   return res.rows;
 }
 
-async function markSent(id) {
+async function markSent(id, datasetId = null) {
   const res = await query(
-    `UPDATE meta_crm_events SET state = 'sent', sent_at = NOW(), attempts = attempts + 1, last_error = NULL
+    `UPDATE meta_crm_events
+        SET state = 'sent', sent_at = NOW(), attempts = attempts + 1, last_error = NULL, dataset_id = $2
       WHERE id = $1 AND state = 'pending'`,
-    [id]
+    [id, datasetId ? String(datasetId) : null]
   );
   return res.rowCount === 1;
 }

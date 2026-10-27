@@ -142,8 +142,8 @@ the same treatment home time got, and for the same reason.
   that it can see the dataset (Dataset Quality API — Meta's "unknown ID / no
   events in 48 h" answer is a warning that still saves), sends one TEST event
   only when given an Events Manager test code and only as an exact copy of a
-  Qualified Meta already received in the last 47 h (a test code does NOT keep
-  an event out of ads; Meta refuses made-up leads), checks Bitrix's six stage
+  Qualified that same dataset already received in the last 47 h (a test
+  code does NOT keep an event out of ads; Meta refuses made-up leads), checks Bitrix's six stage
   ids and dry-runs a pass; Save unlocks only after a Test of the same values
   with no failure, and the server proves the token again by the same rule. Idle
   (`blocked`) while switched off there or while either value is missing

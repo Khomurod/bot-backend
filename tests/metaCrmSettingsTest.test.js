@@ -107,10 +107,11 @@ test('dataset quality times out or Meta breaks: a failed check, Save stays locke
 
 test('with a test code: exactly ONE event, carrying test_event_code, an EXACT copy of a Qualified Meta already received', async () => {
   const asked = [];
-  const { deps, sent } = fakes({ latestRecentlySent: async (name) => { asked.push(name); return ALREADY_SENT; } });
+  const { deps, sent } = fakes({ latestRecentlySent: async (name, datasetId) => { asked.push([name, datasetId]); return ALREADY_SENT; } });
   const result = await runSettingsTest(values({ testEventCode: 'TEST12345' }), deps);
   assert.equal(byKey(result).test_event.status, 'pass');
-  assert.deepEqual(asked, [TEST_EVENT_NAME]);
+  // Only an event THIS dataset received: Meta deduplicates within one dataset.
+  assert.deepEqual(asked, [[TEST_EVENT_NAME, '987654']]);
   assert.equal(sent.length, 1);
   assert.equal(sent[0].testEventCode, 'TEST12345');
   assert.equal(sent[0].events.length, 1);

@@ -12,7 +12,8 @@
  *               is settingsRules.judgeTokenAndDataset — the save re-runs it.
  *   b. test     only with an Events Manager test event code, and only as an
  *               exact copy (same event_id, same event_time) of a Qualified
- *               event Meta ALREADY received in the last 47 hours, so Meta
+ *               event THIS dataset ALREADY received in the last 47 hours
+ *               (Meta deduplicates within one dataset only), so Meta
  *               deduplicates it rather than counting a second conversion. A
  *               test code does NOT keep an event out of ads: Meta may use
  *               test events for targeting and measurement. And Meta refuses
@@ -53,7 +54,7 @@ function defaultTestDeps() {
     sendEvents: capi.sendEvents,
     listStageRows: require('../bitrix24DealStages').listStageRows,
     preview: () => stageSync.previewStageSync(),
-    latestRecentlySent: (eventName) => require('../../database/metaCrmEvents').latestRecentlySent(eventName),
+    latestRecentlySent: (eventName, datasetId) => require('../../database/metaCrmEvents').latestRecentlySent(eventName, datasetId),
   };
   /* eslint-enable global-require */
 }
@@ -82,13 +83,13 @@ async function checkTestEvent({ datasetId, token, graphVersion, testEventCode, t
   if (!tokenOk) return check('test_event', label, CHECK.NOT_RUN, 'Not run, because the token check above did not pass.');
   let sent = null;
   try {
-    sent = await deps.latestRecentlySent(TEST_EVENT_NAME);
+    sent = await deps.latestRecentlySent(TEST_EVENT_NAME, datasetId);
   } catch (err) {
     return check('test_event', label, CHECK.FAIL, `The sent-events ledger could not be read: ${redactSecret(err?.message, token)}`);
   }
   if (!sent) {
     return check('test_event', label, CHECK.NOT_RUN,
-      'Not run: no lead has been reported to Meta as Qualified in the last 47 hours. A test event is only ever an exact copy of one Meta already received, so it changes nothing — Meta refuses made-up leads, and a test code does not keep an event out of ads. Test again after the sync has reported one.');
+      `Not run: no lead has been reported to dataset ${datasetId} as Qualified in the last 47 hours. A test event is only ever an exact copy of one Meta already received, so it changes nothing — Meta refuses made-up leads, and a test code does not keep an event out of ads. Test again after the sync has reported one.`);
   }
   const event = buildCapiEvent({ leadgenId: sent.leadgen_id, eventName: sent.event_name, eventTime: sent.event_time });
   const res = await deps.sendEvents({ datasetId, token, graphVersion, events: [event], testEventCode });

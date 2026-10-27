@@ -33,11 +33,16 @@ environment variables. The pass that uses them is
      removed) beside the plain explanation.
    - **b. Test event** — only with a test event code, and only as an EXACT
      copy (same `event_id` `bitrix:<lead>:Qualified`, same `event_time`) of a
-     Qualified event the sync sent in the last 47 hours whose time is still
-     inside Meta's seven days (`metaCrmEvents.latestRecentlySent`), sent with
-     `test_event_code`. Meta deduplicates on `event_id` + `event_name` for
-     about 48 hours, so it counts once. With no such event: not run, and why.
-     Without a code: not run, with where to get one.
+     Qualified event the sync sent **to the dataset being tested** in the last
+     47 hours whose time is still inside Meta's seven days
+     (`metaCrmEvents.latestRecentlySent`), sent with `test_event_code`. Meta
+     deduplicates on `event_id` + `event_name` for about 48 hours **within one
+     dataset**, so it counts once. The ledger records the dataset each event
+     was accepted into (`meta_crm_events.dataset_id`, migration 0087, written
+     by `markSent`); a row sent to another dataset, or before that column
+     existed (NULL), is never copied — otherwise a Test of a new dataset ID
+     would hand it a first, countable event (CodeRabbit, #318). With no such
+     event: not run, and why. Without a code: not run, with where to get one.
    - **c. Bitrix** — connected, and pipeline 0 still has all six mapped stage
      ids (`EXECUTING`, `UC_PBR3LM`, `UC_DISPATCH`, `UC_SAFETY`, `WON`, `LOSE`);
      a missing one is named.
@@ -116,7 +121,7 @@ environment variables. The pass that uses them is
 | `services/metaCrm/settingsTest.js` | checks a–d |
 | `services/metaCrm/settingsService.js` | the page's view (with the last run), Test, Save, the switch |
 | `services/metaCrm/capiClient.js` | `sendEvents` (with `testEventCode`), `readTokenOwner` (`/me`), `readDatasetQuality` |
-| `database/metaCrmEvents.js` | the ledger; `latestRecentlySent` is what check b may duplicate |
+| `database/metaCrmEvents.js`, migration 0087 | the ledger, with the dataset each sent event went to; `latestRecentlySent` is what check b may duplicate |
 | `server/routes/settings/metaCrmRoutes.js` | `GET /meta-crm`, `POST /meta-crm/test`, `PUT /meta-crm`, `PUT /meta-crm/enabled` under `/api/settings`, behind `admin.full_access` |
 | `admin/src/pages/settings/MetaCrmTab.jsx`, `settings/metaCrm/` | the page |
 
