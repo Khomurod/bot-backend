@@ -185,6 +185,23 @@ test('a refused send is retried on the next pass, then given up after five attem
   fail = false;
 });
 
+test('Meta answering 200 with 0 events received is a failed attempt, retried — never recorded as sent', async () => {
+  let received = 0;
+  const { deps, store } = setup({
+    leads: { 10: '1668864698200916' },
+    deals: [deal(1, 10, 'WON')],
+    meta: () => ({ ok: true, received }),
+  });
+  await assert.rejects(runStageSyncPass({ deps }), /received no event/);
+  const row = store.rows.find((r) => r.event_name === 'Converted');
+  assert.equal(row.state, 'pending');
+  assert.equal(row.attempts, 1);
+  received = 1;
+  const next = await runStageSyncPass({ deps });
+  assert.equal(next.sent, 1);
+  assert.equal(row.state, 'sent');
+});
+
 test('every send failing is a failed pass (red on /api/health), with Meta\'s words and no token', async () => {
   const { deps } = setup({
     leads: { 10: '1668864698200916' },
