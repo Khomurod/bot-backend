@@ -43,3 +43,4 @@ export * from './api/ai';
 export * from './api/safetyMusic';
 export * from './api/system';
 export * from './api/grossRace';
+export * from './api/metaCrm';

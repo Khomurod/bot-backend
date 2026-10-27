@@ -181,8 +181,9 @@ function startBackgroundServices({ telegram }) {
   // webhook. Idle until switched on with a group (Home Time → Settings).
   startViolationAlerts(telegram);
   // Bitrix hiring stages → Meta's Conversions API for CRM, so Facebook ad
-  // delivery learns which leads become drivers. Idle (`blocked`) until
-  // META_CRM_DATASET_ID and META_CRM_CAPI_TOKEN are set.
+  // delivery learns which leads become drivers. Idle (`blocked`) until a
+  // dataset id and token are saved in Settings → Facebook ↔ Bitrix (or set as
+  // META_CRM_* env fallbacks), or while that page's switch is off.
   startMetaCrmStageSync();
   // Works out what each load is actually doing from where the truck is, because
   // a board status is a plan and is routinely days out of date.

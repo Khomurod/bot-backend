@@ -11,7 +11,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { runStageSyncPass, __test } = require('../services/metaCrm/stageSync');
+const { runStageSyncPass, previewStageSync, __test } = require('../services/metaCrm/stageSync');
 const { sendEvents } = require('../services/metaCrm/capiClient');
 
 const NOW = Date.parse('2026-10-27T15:00:00Z');
@@ -86,6 +86,42 @@ test('not configured: blocked, and neither Bitrix nor Meta is asked anything', a
     assert.equal(bitrixCalls.length, 0);
     assert.equal(sent.length, 0);
   }
+});
+
+test('switched off in Settings → Facebook ↔ Bitrix: blocked with that reason, even with both values set — not a failure', async () => {
+  const { deps, sent, bitrixCalls } = setup({ deals: [deal(1, 10, 'WON')], leads: { 10: '1668864698200916' }, cfg: { enabled: false } });
+  const res = await runStageSyncPass({ deps });
+  assert.match(res.blocked, /switched off/);
+  assert.equal(bitrixCalls.length, 0);
+  assert.equal(sent.length, 0);
+});
+
+test('the settings are read on every pass (an async read of the saved row): a save is used by the next pass', async () => {
+  let cfg = { enabled: true, datasetId: '', token: '' };
+  const { deps, sent } = setup({ deals: [deal(1, 10, 'WON')], leads: { 10: '1668864698200916' } });
+  deps.config = async () => ({ graphVersion: 'v25.0', ...cfg });
+  assert.ok((await runStageSyncPass({ deps })).blocked);
+  cfg = { enabled: true, datasetId: '999', token: TOKEN };
+  await runStageSyncPass({ deps });
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].datasetId, '999');
+  assert.equal(sent[0].testEventCode, undefined, 'a real pass never marks its events as tests');
+});
+
+test('the dry run plans what a pass would send and records and sends nothing', async () => {
+  const { deps, store, sent } = setup({
+    deals: [deal(1, 10, 'WON'), deal(2, 11, 'EXECUTING'), deal(3, 12, 'NEW'), deal(4, 10, 'WON')],
+    leads: { 10: '1668864698200916', 11: '1234567890123' },
+  });
+  store.findRecordedKeys = async () => new Set(['1234567890123|Qualified']);
+  const preview = await previewStageSync({ deps });
+  assert.equal(preview.dealsChanged, 4);
+  assert.equal(preview.facebookDeals, 3);
+  assert.deepEqual(preview.wouldSend, { Qualified: 0, Converted: 1, Lost: 0 }, 'one lead, two Hired deals: one Converted');
+  assert.equal(preview.alreadyReported, 2);
+  assert.deepEqual(preview.examples, [{ dealId: 1, stageId: 'WON', eventName: 'Converted' }]);
+  assert.equal(store.rows.length, 0, 'nothing recorded');
+  assert.equal(sent.length, 0, 'nothing sent');
 });
 
 test('reads only pipeline 0 deals changed in the last seven days, and writes nothing to Bitrix', async () => {
@@ -197,7 +233,9 @@ test('capiClient: an error carries Meta\'s words and status, a 5xx or 429 is ret
     datasetId: '1', token: TOKEN, graphVersion: 'v25.0', events: [],
     fetchImpl: async () => ({ ok: false, status: 400, json: async () => ({ error: { message: 'Invalid parameter', code: 100, error_user_msg: 'lead_id is not valid' } }) }),
   });
-  assert.deepEqual(refused, { ok: false, retryable: false, error: 'Meta 400 (code 100): lead_id is not valid' });
+  assert.deepEqual(refused, {
+    ok: false, retryable: false, status: 400, code: 100, subcode: null, error: 'Meta 400 (code 100): lead_id is not valid',
+  });
   const busy = await sendEvents({
     datasetId: '1', token: TOKEN, graphVersion: 'v25.0', events: [],
     fetchImpl: async () => ({ ok: false, status: 503, json: async () => ({}) }),
@@ -207,5 +245,5 @@ test('capiClient: an error carries Meta\'s words and status, a 5xx or 429 is ret
     datasetId: '1', token: TOKEN, graphVersion: 'v25.0', events: [],
     fetchImpl: async () => { throw new Error(`connect ECONNREFUSED ${TOKEN}`); },
   });
-  assert.deepEqual(offline, { ok: false, retryable: true, error: 'Meta unreachable' });
+  assert.deepEqual(offline, { ok: false, retryable: true, timedOut: false, error: 'Meta unreachable' });
 });

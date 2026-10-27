@@ -33,6 +33,34 @@ async function findLeadgenIdsByBitrixIds(bitrixIds) {
   return new Map(res.rows.map((r) => [String(r.bitrix_id), String(r.external_id)]));
 }
 
+/**
+ * Which of these (leadgen id, event) pairs the ledger already holds, as
+ * `leadgenId|eventName` keys. READ ONLY — the settings dry run uses it to say
+ * what a pass WOULD send without recording anything.
+ */
+async function findRecordedKeys(plan) {
+  if (!plan?.length) return new Set();
+  const res = await query(
+    `SELECT leadgen_id, event_name FROM meta_crm_events
+      WHERE (leadgen_id, event_name) IN (SELECT * FROM UNNEST($1::text[], $2::text[]))`,
+    [plan.map((p) => p.leadgenId), plan.map((p) => p.eventName)]
+  );
+  return new Set(res.rows.map((r) => `${r.leadgen_id}|${r.event_name}`));
+}
+
+/**
+ * The newest Facebook leadgen id on record, or null. The settings Test sends
+ * its one TEST event about a real lead, so Meta has something to match.
+ */
+async function latestLeadgenId() {
+  const res = await query(
+    `SELECT external_id FROM leads
+      WHERE source = 'facebook' AND external_id ~ '^[0-9]{6,25}$'
+      ORDER BY id DESC LIMIT 1`
+  );
+  return res.rows[0]?.external_id || null;
+}
+
 /** Record planned events. Returns only the rows this call inserted. */
 async function recordEvents(plan) {
   if (!plan?.length) return [];
@@ -100,6 +128,8 @@ async function markFailed(id, error) {
 module.exports = {
   MAX_ATTEMPTS,
   findLeadgenIdsByBitrixIds,
+  findRecordedKeys,
+  latestLeadgenId,
   recordEvents,
   listDue,
   markSent,

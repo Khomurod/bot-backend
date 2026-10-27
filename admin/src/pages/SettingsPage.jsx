@@ -38,9 +38,10 @@ const AutoReactionsPanel = lazy(() => import("./settings/bot/AutoReactionsPanel"
 const GroupAccessPanel = lazy(() => import("./settings/bot/GroupAccessPanel"));
 const RetiredLeftoversTab = lazy(() => import("./settings/RetiredLeftoversTab"));
 const GrossRaceTab = lazy(() => import("./settings/GrossRaceTab"));
+const MetaCrmTab = lazy(() => import("./settings/MetaCrmTab"));
 
 const TAB_KEYS = [
-  "location", "ringcentral", "groups", "samsara",
+  "location", "ringcentral", "metacrm", "groups", "samsara",
   "board", "safety", "ai", "notifications", "reactions", "access", "grossrace", "leftovers",
 ];
 
@@ -61,6 +62,7 @@ export default function SettingsPage({ initialTab }) {
       <div className="ios-glass ai-tab-bar" style={{ marginBottom: 20 }}>
         <button className={`btn ${tab === "location" ? "btn-primary" : "btn-ghost"} touch-target`} onClick={() => setTab("location")}>📡 Live Location</button>
         <button className={`btn ${tab === "ringcentral" ? "btn-primary" : "btn-ghost"} touch-target`} onClick={() => setTab("ringcentral")}>📞 RingCentral</button>
+        <button className={`btn ${tab === "metacrm" ? "btn-primary" : "btn-ghost"} touch-target`} onClick={() => setTab("metacrm")}>📣 Facebook ↔ Bitrix</button>
         <button className={`btn ${tab === "groups" ? "btn-primary" : "btn-ghost"} touch-target`} onClick={() => setTab("groups")}>💬 Telegram Groups</button>
         <button className={`btn ${tab === "samsara" ? "btn-primary" : "btn-ghost"} touch-target`} onClick={() => setTab("samsara")}>🛰️ Samsara</button>
         <button className={`btn ${tab === "board" ? "btn-primary" : "btn-ghost"} touch-target`} onClick={() => setTab("board")}>🗂️ Dispatcher Board</button>
@@ -75,6 +77,7 @@ export default function SettingsPage({ initialTab }) {
       <Suspense fallback={<div style={{ padding: 20, color: "#94a3b8" }}>Loading…</div>}>
         {tab === "location" && <LocationProvidersTab />}
         {tab === "ringcentral" && <RingCentralTab />}
+        {tab === "metacrm" && <MetaCrmTab />}
         {tab === "groups" && <TelegramGroupsTab />}
         {tab === "samsara" && <SamsaraTab />}
         {tab === "board" && <DispatcherBoardTab />}

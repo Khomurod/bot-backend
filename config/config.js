@@ -183,8 +183,10 @@ module.exports = {
   metaLoginConfigId: normalizeOptionalEnv(process.env.META_LOGIN_CONFIG_ID) || '1295127102598424',
   metaGraphVersion: process.env.META_GRAPH_VERSION || 'v25.0',
   // Bitrix deal stages → Meta Conversions API for CRM (services/metaCrm/stageSync.js).
-  // Both must be set or the pass reports `blocked` and sends nothing. The token
-  // is a secret: it travels only in a request BODY and is never logged.
+  // OPTIONAL FALLBACKS: the primary home is Settings → Facebook ↔ Bitrix
+  // (meta_crm_settings, database/metaCrmSettings.js), whose saved values win;
+  // a value never saved there inherits these. The token is a secret: it travels
+  // only in a request BODY and is never logged.
   metaCrmDatasetId: normalizeOptionalEnv(process.env.META_CRM_DATASET_ID),
   metaCrmCapiToken: normalizeOptionalEnv(process.env.META_CRM_CAPI_TOKEN),
   metaWebhookVerifyToken: process.env.WEBHOOK_VERIFY_TOKEN || '',
