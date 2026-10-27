@@ -114,6 +114,7 @@ organization should converge toward.
 | Bitrix24 settings entered in the app (DB over env, webhook encrypted) | `database/bitrix.js`, `database/migrations/0009_bitrix_settings.sql`, `server/routes/settings/bitrixRoutes.js` (GET/PUT), `admin/src/pages/settings/ringcentral/BitrixSettingsForm.jsx` |
 | "Is Bitrix aligned?" — the admin diagnosis | `services/bitrix24DiagnosticsService.js`, `server/routes/settings/bitrixRoutes.js`, `admin/src/pages/settings/ringcentral/BitrixCard.jsx` |
 | Mapping recruiters to Bitrix users (the automap + the row picker) | `services/recruiterBitrixMapping/` (`directory.js` reads `user.get`, `match.js` is the pure decision, `index.js` previews and applies), `server/routes/recruiter/bitrixMappingRoutes.js`, `admin/src/pages/settings/ringcentral/BitrixAutomapPanel.jsx`, `RecruiterCard.jsx` |
+| **Reporting a lead's hiring stage back to Meta** (Bitrix pipeline 0 → Conversions API for CRM) | `services/metaCrm/stageEvents.js` (pure: the stage → event mapping, the seven-day window), `services/metaCrm/capiClient.js` (the one Graph call; the token travels in the body), `services/metaCrm/stageSync.js` (the 15-minute pass, key `meta_crm_stage_sync`), `database/metaCrmEvents.js`, migration 0085 |
 | Indeed lead intake | `services/indeedLeadService.js`, `docs/gmail-indeed-apps-script.gs` |
 | Recruiter call KPI leaderboard | `services/recruiterCallSyncService.js`, `services/ringCentralCallService.js`, `server/routes/recruiterRoutes.js`, `server/routes/recruiter/diagnosticsRoutes.js`, `database/ringcentral.js`, `admin/src/pages/RecruiterKpiPage.jsx`, `RecruitersPublicPage.jsx`, `admin/src/pages/settings/ringcentral/RecruiterCard.jsx` |
 | Leads admin UI/API | `server/routes/facebookLeadsRoutes.js`, `admin/src/pages/FacebookLeadsPage.jsx`, `LeadsPage.jsx` |
@@ -282,6 +283,7 @@ over `admin/src/pages/<area>/` holding data hooks and presentational sections:
 | `service_runs` | Duplicate scheduled runs (e.g. a birthday wish sent twice after a restart) |
 | `responses` (`ON CONFLICT (driver_id, question_id) DO NOTHING`) | Duplicate survey answers |
 | `mileage_bonus_runs` | Double milestone runs |
+| `meta_crm_events` UNIQUE `(leadgen_id, event_name)` | A lead's hiring stage being reported to Meta twice |
 
 ---
 
