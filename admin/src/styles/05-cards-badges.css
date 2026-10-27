@@ -95,6 +95,11 @@ tr:hover td {
   color: var(--text-secondary);
 }
 
+.badge-warning {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
 /* ─── Alerts ─── */
 .alert {
   padding: 14px 20px;

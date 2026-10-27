@@ -49,16 +49,24 @@ async function findRecordedKeys(plan) {
 }
 
 /**
- * The newest Facebook leadgen id on record, or null. The settings Test sends
- * its one TEST event about a real lead, so Meta has something to match.
+ * The newest event of this name Meta has ALREADY received, recently enough to
+ * be sent again as a duplicate, or null. The settings Test sends its one test
+ * event as an exact copy of it — same `event_id`, same `event_time` — so Meta
+ * folds it into the real one instead of counting a second conversion (Meta
+ * deduplicates on event_id + event_name for about 48 hours; 47 keeps a margin,
+ * and the event's own time must still be inside the seven-day window).
  */
-async function latestLeadgenId() {
+async function latestRecentlySent(eventName) {
   const res = await query(
-    `SELECT external_id FROM leads
-      WHERE source = 'facebook' AND external_id ~ '^[0-9]{6,25}$'
-      ORDER BY id DESC LIMIT 1`
+    `SELECT leadgen_id, event_name, event_time FROM meta_crm_events
+      WHERE state = 'sent' AND event_name = $1
+        AND sent_at > NOW() - INTERVAL '47 hours'
+        AND event_time > NOW() - INTERVAL '6 days 23 hours'
+      ORDER BY sent_at DESC, id DESC
+      LIMIT 1`,
+    [String(eventName)]
   );
-  return res.rows[0]?.external_id || null;
+  return res.rows[0] || null;
 }
 
 /** Record planned events. Returns only the rows this call inserted. */
@@ -129,7 +137,7 @@ module.exports = {
   MAX_ATTEMPTS,
   findLeadgenIdsByBitrixIds,
   findRecordedKeys,
-  latestLeadgenId,
+  latestRecentlySent,
   recordEvents,
   listDue,
   markSent,

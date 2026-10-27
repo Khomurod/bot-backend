@@ -87,7 +87,7 @@ test('switching off keeps the credentials; switching on brings them back unchang
   assert.equal(cfg.datasetId, '333');
 });
 
-test('the dry run\'s ledger reads: which pairs are already recorded, and the newest Facebook leadgen id', { skip: skipWithoutPg() }, async (t) => {
+test('the dry run\'s ledger reads which pairs are already recorded; the Test finds only a Qualified Meta received in the last 47 hours', { skip: skipWithoutPg() }, async (t) => {
   const h = await createPgHarness(t, { extraDdl: ALL_MIGRATIONS });
   const { metaCrmEvents: events } = h.loadDataLayer(['metaCrmEvents']);
   const at = new Date(Date.now() - 60 * 60 * 1000);
@@ -98,9 +98,23 @@ test('the dry run\'s ledger reads: which pairs are already recorded, and the new
   ]);
   assert.deepEqual([...keys], ['1668864698200916|Qualified']);
   assert.equal((await events.findRecordedKeys([])).size, 0);
-  assert.equal(await events.latestLeadgenId(), null);
-  await h.query(`INSERT INTO leads (source, external_id) VALUES ('facebook', '111111111111'), ('indeed', '999999999999'), ('facebook', '222222222222')`);
-  assert.equal(await events.latestLeadgenId(), '222222222222');
+
+  assert.equal(await events.latestRecentlySent('Qualified'), null, 'pending is not sent');
+  await events.recordEvents([
+    { leadgenId: '222222222222', eventName: 'Qualified', dealId: 2, stageId: 'EXECUTING', eventTime: at },
+    { leadgenId: '333333333333', eventName: 'Qualified', dealId: 3, stageId: 'EXECUTING', eventTime: at },
+    { leadgenId: '444444444444', eventName: 'Converted', dealId: 4, stageId: 'WON', eventTime: at },
+    { leadgenId: '555555555555', eventName: 'Qualified', dealId: 5, stageId: 'EXECUTING', eventTime: new Date(Date.now() - 7 * 86400000 + 60000) },
+  ]);
+  await h.query(`UPDATE meta_crm_events SET state = 'sent', sent_at = NOW() - INTERVAL '50 hours' WHERE leadgen_id = '222222222222'`);
+  await h.query(`UPDATE meta_crm_events SET state = 'sent', sent_at = NOW() - INTERVAL '2 hours' WHERE leadgen_id IN ('1668864698200916', '444444444444')`);
+  await h.query(`UPDATE meta_crm_events SET state = 'sent', sent_at = NOW() - INTERVAL '1 hour' WHERE leadgen_id = '555555555555'`);
+  const found = await events.latestRecentlySent('Qualified');
+  // 222… was sent too long ago to deduplicate, 333… is still pending, 444… is
+  // not a Qualified, and 555…'s event time is about to leave the seven days.
+  assert.equal(found.leadgen_id, '1668864698200916');
+  assert.equal(found.event_name, 'Qualified');
+  assert.equal(new Date(found.event_time).getTime(), at.getTime());
 });
 
 test('the migration is idempotent: re-running it leaves a saved row alone', { skip: skipWithoutPg() }, async (t) => {

@@ -6,7 +6,7 @@ import { canSave, formFingerprint } from "./testGate";
 /**
  * Enter → Test → Save. Save stays disabled until a Test passed with exactly
  * the values in the form; any edit locks it again (./testGate.js). The server
- * proves the token once more on Save and refuses what fails.
+ * proves the token once more on Save and refuses what fails (a warning saves).
  *
  * The token box is write-only: empty means "keep the token in use". The test
  * event code is used by Test only and never saved.
@@ -75,8 +75,9 @@ export default function CredentialsCard({ settings, onSaved }) {
       <div className="form-group">
         <label htmlFor="meta-crm-test-code" style={{ display: "block", fontWeight: 600, marginBottom: 4 }}>Test event code (optional)</label>
         <div style={{ fontSize: 12, color: "#94a3b8", marginBottom: 6 }}>
-          Events Manager → the dataset → Test events. With it, Test sends ONE test event you can see there; it never counts for
-          ad optimization and is never saved.
+          Events Manager → the dataset → Test events. With it, Test sends ONE test event you can see there — a copy of a
+          lead Meta already received as Qualified in the last 47 hours, so Meta counts it once (a test code alone does not
+          keep an event out of ads). With no such lead it does not send. The code is never saved.
         </div>
         <input id="meta-crm-test-code" className="form-input" value={form.testEventCode} placeholder="e.g. TEST12345"
           onChange={(e) => setField("testEventCode", e.target.value)} style={{ maxWidth: 240 }} />

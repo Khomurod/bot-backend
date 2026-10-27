@@ -1,13 +1,15 @@
 import React from "react";
 
 /**
- * The four Test checks, each pass / fail / not run with its plain-words
- * explanation, Meta's own error under a failed one, and the dry run's numbers
- * and example deals.
+ * The four Test checks, each pass / warning / fail / not run with its
+ * plain-words explanation, Meta's own words under any answer that was not a
+ * plain yes, and the dry run's numbers and example deals. A warning does not
+ * block Save (services/metaCrm/settingsRules.js testPassed).
  */
 
 const BADGE = {
   pass: { text: "✓ Pass", className: "badge badge-active" },
+  warn: { text: "! Warning", className: "badge badge-warning" },
   fail: { text: "✕ Fail", className: "badge badge-inactive" },
   not_run: { text: "— Not run", className: "badge badge-muted" },
 };
@@ -36,12 +38,18 @@ function DryRunDetail({ detail }) {
   );
 }
 
+function headline(result) {
+  if (!result.passed) return "❌ Test did not pass — fix what failed and test again.";
+  if (result.checks.some((c) => c.status === "warn")) return "⚠️ Test passed with a warning — read it below; you can still save these values.";
+  return "✅ Test passed — you can save these values.";
+}
+
 export default function CheckList({ result }) {
   if (!result) return null;
   return (
     <div style={{ marginTop: 14 }} data-testid="meta-crm-checks">
       <div style={{ fontWeight: 600, marginBottom: 8 }}>
-        {result.passed ? "✅ Test passed — you can save these values." : "❌ Test did not pass — fix what failed and test again."}
+        {headline(result)}
         {result.usedStoredToken && (
           <span style={{ fontWeight: 400, fontSize: 12, color: "#94a3b8" }}> (tested with the token already in use)</span>
         )}

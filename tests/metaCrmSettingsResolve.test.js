@@ -90,9 +90,11 @@ test('inputs: dataset digits only; token one piece with no whitespace; blank tok
   assert.throws(() => rules.normalizeTestEventCode('TEST 1'), { statusCode: 400 });
 });
 
-test('a Test passes only when the token check passed and nothing that ran failed; "not run" is not a failure', () => {
+test('a Test passes only when the token check passed or warned and nothing that ran failed; "not run" is not a failure', () => {
   const c = (key, status) => ({ key, status });
   assert.equal(rules.testPassed([c('token', 'pass'), c('test_event', 'not_run'), c('bitrix', 'pass'), c('dry_run', 'pass')]), true);
+  assert.equal(rules.testPassed([c('token', 'warn'), c('test_event', 'not_run'), c('bitrix', 'pass'), c('dry_run', 'pass')]), true);
+  assert.equal(rules.testPassed([c('token', 'not_run')]), false);
   assert.equal(rules.testPassed([c('token', 'fail'), c('test_event', 'not_run')]), false);
   assert.equal(rules.testPassed([c('token', 'pass'), c('bitrix', 'fail')]), false);
   assert.equal(rules.testPassed([]), false);
@@ -104,6 +106,22 @@ test('Meta error codes are explained in plain words', () => {
   assert.match(rules.explainGraphError({ code: 200 }), /missing a permission/);
   assert.match(rules.explainGraphError({ code: 4 }), /limiting requests/);
   assert.match(rules.explainGraphError({ status: 502 }), /problem of its own/);
+  assert.match(rules.explainGraphError({ code: 100, subcode: 2804036 }), /does not recognise that lead ID/);
+  assert.match(rules.explainGraphError({ code: 100, subcode: 2804004 }), /within the last seven days/);
+});
+
+test('check a\'s verdict from /me and dataset quality, as Meta really answered on 27 October 2026', () => {
+  const judge = (owner, quality) => rules.judgeTokenAndDataset({ owner, quality, datasetId: '988' });
+  assert.equal(judge({ ok: false, code: 190 }, null).status, 'fail');
+  assert.match(judge({ ok: false, timedOut: true }, null).message, /did not answer in time/);
+  assert.equal(judge({ ok: true }, { ok: true }).status, 'pass');
+  assert.equal(judge({ ok: true }, { ok: false, code: 24, subcode: 2044055 }).status, 'warn');
+  for (const code of [10, 200, 299]) assert.equal(judge({ ok: true }, { ok: false, code }).status, 'warn', `code ${code}`);
+  assert.equal(judge({ ok: true }, { ok: false, code: 100, error: 'Meta 400 (code 100): (#100) Missing Permission' }).status, 'warn');
+  assert.equal(judge({ ok: true }, { ok: false, code: 100, error: 'Meta 400 (code 100): Invalid parameter' }).status, 'fail');
+  assert.equal(judge({ ok: true }, { ok: false, status: 500 }).status, 'fail');
+  assert.equal(judge({ ok: true }, { ok: false, timedOut: true }).status, 'fail');
+  assert.equal(judge({ ok: true }, { ok: false, code: 4 }).status, 'fail');
 });
 
 test('redactSecret takes the token out of any text, and any access_token= pair', () => {

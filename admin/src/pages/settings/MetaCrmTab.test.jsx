@@ -87,6 +87,23 @@ test("a Test that does not pass keeps Save disabled", async () => {
   expect(saveButton()).toBeDisabled();
 });
 
+test("a Test that passed with a warning says so, shows Meta's words, and unlocks Save", async () => {
+  api.testMetaCrmSettings.mockResolvedValue({
+    passed: true,
+    checks: [
+      { key: "token", label: "Token and dataset", status: "warn", message: "Meta accepts the token, but could not confirm dataset 111222.", detail: { metaError: "Meta 400 (code 24): The requested resource does not exist" } },
+      { key: "test_event", label: "Test event", status: "not_run", message: "Not run." },
+    ],
+  });
+  render(<MetaCrmTab />);
+  await screen.findByText("Sync is ON");
+  fireEvent.click(screen.getByRole("button", { name: "Test" }));
+  expect(await screen.findByText(/Test passed with a warning/)).toBeInTheDocument();
+  expect(screen.getByText("! Warning")).toBeInTheDocument();
+  expect(screen.getByText(/Meta said: Meta 400 \(code 24\)/)).toBeInTheDocument();
+  await waitFor(() => expect(saveButton()).toBeEnabled());
+});
+
 test("Save sends the tested values, clears the token box, and a server refusal leaves Save locked", async () => {
   api.testMetaCrmSettings.mockResolvedValue(passed);
   api.saveMetaCrmSettings.mockRejectedValueOnce(new Error("Not saved: Meta does not accept this access token."));
