@@ -124,6 +124,20 @@ the same treatment home time got, and for the same reason.
   the mirror ledger. It used to be sent and forgotten, so the database held the
   opening line and the candidate's answers and nothing in between — anybody
   reading that thread back was reading half a conversation and could not tell.
+- **Facebook learns which leads become drivers.** Every 15 minutes
+  `services/metaCrm/stageSync.js` reads the hiring-pipeline (0) deals Bitrix
+  changed in the last seven days and reports each Facebook lead's stage to
+  Meta's Conversions API for CRM, keyed by the leadgen id (the `leads` row's
+  `external_id`, found through the deal's `LEAD_ID`). The owner's mapping,
+  27 October 2026: Interested, Documents, Talking to Dispatch and Sent to
+  Safety → `Qualified`; Hired → `Converted`; Lost → `Lost`. New Lead, Contacting
+  and "Lost – Qualified (call back later)" send **nothing** — and a stage added
+  in Bitrix later sends nothing until somebody maps it. Once per lead per event
+  (`meta_crm_events`); no name, phone or e-mail leaves; Bitrix is only read.
+  Meta refuses events older than seven days, so a move older than that is not
+  reported at all. Idle (`blocked`) until `META_CRM_DATASET_ID` and the secret
+  `META_CRM_CAPI_TOKEN` are set. Guarded by `tests/metaCrmStageEvents.test.js`,
+  `tests/metaCrmStageSync.test.js`, `tests/metaCrmEventsPg.test.js`.
 - **Self-serve Page connect**: `/connect` in a leads group starts a
   session-token-gated OAuth flow; Page tokens are encrypted
   (`lib/security/facebookCrypto.js`).

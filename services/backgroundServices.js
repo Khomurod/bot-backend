@@ -68,6 +68,7 @@ const {
   stopBoardPresenceWatch,
 } = require('./homeTime/boardPresenceWatch');
 const { startViolationAlerts, stopViolationAlerts } = require('./homeTime/violationAlerts');
+const { startMetaCrmStageSync, stopMetaCrmStageSync } = require('./metaCrm/stageSync');
 const {
   startLoadLifecycleWatch,
   stopLoadLifecycleWatch,
@@ -179,6 +180,10 @@ function startBackgroundServices({ telegram }) {
   // Bitrix pipeline 33 → accounting: the thirty-minute pass under the robot's
   // webhook. Idle until switched on with a group (Home Time → Settings).
   startViolationAlerts(telegram);
+  // Bitrix hiring stages → Meta's Conversions API for CRM, so Facebook ad
+  // delivery learns which leads become drivers. Idle (`blocked`) until
+  // META_CRM_DATASET_ID and META_CRM_CAPI_TOKEN are set.
+  startMetaCrmStageSync();
   // Works out what each load is actually doing from where the truck is, because
   // a board status is a plan and is routinely days out of date.
   launchUnlessPaused(['load_lifecycle'], () => startLoadLifecycleWatch());
@@ -263,6 +268,7 @@ function stopBackgroundServices() {
   try { stopReturnToRoadWatch(); } catch (err) { console.error('[SHUTDOWN] stopReturnToRoadWatch failed:', err.message); }
   try { stopBoardPresenceWatch(); } catch (err) { console.error('[SHUTDOWN] stopBoardPresenceWatch failed:', err.message); }
   try { stopViolationAlerts(); } catch (err) { console.error('[SHUTDOWN] stopViolationAlerts failed:', err.message); }
+  try { stopMetaCrmStageSync(); } catch (err) { console.error('[SHUTDOWN] stopMetaCrmStageSync failed:', err.message); }
   try { stopLoadLifecycleWatch(); } catch (err) { console.error('[SHUTDOWN] stopLoadLifecycleWatch failed:', err.message); }
   try { stopSafetyCoach(); } catch (err) { console.error('[SHUTDOWN] stopSafetyCoach failed:', err.message); }
   try { stopRetentionWatch(); } catch (err) { console.error('[SHUTDOWN] stopRetentionWatch failed:', err.message); }

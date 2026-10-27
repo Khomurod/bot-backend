@@ -182,6 +182,11 @@ module.exports = {
   metaAppSecret: normalizeOptionalEnv(process.env.META_APP_SECRET || metaAppCredentials.metaAppSecret || ''),
   metaLoginConfigId: normalizeOptionalEnv(process.env.META_LOGIN_CONFIG_ID) || '1295127102598424',
   metaGraphVersion: process.env.META_GRAPH_VERSION || 'v25.0',
+  // Bitrix deal stages → Meta Conversions API for CRM (services/metaCrm/stageSync.js).
+  // Both must be set or the pass reports `blocked` and sends nothing. The token
+  // is a secret: it travels only in a request BODY and is never logged.
+  metaCrmDatasetId: normalizeOptionalEnv(process.env.META_CRM_DATASET_ID),
+  metaCrmCapiToken: normalizeOptionalEnv(process.env.META_CRM_CAPI_TOKEN),
   metaWebhookVerifyToken: process.env.WEBHOOK_VERIFY_TOKEN || '',
   metaRequestedPermissions: (process.env.META_REQUESTED_PERMISSIONS
     || 'pages_show_list,pages_read_engagement,pages_manage_metadata,leads_retrieval,pages_manage_ads,ads_management,pages_messaging')
