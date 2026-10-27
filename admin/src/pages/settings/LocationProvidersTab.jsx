@@ -1,14 +1,22 @@
 import React, { useCallback, useEffect, useState } from "react";
 import * as api from "../../api";
 import { KeyField, Banner } from "./fields";
+import PageFailure from "../../components/PageFailure";
 
 // ─────────────────────────────── Live Location tab ───────────────────────────
+//
+// When the stored settings cannot be read, the tab says so and offers a retry
+// INSTEAD of the form. It used to render the form against `settings === null`
+// and throw ("This section has a bug"); and a form drawn from defaults would be
+// worse than a crash — Save would write every provider "Enabled" and a blank
+// API base over the values the server could not hand back.
 
 export default function LocationProvidersTab() {
   const [settings, setSettings] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState(null);
+  const [loadError, setLoadError] = useState(null);
   const [testResults, setTestResults] = useState({});
   const [testing, setTesting] = useState({});
   const [testUnit, setTestUnit] = useState("");
@@ -20,11 +28,16 @@ export default function LocationProvidersTab() {
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const s = await api.getEldSettings();
+      if (!s || typeof s !== "object") throw new Error("The server did not send the live-location settings.");
       setSettings(s);
       setForm((f) => ({ ...f, driveHosApiBase: s.driveHosApiBase || "", samsaraEnabled: s.samsaraEnabled, factorEnabled: s.factorEnabled, leaderEnabled: s.leaderEnabled }));
-    } catch (err) { setMessage({ type: "error", text: err.message }); }
+    } catch (err) {
+      setSettings(null);
+      setLoadError(err);
+    }
     finally { setLoading(false); }
   }, []);
   useEffect(() => { load(); }, [load]);
@@ -102,6 +115,9 @@ export default function LocationProvidersTab() {
   };
 
   if (loading) return <div className="loading"><div className="spinner"></div> Loading…</div>;
+  if (!settings) {
+    return <PageFailure error={loadError} where="Live Location settings" onRetry={load} />;
+  }
 
   const TestBadge = ({ provider }) => {
     const r = testResults[provider];
