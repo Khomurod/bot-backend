@@ -71,6 +71,17 @@ and every API client function is exactly what it was.
   [`retired-dispatch-eta.md`](../architecture/retired-dispatch-eta.md).
 - **Live Locations** — authenticated admin map (`liveLocationsService.js`); map
   tile URL is served only to logged-in admins, never baked into the bundle.
+- **Board ↔ Bitrix check** (29 October 2026, the owner's request) — every 15
+  minutes the Dispatcher Board, **the source of truth**, is compared with
+  Bitrix24: active drivers (pipeline 3 "DRIVER RELATION"), their assigned trucks
+  (the "Trucks" smart process, Company 001 and Lease 001 kept apart) and their
+  stage (HOME/SHOP/VACATION/WORKING). Each difference is asked **one at a time**
+  in the Needs-attention group; the owner fixes Bitrix and replies "done", Wenze
+  re-reads Bitrix at once and confirms (then asks the next) or says what still
+  differs; "skip" brings it back tomorrow. A letter or two, a space or the word
+  order in a name is the same driver and not asked. Bitrix is only read. Off
+  until switched on in Settings → Dispatcher Board. See
+  [`board-bitrix-check.md`](../architecture/board-bitrix-check.md).
 - **Route Control was removed** (October 2026, the owner's decision): no
   Google Maps route links in driver groups, no off-route warnings, no Settings →
   GMaps. Its tables are still there, read by nothing. See

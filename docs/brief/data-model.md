@@ -72,7 +72,9 @@ fallback, and files a finding whenever it is the one that answered.
 **The Dispatcher Board snapshot (`dispatch_board_settings` 0045,
 `dispatch_board_rows` 0046) sits BESIDE both, and outranks neither.** It records
 what an external spreadsheet says about today — truck, trailer, status, ETA,
-dispatcher — and is read only for Home Time's home-in / home-out. It is keyed by `row_key` (normalised truck + normalised person)
+dispatcher — and is read for Home Time's home-in / home-out and by the Board ↔
+Bitrix check, which treats it as the source of truth (`board_bitrix_*` 0088,
+`docs/architecture/board-bitrix-check.md`). It is keyed by `row_key` (normalised truck + normalised person)
 because the board has no stable row id: a spreadsheet row number changes the
 moment somebody sorts the sheet. Three rules:
 
@@ -85,8 +87,8 @@ moment somebody sorts the sheet. Three rules:
   board" is the opposite fact from "nobody is on the board".
 - **`person_id`, `link_source` and `link_confidence` are no longer written.**
   The `board.link_person` correction that wrote them was removed in October
-  2026; links it made stay and are still honoured. The one reader, Home Time's
-  board watch, decides which person a row is about at read time
+  2026; links it made stay and are still honoured. Home Time's board watch
+  decides which person a row is about at read time
   (`services/dispatchBoard/rowPeople.js`) and writes nothing back.
 
 **The person layer (`driver_people`, `driver_person_groups`, `driver_units`,

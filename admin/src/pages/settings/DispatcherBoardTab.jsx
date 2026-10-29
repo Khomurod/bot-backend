@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import * as api from "../../api";
 import { KeyField, NumField, Banner } from "./fields";
 import FeedCard from "./dispatcherBoard/FeedCard";
+import BoardBitrixCard from "./dispatcherBoard/BoardBitrixCard";
 
 /**
  * Settings → Dispatcher Board.
@@ -17,6 +18,8 @@ import FeedCard from "./dispatcherBoard/FeedCard";
  *
  * The automatic ETA updates card that sat under the Board here went with the
  * dispatcher ETA feature (October 2026, docs/architecture/retired-dispatch-eta.md).
+ * The Board ↔ Bitrix check (October 2026, docs/architecture/board-bitrix-check.md)
+ * sits under the Feed card.
  */
 
 function Row({ label, value }) {
@@ -179,6 +182,8 @@ export default function DispatcherBoardTab() {
       <TestResult result={test} />
 
       <FeedCard />
+
+      <BoardBitrixCard />
 
     </div>
   );

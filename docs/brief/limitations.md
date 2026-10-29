@@ -14,8 +14,8 @@
   tables are read by nothing and are on Settings → Retired Leftovers' list
   (groups `route_control` and `driver_raise`), to be dropped there after a
   backup; the baseline no longer creates them, except a stub of the two that
-  old migrations alter, on a brand-new database only. `/raise` answers 410. The Dispatcher Board stays, read only for Home
-  Time. See `docs/architecture/retired-route-control.md`,
+  old migrations alter, on a brand-new database only. `/raise` answers 410. The Dispatcher Board stays, read for Home
+  Time (and, since 29 October 2026, by the Board ↔ Bitrix check). See `docs/architecture/retired-route-control.md`,
   `docs/architecture/retired-driver-raise.md` and
   `docs/architecture/dispatcher-board.md`.
 - **BOL/POD document forwarding was removed (2026-10)**, at the owner's

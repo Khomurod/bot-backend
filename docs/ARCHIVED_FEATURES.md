@@ -94,7 +94,9 @@ on the Users tab. What was removed, what was kept (the tables, two routing
 columns, the retired check keys) and why are in
 [`architecture/retired-driver-raise.md`](architecture/retired-driver-raise.md).
 
-The **Dispatcher Board stays**, read only for Home Time's home-in / home-out.
+The **Dispatcher Board stays**, read for Home Time's home-in / home-out (and,
+since 29 October 2026, as the source of truth for the Board ↔ Bitrix check —
+a different thing: it compares Bitrix and asks a person, and links nobody).
 Its identity checks, the `board.link_person` correction (the only action ever
 armed for automatic rollback), the board-vs-Home-Time contradictions and the
 board panels on Groups, the person identity panel and Operations → Identity went

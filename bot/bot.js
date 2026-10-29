@@ -24,6 +24,7 @@ const { registerHiringStageHandlers } = require('./handlers/hiringStageHandlers'
 const { registerControlReplyHandlers } = require('./controlReplyHandlers');
 const { registerHomeTimeViolationHandlers } = require('./handlers/homeTimeViolationHandlers');
 const { registerLessonReplyHandlers } = require('./handlers/lessonReplyHandlers');
+const { registerBoardBitrixReplyHandlers } = require('./handlers/boardBitrixReplyHandlers');
 const { registerDispatchCommands } = require('./handlers/dispatchCommandHandlers');
 const { registerStartHandler } = require('./handlers/startHandlers');
 const { registerSurveyCallbackHandlers } = require('./handlers/surveyCallbackHandlers');
@@ -184,6 +185,11 @@ async function startBot() {
     // sure even after Claude). Right after the control channel, for the same
     // reason: an answer is consumed, anything else falls through.
     registerLessonReplyHandlers(bot);
+    // "done" / "skip" under a Board ↔ Bitrix question (the Board is the source
+    // of truth; the owner fixes Bitrix and says so). Right after the learning
+    // handler, for the same reason: an answer is consumed, anything else falls
+    // through.
+    registerBoardBitrixReplyHandlers(bot);
 
     // Accounting's Charged / Not charging buttons on home-time violation alerts,
     // and the reply that gives a "not charging" reason. Here, before the driver
