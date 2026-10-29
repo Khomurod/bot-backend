@@ -9,7 +9,12 @@ controls its shape.
 
 ## What it is for now: Home Time's home-in and home-out
 
-Since October 2026 the Board has **one reader**: the home-time board watch
+Since October 2026 the Board's snapshot has **two readers**. The second, since
+29 October 2026, is the **Board ↔ Bitrix check**
+([`board-bitrix-check.md`](board-bitrix-check.md)): it treats the Board as the
+source of truth, compares Bitrix24's active drivers, trucks and stages with it,
+and asks a person about each difference — it links no row to a person and
+writes nothing here. The first is the home-time board watch
 (`services/homeTime/boardPresenceWatch.js`, background service
 `home_time_board_presence`). When dispatch marks a driver `HOME` or `VACATION`
 and it holds, Wenze opens a home stay; when the line moves back into the

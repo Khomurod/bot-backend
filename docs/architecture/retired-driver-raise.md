@@ -36,8 +36,9 @@ the tables it wrote is below.
 | Check `dispatch.team_driver_on_inactive_group` (was in `checks/systems.js`), and the findings `raise.driver_unplaced` / `raise.roster_not_rebuilt` the rebuild filed | |
 
 The Dispatcher Board's identity checks, person links and panels were removed in
-the same change. The Board itself stays, read only for Home Time's home-in /
-home-out — see [`dispatcher-board.md`](dispatcher-board.md).
+the same change. The Board itself stays, read for Home Time's home-in /
+home-out (and since 29 October 2026 by the Board ↔ Bitrix check,
+[`board-bitrix-check.md`](board-bitrix-check.md)) — see [`dispatcher-board.md`](dispatcher-board.md).
 
 ## What stayed, and why
 

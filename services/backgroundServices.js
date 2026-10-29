@@ -69,6 +69,7 @@ const {
 } = require('./homeTime/boardPresenceWatch');
 const { startViolationAlerts, stopViolationAlerts } = require('./homeTime/violationAlerts');
 const { startMetaCrmStageSync, stopMetaCrmStageSync } = require('./metaCrm/stageSync');
+const { startBoardBitrixCheck, stopBoardBitrixCheck } = require('./boardBitrix/timer');
 const {
   startLoadLifecycleWatch,
   stopLoadLifecycleWatch,
@@ -185,6 +186,12 @@ function startBackgroundServices({ telegram }) {
   // dataset id and token are saved in Settings → Facebook ↔ Bitrix (or set as
   // META_CRM_* env fallbacks), or while that page's switch is off.
   startMetaCrmStageSync();
+  // The Dispatcher Board (the source of truth) against Bitrix24's active
+  // drivers, their trucks and their status; every difference is asked about,
+  // one at a time, in the Needs-attention group. Idle (`blocked`) until it is
+  // switched on in Settings → Dispatcher Board; stood down in economy mode
+  // with the other automatic checks and their questions.
+  launchUnlessPaused(['board_bitrix_check'], () => startBoardBitrixCheck());
   // Works out what each load is actually doing from where the truck is, because
   // a board status is a plan and is routinely days out of date.
   launchUnlessPaused(['load_lifecycle'], () => startLoadLifecycleWatch());
@@ -270,6 +277,7 @@ function stopBackgroundServices() {
   try { stopBoardPresenceWatch(); } catch (err) { console.error('[SHUTDOWN] stopBoardPresenceWatch failed:', err.message); }
   try { stopViolationAlerts(); } catch (err) { console.error('[SHUTDOWN] stopViolationAlerts failed:', err.message); }
   try { stopMetaCrmStageSync(); } catch (err) { console.error('[SHUTDOWN] stopMetaCrmStageSync failed:', err.message); }
+  try { stopBoardBitrixCheck(); } catch (err) { console.error('[SHUTDOWN] stopBoardBitrixCheck failed:', err.message); }
   try { stopLoadLifecycleWatch(); } catch (err) { console.error('[SHUTDOWN] stopLoadLifecycleWatch failed:', err.message); }
   try { stopSafetyCoach(); } catch (err) { console.error('[SHUTDOWN] stopSafetyCoach failed:', err.message); }
   try { stopRetentionWatch(); } catch (err) { console.error('[SHUTDOWN] stopRetentionWatch failed:', err.message); }

@@ -22,6 +22,10 @@ vi.mock("../../api", () => ({
   updateDispatchBoardSettings: vi.fn(),
   testDispatchBoardConnection: vi.fn(),
   getDispatchBoardFeed: vi.fn(),
+  // The Board ↔ Bitrix card under the Feed card; its own test is BoardBitrixCard.test.jsx.
+  getBoardBitrixCheck: vi.fn(() => Promise.resolve({ enabled: false, counts: {}, byKind: [], current: null, lastRun: null })),
+  setBoardBitrixCheckEnabled: vi.fn(),
+  runBoardBitrixCheck: vi.fn(),
 }));
 
 const BASE = "https://script.example.com/macros/s/AKfycbX/exec";

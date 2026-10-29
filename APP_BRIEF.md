@@ -95,7 +95,7 @@ October 2026, and `render.yaml` still describes that layout.
 | `driver-feedback-bot` | this repo | `index.js` — the whole Node app: Telegram bot + Express API + admin SPA + all background jobs |
 | `facebook-leads-engine` | this repo (`leads-bot/`) | Python FastAPI lead worker. In the main deployment `index.js` **spawns it as a child process**; it can also run standalone |
 | Samsara safety poller | **separate repo** `Khomurod/samsara-integration` | Polls Samsara safety events → dashcam alerts to Telegram |
-| Dispatcher Board | **not a service of ours** — an external Google Apps Script web app over the dispatchers' spreadsheet | Read-only, polled. **Read only for Home Time's home-in / home-out** (a dispatcher's `HOME` opens a home stay, the truck back in the pool closes it); Wenze stays the authority on who a person is and whether they are home. Off until a URL and token are saved in Settings |
+| Dispatcher Board | **not a service of ours** — an external Google Apps Script web app over the dispatchers' spreadsheet | Read-only, polled. **Read for Home Time's home-in / home-out** (a dispatcher's `HOME` opens a home stay, the truck back in the pool closes it) **and, since 29 October 2026, as the source of truth the Board ↔ Bitrix check compares Bitrix24 with** (`docs/architecture/board-bitrix-check.md`); Wenze stays the authority on who a person is and whether they are home. Off until a URL and token are saved in Settings |
 
 The three cooperate in **two different ways** — do not confuse them:
 
@@ -244,6 +244,7 @@ by a number on every stage does not belong in the file everything else fits in.
 | The Finance Monitor's removal (October 2026): money-code capture, its AI reading, the attachment reader, the weekly report, the Finance page and Settings → Finance; the Telegram file download that moved for Safety Approvals; the money-code tables it left | `docs/architecture/retired-finance-monitor.md` |
 | Whose number texts a lead, WHICH message they send, and the RingCentral/TCR prerequisites | `docs/architecture/recruiter-sms-sender.md` |
 | Reporting Facebook leads' Bitrix hiring stages to Meta, and its credentials page (Settings → Facebook ↔ Bitrix: enter, test, save, ON/OFF) | `docs/brief/recruiting.md`, `docs/architecture/meta-crm-settings.md` |
+| The Dispatcher Board ↔ Bitrix24 check: active drivers, their trucks and status compared every 15 minutes, each difference asked one at a time in Needs attention, "done" re-checked (Settings → Dispatcher Board) | `docs/architecture/board-bitrix-check.md` |
 | The Gross Grand Prix displays (`/dispatch`, `/dispatchteam`): the Datatruck read budget, and what a public page may show | `docs/architecture/gross-race.md` |
 | Samsara settings (the shared `samsara_settings` row, the shared-secret envelope for its API key) and missing-video recovery | `docs/architecture/samsara-settings-and-video-recovery.md` |
 | Database: authoritative schema + migration rules | `database/baseline/`, `database/migrations/`, `docs/database/` |

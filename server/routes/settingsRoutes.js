@@ -14,6 +14,7 @@
  *   ./settings/safetyApprovalRoutes.js /safety-approvals* Safety's hire decisions
  *   ./settings/aiLessonsRoutes.js     /ai/lessons*     what Wenze learned from answers
  *   ./settings/metaCrmRoutes.js       /meta-crm*       Facebook ↔ Bitrix (Conversions API for CRM)
+ *   ./settings/boardBitrixRoutes.js   /board-bitrix*   the Dispatcher Board ↔ Bitrix check
  *
  * Two conventions hold across all of them: `authMiddleware` guards every route
  * (these read and write credentials), and a stored secret is NEVER returned in
@@ -37,6 +38,7 @@ const { createRetiredLeftoversRouter } = require('./settings/retiredLeftoversRou
 const { createRecruitingHoursRouter } = require('./settings/recruitingHoursRoutes');
 const { createSafetyApprovalSettingsRouter } = require('./settings/safetyApprovalRoutes');
 const { createMetaCrmSettingsRouter } = require('./settings/metaCrmRoutes');
+const { createBoardBitrixSettingsRouter } = require('./settings/boardBitrixRoutes');
 
 function createSettingsRouter({ authMiddleware, telegram = null }) {
   const router = express.Router();
@@ -58,6 +60,7 @@ function createSettingsRouter({ authMiddleware, telegram = null }) {
   router.use(createRecruitingHoursRouter(deps));
   router.use(createSafetyApprovalSettingsRouter(deps));
   router.use(createMetaCrmSettingsRouter(deps));
+  router.use(createBoardBitrixSettingsRouter(deps));
 
   return router;
 }

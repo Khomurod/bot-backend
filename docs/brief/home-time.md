@@ -419,7 +419,8 @@ marks the stay closed.
   it. Decided by `lib/homeTime/boardPresence.js` (pure), applied by
   `services/homeTime/boardPresenceWatch.js`, and — like every other path —
   written only through `applyStateTransition`, which owns the state machine, the
-  cycle and the bonus. This is the Board's only reader: which person a row is
+  cycle and the bonus. This is the Board's only reader inside Home Time (the
+  Board ↔ Bitrix check reads it too, and writes nothing): which person a row is
   about is decided at read time (`services/dispatchBoard/rowPeople.js`) and
   stored nowhere. Over the 60 days before October 2026 it opened 40 of about 104
   home stays and closed 34 of about 92.

@@ -43,13 +43,31 @@ async function webhookBase() {
   return base;
 }
 
-/** The portal's address, for a link to a deal a person can open. */
-async function dealUrl(dealId) {
+/**
+ * The portal's address — the origin only, never the webhook's credential path
+ * — or null when Bitrix is not connected. For links a person can open.
+ */
+async function portalOrigin() {
   try {
-    return `${new URL(await webhookBase()).origin}/crm/deal/details/${Number(dealId)}/`;
+    return new URL(await webhookBase()).origin;
   } catch {
     return null;
   }
+}
+
+/** A deal's page on a known portal — the one place the link's shape lives. */
+function dealUrlFor(origin, dealId) {
+  return origin ? `${origin}/crm/deal/details/${Number(dealId)}/` : null;
+}
+
+/** A smart-process item's page (e.g. a truck in "Trucks", entityTypeId 1040). */
+function itemUrlFor(origin, entityTypeId, itemId) {
+  return origin ? `${origin}/crm/type/${Number(entityTypeId)}/details/${Number(itemId)}/` : null;
+}
+
+/** The portal's address, for a link to a deal a person can open. */
+async function dealUrl(dealId) {
+  return dealUrlFor(await portalOrigin(), dealId);
 }
 
 async function call(method, params, { fetchImpl = fetch, timeoutMs = TIMEOUT_MS } = {}) {
@@ -166,6 +184,9 @@ module.exports = {
   callBitrix: call,
   TIMEOUT_MS,
   MAX_ROWS,
+  portalOrigin,
+  dealUrlFor,
+  itemUrlFor,
   dealUrl,
   findContactIdsByPhone,
   listContactsByLastName,
