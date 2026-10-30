@@ -46,6 +46,10 @@ function GroupRow({ group, expanded, onToggle, onOpen }) {
             className="btn btn-ghost btn-sm"
             onClick={onToggle}
             aria-expanded={expanded}
+            // A check key such as `home_time.board_disagrees_with_state` has no
+            // space; on a phone it must break rather than push the severity
+            // and count out of view.
+            style={{ textAlign: "left", overflowWrap: "anywhere" }}
           >
             {expanded ? "▾" : "▸"} {group.label}
           </button>
@@ -64,7 +68,7 @@ function GroupRow({ group, expanded, onToggle, onOpen }) {
               type="button"
               className="btn btn-ghost btn-sm"
               onClick={() => onOpen(finding.id)}
-              style={{ textAlign: "left" }}
+              style={{ textAlign: "left", overflowWrap: "anywhere" }}
             >
               {finding.title}
             </button>

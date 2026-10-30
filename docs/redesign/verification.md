@@ -39,6 +39,9 @@ picked it up without its logic being edited. No dependency was added.
 - Selects with an inline `padding` drew their text under the arrow.
 - On a phone a table could shrink a column to one letter per line (Groups);
   cells now break only between words and the table scrolls inside its card.
+  The one place an unbroken identifier must still break — a check key such as
+  `home_time.board_disagrees_with_state` in Needs Attention — keeps doing so,
+  so its severity and count stay in view.
 
 ## Behaviour changes — the complete list
 
@@ -82,9 +85,10 @@ The before set and screenshots are on the never-merged branch
 
 | Check | Result |
 |---|---|
-| Screens captured | 150 desktop + 150 mobile after vs 151 + 151 before (the one extra was the public leaderboard screenshot, captured separately) |
+| Screens captured | 153 desktop + 154 mobile after vs 150 + 151 before (plus the login and public leaderboard shots); the three new screens are the Leads source filter's tabs, which the crawler can now see as a tab bar |
 | Desktop parity, every control on every screen | identical, except the Home Time Efficiency controls now appear once instead of twice (the fix above) |
-| Mobile parity | identical, except the ☰ menu button is now labelled "Open menu" |
+| Mobile parity | identical, except the ☰ menu button (an empty label to the crawler) is now labelled "Open menu" — 149 screens, 149 buttons — and the Efficiency de-duplication |
+| Phone stacking | with the page scrolled, the top bar is above the Live Locations map; the open drawer is above it and the backdrop beside it |
 | Table headers | none lost on any screen |
 | Headings | same text once decorative emoji are ignored |
 | Console errors while crawling | 0 |
