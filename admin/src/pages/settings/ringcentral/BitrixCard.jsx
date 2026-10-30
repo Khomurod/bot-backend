@@ -22,8 +22,8 @@ function Row({ label, value, warn = false }) {
   if (value === null || value === undefined || value === "") return null;
   return (
     <div style={{ display: "flex", gap: 8, fontSize: 13, padding: "3px 0" }}>
-      <span style={{ color: "#94a3b8", minWidth: 190 }}>{label}</span>
-      <span style={{ color: warn ? "#f87171" : "#cbd5e1", fontFamily: warn ? "inherit" : "ui-monospace, monospace" }}>
+      <span style={{ color: "var(--text-muted)", minWidth: 190 }}>{label}</span>
+      <span style={{ color: warn ? "var(--danger)" : "var(--text-secondary)", fontFamily: warn ? "inherit" : "ui-monospace, monospace" }}>
         {value}
       </span>
     </div>
@@ -60,7 +60,7 @@ export default function BitrixCard({ onMessage, onMapped }) {
   return (
     <div className="card" style={{ marginBottom: 16 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
-        <h3 style={{ margin: 0 }}>🧩 Bitrix24 — who a lead is assigned to</h3>
+        <h3 style={{ margin: 0 }}>Bitrix24 — who a lead is assigned to</h3>
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
           <span className={`badge ${settings?.configured ? "badge-active" : "badge-inactive"}`}>
             {settings?.configured ? "Configured" : "Not configured"}
@@ -71,7 +71,7 @@ export default function BitrixCard({ onMessage, onMapped }) {
         </div>
       </div>
 
-      <p style={{ fontSize: 13, color: "#94a3b8", marginTop: 8, marginBottom: 8 }}>
+      <p style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 8, marginBottom: 8 }}>
         A Facebook lead is texted from the number of whoever Bitrix assigned it to. Bitrix assigns
         <strong> after </strong> the lead is created, so the app re-reads the owner for up to{" "}
         <strong>{Math.round((settings?.assigneeWaitMs ?? 0) / 1000)}s</strong> and matches it to the
@@ -101,15 +101,15 @@ export default function BitrixCard({ onMessage, onMapped }) {
       <BitrixAutomapPanel onMapped={onMapped} />
 
       {diag && (
-        <div style={{ marginTop: 12, padding: 10, borderRadius: 8, background: "rgba(148,163,184,0.08)" }}>
-          <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6, color: diag.ok ? "#22c55e" : "#f87171" }}>
+        <div style={{ marginTop: 12, padding: 10, borderRadius: 8, background: "var(--neutral-soft)" }}>
+          <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6, color: diag.ok ? "var(--success)" : "var(--danger)" }}>
             {diag.ok ? "✓ Bitrix is aligned" : "✕ Needs attention"}
           </div>
           {(diag.steps || []).map((s, idx) => (
             <div key={idx} style={{ fontSize: 12, marginBottom: 5 }}>
-              <span style={{ color: s.ok ? "#22c55e" : "#f87171" }}>{s.ok ? "✓" : "✕"}</span>{" "}
-              <strong style={{ color: "#cbd5e1" }}>{s.label}:</strong>{" "}
-              <span style={{ color: "#94a3b8" }}>{s.detail}</span>
+              <span style={{ color: s.ok ? "var(--success)" : "var(--danger)" }}>{s.ok ? "✓" : "✕"}</span>{" "}
+              <strong style={{ color: "var(--text-secondary)" }}>{s.label}:</strong>{" "}
+              <span style={{ color: "var(--text-muted)" }}>{s.detail}</span>
             </div>
           ))}
         </div>

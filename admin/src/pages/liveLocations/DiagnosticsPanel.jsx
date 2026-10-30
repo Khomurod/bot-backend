@@ -45,7 +45,7 @@ export function DiagnosticsPanel({ snapshot, lastUpdated, providerErrors }) {
         ))}
       </div>
       {providerErrors && providerErrors.length > 0 && (
-        <div style={{ marginTop: 8, fontSize: 12, color: "#ef4444" }}>
+        <div style={{ marginTop: 8, fontSize: 12, color: "var(--danger)" }}>
           Provider errors: {providerErrors.map((e) => `${e.provider} (${e.code || "error"})`).join(", ")}
         </div>
       )}

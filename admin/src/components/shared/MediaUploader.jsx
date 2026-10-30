@@ -134,8 +134,8 @@ export const MediaUploader = React.memo(function MediaUploader({ onAdd, onRemove
             height: 80,
             borderRadius: 8,
             overflow: "hidden",
-            background: "rgba(255,255,255,0.1)",
-            border: "1px solid rgba(255,255,255,0.2)",
+            background: "var(--neutral-soft)",
+            border: "1px solid var(--border)",
           }}>
             {(m.type || m.media_type) === "photo" ? (
               <img src={m.url} style={{ width: "100%", height: "100%", objectFit: "cover" }} alt="" />

@@ -149,7 +149,7 @@ export default function AutoReactionsPanel() {
 
   return (
     <div>
-      <p style={{ color: "#94a3b8", marginTop: 0 }}>
+      <p style={{ color: "var(--text-muted)", marginTop: 0 }}>
         Pick a user — from the list of people the bot has seen, or by typing a Telegram username —
         and a reaction. The bot then automatically adds that reaction to every message that user
         posts in any group it is in.

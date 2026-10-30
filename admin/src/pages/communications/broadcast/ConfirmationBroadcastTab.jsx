@@ -53,7 +53,7 @@ export function ConfirmationBroadcastTab({
     <div className="broadcast-layout">
       <div className="broadcast-editor-section">
         <div className="card">
-          <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16 }}>✍️ Compose Message</h3>
+          <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16 }}>Compose Message</h3>
           <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12 }}>Use the toolbar to format text with Telegram-compatible HTML tags.</p>
           <PlaceholderChips
             placeholders={broadcastPlaceholders}
@@ -102,7 +102,7 @@ export function ConfirmationBroadcastTab({
           {/* ─── Inline Buttons Builder ─── */}
           <div className="card button-builder" style={{ marginTop: 20, background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <h3 style={{ fontSize: 15, fontWeight: 600 }}>🔘 Inline Buttons</h3>
+              <h3 style={{ fontSize: 15, fontWeight: 600 }}>Inline Buttons</h3>
               <button type="button" className="btn btn-ghost" onClick={handleConfAutoTranslateButtons} disabled={confBtnTranslating} style={{ fontSize: 12, padding: '4px 12px', border: '1px solid var(--border)' }}>
                 {confBtnTranslating ? '⏳' : '🌐'} Auto-translate Labels
               </button>
@@ -148,7 +148,7 @@ export function ConfirmationBroadcastTab({
 
       <div className="broadcast-preview-section">
         <div className="card">
-          <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>📱 Live Preview</h3>
+          <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>Live Preview</h3>
           <TelegramPreview label="How it will look in Telegram" text={confMessage}
             langTabs={{
               en: { text: confMessage, buttons: confirmationButtons.map(b => b.label_en).filter(Boolean) },
@@ -163,7 +163,7 @@ export function ConfirmationBroadcastTab({
     {/* ─── Confirmation Broadcast History ─── */}
     <div className="card broadcast-history" style={{ marginTop: 24 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-        <h3 style={{ fontSize: 15, fontWeight: 600 }}>📋 Broadcast History</h3>
+        <h3 style={{ fontSize: 15, fontWeight: 600 }}>Broadcast History</h3>
         <button type="button" className="btn btn-ghost" onClick={loadConfHistory} style={{ fontSize: 12, padding: '4px 12px', border: '1px solid var(--border)' }}>🔄 Refresh</button>
       </div>
       {confHistoryLoading ? <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>Loading...</div>

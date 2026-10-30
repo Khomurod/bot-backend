@@ -7,6 +7,7 @@ import { TargetingSection } from "./broadcast/TargetingSection";
 import { RegularBroadcastTab } from "./broadcast/RegularBroadcastTab";
 import { ConfirmationBroadcastTab } from "./broadcast/ConfirmationBroadcastTab";
 import { SendConfirmDialog } from "./broadcast/SendConfirmDialog";
+import TabBar from "../../components/ui/TabBar";
 
 /**
  * Send Message — the composer tab of Communications (was the Broadcast Center
@@ -90,10 +91,16 @@ export default function SendMessageTab() {
     <div>
       <p style={{ color: "var(--text-secondary)", fontSize: 14, marginBottom: 20 }}>Send messages and media to multiple driver groups.</p>
 
-      <div className="broadcast-tabs">
-        <button className={`broadcast-tab-btn ${broadcastTab === 'regular' ? 'active' : ''}`} onClick={() => setBroadcastTab('regular')}>📢 Announcement</button>
-        <button className={`broadcast-tab-btn ${broadcastTab === 'confirmation' ? 'active' : ''}`} onClick={() => setBroadcastTab('confirmation')}>✅ Confirmation</button>
-      </div>
+      <TabBar
+        size="sm"
+        tabs={[
+          { key: 'regular', label: 'Announcement' },
+          { key: 'confirmation', label: 'Confirmation' },
+        ]}
+        value={broadcastTab}
+        onChange={setBroadcastTab}
+        ariaLabel="Message type"
+      />
 
       <TargetingSection {...targeting} />
 

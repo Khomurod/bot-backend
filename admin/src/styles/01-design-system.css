@@ -1,30 +1,170 @@
-/* ─── Design System ─── */
+/* ─── Design system: tokens and base elements ───
+ *
+ * ONE PRODUCT, TWO THEMES. Every colour in the panel comes from a token here;
+ * components and pages use `var(--…)` rather than a literal (the few fixed
+ * palettes that stay are listed in docs/redesign/verification.md). Light is the default,
+ * dark follows the operating system until a person picks one with the theme
+ * switch in the sidebar (`data-theme` on <html>, set before first paint by
+ * index.html so the page never flashes the wrong theme).
+ *
+ * The language is shadcn/ui's (neutral zinc surfaces, one indigo accent, 1px
+ * borders, small radii, quiet shadows), written as plain CSS so no page had to
+ * be rewritten to use it. The older token names (--bg-card, --text-secondary,
+ * --accent-soft …) are kept as the public vocabulary every page already uses.
+ */
 :root {
-  /* Native widgets (date/time pickers, datalist, scrollbars) render dark. */
-  color-scheme: dark;
-  --bg-primary: #0f1117;
-  --bg-secondary: #1a1d27;
-  --bg-card: #1e2230;
-  --bg-card-hover: #252a3a;
-  --bg-input: #252a3a;
-  --border: #2d3348;
-  --border-focus: #6366f1;
-  --text-primary: #f1f5f9;
-  --text-secondary: #94a3b8;
-  --text-muted: #64748b;
-  --accent: #6366f1;
-  --accent-hover: #818cf8;
-  --accent-soft: rgba(99, 102, 241, 0.15);
-  --success: #22c55e;
-  --success-soft: rgba(34, 197, 94, 0.15);
-  --warning: #f59e0b;
-  --warning-soft: rgba(245, 158, 11, 0.15);
-  --danger: #ef4444;
-  --danger-soft: rgba(239, 68, 68, 0.15);
+  color-scheme: light;
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  /* surfaces */
+  --bg-primary: #f6f7f9;          /* the app canvas */
+  --bg-secondary: #ffffff;        /* sidebar, table heads, dialogs */
+  --bg-card: #ffffff;             /* cards */
+  --bg-card-hover: #f4f4f5;
+  --bg-input: #ffffff;
+  --surface-muted: #f4f4f5;       /* quiet panels inside a card */
+  --surface-sunken: #fafafa;
+
+  /* lines */
+  --border: #e4e4e7;
+  --border-strong: #d4d4d8;
+  --border-focus: #4f46e5;
+
+  /* text */
+  --text-primary: #09090b;
+  --text-secondary: #52525b;
+  --text-muted: #71717a;
+  --text-on-accent: #ffffff;
+
+  /* brand and status */
+  --accent: #4f46e5;
+  --accent-hover: #4338ca;
+  --accent-text: #4338ca;
+  --accent-soft: rgba(79, 70, 229, 0.08);
+  --accent-border: rgba(79, 70, 229, 0.28);
+  --success: #15803d;
+  --success-solid: #16a34a;
+  --success-soft: rgba(22, 163, 74, 0.1);
+  --success-border: rgba(22, 163, 74, 0.3);
+  --warning: #b45309;
+  --warning-solid: #d97706;
+  --warning-soft: rgba(217, 119, 6, 0.1);
+  --warning-border: rgba(217, 119, 6, 0.32);
+  --caution: #c2410c;             /* orange: between warning and danger */
+  --danger: #b91c1c;
+  --danger-solid: #dc2626;
+  --danger-soft: rgba(220, 38, 38, 0.08);
+  --danger-border: rgba(220, 38, 38, 0.3);
+  --info: #0369a1;
+  --info-soft: rgba(2, 132, 199, 0.1);
+  --neutral-soft: rgba(113, 113, 122, 0.12);
+
+  /* shape */
   --radius: 12px;
   --radius-sm: 8px;
-  --shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
-  --transition: all 0.2s ease;
+  --radius-xs: 6px;
+  --shadow-xs: 0 1px 2px rgba(9, 9, 11, 0.05);
+  --shadow: 0 1px 3px rgba(9, 9, 11, 0.06), 0 1px 2px rgba(9, 9, 11, 0.04);
+  --shadow-lg: 0 12px 32px rgba(9, 9, 11, 0.12), 0 2px 6px rgba(9, 9, 11, 0.06);
+  --ring: 0 0 0 3px rgba(79, 70, 229, 0.18);
+  --overlay: rgba(9, 9, 11, 0.45);
+  --transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+
+  --sidebar-width: 248px;
+  --topbar-height: 56px;
+}
+
+/* Dark: the operating system's choice, unless a person picked light … */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg-primary: #09090b;
+    --bg-secondary: #0f0f12;
+    --bg-card: #121215;
+    --bg-card-hover: #1b1b1f;
+    --bg-input: #0f0f12;
+    --surface-muted: #18181b;
+    --surface-sunken: #0c0c0e;
+    --border: #27272a;
+    --border-strong: #3f3f46;
+    --border-focus: #818cf8;
+    --text-primary: #fafafa;
+    --text-secondary: #a1a1aa;
+    --text-muted: #8b8b94;
+    --text-on-accent: #ffffff;
+    --accent: #6366f1;
+    --accent-hover: #818cf8;
+    --accent-text: #a5b4fc;
+    --accent-soft: rgba(129, 140, 248, 0.14);
+    --accent-border: rgba(129, 140, 248, 0.35);
+    --success: #4ade80;
+    --success-solid: #22c55e;
+    --success-soft: rgba(34, 197, 94, 0.14);
+    --success-border: rgba(34, 197, 94, 0.32);
+    --warning: #fbbf24;
+    --warning-solid: #f59e0b;
+    --warning-soft: rgba(245, 158, 11, 0.14);
+    --warning-border: rgba(245, 158, 11, 0.34);
+    --caution: #fb923c;
+    --danger: #f87171;
+    --danger-solid: #ef4444;
+    --danger-soft: rgba(239, 68, 68, 0.14);
+    --danger-border: rgba(239, 68, 68, 0.34);
+    --info: #38bdf8;
+    --info-soft: rgba(56, 189, 248, 0.14);
+    --neutral-soft: rgba(161, 161, 170, 0.14);
+    --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+    --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.55);
+    --ring: 0 0 0 3px rgba(129, 140, 248, 0.28);
+    --overlay: rgba(0, 0, 0, 0.6);
+  }
+}
+
+/* … or the person picked dark. Same values as the block above. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg-primary: #09090b;
+  --bg-secondary: #0f0f12;
+  --bg-card: #121215;
+  --bg-card-hover: #1b1b1f;
+  --bg-input: #0f0f12;
+  --surface-muted: #18181b;
+  --surface-sunken: #0c0c0e;
+  --border: #27272a;
+  --border-strong: #3f3f46;
+  --border-focus: #818cf8;
+  --text-primary: #fafafa;
+  --text-secondary: #a1a1aa;
+  --text-muted: #8b8b94;
+  --text-on-accent: #ffffff;
+  --accent: #6366f1;
+  --accent-hover: #818cf8;
+  --accent-text: #a5b4fc;
+  --accent-soft: rgba(129, 140, 248, 0.14);
+  --accent-border: rgba(129, 140, 248, 0.35);
+  --success: #4ade80;
+  --success-solid: #22c55e;
+  --success-soft: rgba(34, 197, 94, 0.14);
+  --success-border: rgba(34, 197, 94, 0.32);
+  --warning: #fbbf24;
+  --warning-solid: #f59e0b;
+  --warning-soft: rgba(245, 158, 11, 0.14);
+  --warning-border: rgba(245, 158, 11, 0.34);
+  --caution: #fb923c;
+  --danger: #f87171;
+  --danger-solid: #ef4444;
+  --danger-soft: rgba(239, 68, 68, 0.14);
+  --danger-border: rgba(239, 68, 68, 0.34);
+  --info: #38bdf8;
+  --info-soft: rgba(56, 189, 248, 0.14);
+  --neutral-soft: rgba(161, 161, 170, 0.14);
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.55);
+  --ring: 0 0 0 3px rgba(129, 140, 248, 0.28);
+  --overlay: rgba(0, 0, 0, 0.6);
 }
 
 * {
@@ -33,12 +173,17 @@
   box-sizing: border-box;
 }
 
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
 body {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: var(--font-sans);
   background: var(--bg-primary);
   color: var(--text-primary);
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   /* Never allow the page itself to pan sideways; wide content scrolls in place. */
   overflow-x: hidden;
 }
@@ -48,17 +193,58 @@ video {
   max-width: 100%;
 }
 
+/* ─── Admin typography ───
+   Scoped to the admin shell and the login screen. The public displays served
+   by the same app (/recruiters, /dispatch, /dispatchteam) draw their own
+   headings, links and text on their own surfaces, and must not inherit the
+   panel's. `:where()` keeps these as weak as a bare element selector, so any
+   class or inline style still wins. */
+:where(.app-layout, .login-container) {
+  font-size: 14px;
+  line-height: 1.5;
+  font-feature-settings: 'cv11', 'ss01';
+}
+
+:where(.app-layout, .login-container) :where(h1, h2, h3, h4) {
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+}
+
+:where(.app-layout, .login-container) h3 { font-size: 16px; font-weight: 600; }
+:where(.app-layout, .login-container) h4 { font-size: 14px; font-weight: 600; }
+
+:where(.app-layout, .login-container) a {
+  color: var(--accent-text);
+  text-underline-offset: 2px;
+}
+
+:where(.app-layout, .login-container) code {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0 4px;
+}
+
+:where(.app-layout, .login-container) :focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+}
+
 /* ─── Base form controls ───
-   Bare <input>/<select>/<textarea> (no class) previously fell back to default
-   browser chrome. Give them the same treatment as .form-input so every page
-   looks consistent without touching page logic. Inline styles and the
-   .form-* classes still win where they set the same properties. */
+   Bare <input>/<select>/<textarea> (no class) get the same treatment as
+   .form-input, so every page is consistent without touching page logic.
+   Inline styles and the .form-* classes still win where they set the same
+   properties. */
 input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]),
 select,
 textarea {
-  padding: 12px 16px;
+  padding: 8px 12px;
+  min-height: 36px;
   background: var(--bg-input);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
   color: var(--text-primary);
   font-size: 14px;
@@ -66,27 +252,39 @@ textarea {
   transition: var(--transition);
   outline: none;
   max-width: 100%;
+  box-shadow: var(--shadow-xs);
 }
 
 input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):focus,
 select:focus,
 textarea:focus {
   border-color: var(--border-focus);
-  box-shadow: 0 0 0 3px var(--accent-soft);
+  box-shadow: var(--ring);
+}
+
+input:disabled,
+select:disabled,
+textarea:disabled {
+  background: var(--surface-muted);
+  color: var(--text-muted);
+  cursor: not-allowed;
 }
 
 select:not([multiple]):not([size]) {
   cursor: pointer;
   appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%2394a3b8' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10l-5 5z'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%2371717a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' viewBox='0 0 24 24'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
-  background-position: right 12px center;
-  padding-right: 36px;
+  background-position: right 8px center;
+  /* !important because many selects carry an inline `padding` that would
+     otherwise put their text under the chevron. */
+  padding-right: 30px !important;
 }
 
 textarea {
   resize: vertical;
   min-height: 80px;
+  line-height: 1.5;
 }
 
 ::placeholder {
@@ -101,23 +299,24 @@ input[type="radio"] {
   width: 16px;
   height: 16px;
   cursor: pointer;
+  flex-shrink: 0;
 }
 
-/* Native file inputs: style the picker button like a small ghost button. */
+/* Native file inputs: the picker button looks like a secondary button. */
 input[type="file"] {
   color: var(--text-secondary);
   font-size: 13px;
 }
 
 input[type="file"]::file-selector-button {
-  padding: 8px 16px;
+  padding: 6px 12px;
   margin-right: 12px;
   border-radius: var(--radius-sm);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   background: var(--bg-card);
   color: var(--text-primary);
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
   font-family: inherit;
   cursor: pointer;
   transition: var(--transition);
@@ -125,13 +324,11 @@ input[type="file"]::file-selector-button {
 
 input[type="file"]::file-selector-button:hover {
   background: var(--bg-card-hover);
-  border-color: var(--accent);
 }
 
-/* Dark calendar/clock icons on date & time inputs (Chromium). */
+/* Calendar/clock icons follow the theme through `color-scheme` — no filter. */
 input[type="date"]::-webkit-calendar-picker-indicator,
 input[type="time"]::-webkit-calendar-picker-indicator,
 input[type="datetime-local"]::-webkit-calendar-picker-indicator {
-  filter: invert(0.7);
   cursor: pointer;
 }

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import * as api from "../api";
 import CompanyEmployeesTab from "./users/CompanyEmployeesTab";
+import TabBar from "../components/ui/TabBar";
 
 function formatDateTime(iso) {
   if (!iso) return "—";
@@ -71,7 +72,7 @@ export default function UsersPage() {
   return (
     <div>
       <div className="page-header">
-        <h2>👤 Users</h2>
+        <h2>Users</h2>
         <p>
           Everyone the bot has seen: anyone who texts in a group the bot is in, plus users who tap
           the bot's inline buttons. Keyed by a stable Telegram user ID. No message text is stored.
@@ -84,17 +85,7 @@ export default function UsersPage() {
         </div>
       )}
 
-      <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "12px" }}>
-        {FILTERS.map((f) => (
-          <button
-            key={f.key}
-            className={`btn btn-sm ${filter === f.key ? "btn-primary" : "btn-ghost"}`}
-            onClick={() => setFilter(f.key)}
-          >
-            {f.label}
-          </button>
-        ))}
-      </div>
+      <TabBar tabs={FILTERS} value={filter} onChange={setFilter} ariaLabel="Which users" />
 
       {showEmployees ? <CompanyEmployeesTab /> : (
       <>

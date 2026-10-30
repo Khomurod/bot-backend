@@ -12,6 +12,7 @@ import LearningTab from "./operations/LearningTab";
 import SystemsTab from "./operations/SystemsTab";
 import ConfigurationBanner from "./operations/ConfigurationBanner";
 import * as api from "../api";
+import TabBar from "../components/ui/TabBar";
 
 /**
  * Needs Attention — where the system says its own facts disagree.
@@ -60,7 +61,7 @@ export default function OperationsPage({ initialTab }) {
   return (
     <div>
       <div className="page-header">
-        <h2>🔎 Needs Attention</h2>
+        <h2>Needs Attention</h2>
         <p>
           Every fifteen minutes the system compares its own records and files a
           finding wherever two of them disagree. Nothing here is a guess: each one
@@ -91,18 +92,7 @@ export default function OperationsPage({ initialTab }) {
         </div>
       )}
 
-      <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
-        {TABS.map((t) => (
-          <button
-            key={t.key}
-            type="button"
-            className={`btn btn-sm ${ops.tab === t.key ? "btn-primary" : "btn-ghost"}`}
-            onClick={() => ops.setTab(t.key)}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <TabBar tabs={TABS} value={ops.tab} onChange={ops.setTab} ariaLabel="Operations sections" />
 
       {ops.tab === "findings" && <FindingsListCard {...ops} />}
       {ops.tab === "history" && <HistoryTab {...ops} />}

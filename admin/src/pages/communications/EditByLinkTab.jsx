@@ -99,7 +99,7 @@ export default function EditByLinkTab() {
       {showDeleteConfirm && (
         <div className="confirm-overlay" onClick={() => setShowDeleteConfirm(false)}>
           <div className="confirm-dialog" onClick={(e) => e.stopPropagation()}>
-            <h3>🗑️ Delete this message?</h3>
+            <h3>Delete this message?</h3>
             <p>This will permanently remove the message from Telegram. This action cannot be undone.</p>
             <div className="confirm-actions">
               <button className="btn btn-ghost" onClick={() => setShowDeleteConfirm(false)}>Cancel</button>

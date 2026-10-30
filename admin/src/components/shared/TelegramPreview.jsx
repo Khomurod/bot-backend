@@ -171,7 +171,7 @@ export const TelegramPreview = React.memo(function TelegramPreview({ text, butto
     <div className="ios-glass" style={{
       maxWidth: 360,
       width: "100%",
-      border: "1px solid rgba(255,255,255,0.2)",
+      border: "1px solid var(--border)",
       borderRadius: 16,
       overflow: "hidden",
       fontFamily: "system-ui, -apple-system, sans-serif",
@@ -179,17 +179,17 @@ export const TelegramPreview = React.memo(function TelegramPreview({ text, butto
       margin: "0 auto",
     }}>
       <div style={{
-        background: "rgba(255,255,255,0.1)",
+        background: "var(--surface-muted)",
         padding: "10px 16px",
         fontWeight: 600,
         fontSize: 14,
-        borderBottom: "1px solid rgba(255,255,255,0.1)",
+        borderBottom: "1px solid var(--border)",
       }}>
         {label || "Preview"}
       </div>
 
       {previewModel.tabOrder.length > 0 && (
-        <div style={{ display: "flex", padding: "8px 16px", gap: 8, background: "rgba(0,0,0,0.1)" }}>
+        <div style={{ display: "flex", padding: "8px 16px", gap: 8, background: "var(--surface-muted)" }}>
           {previewModel.tabOrder.map((l) => (
             <button
               key={l}
@@ -199,8 +199,8 @@ export const TelegramPreview = React.memo(function TelegramPreview({ text, butto
                 padding: "6px",
                 border: "none",
                 borderRadius: 8,
-                background: activeTab === l ? "#007aff" : "rgba(255,255,255,0.1)",
-                color: activeTab === l ? "#fff" : "var(--text-color)",
+                background: activeTab === l ? "#007aff" : "var(--bg-card)",
+                color: activeTab === l ? "#fff" : "var(--text-secondary)",
                 fontSize: 12,
                 fontWeight: 600,
                 cursor: "pointer",
@@ -234,7 +234,7 @@ export const TelegramPreview = React.memo(function TelegramPreview({ text, butto
         <div style={{ padding: "0 16px 16px", display: "flex", flexDirection: "column", gap: 8 }}>
           {visibleButtons.map((btn, i) => (
             <div key={i} style={{
-              background: "rgba(255,255,255,0.1)",
+              background: "var(--surface-muted)",
               padding: "12px",
               textAlign: "center",
               borderRadius: 10,
@@ -242,7 +242,7 @@ export const TelegramPreview = React.memo(function TelegramPreview({ text, butto
               color: "#007aff",
               fontWeight: 500,
               cursor: "pointer",
-              border: "1px solid rgba(255,255,255,0.05)",
+              border: "1px solid var(--border)",
             }}>
               {btn}
             </div>

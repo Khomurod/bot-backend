@@ -29,8 +29,8 @@ function EvidenceTable({ evidence }) {
       <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>
         <tbody>
           {entries.map(([key, value]) => (
-            <tr key={key} style={{ borderTop: "1px solid rgba(148,163,184,0.15)" }}>
-              <td style={{ padding: "6px 8px", color: "#94a3b8", width: 180 }}>{key}</td>
+            <tr key={key} style={{ borderTop: "1px solid var(--border)" }}>
+              <td style={{ padding: "6px 8px", color: "var(--text-muted)", width: 180 }}>{key}</td>
               <td style={{ padding: "6px 8px" }}>
                 <code>
                   {value === null || value === undefined
@@ -62,23 +62,23 @@ function ProposedChange({ finding }) {
       <div className="table-container">
         <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>
           <tbody>
-            <tr style={{ color: "#94a3b8" }}>
+            <tr style={{ color: "var(--text-muted)" }}>
               <td style={{ padding: "4px 8px" }}>Field</td>
               <td style={{ padding: "4px 8px" }}>Now</td>
               <td style={{ padding: "4px 8px" }}>Would become</td>
             </tr>
             {rows.map((row) => (
-              <tr key={row.field} style={{ borderTop: "1px solid rgba(148,163,184,0.15)" }}>
+              <tr key={row.field} style={{ borderTop: "1px solid var(--border)" }}>
                 <td style={{ padding: "6px 8px" }}><code>{row.field}</code></td>
-                <td style={{ padding: "6px 8px", color: "#94a3b8" }}>{row.from}</td>
-                <td style={{ padding: "6px 8px", color: "#22c55e" }}>{row.to}</td>
+                <td style={{ padding: "6px 8px", color: "var(--text-muted)" }}>{row.from}</td>
+                <td style={{ padding: "6px 8px", color: "var(--success)" }}>{row.to}</td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
       {context.length > 0 && (
-        <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 6 }}>
+        <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 6 }}>
           {context.map((c) => `${c.field}: ${c.value}`).join(" · ")}
         </div>
       )}
@@ -231,7 +231,7 @@ export default function FindingDetailModal({
               <h4>What this means</h4>
               <p>{tier.hint}</p>
             </div>
-            <div style={{ fontSize: 12, color: "#94a3b8" }}>
+            <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
               First seen {formatWhen(finding.firstSeenAt)} · still true as of{" "}
               {formatWhen(finding.lastSeenAt)}
               {finding.status !== "open" && ` · ${finding.status}`}

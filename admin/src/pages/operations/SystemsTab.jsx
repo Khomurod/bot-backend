@@ -24,13 +24,13 @@ import useVisibleInterval from "../../utils/useVisibleInterval";
  * There is no restart button and no retry, deliberately. See `api/systems.js`.
  */
 const STATE = {
-  needs_human_attention: { label: "Needs a person", colour: "#dc2626", rank: 0 },
-  stale_stopped: { label: "Stopped", colour: "#dc2626", rank: 1 },
-  repeatedly_failing: { label: "Failing", colour: "#ea580c", rank: 2 },
-  degraded: { label: "Blipped", colour: "#d97706", rank: 3 },
-  cannot_determine: { label: "Not reported", colour: "#64748b", rank: 4 },
-  recovered_automatically: { label: "Recovered by itself", colour: "#0891b2", rank: 5 },
-  healthy: { label: "Working", colour: "#16a34a", rank: 6 },
+  needs_human_attention: { label: "Needs a person", colour: "var(--danger)", rank: 0 },
+  stale_stopped: { label: "Stopped", colour: "var(--danger)", rank: 1 },
+  repeatedly_failing: { label: "Failing", colour: "var(--caution)", rank: 2 },
+  degraded: { label: "Blipped", colour: "var(--warning)", rank: 3 },
+  cannot_determine: { label: "Not reported", colour: "var(--text-muted)", rank: 4 },
+  recovered_automatically: { label: "Recovered by itself", colour: "var(--info)", rank: 5 },
+  healthy: { label: "Working", colour: "var(--success)", rank: 6 },
 };
 
 const GROUP_LABEL = {
@@ -56,7 +56,7 @@ function Tile({ label, value, colour }) {
   return (
     <div style={{
       flex: "1 1 120px", padding: "10px 12px", borderRadius: 8,
-      border: "1px solid rgba(148,163,184,0.25)",
+      border: "1px solid var(--border)",
     }}>
       <div style={{ fontSize: 22, fontWeight: 600, color: colour || "inherit" }}>{value ?? 0}</div>
       <div className="muted" style={{ fontSize: 12 }}>{label}</div>
@@ -70,9 +70,9 @@ function Row({ row }) {
     || row.state === "repeatedly_failing";
   return (
     <div style={{
-      border: "1px solid rgba(148,163,184,0.25)",
+      border: "1px solid var(--border)",
       borderLeft: `3px solid ${state.colour}`,
-      background: acts ? "rgba(220,38,38,0.06)" : "transparent",
+      background: acts ? "var(--danger-soft)" : "transparent",
       borderRadius: 8, padding: "8px 12px", marginBottom: 6,
     }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
@@ -95,7 +95,7 @@ function Row({ row }) {
           {row.lastError && (
             <div
               style={{
-                fontSize: 12, marginTop: 4, color: "#b91c1c",
+                fontSize: 12, marginTop: 4, color: "var(--danger)",
                 fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
                 wordBreak: "break-word",
               }}
@@ -107,7 +107,7 @@ function Row({ row }) {
         <div className="muted" style={{ fontSize: 12, textAlign: "right", flex: "0 0 auto" }}>
           <div>last pass {ago(row.lastRunAt)}</div>
           {row.consecutiveFailures > 0 && (
-            <div style={{ color: "#ea580c" }}>{row.consecutiveFailures} failures in a row</div>
+            <div style={{ color: "var(--caution)" }}>{row.consecutiveFailures} failures in a row</div>
           )}
           {row.runsTotal > 0 && <div>{row.runsTotal} passes recorded</div>}
         </div>
@@ -153,15 +153,15 @@ export default function SystemsTab({ flash }) {
     <div>
       {failure && (
         <div style={{
-          border: "1px solid #dc2626", borderRadius: 8, padding: "8px 12px", marginBottom: 12,
+          border: "1px solid var(--danger-solid)", borderRadius: 8, padding: "8px 12px", marginBottom: 12,
         }}>{failure}</div>
       )}
 
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
-        <Tile label="Need a person" value={data?.needingAttention} colour="#dc2626" />
-        <Tile label="Working" value={data?.byState?.healthy} colour="#16a34a" />
-        <Tile label="Stopped" value={data?.byState?.stale_stopped} colour="#dc2626" />
-        <Tile label="Not reported yet" value={data?.byState?.cannot_determine} colour="#64748b" />
+        <Tile label="Need a person" value={data?.needingAttention} colour="var(--danger)" />
+        <Tile label="Working" value={data?.byState?.healthy} colour="var(--success)" />
+        <Tile label="Stopped" value={data?.byState?.stale_stopped} colour="var(--danger)" />
+        <Tile label="Not reported yet" value={data?.byState?.cannot_determine} colour="var(--text-muted)" />
         <Tile label="Components" value={components.length} />
       </div>
 

@@ -21,14 +21,14 @@ function CheckRow({ check, busy, onSave }) {
   const [cap, setCap] = React.useState(check.maxAutoPerRun);
 
   return (
-    <tr style={{ borderTop: "1px solid rgba(148,163,184,0.15)" }}>
+    <tr style={{ borderTop: "1px solid var(--border)" }}>
       <td style={{ padding: "10px 8px" }}>
         <div>{checkLabel(check.checkKey)}</div>
-        <div style={{ color: "#94a3b8", fontSize: 11 }}>
+        <div style={{ color: "var(--text-muted)", fontSize: 11 }}>
           <code>{check.checkKey}</code> → <code>{check.actionKey}</code>
         </div>
         {check.updatedBy && (
-          <div style={{ color: "#94a3b8", fontSize: 11 }}>
+          <div style={{ color: "var(--text-muted)", fontSize: 11 }}>
             last changed by {check.updatedBy}
           </div>
         )}
@@ -78,7 +78,7 @@ export default function ChecksTab({ checks, busy, setCheckEnabled, preview, load
     <>
       <div className="card" style={{ marginBottom: 16 }}>
         <strong>What the system may correct by itself</strong>
-        <div style={{ color: "#94a3b8", fontSize: 12, marginTop: 4 }}>
+        <div style={{ color: "var(--text-muted)", fontSize: 12, marginTop: 4 }}>
           Only checks whose corrected value is <em>already recorded elsewhere in our
           own data</em> can appear here at all — nothing is inferred, averaged or
           guessed. Everything else stays a finding a person reads.
@@ -110,7 +110,7 @@ export default function ChecksTab({ checks, busy, setCheckEnabled, preview, load
         <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
           <div>
             <strong>Dry run</strong>
-            <div style={{ color: "#94a3b8", fontSize: 12 }}>
+            <div style={{ color: "var(--text-muted)", fontSize: 12 }}>
               Exactly what enabling these would do right now, writing nothing.
             </div>
           </div>
@@ -121,13 +121,13 @@ export default function ChecksTab({ checks, busy, setCheckEnabled, preview, load
 
         {preview && (
           <div style={{ marginTop: 12, fontSize: 12 }}>
-            <div style={{ color: "#94a3b8" }}>
+            <div style={{ color: "var(--text-muted)" }}>
               {preview.summary?.open ?? 0} findings open ·{" "}
               {preview.summary?.eligible ?? 0} would be applied ·{" "}
               {preview.summary?.skipped?.disabled ?? 0} waiting for permission
             </div>
             {(preview.capped || []).map((c) => (
-              <div key={c.checkKey} style={{ color: "#f59e0b", marginTop: 6 }}>
+              <div key={c.checkKey} style={{ color: "var(--warning)", marginTop: 6 }}>
                 {checkLabel(c.checkKey)} wants to change {c.wanted} rows against a cap
                 of {c.cap} — it would change nothing and report itself instead.
               </div>

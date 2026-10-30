@@ -1,4 +1,5 @@
 import React, { Suspense, lazy, useState } from "react";
+import TabBar from "../components/ui/TabBar";
 
 /**
  * Settings — tab shell. Each tab lives in ./settings/ and is lazy-loaded so
@@ -40,10 +41,22 @@ const RetiredLeftoversTab = lazy(() => import("./settings/RetiredLeftoversTab"))
 const GrossRaceTab = lazy(() => import("./settings/GrossRaceTab"));
 const MetaCrmTab = lazy(() => import("./settings/MetaCrmTab"));
 
-const TAB_KEYS = [
-  "location", "ringcentral", "metacrm", "groups", "samsara",
-  "board", "safety", "ai", "notifications", "reactions", "access", "grossrace", "leftovers",
+const SETTINGS_TABS = [
+  { key: "location", label: "Live Location" },
+  { key: "ringcentral", label: "RingCentral" },
+  { key: "metacrm", label: "Facebook ↔ Bitrix" },
+  { key: "groups", label: "Telegram Groups" },
+  { key: "samsara", label: "Samsara" },
+  { key: "board", label: "Dispatcher Board" },
+  { key: "safety", label: "Safety Approvals" },
+  { key: "ai", label: "AI" },
+  { key: "notifications", label: "Notifications" },
+  { key: "reactions", label: "Auto Reactions" },
+  { key: "access", label: "Bot Group Access" },
+  { key: "grossrace", label: "Gross Grand Prix" },
+  { key: "leftovers", label: "Retired Leftovers" },
 ];
+const TAB_KEYS = SETTINGS_TABS.map((t) => t.key);
 
 /**
  * `initialTab` is which tab to OPEN ON, not which tab is shown — the buttons
@@ -56,25 +69,11 @@ export default function SettingsPage({ initialTab }) {
   return (
     <div>
       <div className="page-header">
-        <h2>⚙️ Settings</h2>
+        <h2>Settings</h2>
         <p>Integration credentials and configuration for the bot's external services.</p>
       </div>
-      <div className="ios-glass ai-tab-bar" style={{ marginBottom: 20 }}>
-        <button className={`btn ${tab === "location" ? "btn-primary" : "btn-ghost"} touch-target`} onClick={() => setTab("location")}>📡 Live Location</button>
-        <button className={`btn ${tab === "ringcentral" ? "btn-primary" : "btn-ghost"} touch-target`} onClick={() => setTab("ringcentral")}>📞 RingCentral</button>
-        <button className={`btn ${tab === "metacrm" ? "btn-primary" : "btn-ghost"} touch-target`} onClick={() => setTab("metacrm")}>📣 Facebook ↔ Bitrix</button>
-        <button className={`btn ${tab === "groups" ? "btn-primary" : "btn-ghost"} touch-target`} onClick={() => setTab("groups")}>💬 Telegram Groups</button>
-        <button className={`btn ${tab === "samsara" ? "btn-primary" : "btn-ghost"} touch-target`} onClick={() => setTab("samsara")}>🛰️ Samsara</button>
-        <button className={`btn ${tab === "board" ? "btn-primary" : "btn-ghost"} touch-target`} onClick={() => setTab("board")}>🗂️ Dispatcher Board</button>
-        <button className={`btn ${tab === "safety" ? "btn-primary" : "btn-ghost"} touch-target`} onClick={() => setTab("safety")}>🛡️ Safety Approvals</button>
-        <button className={`btn ${tab === "ai" ? "btn-primary" : "btn-ghost"} touch-target`} onClick={() => setTab("ai")}>🤖 AI</button>
-        <button className={`btn ${tab === "notifications" ? "btn-primary" : "btn-ghost"} touch-target`} onClick={() => setTab("notifications")}>🔔 Notifications</button>
-        <button className={`btn ${tab === "reactions" ? "btn-primary" : "btn-ghost"} touch-target`} onClick={() => setTab("reactions")}>😀 Auto Reactions</button>
-        <button className={`btn ${tab === "access" ? "btn-primary" : "btn-ghost"} touch-target`} onClick={() => setTab("access")}>🔍 Bot Group Access</button>
-        <button className={`btn ${tab === "grossrace" ? "btn-primary" : "btn-ghost"} touch-target`} onClick={() => setTab("grossrace")}>🏁 Gross Grand Prix</button>
-        <button className={`btn ${tab === "leftovers" ? "btn-primary" : "btn-ghost"} touch-target`} onClick={() => setTab("leftovers")}>🧹 Retired Leftovers</button>
-      </div>
-      <Suspense fallback={<div style={{ padding: 20, color: "#94a3b8" }}>Loading…</div>}>
+      <TabBar tabs={SETTINGS_TABS} value={tab} onChange={setTab} ariaLabel="Settings sections" />
+      <Suspense fallback={<div className="loading"><div className="spinner"></div> Loading…</div>}>
         {tab === "location" && <LocationProvidersTab />}
         {tab === "ringcentral" && <RingCentralTab />}
         {tab === "metacrm" && <MetaCrmTab />}

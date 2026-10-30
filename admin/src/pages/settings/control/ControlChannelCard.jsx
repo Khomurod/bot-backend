@@ -35,7 +35,7 @@ function Operators({ operators, onAdd, onRemove, busy }) {
           key={op.telegramUserId}
           style={{
             display: "flex", gap: 10, alignItems: "center",
-            borderTop: "1px solid rgba(148,163,184,0.2)", padding: "8px 0",
+            borderTop: "1px solid var(--border)", padding: "8px 0",
           }}
         >
           <div style={{ flex: "1 1 auto", minWidth: 0 }}>

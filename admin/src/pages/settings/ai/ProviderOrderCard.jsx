@@ -61,12 +61,12 @@ export default function ProviderOrderCard({ providers, settings, onSaved, flash 
   return (
     <div className="card" style={{ marginBottom: 12 }}>
       <strong>Order of providers</strong>
-      <div style={{ color: "#94a3b8", fontSize: 12, marginTop: 4 }}>
+      <div style={{ color: "var(--text-muted)", fontSize: 12, marginTop: 4 }}>
         The first provider is asked first. If it cannot answer, the next one is
         asked, and so on down the list.
       </div>
       {settings.routingMode === "round_robin" && (
-        <div style={{ color: "#f59e0b", fontSize: 12, marginTop: 6 }}>
+        <div style={{ color: "var(--warning)", fontSize: 12, marginTop: 6 }}>
           “Rotate” is selected above, so this order is only a starting point. Choose
           “Always try them in priority order” for a strict primary and fallbacks.
         </div>
@@ -88,15 +88,15 @@ export default function ProviderOrderCard({ providers, settings, onSaved, flash 
               key={key}
               style={{
                 display: "flex", alignItems: "center", gap: 8, padding: "6px 0",
-                borderTop: index ? "1px solid rgba(148,163,184,0.15)" : "none",
+                borderTop: index ? "1px solid var(--border)" : "none",
                 opacity: active ? 1 : 0.6,
               }}
             >
-              <span style={{ width: 22, color: "#94a3b8" }}>{index + 1}.</span>
+              <span style={{ width: 22, color: "var(--text-muted)" }}>{index + 1}.</span>
               <span style={{ flex: 1 }}>
                 <strong>{p.label || key}</strong>{" "}
                 <span className={active && role === "primary" ? "badge" : "badge badge-muted"}>{role}</span>
-                <span style={{ color: "#94a3b8", fontSize: 11 }}>
+                <span style={{ color: "var(--text-muted)", fontSize: 11 }}>
                   {!p.enabled && " · switched off"}
                   {p.enabled && skippedFree && " · paid — skipped while “Free tiers only” is on"}
                   {p.modelChain?.length > 0 && ` · ${p.modelChain[0]}`}

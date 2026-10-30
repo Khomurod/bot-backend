@@ -18,13 +18,13 @@ export function PreviewPanel({ title, subtitle, preview, emptyText = "(empty)" }
     <div className="card" style={{ padding: 16, flex: 1, minWidth: 280 }}>
       <h3 style={{ marginTop: 0, marginBottom: 4 }}>{title}</h3>
       {subtitle && (
-        <p style={{ margin: "0 0 12px", fontSize: 13, color: "#94a3b8" }}>{subtitle}</p>
+        <p style={{ margin: "0 0 12px", fontSize: 13, color: "var(--text-muted)" }}>{subtitle}</p>
       )}
       {preview?.error ? (
-        <p style={{ color: "#ef4444", fontSize: 13 }}>{preview.error}</p>
+        <p style={{ color: "var(--danger)", fontSize: 13 }}>{preview.error}</p>
       ) : preview ? (
         <>
-          <p style={{ margin: "4px 0", fontSize: 13, color: "#94a3b8" }}>
+          <p style={{ margin: "4px 0", fontSize: 13, color: "var(--text-muted)" }}>
             Would use: <strong>{preview.rule_label || "—"}</strong>
             {charCount > 0 && (
               <>
@@ -34,12 +34,12 @@ export function PreviewPanel({ title, subtitle, preview, emptyText = "(empty)" }
               </>
             )}
           </p>
-          <pre style={{ whiteSpace: "pre-wrap", background: "#0f172a", padding: 12, borderRadius: 8, margin: 0 }}>
+          <pre style={{ whiteSpace: "pre-wrap", background: "var(--surface-muted)", border: "1px solid var(--border)", padding: 12, borderRadius: 8, margin: 0 }}>
             {preview.rendered || emptyText}
           </pre>
         </>
       ) : (
-        <p style={{ color: "#94a3b8", fontSize: 13 }}>Loading preview…</p>
+        <p style={{ color: "var(--text-muted)", fontSize: 13 }}>Loading preview…</p>
       )}
     </div>
   );

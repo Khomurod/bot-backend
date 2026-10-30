@@ -231,7 +231,7 @@ by a number on every stage does not belong in the file everything else fits in.
 | Business logic | `services/` — one concern per file, packages for large features |
 | Queries | `database/<feature>.js` (`db.js` is only the re-export seam) |
 | Schema (authoritative) | `database/baseline/*.sql` (source) → `database/schema.sql` (generated); new work in `database/migrations/` |
-| Admin UI | `admin/src/App.jsx`, `admin/src/pages/`, `admin/src/api/` |
+| Admin UI | `admin/src/App.jsx`, `admin/src/pages/`, `admin/src/api/`; the look: `admin/src/styles/` (tokens in `01-design-system.css`) and `admin/src/components/ui/` |
 | Telegram handlers and send helpers | `bot/bot.js` (order!), `bot/handlers/`, `bot/senders.js` |
 | Any brief section not in this file | `docs/brief/` (see the index above) |
 | How to work in this repo (rules, safety, testing) | `CLAUDE.md` |

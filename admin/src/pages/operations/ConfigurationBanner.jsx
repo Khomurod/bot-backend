@@ -51,8 +51,8 @@ export default function ConfigurationBanner() {
     <div
       role="status"
       style={{
-        border: "1px solid #dc2626",
-        background: "rgba(220,38,38,0.08)",
+        border: "1px solid var(--danger-solid)",
+        background: "var(--danger-soft)",
         borderRadius: 8,
         padding: "10px 12px",
         marginBottom: 14,

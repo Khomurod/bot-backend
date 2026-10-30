@@ -23,23 +23,23 @@ function CorrectionRow({ correction, busy, onRevert }) {
 
   return (
     <>
-      <tr style={{ borderTop: "1px solid rgba(148,163,184,0.15)" }}>
+      <tr style={{ borderTop: "1px solid var(--border)" }}>
         <td style={{ padding: "8px", fontSize: 12 }}>
           <div style={{ textDecoration: undone ? "line-through" : "none" }}>
             {correction.findingTitle || checkLabel(correction.checkKey) || correction.actionKey}
           </div>
-          <div style={{ color: "#94a3b8", fontSize: 11 }}>
+          <div style={{ color: "var(--text-muted)", fontSize: 11 }}>
             {formatWhen(correction.appliedAt)} · {initiatorLabel(correction.initiator)}
             {correction.reason ? ` · “${correction.reason}”` : ""}
           </div>
           {undone && (
-            <div style={{ color: "#f59e0b", fontSize: 11 }}>
+            <div style={{ color: "var(--warning)", fontSize: 11 }}>
               Reverted {formatWhen(correction.revertedAt)} by {correction.revertedBy}
               {correction.revertReason ? ` — “${correction.revertReason}”` : ""}
             </div>
           )}
         </td>
-        <td style={{ padding: "8px", fontSize: 11, color: "#94a3b8", width: 160 }}>
+        <td style={{ padding: "8px", fontSize: 11, color: "var(--text-muted)", width: 160 }}>
           {correction.subjectType} #{correction.subjectId}
         </td>
         <td style={{ padding: "8px", width: 150, textAlign: "right" }}>
@@ -53,7 +53,7 @@ function CorrectionRow({ correction, busy, onRevert }) {
           <td colSpan={3} style={{ padding: "0 8px 12px 24px" }}>
             <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>
               <tbody>
-                <tr style={{ color: "#94a3b8" }}>
+                <tr style={{ color: "var(--text-muted)" }}>
                   <td style={{ padding: "4px 8px" }}>Field</td>
                   <td style={{ padding: "4px 8px" }}>Was</td>
                   <td style={{ padding: "4px 8px" }}>Became</td>
@@ -61,7 +61,7 @@ function CorrectionRow({ correction, busy, onRevert }) {
                 {rows.map((row) => (
                   <tr key={row.field}>
                     <td style={{ padding: "4px 8px" }}><code>{row.field}</code></td>
-                    <td style={{ padding: "4px 8px", color: "#94a3b8" }}>{row.from}</td>
+                    <td style={{ padding: "4px 8px", color: "var(--text-muted)" }}>{row.from}</td>
                     <td style={{ padding: "4px 8px" }}>{row.to}</td>
                   </tr>
                 ))}
@@ -101,7 +101,7 @@ export default function HistoryTab({
     <div className="card">
       <div style={{ marginBottom: 8 }}>
         <strong>What has been changed</strong>
-        <div style={{ color: "#94a3b8", fontSize: 12 }}>
+        <div style={{ color: "var(--text-muted)", fontSize: 12 }}>
           {summary?.corrections?.total ?? 0} in total ·{" "}
           {summary?.corrections?.live ?? 0} still in effect ·{" "}
           {summary?.corrections?.bySystem ?? 0} applied automatically from recorded evidence

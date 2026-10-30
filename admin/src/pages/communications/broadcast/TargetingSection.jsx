@@ -23,7 +23,7 @@ export function TargetingSection({
 
   <div className="card" style={{ marginBottom: 16 }}>
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 12 }}>
-      <h3 style={{ fontSize: 15, fontWeight: 600, margin: 0 }}>🎯 Audience &amp; language</h3>
+      <h3 style={{ fontSize: 15, fontWeight: 600, margin: 0 }}>Audience &amp; language</h3>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         <label style={{ fontSize: 12, color: 'var(--text-muted)' }}>Force Language:</label>
         <select className="form-input" style={{ width: 'auto', padding: '4px 8px', fontSize: 12 }} value={forceLanguage || ''} onChange={(e) => setForceLanguage(e.target.value || null)}>

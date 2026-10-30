@@ -8,6 +8,7 @@ import { DriverListCard } from "./homeTime/DriverListCard";
 import { ScreenshotImportCard } from "./homeTime/ScreenshotImportCard";
 import { UnlinkedActivityCard } from "./homeTime/UnlinkedActivityCard";
 import { DriverDetailModal } from "./homeTime/DriverDetailModal";
+import TabBar from "../components/ui/TabBar";
 
 /**
  * Driver Home Time — page container.
@@ -66,26 +67,18 @@ export default function HomeTimePage() {
         </div>
       )}
 
-      <div className="home-time-tabs" style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-        <button
-          type="button"
-          className={`btn ${activeTab === "overview" ? "btn-primary" : "btn-secondary"}`}
-          onClick={() => setActiveTab("overview")}
-        >
-          Overview
-        </button>
-        <button
-          type="button"
-          className={`btn ${activeTab === "efficiency" ? "btn-primary" : "btn-secondary"}`}
-          onClick={() => setActiveTab("efficiency")}
-        >
-          Driver Home Time Efficiency
-        </button>
-      </div>
+      <TabBar
+        tabs={[
+          { key: "overview", label: "Overview" },
+          { key: "efficiency", label: "Driver Home Time Efficiency" },
+        ]}
+        value={activeTab}
+        onChange={setActiveTab}
+        ariaLabel="Home time views"
+      />
 
-      {activeTab === "efficiency" && <HomeTimeEfficiencyTab flash={flash} />}
-
-
+      {/* Rendered ONCE. It used to appear twice — the whole efficiency report
+          drawn two times on the same tab — until the October 2026 redesign. */}
       {activeTab === "efficiency" && <HomeTimeEfficiencyTab flash={flash} />}
 
       {activeTab === "overview" && (

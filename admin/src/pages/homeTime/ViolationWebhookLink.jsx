@@ -75,7 +75,7 @@ export default function ViolationWebhookLink({ isSet }) {
         )}
       </div>
 
-      {error && <p className="home-time-muted" style={{ margin: 0, color: "var(--danger, #c0392b)" }}>{error}</p>}
+      {error && <p className="home-time-muted" style={{ margin: 0, color: "var(--danger)" }}>{error}</p>}
     </div>
   );
 }

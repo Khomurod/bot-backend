@@ -16,10 +16,10 @@ function timeAgo(iso) {
 }
 
 const LEVEL_STYLE = {
-  ok: { color: "#16a34a", dot: "🟢" },
-  warn: { color: "#d97706", dot: "🟡" },
-  bad: { color: "#dc2626", dot: "🔴" },
-  unknown: { color: "#9ca3af", dot: "⚪" },
+  ok: { color: "var(--success)", dot: "🟢" },
+  warn: { color: "var(--warning)", dot: "🟡" },
+  bad: { color: "var(--danger)", dot: "🔴" },
+  unknown: { color: "var(--text-muted)", dot: "⚪" },
 };
 
 function roleLabel(status) {
@@ -186,7 +186,7 @@ export default function GroupAccessPanel() {
 
   return (
     <div>
-      <p style={{ color: "#94a3b8", marginTop: 0 }}>
+      <p style={{ color: "var(--text-muted)", marginTop: 0 }}>
         Shows which driver groups the bot can actually read. If the bot can't read a group, it
         can't track home time, loads, or anything else there.
       </p>
@@ -197,7 +197,7 @@ export default function GroupAccessPanel() {
 
       <div className="card" style={{ marginBottom: 20 }}>
         <h3>Super admin</h3>
-        <p style={{ color: "#888", marginTop: 0 }}>
+        <p style={{ color: "var(--text-muted)", marginTop: 0 }}>
           Enter the Telegram numeric ID of the super admin. That person must first press <strong>Start</strong> on the Wenze
           Feedback bot. When you tap "Request admin" on a group below, the bot DMs them a link that adds it to the chosen
           group as an admin so it can read every message.
@@ -236,7 +236,7 @@ export default function GroupAccessPanel() {
             <div>⚪ <strong>{filteredSummary.unknown || 0}</strong> not checked</div>
           </div>
           <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-            <span style={{ color: "#888" }}>Roles checked: {timeAgo(lastChecked)}</span>
+            <span style={{ color: "var(--text-muted)" }}>Roles checked: {timeAgo(lastChecked)}</span>
             <button
               className="btn"
               onClick={downloadNoAccessExcel}
@@ -250,7 +250,7 @@ export default function GroupAccessPanel() {
             </button>
           </div>
         </div>
-        <p style={{ color: "#888", marginBottom: 0, marginTop: 12 }}>
+        <p style={{ color: "var(--text-muted)", marginBottom: 0, marginTop: 12 }}>
           "Reading" is proven two ways: the bot is an <strong>admin</strong> (reads everything), or it has
           actually <strong>received messages</strong> recently. A group marked 🟡 means the bot is only a plain
           member and no messages have arrived — usually fixed by making the bot an admin in that group.
@@ -272,7 +272,7 @@ export default function GroupAccessPanel() {
               <option value="non_driver">Non-driver groups</option>
             </select>
           </div>
-          <span style={{ color: "#888" }}>Showing {filteredGroups.length} of {groups.length}</span>
+          <span style={{ color: "var(--text-muted)" }}>Showing {filteredGroups.length} of {groups.length}</span>
         </div>
       </div>
 
@@ -295,12 +295,12 @@ export default function GroupAccessPanel() {
               const style = LEVEL_STYLE[g.reading_level] || LEVEL_STYLE.unknown;
               const isAdmin = g.bot_member_status === "administrator" || g.bot_member_status === "creator";
               return (
-                <tr key={g.group_id} style={g.reading_level === "bad" ? { background: "rgba(220,38,38,0.08)" } : g.reading_level === "warn" ? { background: "rgba(217,119,6,0.08)" } : undefined}>
+                <tr key={g.group_id} style={g.reading_level === "bad" ? { background: "var(--danger-soft)" } : g.reading_level === "warn" ? { background: "var(--warning-soft)" } : undefined}>
                   <td>
                     {g.driver_name}
-                    {g.inactive && <span style={{ color: "#9ca3af" }}> (inactive)</span>}
+                    {g.inactive && <span style={{ color: "var(--text-muted)" }}> (inactive)</span>}
                     {g.duplicate_conflict && (
-                      <div style={{ fontSize: 11, color: "#f59e0b" }}>
+                      <div style={{ fontSize: 11, color: "var(--warning)" }}>
                         Duplicate active driver groups require review
                       </div>
                     )}
@@ -315,7 +315,7 @@ export default function GroupAccessPanel() {
                   <td>{g.home_state === "road" ? "🚚 On the road" : g.home_state === "home" ? "🏠 Home" : "—"}</td>
                   <td>
                     {isAdmin ? (
-                      <span style={{ color: "#16a34a" }}>✓ Admin</span>
+                      <span style={{ color: "var(--success)" }}>✓ Admin</span>
                     ) : (
                       <button
                         className="btn btn-sm"
@@ -330,7 +330,7 @@ export default function GroupAccessPanel() {
               );
             })}
             {filteredGroups.length === 0 && (
-              <tr><td colSpan={8} style={{ textAlign: "center", color: "#888" }}>No groups match these filters.</td></tr>
+              <tr><td colSpan={8} style={{ textAlign: "center", color: "var(--text-muted)" }}>No groups match these filters.</td></tr>
             )}
           </tbody>
         </table>

@@ -19,7 +19,7 @@ import * as api from "../../../api";
 function Row({ category, value, onChange, onBlur, onPreview, busy, fallbackConfigured }) {
   const usingDefault = !String(value ?? "").trim();
   return (
-    <div style={{ borderTop: "1px solid rgba(148,163,184,0.2)", padding: "10px 0" }}>
+    <div style={{ borderTop: "1px solid var(--border)", padding: "10px 0" }}>
       <div style={{ display: "flex", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
         <div style={{ flex: "1 1 260px", minWidth: 0 }}>
           <strong>{category.label}</strong>
@@ -28,7 +28,7 @@ function Row({ category, value, onChange, onBlur, onPreview, busy, fallbackConfi
               title="Someone normally has to do something about these."
               style={{
                 marginLeft: 8, fontSize: 11, padding: "1px 6px", borderRadius: 999,
-                background: "rgba(234,179,8,0.18)", color: "#a16207",
+                background: "var(--warning-soft)", color: "var(--warning)",
               }}
             >
               needs a person
@@ -162,7 +162,7 @@ export default function NotificationRoutingCard({ flash }) {
   }
 
   if (loading) {
-    return <div className="card"><h3>🔔 AI &amp; Operations notifications</h3><p>Loading…</p></div>;
+    return <div className="card"><h3>AI &amp; Operations notifications</h3><p>Loading…</p></div>;
   }
 
   const categories = data?.categories || [];
@@ -176,7 +176,7 @@ export default function NotificationRoutingCard({ flash }) {
 
   return (
     <div className="card">
-      <h3>🔔 AI &amp; Operations notifications</h3>
+      <h3>AI &amp; Operations notifications</h3>
       <p className="muted">
         Where Wenze sends what it notices. Set one group for everything, and give a
         category its own group only when you want that traffic separated.
@@ -192,7 +192,7 @@ export default function NotificationRoutingCard({ flash }) {
         <div
           role="status"
           style={{
-            border: "1px solid #dc2626", background: "rgba(220,38,38,0.08)",
+            border: "1px solid var(--danger-solid)", background: "var(--danger-soft)",
             borderRadius: 8, padding: "10px 12px", marginTop: 12,
           }}
         >
@@ -311,7 +311,7 @@ export default function NotificationRoutingCard({ flash }) {
         <p className="muted" style={{ marginTop: 14, fontSize: 12 }}>
           Delivery: {queue.delivered24h} sent in the last 24 hours, {queue.pending} waiting
           {queue.abandoned > 0 && (
-            <strong style={{ color: "#b91c1c" }}> , {queue.abandoned} gave up after retrying</strong>
+            <strong style={{ color: "var(--danger)" }}> , {queue.abandoned} gave up after retrying</strong>
           )}.
         </p>
       )}

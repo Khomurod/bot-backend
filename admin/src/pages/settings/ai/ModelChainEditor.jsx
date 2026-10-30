@@ -48,10 +48,10 @@ export default function ModelChainEditor({ chain, discovered = [], cooldowns = {
   /** What a chain entry can do right now, in words — or null when it is fine. */
   const statusOf = (model) => {
     const at = pauseOf(cooldowns, model, now);
-    if (at) return { tone: "#f59e0b", text: `quota spent — back at ${timeOf(at)}` };
+    if (at) return { tone: "var(--warning)", text: `quota spent — back at ${timeOf(at)}` };
     const m = listed.get(model);
-    if (m && !m.chat) return { tone: "#f87171", text: "not a chat model — never answers" };
-    if (discovered.length && !m) return { tone: "#f87171", text: "not listed by the provider" };
+    if (m && !m.chat) return { tone: "var(--danger)", text: "not a chat model — never answers" };
+    if (discovered.length && !m) return { tone: "var(--danger)", text: "not listed by the provider" };
     return null;
   };
   const optionLabel = (m, suffix) => `${m.id}${freeLabel(m)}${suffix || ""}${chain.includes(m.id) ? " (in the list)" : ""}`;
@@ -72,11 +72,11 @@ export default function ModelChainEditor({ chain, discovered = [], cooldowns = {
 
   return (
     <div style={{ marginTop: 8 }}>
-      <label style={{ fontSize: 12, color: "#94a3b8" }}>
+      <label style={{ fontSize: 12, color: "var(--text-muted)" }}>
         Models, in order — the first is asked first, the rest are fallbacks
       </label>
       {chain.length === 0 ? (
-        <div style={{ fontSize: 12, color: "#f59e0b", marginTop: 4 }}>
+        <div style={{ fontSize: 12, color: "var(--warning)", marginTop: 4 }}>
           No models — this provider has nothing to ask. Add one below.
         </div>
       ) : (

@@ -21,7 +21,7 @@ function KeyField({ label, hint, value, onChange, placeholder, fromEnv, type = "
     <div className="form-group">
       <label htmlFor={id} style={{ display: "block", fontWeight: 600, marginBottom: 4 }}>{label}</label>
       {hint && (
-        <div style={{ fontSize: 12, color: "#94a3b8", marginBottom: 6 }}>
+        <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 6 }}>
           Currently: <strong>{hint}</strong>{fromEnv ? " (from environment)" : ""}
         </div>
       )}
@@ -52,7 +52,7 @@ function NumField({ label, value, onChange, suffix }) {
           value={value}
           onChange={(e) => onChange(e.target.value)}
         />
-        {suffix && <span style={{ fontSize: 12, color: "#94a3b8" }}>{suffix}</span>}
+        {suffix && <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{suffix}</span>}
       </div>
     </div>
   );

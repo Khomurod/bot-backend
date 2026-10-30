@@ -2,22 +2,35 @@ import React, { useState, useEffect, useCallback } from "react";
 import * as api from "../api";
 import { timeAgo } from "../utils/formatTime";
 import useVisibleInterval from "../utils/useVisibleInterval";
+import TabBar from "../components/ui/TabBar";
+
+// "all" is the filter's own key; the API is asked with no source for it.
+const SOURCE_FILTERS = [
+  { key: "all", label: "All" },
+  { key: "facebook", label: "Facebook" },
+  { key: "indeed", label: "Indeed" },
+];
 
 const SOURCE_BADGE = {
   facebook: { label: "Facebook", bg: "#1877F2" },
   indeed: { label: "Indeed", bg: "#2557a7" },
 };
 
+// Status badges use the shared status pills; source badges keep the
+// networks' own brand colours.
 const STATUS_BADGE = {
-  created: { label: "In Bitrix24", bg: "#16a34a" },
-  pending: { label: "Pending", bg: "#64748b" },
-  skipped: { label: "Skipped", bg: "#64748b" },
-  disabled: { label: "Bitrix off", bg: "#a16207" },
-  failed: { label: "Failed", bg: "#dc2626" },
+  created: { label: "In Bitrix24", tone: "success" },
+  pending: { label: "Pending", tone: "neutral" },
+  skipped: { label: "Skipped", tone: "neutral" },
+  disabled: { label: "Bitrix off", tone: "warning" },
+  failed: { label: "Failed", tone: "danger" },
 };
 
 function Badge({ map, value }) {
-  const cfg = map[value] || { label: value || "—", bg: "#64748b" };
+  const cfg = map[value] || { label: value || "—", tone: "neutral" };
+  if (cfg.tone) {
+    return <span className={`status-pill status-pill--${cfg.tone}`} style={{ whiteSpace: "nowrap" }}>{cfg.label}</span>;
+  }
   return (
     <span style={{
       background: cfg.bg, color: "#fff", borderRadius: 6, padding: "2px 8px",
@@ -112,7 +125,7 @@ export default function LeadsPage() {
   return (
     <div>
       <div className="page-header">
-        <h2>📥 Leads</h2>
+        <h2>Leads</h2>
         <p>All incoming leads from Facebook and Indeed · Auto-refreshes every 15s</p>
       </div>
 
@@ -142,7 +155,7 @@ export default function LeadsPage() {
               <button className="btn btn-ghost" onClick={copyScript}>{copied ? "✓ Copied" : "Copy script"}</button>
             </div>
             <pre style={{
-              background: "#0b1220", color: "#cbd5e1", padding: 12, borderRadius: 8,
+              background: "var(--surface-muted)", color: "var(--text-primary)", border: "1px solid var(--border)", padding: 12, borderRadius: 8,
               overflowX: "auto", fontSize: 12, maxHeight: 320,
             }}>{APPS_SCRIPT}</pre>
             <p style={{ fontSize: 12, color: "var(--text-muted)" }}>
@@ -153,15 +166,13 @@ export default function LeadsPage() {
       </div>
 
       {/* ── Source filter ── */}
-      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-        {[["", "All"], ["facebook", "Facebook"], ["indeed", "Indeed"]].map(([val, label]) => (
-          <button
-            key={val || "all"}
-            className={`btn ${source === val ? "" : "btn-ghost"}`}
-            onClick={() => setSource(val)}
-          >{label}</button>
-        ))}
-      </div>
+      <TabBar
+        tabs={SOURCE_FILTERS}
+        value={source || "all"}
+        onChange={(key) => setSource(key === "all" ? "" : key)}
+        ariaLabel="Lead source"
+        size="sm"
+      />
 
       {loading ? (
         <div className="loading"><div className="spinner"></div> Loading leads…</div>

@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import * as api from "../api";
+import Icon from "../components/ui/Icon";
 
 export default function LoginPage({ onLogin }) {
   const [username, setUsername] = useState("");
@@ -24,17 +25,20 @@ export default function LoginPage({ onLogin }) {
 
   return (
     <div className="login-container">
-      <div className="login-card ios-glass">
-        <div style={{ textAlign: "center", marginBottom: "30px" }}>
-          <div style={{ fontSize: "48px", marginBottom: "10px" }}>🚛</div>
-          <h2 style={{ margin: 0, color: "#fff", fontSize: "24px" }}>Admin Access</h2>
+      <div className="login-card">
+        <div className="login-brand">
+          <span className="sidebar-logo-mark" style={{ width: 44, height: 44, borderRadius: 12 }}><Icon name="truck" size={24} /></span>
         </div>
+        <h1>Admin Access</h1>
+        <p className="subtitle">Sign in to the Wenze admin panel</p>
         {error && <div className="alert alert-error">{error}</div>}
         <form onSubmit={handleSubmit}>
           <div className="form-group">
-            <label>Username</label>
+            <label htmlFor="login-username">Username</label>
             <input
+              id="login-username"
               type="text"
+              autoComplete="username"
               className="form-input"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
@@ -43,9 +47,11 @@ export default function LoginPage({ onLogin }) {
             />
           </div>
           <div className="form-group">
-            <label>Password</label>
+            <label htmlFor="login-password">Password</label>
             <input
+              id="login-password"
               type="password"
+              autoComplete="current-password"
               className="form-input"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -55,7 +61,7 @@ export default function LoginPage({ onLogin }) {
           <button
             type="submit"
             className="btn btn-primary"
-            style={{ width: "100%", marginTop: "10px" }}
+            style={{ width: "100%", marginTop: "8px" }}
             disabled={loading}
           >
             {loading ? "Signing in..." : "Sign In"}

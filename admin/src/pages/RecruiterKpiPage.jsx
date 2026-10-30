@@ -26,7 +26,7 @@ function fmtDuration(seconds) {
 function Bar({ value, target, color, pct }) {
   const width = pct != null ? pct : (target ? Math.min(100, Math.round((value / target) * 100)) : 0);
   return (
-    <div style={{ height: 8, borderRadius: 6, background: "rgba(148,163,184,0.18)", overflow: "hidden" }}>
+    <div style={{ height: 8, borderRadius: 6, background: "var(--neutral-soft)", overflow: "hidden" }}>
       <div style={{ height: "100%", width: `${width}%`, background: color, borderRadius: 6, transition: "width .3s" }} />
     </div>
   );
@@ -36,9 +36,9 @@ function KpiRow({ label, value, target, unit, color, pct, met }) {
   return (
     <div style={{ marginBottom: 14 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 5 }}>
-        <span style={{ fontSize: 13, color: "#cbd5e1" }}>{label}</span>
-        <span style={{ fontSize: 14, fontWeight: 700, color: met ? "#22c55e" : "#e2e8f0" }}>
-          {value}{unit || ""}{target != null ? <span style={{ color: "#64748b", fontWeight: 400 }}> / {target}</span> : null}
+        <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>{label}</span>
+        <span style={{ fontSize: 14, fontWeight: 700, color: met ? "var(--success)" : "var(--text-primary)" }}>
+          {value}{unit || ""}{target != null ? <span style={{ color: "var(--text-muted)", fontWeight: 400 }}> / {target}</span> : null}
         </span>
       </div>
       <Bar value={value} target={target} color={color} pct={pct} />
@@ -46,7 +46,7 @@ function KpiRow({ label, value, target, unit, color, pct, met }) {
   );
 }
 
-const COLORS = { talk: "#a78bfa", outbound: "#22d3ee", real: "#4ade80", strong: "#f59e0b" };
+const COLORS = { talk: "var(--accent-text)", outbound: "var(--info)", real: "var(--success)", strong: "var(--warning)" };
 
 export default function RecruiterKpiPage() {
   const [date, setDate] = useState(todayIso());
@@ -82,7 +82,7 @@ export default function RecruiterKpiPage() {
     <div>
       <div className="page-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
         <div>
-          <h2>📞 Recruiter Call KPIs</h2>
+          <h2>Recruiter Call KPIs</h2>
           <p>Daily call performance vs targets, from the RingCentral call log.</p>
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -96,30 +96,30 @@ export default function RecruiterKpiPage() {
       {/* KPI rules reference */}
       <div className="card" style={{ marginBottom: 16 }}>
         <h3 style={{ marginTop: 0, textAlign: "center", letterSpacing: 1 }}>DAILY RECRUITER TARGETS</h3>
-        <p style={{ textAlign: "center", color: "#94a3b8", marginTop: -6 }}>
-          Main KPI: <strong style={{ color: "#e2e8f0" }}>{targets.talkLabel} real call duration</strong> ·
-          Secondary KPI: <strong style={{ color: "#e2e8f0" }}>{targets.outbound} outbound calls</strong>
+        <p style={{ textAlign: "center", color: "var(--text-muted)", marginTop: -6 }}>
+          Main KPI: <strong style={{ color: "var(--text-primary)" }}>{targets.talkLabel} real call duration</strong> ·
+          Secondary KPI: <strong style={{ color: "var(--text-primary)" }}>{targets.outbound} outbound calls</strong>
         </p>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 10, justifyContent: "center" }}>
           <span className="badge badge-inactive">&lt; {shortThreshold}s : does NOT count toward talk time</span>
           <span className="badge badge-muted">&gt; {data?.thresholds?.realConversationMinSeconds ?? 60}s : Real Conversation</span>
-          <span className="badge" style={{ background: "rgba(167,139,250,0.2)", color: "#c4b5fd" }}>&gt; {data?.thresholds?.strongConversationMinSeconds ?? 180}s : Strong Conv.</span>
+          <span className="badge" style={{ background: "var(--accent-soft)", color: "var(--accent-text)" }}>&gt; {data?.thresholds?.strongConversationMinSeconds ?? 180}s : Strong Conv.</span>
         </div>
       </div>
 
       {loading ? (
         <div className="loading"><div className="spinner"></div> Loading…</div>
       ) : recruiters.length === 0 ? (
-        <div className="card"><p style={{ color: "#94a3b8", margin: 0 }}>No active recruiters. Add recruiters and their RingCentral numbers in <strong>Settings → RingCentral</strong>.</p></div>
+        <div className="card"><p style={{ color: "var(--text-muted)", margin: 0 }}>No active recruiters. Add recruiters and their RingCentral numbers in <strong>Settings → RingCentral</strong>.</p></div>
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 16 }}>
           {recruiters.map((r) => (
             <div className="card" key={r.id}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
                 <h3 style={{ margin: 0 }}>{r.name}</h3>
-                <span style={{ fontSize: 22, fontWeight: 800, color: r.mainScore >= 100 ? "#22c55e" : r.mainScore >= 50 ? "#f59e0b" : "#f87171" }}>{r.mainScore}%</span>
+                <span style={{ fontSize: 22, fontWeight: 800, color: r.mainScore >= 100 ? "var(--success)" : r.mainScore >= 50 ? "var(--warning)" : "var(--danger)" }}>{r.mainScore}%</span>
               </div>
-              <div style={{ fontSize: 11, color: "#64748b", fontFamily: "monospace", marginBottom: 14 }}>{r.phoneNumber} · Daily Call Duration Score</div>
+              <div style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "monospace", marginBottom: 14 }}>{r.phoneNumber} · Daily Call Duration Score</div>
 
               <KpiRow
                 label={`Real Call Duration (≥${shortThreshold}s calls)`}
@@ -133,11 +133,11 @@ export default function RecruiterKpiPage() {
               <KpiRow label="Real Conversations (>1 min)" value={r.realConversations} target={targets.realConversations} color={COLORS.real} pct={r.realConversationsPct} met={r.realConversationsMet} />
               <KpiRow label="Strong Conversations (>3 min)" value={r.strongConversations} target={null} color={COLORS.strong} pct={targets.realConversations ? Math.min(100, Math.round((r.strongConversations / targets.realConversations) * 100)) : 0} />
 
-              <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 6, fontSize: 12, color: "#94a3b8", marginTop: 10, borderTop: "1px solid rgba(148,163,184,0.15)", paddingTop: 10 }}>
-                <span>Inbound: <strong style={{ color: "#cbd5e1" }}>{r.inbound}</strong></span>
-                <span title={`Calls under ${shortThreshold}s — excluded from talk time`}>Short calls: <strong style={{ color: "#cbd5e1" }}>{r.nonValuableCalls}</strong></span>
-                <span>Raw talk: <strong style={{ color: "#cbd5e1" }}>{fmtDuration(r.totalTalkSeconds)}</strong></span>
-                <span>To target: <strong style={{ color: "#cbd5e1" }}>{r.talkMet ? "✓ met" : fmtDuration(r.talkRemainingSeconds)}</strong></span>
+              <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 6, fontSize: 12, color: "var(--text-muted)", marginTop: 10, borderTop: "1px solid var(--border)", paddingTop: 10 }}>
+                <span>Inbound: <strong style={{ color: "var(--text-secondary)" }}>{r.inbound}</strong></span>
+                <span title={`Calls under ${shortThreshold}s — excluded from talk time`}>Short calls: <strong style={{ color: "var(--text-secondary)" }}>{r.nonValuableCalls}</strong></span>
+                <span>Raw talk: <strong style={{ color: "var(--text-secondary)" }}>{fmtDuration(r.totalTalkSeconds)}</strong></span>
+                <span>To target: <strong style={{ color: "var(--text-secondary)" }}>{r.talkMet ? "✓ met" : fmtDuration(r.talkRemainingSeconds)}</strong></span>
               </div>
             </div>
           ))}

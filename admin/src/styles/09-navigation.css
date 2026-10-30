@@ -1,72 +1,47 @@
-/* ─── Sidebar Section Headers ─── */
+/* ─── Sidebar section headers ─── */
 .nav-section {
-  margin-bottom: 4px;
+  margin-bottom: 6px;
 }
 
 .nav-section-header {
-  padding: 10px 20px 6px;
+  padding: 12px 10px 4px;
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 1.2px;
-  color: rgba(148, 163, 184, 0.6);
-  margin-top: 12px;
-  border-left: 3px solid transparent;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
   display: flex;
   align-items: center;
   justify-content: space-between;
 }
 
 .nav-section:first-child .nav-section-header {
-  margin-top: 0;
+  padding-top: 6px;
 }
 
-/* .nav-section-toggle and .nav-section-arrow went with the collapsible ⚙️ Admin
-   drawer. Every nav section is a plain header now — see AdminSidebar.jsx. */
-
-/* ─── Quick Query Cards ─── */
-.quick-query-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 10px;
-  margin-bottom: 20px;
+/* The menu button is hidden on a desktop; the phone top bar (12-ui.css) shows it. */
+.mobile-menu-btn {
+  display: none;
 }
 
-.quick-query-card {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 14px;
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  cursor: pointer;
-  text-align: left;
-  transition: var(--transition);
-  font-size: 13px;
-  line-height: 1.4;
-  font-family: inherit;
-  color: var(--text-secondary);
+/* ─── Scroll ─── */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
 }
 
-.quick-query-card:hover:not(:disabled) {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-  color: var(--text-primary);
-  transform: translateY(-2px);
-  box-shadow: 0 4px 16px rgba(99, 102, 241, 0.15);
+::-webkit-scrollbar-track {
+  background: transparent;
 }
 
-.quick-query-card:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
 }
 
-.quick-query-icon {
-  font-size: 22px;
-}
-
-.quick-query-label {
-  font-weight: 500;
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+  background-clip: padding-box;
 }

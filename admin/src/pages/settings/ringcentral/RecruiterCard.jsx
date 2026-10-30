@@ -239,7 +239,7 @@ export default function RecruiterCard({ recruiter, onSaved, onDeleted, onMessage
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <strong>{recruiter.name}</strong>
-          <span style={{ fontFamily: "monospace", fontSize: 13, color: "#94a3b8" }}>{recruiter.phone_number}</span>
+          <span style={{ fontFamily: "monospace", fontSize: 13, color: "var(--text-muted)" }}>{recruiter.phone_number}</span>
           <span className={`badge ${recruiter.active ? "badge-active" : "badge-inactive"}`}>{recruiter.active ? "Active" : "Inactive"}</span>
           <SenderBadge recruiter={recruiter} />
           <span
@@ -261,35 +261,35 @@ export default function RecruiterCard({ recruiter, onSaved, onDeleted, onMessage
       </div>
 
       {recruiter.rcAuthError && (
-        <div style={{ fontSize: 12, marginTop: 8, color: "#f87171" }}>⚠️ {recruiter.rcAuthError}</div>
+        <div style={{ fontSize: 12, marginTop: 8, color: "var(--danger)" }}>⚠️ {recruiter.rcAuthError}</div>
       )}
 
       {test && (
-        <div style={{ fontSize: 12, marginTop: 8, color: test.connected ? "#22c55e" : "#f87171" }}>
+        <div style={{ fontSize: 12, marginTop: 8, color: test.connected ? "var(--success)" : "var(--danger)" }}>
           {test.connected ? "✓" : "✕"} {test.message}
         </div>
       )}
 
       {diag && (
-        <div style={{ marginTop: 10, padding: 10, borderRadius: 8, background: "rgba(148,163,184,0.08)" }}>
-          <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6, color: diag.ok ? "#22c55e" : "#f87171" }}>
+        <div style={{ marginTop: 10, padding: 10, borderRadius: 8, background: "var(--neutral-soft)" }}>
+          <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6, color: diag.ok ? "var(--success)" : "var(--danger)" }}>
             {diag.ok ? "✓ All checks passed" : "✕ Issues found"}
           </div>
           {(diag.steps || []).map((s, idx) => (
             <div key={idx} style={{ fontSize: 12, marginBottom: 4 }}>
-              <span style={{ color: s.ok ? "#22c55e" : "#f87171" }}>{s.ok ? "✓" : "✕"}</span>{" "}
-              <strong style={{ color: "#cbd5e1" }}>{s.label}:</strong>{" "}
-              <span style={{ color: "#94a3b8" }}>{s.detail}</span>
+              <span style={{ color: s.ok ? "var(--success)" : "var(--danger)" }}>{s.ok ? "✓" : "✕"}</span>{" "}
+              <strong style={{ color: "var(--text-secondary)" }}>{s.label}:</strong>{" "}
+              <span style={{ color: "var(--text-muted)" }}>{s.detail}</span>
             </div>
           ))}
         </div>
       )}
 
       {expanded && (
-        <div style={{ marginTop: 12, borderTop: "1px solid rgba(148,163,184,0.15)", paddingTop: 12 }}>
+        <div style={{ marginTop: 12, borderTop: "1px solid var(--border)", paddingTop: 12 }}>
           {connectUrl && (
-            <div style={{ marginBottom: 12, padding: 10, borderRadius: 8, background: "rgba(34,197,94,0.1)" }}>
-              <div style={{ fontSize: 12, color: "#cbd5e1", marginBottom: 4 }}>
+            <div style={{ marginBottom: 12, padding: 10, borderRadius: 8, background: "var(--success-soft)" }}>
+              <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 4 }}>
                 Send this to {recruiter.name}. It expires in 30 minutes and works once.
               </div>
               <input className="form-input" readOnly value={connectUrl} onFocus={(e) => e.target.select()} />
@@ -346,7 +346,7 @@ export default function RecruiterCard({ recruiter, onSaved, onDeleted, onMessage
                 {checkingBitrix ? "Checking…" : "Check Bitrix user"}
               </button>
               {bitrixCheck && (
-                <div style={{ fontSize: 12, marginTop: 6, color: bitrixCheck.found ? "#22c55e" : "#f87171" }}>
+                <div style={{ fontSize: 12, marginTop: 6, color: bitrixCheck.found ? "var(--success)" : "var(--danger)" }}>
                   {bitrixCheck.found
                     ? `✓ #${bitrixCheck.user.id} — ${bitrixCheck.user.fullName}`
                       + `${bitrixCheck.user.position ? ` · ${bitrixCheck.user.position}` : ""}`
@@ -356,7 +356,7 @@ export default function RecruiterCard({ recruiter, onSaved, onDeleted, onMessage
                       : `✗ ${bitrixCheck.message || bitrixCheck.detail || "Could not check this id."}`}
                 </div>
               )}
-              <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 4, maxWidth: 320 }}>
+              <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4, maxWidth: 320 }}>
                 Or type it from the Bitrix profile URL:{" "}
                 <code>/company/personal/user/<strong>17</strong>/</code>.
                 A lead assigned to this Bitrix user is texted from this number.
@@ -364,8 +364,8 @@ export default function RecruiterCard({ recruiter, onSaved, onDeleted, onMessage
             </div>
           </div>
 
-          <div style={{ marginBottom: 12, padding: 10, borderRadius: 8, background: "rgba(148,163,184,0.06)" }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: "#cbd5e1", marginBottom: 6 }}>Send a test text from this number</div>
+          <div style={{ marginBottom: 12, padding: 10, borderRadius: 8, background: "var(--neutral-soft)" }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 6 }}>Send a test text from this number</div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-start" }}>
               <input
                 className="form-input"
@@ -379,7 +379,7 @@ export default function RecruiterCard({ recruiter, onSaved, onDeleted, onMessage
               </button>
             </div>
             {smsResult && (
-              <div style={{ fontSize: 12, marginTop: 6, color: smsResult.sent ? "#22c55e" : "#f87171" }}>
+              <div style={{ fontSize: 12, marginTop: 6, color: smsResult.sent ? "var(--success)" : "var(--danger)" }}>
                 {smsResult.sent ? "✓" : "✕"} {smsResult.message}
               </div>
             )}
@@ -396,18 +396,18 @@ export default function RecruiterCard({ recruiter, onSaved, onDeleted, onMessage
               <input type="checkbox" checked={useCustom} onChange={(e) => setUseCustom(e.target.checked)} />
               Use a custom Client ID / Client Secret for this number
             </label>
-            <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 4 }}>
+            <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
               Off = this number authenticates with the shared Client ID/Secret from the credentials card above.
             </div>
           </div>
           {useCustom && (
-            <div style={{ paddingLeft: 12, borderLeft: "2px solid rgba(148,163,184,0.25)" }}>
+            <div style={{ paddingLeft: 12, borderLeft: "2px solid var(--border)" }}>
               <KeyField label="Custom Client ID" hint={recruiter.clientIdSet ? recruiter.clientIdMasked : "not set"} value={form.clientId} onChange={(v) => setField("clientId", v)} />
               <KeyField label="Custom Client Secret" hint={recruiter.clientSecretSet ? recruiter.clientSecretMasked : "not set"} value={form.clientSecret} onChange={(v) => setField("clientSecret", v)} />
             </div>
           )}
           {recruiter.oauthConnected && (
-            <div style={{ fontSize: 12, color: "#94a3b8", marginBottom: 8 }}>
+            <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 8 }}>
               Signed in with RingCentral
               {recruiter.rcExtensionNumber ? ` as ext. ${recruiter.rcExtensionNumber}` : ""}
               {recruiter.rcTokenRefreshedAt ? ` · login refreshed ${new Date(recruiter.rcTokenRefreshedAt).toLocaleString()}` : ""}

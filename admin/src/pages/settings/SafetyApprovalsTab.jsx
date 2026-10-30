@@ -97,7 +97,7 @@ export default function SafetyApprovalsTab() {
 
   return (
     <div>
-      <p style={{ color: "#94a3b8", marginTop: 0 }}>
+      <p style={{ color: "var(--text-muted)", marginTop: 0 }}>
         The bot listens <strong>quietly</strong> in the recruiting group and never writes in the
         conversation. When a Safety person <strong>replies</strong> to a recruiter&apos;s driver post,
         it posts the decision in the approvals topic: the CDL, Safety&apos;s PSP / MVR / CLH files, and

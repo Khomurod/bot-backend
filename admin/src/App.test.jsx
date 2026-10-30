@@ -150,18 +150,16 @@ describe("two nav entries that are the same component", () => {
     // mounts fresh with initialTab="systems" and the assertion below passes
     // whether or not the key is there. This test did exactly that and proved
     // nothing until the wait was added.
-    const needsAttention = await screen.findByRole("button", { name: /^Needs attention$/i });
-    expect(needsAttention.className).toContain("btn-primary");
+    const needsAttention = await screen.findByRole("tab", { name: /^Needs attention$/i });
+    expect(needsAttention).toHaveAttribute("aria-selected", "true");
 
     await userEvent.click(screen.getByRole("button", { name: /System & AI Health/i }));
     await waitFor(() => expect(window.location.hash).toBe("#system_health"));
     await waitFor(() => {
-      // btn-primary is the Operations tab bar's own "this one is open" class,
+      // aria-selected is the Operations tab bar's own "this one is open" mark,
       // and Needs attention must have given it up.
-      expect(screen.getByRole("button", { name: /What is running/i }).className)
-        .toContain("btn-primary");
-      expect(screen.getByRole("button", { name: /^Needs attention$/i }).className)
-        .toContain("btn-ghost");
+      expect(screen.getByRole("tab", { name: /What is running/i })).toHaveAttribute("aria-selected", "true");
+      expect(screen.getByRole("tab", { name: /^Needs attention$/i })).toHaveAttribute("aria-selected", "false");
     });
   });
 });

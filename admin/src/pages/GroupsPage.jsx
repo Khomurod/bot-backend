@@ -2,6 +2,7 @@ import React from "react";
 import { useDriverProfiles } from "./groups/useDriverProfiles";
 import { DriverProfilesTable } from "./groups/DriverProfilesTable";
 import { DriverDetailModal } from "./groups/DriverDetailModal";
+import TabBar from "../components/ui/TabBar";
 
 /**
  * Driver Groups — page container.
@@ -40,7 +41,7 @@ export default function GroupsPage() {
     <div>
       <div className="page-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
         <div>
-          <h2>👥 Driver Groups</h2>
+          <h2>Driver Groups</h2>
           <p>Driver Groups is the source of truth for driver identity, status, truck, and team-driver structure across Home Time and Bot Group Access. Click a driver name to edit all details.</p>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -68,18 +69,12 @@ export default function GroupsPage() {
         a chat appears on exactly one — which a per-tab predicate stops
         guaranteeing the moment somebody edits one of them.
       */}
-      <div className="broadcast-tabs" style={{ marginBottom: 16 }}>
-        {TABS.map(({ key, label }) => (
-          <button
-            key={key}
-            type="button"
-            className={`broadcast-tab-btn ${activeTab === key ? "active" : ""}`}
-            onClick={() => setActiveTab(key)}
-          >
-            {label} ({tabCounts[key] ?? 0})
-          </button>
-        ))}
-      </div>
+      <TabBar
+        tabs={TABS.map(({ key, label }) => ({ key, label: <>{label} <span className="wz-tab-count">{tabCounts[key] ?? 0}</span></> }))}
+        value={activeTab}
+        onChange={setActiveTab}
+        ariaLabel="Driver group views"
+      />
 
       {activeTab === "review" && tabCounts.review > 0 && (
         <div className="muted" style={{ marginBottom: 12 }}>

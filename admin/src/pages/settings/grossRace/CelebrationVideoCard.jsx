@@ -70,14 +70,14 @@ export default function CelebrationVideoCard() {
       : "Uploaded. The screens play the new video from the next celebration.");
   };
 
-  if (loading) return <div style={{ padding: 20, color: "#94a3b8" }}>Loading…</div>;
+  if (loading) return <div style={{ padding: 20, color: "var(--text-muted)" }}>Loading…</div>;
 
   const exists = Boolean(status && status.exists);
   const paused = Boolean(status && status.paused);
   return (
     <div className="ios-glass" style={{ padding: 20, marginBottom: 20 }}>
-      <h3 style={{ marginTop: 0 }}>🎬 Video after the 4 PM celebration</h3>
-      <p style={{ color: "#94a3b8", fontSize: 13, marginTop: 0 }}>
+      <h3 style={{ marginTop: 0 }}>Video after the 4 PM celebration</h3>
+      <p style={{ color: "var(--text-muted)", fontSize: 13, marginTop: 0 }}>
         Plays on <strong>/dispatchteam</strong> right after the 3D car, with sound where the screen allows it.
         <strong> /dispatch</strong> shows the car only.
       </p>
@@ -92,7 +92,7 @@ export default function CelebrationVideoCard() {
               Status: <strong data-testid="video-state">{paused ? "⏸ Paused" : "▶️ On"}</strong>
               {" · "}{formatSize(status.bytes)} · uploaded {formatWhen(status.updatedAt)}
               {status.pausedChangedAt && (
-                <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 4 }}>
+                <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
                   {paused ? "Paused" : "Last resumed"} {formatWhen(status.pausedChangedAt)}
                   {status.pausedChangedBy ? ` by ${status.pausedChangedBy}` : ""}
                 </div>
@@ -126,13 +126,13 @@ export default function CelebrationVideoCard() {
           {busy === "upload" ? `Uploading… ${Math.round(progress * 100)}%` : exists ? "⬆️ Upload a new video" : "⬆️ Upload a video"}
         </button>
         {exists && (
-          <button className="btn btn-ghost touch-target" style={{ color: "#ef4444" }} onClick={remove} disabled={Boolean(busy)}>
+          <button className="btn btn-ghost touch-target" style={{ color: "var(--danger)" }} onClick={remove} disabled={Boolean(busy)}>
             {busy === "delete" ? "Deleting…" : "🗑 Delete"}
           </button>
         )}
         <input ref={fileInput} type="file" accept="video/mp4,.mp4" aria-label="Choose a video" style={{ display: "none" }} onChange={upload} />
       </div>
-      <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 8 }}>
+      <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 8 }}>
         MP4 only, up to 100 MB. A new video replaces the old one only once it has fully arrived.
       </div>
     </div>

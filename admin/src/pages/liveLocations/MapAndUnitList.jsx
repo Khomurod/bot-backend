@@ -1,6 +1,7 @@
 import React from "react";
 import { timeAgo } from "../../utils/formatTime";
 import { FILTERS, PROVIDER_LABEL, statusColor, fmtEta } from "./constants";
+import TabBar from "../../components/ui/TabBar";
 
 /**
  * The map pane and the unit side panel, side by side.
@@ -32,7 +33,7 @@ export function MapAndUnitList({
       <div className="card" style={{ flex: "1 1 520px", minWidth: 320, padding: 0, overflow: "hidden", position: "relative" }}>
         <div ref={mapContainerRef} style={{ height: "max(460px, calc(100vh - 300px))", width: "100%", background: "var(--bg-secondary)" }} />
         {tileError && mapReady && (
-          <div style={{ position: "absolute", top: 8, left: 8, right: 8, zIndex: 500, background: "rgba(245,158,11,0.95)", color: "#1e293b", padding: "6px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600 }}>
+          <div style={{ position: "absolute", top: 8, left: 8, right: 8, zIndex: 500, background: "var(--bg-card)", border: "1px solid var(--warning-border)", color: "var(--warning)", boxShadow: "var(--shadow)", padding: "6px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600 }}>
             ⚠️ Map tiles failed to load (tile provider unreachable). The map and unit list still work.
           </div>
         )}
@@ -66,18 +67,7 @@ export function MapAndUnitList({
           onChange={(e) => setSearch(e.target.value)}
           style={{ marginBottom: 10 }}
         />
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
-          {FILTERS.map((f) => (
-            <button
-              key={f.key}
-              className={`btn btn-sm ${filter === f.key ? "btn-primary" : "btn-ghost"}`}
-              style={{ fontSize: 12 }}
-              onClick={() => setFilter(f.key)}
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
+        <TabBar size="sm" tabs={FILTERS} value={filter} onChange={setFilter} ariaLabel="Which units" style={{ marginBottom: 10 }} />
         <div style={{ overflowY: "auto", flex: 1, margin: "0 -8px" }}>
           {filtered.length === 0 ? (
             <div className="empty-state" style={{ padding: 20 }}>
@@ -116,12 +106,12 @@ export function MapAndUnitList({
                   : "no active load"}
               </div>
               {u.warnings && u.warnings.length > 0 && (
-                <div style={{ fontSize: 11, color: "#f59e0b", marginTop: 2 }} title={u.matchWarning || undefined}>
+                <div style={{ fontSize: 11, color: "var(--warning)", marginTop: 2 }} title={u.matchWarning || undefined}>
                   ⚠ {u.warnings.map((w) => w.replace(/_/g, " ")).join(", ")}
                 </div>
               )}
               {u.matchWarning && (
-                <div style={{ fontSize: 11, color: "#f87171", marginTop: 2 }}>{u.matchWarning}</div>
+                <div style={{ fontSize: 11, color: "var(--danger)", marginTop: 2 }}>{u.matchWarning}</div>
               )}
             </button>
           ))}

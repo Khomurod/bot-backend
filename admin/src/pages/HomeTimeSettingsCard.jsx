@@ -115,7 +115,7 @@ export default function HomeTimeSettingsCard({ settings, saving, onSave }) {
           </p>
         </div>
 
-        <hr style={{ border: 0, borderTop: "1px solid rgba(148,163,184,0.25)", margin: "4px 0" }} />
+        <hr style={{ border: 0, borderTop: "1px solid var(--border)", margin: "4px 0" }} />
 
         <label>
           <input

@@ -38,8 +38,8 @@ export function VideoRecoveryCard({ form, setField, recovery }) {
 
   return (
     <div className="card" style={{ marginBottom: 16 }}>
-      <h3 style={{ marginTop: 0 }}>🎥 Missing video recovery</h3>
-      <p style={{ color: "#94a3b8", fontSize: 13, marginTop: 0 }}>
+      <h3 style={{ marginTop: 0 }}>Missing video recovery</h3>
+      <p style={{ color: "var(--text-muted)", fontSize: 13, marginTop: 0 }}>
         Safety alerts always go out <strong>immediately</strong>, with the clip when Samsara
         already has one. When it does not, the alert is sent as text and the video is folded
         in later — the alert is never delayed waiting for footage.
@@ -87,7 +87,7 @@ export function VideoRecoveryCard({ form, setField, recovery }) {
 
       <details className="collapse-panel" style={{ marginTop: 8 }}>
         <summary>Footage window around the event</summary>
-        <p style={{ fontSize: 12, color: "#94a3b8" }}>
+        <p style={{ fontSize: 12, color: "var(--text-muted)" }}>
           How much video to request either side of the event. Samsara rejects a zero-length
           request, so these are also what guarantees a real interval for an event that
           reports only a single instant.
@@ -108,10 +108,10 @@ export function VideoRecoveryCard({ form, setField, recovery }) {
         </div>
       </details>
 
-      <div style={{ marginTop: 12, borderTop: "1px solid rgba(148,163,184,0.2)", paddingTop: 12 }}>
+      <div style={{ marginTop: 12, borderTop: "1px solid var(--border)", paddingTop: 12 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
           <strong style={{ fontSize: 14 }}>Recovery queue</strong>
-          <span style={{ fontSize: 12, color: "#94a3b8" }}>
+          <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
             {totalOpen} in progress
             {jobs?.nextDueAt ? ` · next check ${new Date(jobs.nextDueAt).toLocaleString()}` : ""}
           </span>
@@ -121,7 +121,7 @@ export function VideoRecoveryCard({ form, setField, recovery }) {
         </div>
 
         {jobs && jobs.available === false && (
-          <div style={{ fontSize: 12, color: "#f59e0b", marginTop: 6 }}>
+          <div style={{ fontSize: 12, color: "var(--warning)", marginTop: 6 }}>
             The recovery table is not present yet — it is created by the next deploy&apos;s migration.
           </div>
         )}
@@ -130,22 +130,22 @@ export function VideoRecoveryCard({ form, setField, recovery }) {
           <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse", marginTop: 8 }}>
             <tbody>
               {jobs.jobs.map((job) => (
-                <tr key={job.id} style={{ borderTop: "1px solid rgba(148,163,184,0.15)" }}>
+                <tr key={job.id} style={{ borderTop: "1px solid var(--border)" }}>
                   <td style={{ padding: "6px 4px" }}>
                     <code>{job.samsara_event_id}</code>
-                    <div style={{ color: "#94a3b8" }}>
+                    <div style={{ color: "var(--text-muted)" }}>
                       {job.event_time ? new Date(job.event_time).toLocaleString() : "unknown time"}
                       {job.is_speeding ? " · speeding" : ""}
                     </div>
                   </td>
                   <td style={{ padding: "6px 4px" }}>
                     {STATUS_LABELS[job.status] || job.status}
-                    <div style={{ color: "#94a3b8" }}>
+                    <div style={{ color: "var(--text-muted)" }}>
                       {job.attempts} check{job.attempts === 1 ? "" : "s"}
                       {job.retrieval_id ? " · retrieval requested" : ""}
                     </div>
                   </td>
-                  <td style={{ padding: "6px 4px", color: "#f87171", maxWidth: 260 }}>
+                  <td style={{ padding: "6px 4px", color: "var(--danger)", maxWidth: 260 }}>
                     {job.last_error || ""}
                   </td>
                 </tr>
@@ -154,7 +154,7 @@ export function VideoRecoveryCard({ form, setField, recovery }) {
           </table>
         )}
         {jobs?.jobs?.length === 0 && (
-          <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 6 }}>
+          <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 6 }}>
             Nothing recorded — every safety event so far arrived with its video.
           </div>
         )}

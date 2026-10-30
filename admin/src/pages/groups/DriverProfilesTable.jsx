@@ -82,7 +82,7 @@ export function DriverProfilesTable({
                   via {formatStatusSource(profile.status_source)}
                 </div>
                 {profile.duplicate_conflict && (
-                  <div style={{ fontSize: 11, color: "#f59e0b" }}>
+                  <div style={{ fontSize: 11, color: "var(--warning)" }}>
                     Multiple active duplicates - review required
                   </div>
                 )}
@@ -104,7 +104,7 @@ export function DriverProfilesTable({
                     font: "inherit",
                     fontWeight: 600,
                     cursor: "pointer",
-                    color: "var(--primary, #6366f1)",
+                    color: "var(--accent-text)",
                     textDecoration: "underline",
                     textAlign: "left",
                   }}
@@ -112,7 +112,7 @@ export function DriverProfilesTable({
                   {name || "— set driver —"}
                 </button>
                 {needsReview(profile) && (
-                  <div style={{ fontSize: 11, color: "#f59e0b" }}>Needs review</div>
+                  <div style={{ fontSize: 11, color: "var(--warning)" }}>Needs review</div>
                 )}
                 {profile.telegram_username ? (
                   <div style={{ fontSize: 11, color: "var(--text-muted)" }}>@{profile.telegram_username}</div>

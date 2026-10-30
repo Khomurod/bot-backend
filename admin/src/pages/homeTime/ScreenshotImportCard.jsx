@@ -53,7 +53,7 @@ export function ScreenshotImportCard({
               {importRows.map((row, index) => (
                 <tr
                   key={index}
-                  style={!row.matched ? { background: "rgba(239, 68, 68, 0.08)" } : undefined}
+                  style={!row.matched ? { background: "var(--danger-soft)" } : undefined}
                 >
                   <td>
                     <input
@@ -68,7 +68,7 @@ export function ScreenshotImportCard({
                     />
                   </td>
                   <td>{row.name}</td>
-                  <td>{row.matched ? row.driver_label : <span style={{ color: "#ef4444" }}>No match</span>}</td>
+                  <td>{row.matched ? row.driver_label : <span style={{ color: "var(--danger)" }}>No match</span>}</td>
                   <td>{row.status === "road" ? "On the road" : row.status === "home" ? "At home" : "--"}</td>
                   <td>{row.since_date || "--"}</td>
                   <td>{row.history?.length ? `${row.history.length} period(s)` : "--"}</td>
