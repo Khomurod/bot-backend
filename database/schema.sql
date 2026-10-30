@@ -1832,9 +1832,21 @@ SELECT r.id, p.id FROM roles r CROSS JOIN permissions p
 WHERE r.system_key = 'super_admin'
 ON CONFLICT DO NOTHING;
 
+-- BOOTSTRAP ONLY. A role-less account becomes super administrator only while
+-- there is NO active super administrator at all: the admins that existed when
+-- roles arrived, or a database with none. Until October 2026 this ran on every
+-- boot for ANY role-less account, so stripping an account's roles to lock it
+-- out made it super administrator at the next deploy. `seed-admin` now gives
+-- the first admin its role itself, and the API refuses a role-less account
+-- (server/routes/adminUserGuards.js); this is the backstop.
 INSERT INTO admin_user_roles (admin_id, role_id)
 SELECT a.id, r.id FROM admins a JOIN roles r ON r.system_key = 'super_admin'
 WHERE NOT EXISTS (SELECT 1 FROM admin_user_roles aur WHERE aur.admin_id = a.id)
+  AND NOT EXISTS (
+    SELECT 1 FROM admin_user_roles sur
+      JOIN roles sr ON sr.id = sur.role_id AND sr.system_key = 'super_admin'
+      JOIN admins sa ON sa.id = sur.admin_id AND sa.active
+  )
 ON CONFLICT DO NOTHING;
 
 -- Optimistic locking for roles: a custom-role edit that sends a stale version

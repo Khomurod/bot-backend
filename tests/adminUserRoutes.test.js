@@ -13,20 +13,21 @@ const { createAdminUserRoutes } = require('../server/routes/adminUserRoutes');
 
 const taken = () => Object.assign(new Error('That username is already taken.'), { status: 409, code: 'USERNAME_TAKEN' });
 const USERS = [
-  { id: 1, username: 'owner', active: true, role_keys: ['super_admin'] },
-  { id: 2, username: 'office.one', active: true, role_keys: ['custom_office'] },
+  { id: 1, username: 'owner', active: true, role_keys: ['super_admin'], roles: [{ id: 9, system_key: 'super_admin' }] },
+  { id: 2, username: 'office.one', active: true, role_keys: ['custom_office'], roles: [{ id: 5, system_key: 'custom_office' }] },
+  { id: 3, username: 'owner.two', active: true, role_keys: ['super_admin'], roles: [{ id: 9, system_key: 'super_admin' }] },
 ];
 
-function appWith(db) {
+function appWith(db, actor = { id: 1 }) {
   const app = express();
   app.use(express.json());
   app.use(createAdminUserRoutes({
     db: {
-      listRolesAndPermissions: async () => ({ roles: [{ id: 5 }], permissions: [] }),
+      listRolesAndPermissions: async () => ({ roles: [{ id: 5, system_key: 'custom_office' }, { id: 9, system_key: 'super_admin' }], permissions: [] }),
       listAdminUsers: async () => USERS,
       ...db,
     },
-    authMiddleware: (req, res, next) => { req.admin = { id: 1 }; next(); },
+    authMiddleware: (req, res, next) => { req.admin = actor; next(); },
     requirePermission: () => (req, res, next) => next(),
   }));
   return app;
@@ -65,3 +66,38 @@ test('an error nobody raised on purpose gets the generic line, never its own tex
   assert.equal(res.status, 500);
   assert.deepEqual(res.json, { error: 'Could not create user.' });
 });
+
+test('stripping every role is refused — the boot bootstrap must never meet a role-less account', async () => {
+  let updated = false;
+  const res = await send(appWith({ updateAdminUser: async () => { updated = true; } }),
+    'PUT', '/api/admin/users/2', { role_ids: [] });
+  assert.equal(res.status, 400);
+  assert.equal(res.json.code, 'ROLE_REQUIRED');
+  assert.equal(updated, false);
+});
+
+test('an account manager who is not a super administrator cannot move super_admin, on create or update', async () => {
+  const manager = { id: 2, role_keys: ['custom_office'] };
+  let written = 0;
+  const db = { createAdminUser: async () => { written += 1; }, updateAdminUser: async () => { written += 1; } };
+  const grantOnCreate = await send(appWith(db, manager), 'POST', '/api/admin/users',
+    { username: 'new.one', password: 'long-enough-1', role_ids: [9] });
+  const grantToSelf = await send(appWith(db, manager), 'PUT', '/api/admin/users/2', { role_ids: [5, 9] });
+  const demoteOther = await send(appWith(db, manager), 'PUT', '/api/admin/users/3', { role_ids: [5] });
+  for (const res of [grantOnCreate, grantToSelf, demoteOther]) {
+    assert.equal(res.status, 403);
+    assert.equal(res.json.code, 'SUPER_ADMIN_ONLY');
+  }
+  assert.equal(written, 0);
+  // Ordinary roles and password resets stay open to an account manager.
+  const office = await send(appWith({ ...db, updateAdminUser: async () => ({ id: 2 }) }, manager), 'PUT', '/api/admin/users/2', { role_ids: [5] });
+  assert.equal(office.status, 200);
+});
+
+test('a super administrator may grant super_admin', async () => {
+  const res = await send(appWith({ updateAdminUser: async (id, body) => ({ id: Number(id), roleIds: body.roleIds }) },
+    { id: 1, role_keys: ['super_admin'] }), 'PUT', '/api/admin/users/2', { role_ids: [5, 9] });
+  assert.equal(res.status, 200);
+  assert.deepEqual(res.json.user.roleIds, [5, 9]);
+});
+

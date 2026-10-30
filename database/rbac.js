@@ -119,6 +119,24 @@ async function createAdminUser({ username, passwordHash, roleIds, actorId }) {
   }
 }
 
+/**
+ * `seed-admin`'s explicit bootstrap: give super_admin to an account that has NO
+ * role at all — the first admin it just created. An account that already has
+ * any role keeps exactly what it has. Returns whether a role was given.
+ */
+async function grantSuperAdminIfRoleless(adminId) {
+  const res = await query(
+    `INSERT INTO admin_user_roles (admin_id, role_id)
+     SELECT $1, r.id FROM roles r
+      WHERE r.system_key = 'super_admin'
+        AND NOT EXISTS (SELECT 1 FROM admin_user_roles aur WHERE aur.admin_id = $1)
+     ON CONFLICT DO NOTHING
+     RETURNING admin_id`,
+    [adminId],
+  );
+  return res.rowCount > 0;
+}
+
 async function countActiveSuperAdmins(client) {
   const res = await client.query(
     `SELECT COUNT(DISTINCT a.id)::int AS count
@@ -277,6 +295,7 @@ async function updateRole(roleId, { displayName, description, active, permission
 }
 
 module.exports = {
+  grantSuperAdminIfRoleless,
   publicAdmin,
   getAdminAuthorization,
   markAdminLogin,

@@ -64,7 +64,46 @@ function assertSuperAdminFloor(users, target, { nextRoleIds, nextActive } = {}) 
   }
 }
 
+/**
+ * Who may change which roles (October 2026 audit).
+ *
+ * NO ACCOUNT WITHOUT A ROLE. The database still hands `super_admin` to a
+ * role-less account at boot when there is no active super administrator (the
+ * first-run bootstrap, baseline 022), so a role-less account is a trap: until
+ * October 2026 that grant ran for ANY role-less account, and stripping
+ * someone's roles to lock them out made them super administrator at the next
+ * deploy. To stop someone signing in, disable the account.
+ *
+ * ONLY A SUPER ADMINISTRATOR MOVES THE SUPER ADMINISTRATOR ROLE. Otherwise
+ * `users.manage` alone could make anyone — the holder included — super
+ * administrator, and a role meant to manage accounts would be every permission
+ * in disguise.
+ *
+ * `selectedRoles` are the catalog rows for the requested role ids;
+ * `roleIdsGiven` is false when the request does not touch roles at all.
+ */
+function assertRoleChangeAllowed({ actor, target = null, selectedRoles = [], roleIdsGiven = true }) {
+  if (!roleIdsGiven) return;
+  if (!selectedRoles.length) {
+    throw Object.assign(
+      new Error('An account needs at least one role. To stop someone signing in, disable the account.'),
+      { status: 400, code: 'ROLE_REQUIRED' },
+    );
+  }
+  const grantsSuper = selectedRoles.some((r) => r.system_key === 'super_admin');
+  const hadSuper = target ? hasRole(target, 'super_admin') : false;
+  if (grantsSuper === hadSuper) return;
+  const actorIsSuper = (actor?.role_keys || []).includes('super_admin');
+  if (!actorIsSuper) {
+    throw Object.assign(
+      new Error('Only a super administrator can grant or remove the super administrator role.'),
+      { status: 403, code: 'SUPER_ADMIN_ONLY' },
+    );
+  }
+}
+
 module.exports = {
+  assertRoleChangeAllowed,
   resolveTargetOr404,
   activeSuperAdmins,
   assertSuperAdminFloor,

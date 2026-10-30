@@ -60,3 +60,36 @@ test('non-super-admin targets are unaffected by the floor guard', () => {
   assert.doesNotThrow(() => guards.assertSuperAdminFloor(all, dispatcher, { nextActive: false }));
   assert.doesNotThrow(() => guards.assertSuperAdminFloor(all, noRole, { nextActive: false }));
 });
+
+// ─── who may change which roles (October 2026 audit) ────────────────────────
+
+const SUPER_ROLE = { id: 10, system_key: 'super_admin' };
+const OFFICE_ROLE = { id: 30, system_key: 'custom_dispatcher' };
+const superActor = { id: 1, role_keys: ['super_admin'] };
+const managerActor = { id: 4, role_keys: ['custom_user_manager'] };
+
+test('no account may be left without a role — disabling is how access is stopped', () => {
+  assert.throws(
+    () => guards.assertRoleChangeAllowed({ actor: superActor, target: dispatcher, selectedRoles: [] }),
+    (e) => e.status === 400 && e.code === 'ROLE_REQUIRED' && /disable the account/.test(e.message),
+  );
+  // A request that does not touch roles is not a role change at all.
+  guards.assertRoleChangeAllowed({ actor: managerActor, target: dispatcher, roleIdsGiven: false });
+});
+
+test('only a super administrator grants or removes super_admin; other roles move freely', () => {
+  const superOnly = (e) => e.status === 403 && e.code === 'SUPER_ADMIN_ONLY';
+  // Grant on create, grant on update, removal on update — all refused for a non-super actor.
+  assert.throws(() => guards.assertRoleChangeAllowed({ actor: managerActor, selectedRoles: [SUPER_ROLE] }), superOnly);
+  assert.throws(() => guards.assertRoleChangeAllowed({ actor: managerActor, target: dispatcher, selectedRoles: [SUPER_ROLE] }), superOnly);
+  assert.throws(() => guards.assertRoleChangeAllowed({ actor: managerActor, target: superAdmin2, selectedRoles: [OFFICE_ROLE] }), superOnly);
+  // An actor with no role keys at all is not a super administrator either.
+  assert.throws(() => guards.assertRoleChangeAllowed({ actor: { id: 9 }, selectedRoles: [SUPER_ROLE] }), superOnly);
+  // Allowed: a super administrator moving it, anyone moving ordinary roles,
+  // and keeping super_admin where it already is.
+  guards.assertRoleChangeAllowed({ actor: superActor, target: dispatcher, selectedRoles: [SUPER_ROLE] });
+  guards.assertRoleChangeAllowed({ actor: superActor, target: superAdmin2, selectedRoles: [OFFICE_ROLE] });
+  guards.assertRoleChangeAllowed({ actor: managerActor, target: dispatcher, selectedRoles: [OFFICE_ROLE] });
+  guards.assertRoleChangeAllowed({ actor: managerActor, target: superAdmin2, selectedRoles: [SUPER_ROLE, OFFICE_ROLE] });
+});
+
