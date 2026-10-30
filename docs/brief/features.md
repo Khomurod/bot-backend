@@ -72,7 +72,10 @@ and every API client function is exactly what it was.
   (`last_sent_at`, `last_sent_groups`, migration 0089); a survey from before that
   with answers reads "Sent earlier". **A closed survey can be neither sent
   (409) nor answered**: a driver tapping an old button is told "This survey is
-  closed." and nothing is recorded. Answers are relayed to the management group
+  closed." and nothing is recorded. The insert itself decides (`saveResponse`
+  inserts only while the survey is open and only one of ITS options, locking
+  the question row against a concurrent Close), so a tap a moment before the
+  close cannot slip in after it. Answers are relayed to the management group
   in English. **Answers are multiple-choice only**: `responses`
   stores an `option_id` and has no text column, so a question must have options
   and a driver answers by tapping an inline button. Deduped by a unique index on

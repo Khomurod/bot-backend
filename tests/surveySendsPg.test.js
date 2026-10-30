@@ -56,3 +56,25 @@ test('the answer count is per survey, and open / closed / missing read true / fa
   assert.equal(await questions.isQuestionOpen(q.id), false);
   assert.equal(await questions.isQuestionOpen(999999), null);
 });
+
+test('an answer is recorded only for an open survey and one of its own options', { skip: skipWithoutPg(), timeout: 30000 }, async (t) => {
+  const { harness, questions, q } = await setup(t);
+  const other = await questions.createQuestion(tr('question_text', 'Other'), [
+    { option_order: 1, translations: tr('option_text', 'A') },
+    { option_order: 2, translations: tr('option_text', 'B') },
+  ]);
+  const { rows: [driver] } = await harness.query("INSERT INTO drivers (telegram_user_id, first_name) VALUES (5002, 'Test') RETURNING id");
+  const { rows: [second] } = await harness.query("INSERT INTO drivers (telegram_user_id, first_name) VALUES (5003, 'Test') RETURNING id");
+  const { rows: [group] } = await harness.query("INSERT INTO groups (telegram_group_id, group_name) VALUES (-5002, 'Test group') RETURNING id");
+  const mine = (await questions.getQuestionWithOptions(q.id)).options[0].id;
+  const notMine = (await questions.getQuestionWithOptions(other.id)).options[0].id;
+
+  assert.equal(await questions.saveResponse(driver.id, group.id, q.id, notMine), null, "another survey's option is refused");
+  assert.ok(await questions.saveResponse(driver.id, group.id, q.id, mine), 'its own option is recorded');
+  assert.equal(await questions.saveResponse(driver.id, group.id, q.id, mine), null, 'a second answer is refused');
+
+  await questions.deactivateQuestion(q.id);
+  assert.equal(await questions.saveResponse(second.id, group.id, q.id, mine), null, 'a closed survey takes no answer');
+  const { rows } = await harness.query('SELECT driver_id, option_id FROM responses WHERE question_id = $1', [q.id]);
+  assert.deepEqual(rows, [{ driver_id: driver.id, option_id: mine }]);
+});

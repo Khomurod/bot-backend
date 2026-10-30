@@ -179,17 +179,30 @@ async function isQuestionOpen(questionId) {
 
 // ─── Responses ───
 
+/**
+ * Record one driver's answer — only if the survey is still open AND the option
+ * is one of ITS options, decided in the same statement as the insert. `FOR SHARE
+ * OF q` makes the insert and Close survey (`deactivateQuestion`) wait for each
+ * other, so an answer is either in before the close or refused after it; a
+ * separate "is it open?" read could pass a moment before the close and record
+ * anyway. Returns null when nothing was written: already answered, closed, or
+ * an option from another survey.
+ */
 async function saveResponse(driverId, groupId, questionId, optionId) {
   const res = await query(
     `INSERT INTO responses (driver_id, group_id, question_id, option_id)
-     VALUES ($1, $2, $3, $4)
+     SELECT $1, $2, q.id, o.id
+       FROM questions q
+       JOIN options o ON o.question_id = q.id AND o.id = $4
+      WHERE q.id = $3 AND q.active IS NOT FALSE
+        FOR SHARE OF q
      ON CONFLICT (driver_id, question_id) DO NOTHING
      RETURNING *`,
     [driverId, groupId, questionId, optionId]
   );
   if (res.rows.length === 0) {
-    console.log(`[DB] Duplicate response ignored: driver=${driverId}, question=${questionId}`);
-    return null; // duplicate
+    console.log(`[DB] Response not recorded (already answered, closed, or not this survey's option): driver=${driverId}, question=${questionId}`);
+    return null;
   }
   console.log(`[DB] Response saved: driver=${driverId}, question=${questionId}, option=${optionId}`);
   return res.rows[0];

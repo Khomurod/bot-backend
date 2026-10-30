@@ -16,9 +16,9 @@ npm run build:schema:check                        # schema.sql is in sync with b
 
 - **The Node suite passes clean with no secrets and no database.** Verified
   baseline (2026-10-30, after New survey and the duplicate-report findings,
-  deps installed): the 381 non-`*Pg` files with no application env — **3972
-  tests, 3972 pass, 0 fail, 0 skipped**, exactly what CI's unit job runs — and
-  the 98 `*Pg` files against a local PostgreSQL 16 — **759 tests, 759 pass,
+  deps installed): the 381 non-`*Pg` files with no application env — **3973
+  tests, 3973 pass, 0 fail, 0 skipped**, exactly what CI's unit job runs — and
+  the 98 `*Pg` files against a local PostgreSQL 16 — **760 tests, 760 pass,
   0 fail, 0 skipped**. CI runs the non-`*Pg` files with no application env at
   all and the `*Pg` files against a real Postgres; both jobs fail on any skip.
   The admin suite is **511 pass in 68 files**; the Python leads tests are

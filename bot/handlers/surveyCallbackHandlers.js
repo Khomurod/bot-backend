@@ -167,7 +167,11 @@ function registerSurveyCallbackHandlers(bot) {
       );
 
       if (!response) {
-        await ctx.answerCbQuery('You have already answered this question.');
+        // Nothing was written. The insert itself refuses a survey closed a
+        // moment ago (and an option that is not this survey's), so ask again
+        // which it was rather than call every refusal a duplicate.
+        const stillOpen = await db.isQuestionOpen(questionId);
+        await ctx.answerCbQuery(stillOpen === true ? 'You have already answered this question.' : 'This survey is closed.');
         return;
       }
 

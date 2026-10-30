@@ -204,3 +204,16 @@ test('a tap on an open survey is still recorded and thanked', async () => {
   assert.deepEqual(replies, ['Thank you for your feedback!']);
   assert.deepEqual(saved, [[1, 2, 3, 11]]);
 });
+
+test('a tap the insert refuses because the survey closed a moment ago is told "closed", not "already answered"', async () => {
+  let checks = 0;
+  Object.assign(fakeDb, {
+    isQuestionOpen: async () => (checks++ === 0), // open at the first look, closed by the insert
+    upsertDriver: async () => ({ id: 1, telegram_user_id: 5 }),
+    getGroupByTelegramId: async () => ({ id: 2 }),
+    saveResponse: async () => null,
+  });
+  const { ctx, replies } = tap('answer_3_11');
+  await answerHandler()(ctx);
+  assert.deepEqual(replies, ['This survey is closed.']);
+});
