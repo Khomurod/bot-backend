@@ -53,6 +53,9 @@ test("no two forwarded modules export the same name", () => {
 });
 
 test("the public surface stays at its known size", () => {
+  // 223 with Admin Accounts and Change password (October 2026):
+  // `getAdminUsers`, `getAdminRoles`, `createAdminUser`, `updateAdminUser`,
+  // `changePassword`.
   // 218 after the October 2026 hidden-functions audit, from a real 236: the
   // eleven AI Reports / Insights calls, the six old driver-group calls
   // (`getGroups`, `aiParseDriverProfiles`, `setGroupLanguage`,
@@ -81,7 +84,7 @@ test("the public surface stays at its known size", () => {
   // Tracking and QBQ/SOS, and 205 when api.js was first split into domain
   // modules. Growing this is fine — update the number. A DROP that is not a
   // deliberate feature removal means a call site somewhere just broke.
-  expect(Object.keys(api).length).toBeGreaterThanOrEqual(218);
+  expect(Object.keys(api).length).toBeGreaterThanOrEqual(223);
 });
 
 describe("a sample of calls from every domain still resolves", () => {

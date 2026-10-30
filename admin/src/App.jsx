@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useEffect, useState } from "react";
+import React, { Suspense, lazy, useEffect, useRef, useState } from "react";
 import * as api from "./api";
 // LoginPage stays eager: it is the auth gate and must render instantly.
 import LoginPage from "./pages/LoginPage";
@@ -7,6 +7,7 @@ import AdminSidebar, { labelForPage } from "./components/AdminSidebar";
 import Icon from "./components/ui/Icon";
 import PageErrorBoundary from "./components/PageErrorBoundary";
 import DatabaseUsageBanner from "./components/DatabaseUsageBanner";
+import ChangePasswordModal from "./components/ChangePasswordModal";
 import { DEFAULT_PAGE_KEY, hashForRoute, routeFromHash } from "./navigation/pageKeys";
 
 // Every other page is lazy-loaded so its code is fetched only when the page
@@ -138,6 +139,11 @@ export default function App() {
   const [route, setRoute] = useState(() => currentRoute());
   const page = route.page;
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [changingPassword, setChangingPassword] = useState(false);
+  // Opened from the phone drawer, Change password hands focus back to the menu
+  // button when it closes: the drawer it was opened from has slid away.
+  const menuButtonRef = useRef(null);
+  const [passwordFromDrawer, setPasswordFromDrawer] = useState(false);
   const isRecruitersPublicPage = page === "recruiters_public";
   const grossRaceView = { gross_race_teams: "teams", gross_race_dispatchers: "dispatchers" }[page] || null;
 
@@ -277,7 +283,19 @@ export default function App() {
         mobileMenuOpen={mobileMenuOpen}
         onNavigateToPage={navigateToPage}
         onLogout={handleLogout}
+        onChangePassword={() => {
+          setPasswordFromDrawer(mobileMenuOpen);
+          setMobileMenuOpen(false);
+          setChangingPassword(true);
+        }}
       />
+      {changingPassword && (
+        <ChangePasswordModal
+          onClose={() => setChangingPassword(false)}
+          returnFocusRef={passwordFromDrawer ? menuButtonRef : null}
+          onSignInAgain={() => { setChangingPassword(false); handleLogout(); }}
+        />
+      )}
       {/* On a phone the sidebar is a drawer; tapping outside it closes it. */}
       <div
         className={`sidebar-backdrop ${mobileMenuOpen ? "is-open" : ""}`}
@@ -289,6 +307,7 @@ export default function App() {
         <div className="topbar">
           <button
             type="button"
+            ref={menuButtonRef}
             className="mobile-menu-btn"
             aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
             aria-expanded={mobileMenuOpen}

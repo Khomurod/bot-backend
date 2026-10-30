@@ -63,6 +63,27 @@ prefixed key and may never claim a reserved key or `super_`/`admin_` prefix
   keeps the guard that was never about trailers:
 - **The last active super administrator cannot be deactivated or demoted.**
 
+### Admin accounts have a screen (October 2026)
+
+**Settings → Administration → Admin Accounts** (`admin/src/pages/settings/admins/`)
+is the screen for `server/routes/adminUserRoutes.js`, which had existed with no
+caller: list every account with its roles, state and last sign-in; create one
+(username, a password of at least 10 characters typed twice, at least one active
+role); **disable / re-enable** it; **reset its password**. Disable and reset
+bump the account's `auth_version`, so that person's sessions end at once. The
+server's guard stays the only authority on "the last active super administrator
+cannot be disabled or demoted" (`adminUserGuards.js`, `database/rbac.js`); the
+screen shows its refusal, under the row that was pressed. A username already in
+use is a 409 "That username is already taken." (`USERNAME_TAKEN`, on create and
+on rename), not a 500. Your own row has neither action: disabling yourself
+locks you out mid-task, and a new password for yourself belongs behind your
+current one — **Change password** in the sidebar footer
+(`POST /api/auth/change-password`), open to every signed-in account including
+one without `admin.full_access`; success ends the session and offers the
+sign-in screen. The screen needs `users.manage`; an account without it is told
+so in words. **Not on a screen yet:** changing an existing account's roles and
+editing roles and their permissions (`POST`/`PUT /api/admin/roles`).
+
 ### Non-JWT access paths (be careful changing these)
 
 | Path | Gate |

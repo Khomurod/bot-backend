@@ -39,6 +39,10 @@ export const SETTINGS_GROUPS = Object.freeze([
     sections: [{ key: "grossrace", label: "Gross Grand Prix" }],
   },
   {
+    label: "Administration",
+    sections: [{ key: "admins", label: "Admin Accounts" }],
+  },
+  {
     label: "Maintenance",
     sections: [{ key: "leftovers", label: "Retired Leftovers" }],
   },

@@ -82,6 +82,15 @@ async function listRolesAndPermissions() {
   return { roles: roles.rows, permissions: permissions.rows };
 }
 
+// The `admins.username` UNIQUE constraint, said in words a person can act on
+// (Settings → Admin Accounts shows the message as it is) instead of a 500.
+function asUsernameTaken(error) {
+  if (error?.code === '23505' && /username/.test(error.constraint || '')) {
+    return Object.assign(new Error('That username is already taken.'), { status: 409, code: 'USERNAME_TAKEN' });
+  }
+  return error;
+}
+
 async function createAdminUser({ username, passwordHash, roleIds, actorId }) {
   const client = await pool.connect();
   try {
@@ -104,7 +113,7 @@ async function createAdminUser({ username, passwordHash, roleIds, actorId }) {
     return getAdminAuthorization(created.rows[0].id);
   } catch (error) {
     await client.query('ROLLBACK');
-    throw error;
+    throw asUsernameTaken(error);
   } finally {
     client.release();
   }
@@ -168,7 +177,7 @@ async function updateAdminUser(adminId, { username, active, roleIds, passwordHas
     return getAdminAuthorization(adminId);
   } catch (error) {
     try { await client.query('ROLLBACK'); } catch (_) { /* noop */ }
-    throw error;
+    throw asUsernameTaken(error);
   } finally {
     client.release();
   }

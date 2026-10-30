@@ -5,6 +5,10 @@ const bcrypt = require('bcryptjs');
 const guards = require('./adminUserGuards');
 
 function status(error){return error.status||(/duplicate key|unique constraint/i.test(error.message)?409:500);}
+// A refusal we raised carries its message and machine-readable code (e.g.
+// USERNAME_TAKEN); anything else gets the generic line, so a database
+// error's own text never reaches the page.
+function errorBody(error,fallback){return error.status?{error:error.message,...(error.code?{code:error.code}:{})}:{error:fallback};}
 
 function createAdminUserRoutes({db,authMiddleware,requirePermission}){
   const router=express.Router();
@@ -31,7 +35,7 @@ function createAdminUserRoutes({db,authMiddleware,requirePermission}){
       await validateAssignableRoles(roleIds);
       const user=await db.createAdminUser({username,passwordHash:await bcrypt.hash(password,12),roleIds,actorId:req.admin.id});
       res.status(201).json({user});
-    }catch(e){res.status(status(e)).json({error:e.status?e.message:'Could not create user.'});}
+    }catch(e){res.status(status(e)).json(errorBody(e,'Could not create user.'));}
   });
   router.put('/api/admin/users/:id',authMiddleware,canManageUsers,async(req,res)=>{
     try{
@@ -45,7 +49,7 @@ function createAdminUserRoutes({db,authMiddleware,requirePermission}){
       if(body.password&&String(body.password).length<10)return res.status(400).json({error:'Password must be at least 10 characters.'});
       const user=await db.updateAdminUser(req.params.id,{username:body.username,active:body.active,roleIds,passwordHash,actorId:req.admin.id});
       res.json({user});
-    }catch(e){res.status(status(e)).json({error:e.status?e.message:'Could not update user.'});}
+    }catch(e){res.status(status(e)).json(errorBody(e,'Could not update user.'));}
   });
   router.post('/api/admin/roles',authMiddleware,requirePermission('roles.manage'),async(req,res)=>{
     try{

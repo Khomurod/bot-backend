@@ -1,10 +1,11 @@
 /**
  * PostgreSQL integration — custom role creation and optimistic locking
- * (blockers §11 + §20 for roles).
+ * (blockers §11 + §20 for roles), and a taken admin username.
  *
  * Proves createRole assigns a unique custom_* system key, rejects reserved
  * keys, and that updateRole enforces the version and still protects the
- * super-admin role.
+ * super-admin role; and that a username already in use is refused with a 409
+ * a person can read, on create and on rename, rather than a bare 500.
  *
  * Requires TEST_DATABASE_URL.
  */
@@ -111,4 +112,21 @@ test('updateRole still protects the super administrator role', {
     () => rbac.updateRole(sa.rows[0].id, { active: false, version: sa.rows[0].version }),
     (e) => e.status === 409,
   );
+});
+
+test('a username already in use is a 409 USERNAME_TAKEN, on create and on rename', {
+  skip: skipWithoutPg(), timeout: 30000,
+}, async (t) => {
+  const harness = await createPgHarness(t);
+  const rbac = loadRbac(harness);
+  const role = await rbac.createRole({ displayName: 'Night Desk', permissionKeys: [] });
+  await rbac.createAdminUser({ username: 'night.one', passwordHash: 'x', roleIds: [role.id] });
+  const second = await rbac.createAdminUser({ username: 'night.two', passwordHash: 'x', roleIds: [role.id] });
+
+  const taken = (e) => e.code === 'USERNAME_TAKEN' && e.status === 409 && e.message === 'That username is already taken.';
+  await assert.rejects(() => rbac.createAdminUser({ username: ' night.one ', passwordHash: 'x', roleIds: [role.id] }), taken);
+  await assert.rejects(() => rbac.updateAdminUser(second.id, { username: 'night.one' }), taken);
+  // Nothing half-written: still exactly the two accounts.
+  const { rows } = await harness.pool.query("SELECT username FROM admins WHERE username LIKE 'night.%' ORDER BY username");
+  assert.deepEqual(rows.map((r) => r.username), ['night.one', 'night.two']);
 });

@@ -23,7 +23,7 @@ afterEach(() => {
 });
 
 function renderSidebar(props = {}) {
-  const handlers = { onNavigateToPage: vi.fn(), onLogout: vi.fn() };
+  const handlers = { onNavigateToPage: vi.fn(), onLogout: vi.fn(), onChangePassword: vi.fn() };
   render(<AdminSidebar session={admin} page="groups" mobileMenuOpen={false} {...handlers} {...props} />);
   return handlers;
 }
@@ -55,6 +55,13 @@ describe("AdminSidebar", () => {
     expect(screen.getByText("Limited access")).toBeTruthy();
     await userEvent.click(screen.getByRole("button", { name: "Sign Out" }));
     expect(onLogout).toHaveBeenCalledTimes(1);
+  });
+
+  test("every signed-in account can change its own password — limited access included", async () => {
+    const { onChangePassword, onLogout } = renderSidebar({ session: { username: "anna", permissions: [] } });
+    await userEvent.click(screen.getByRole("button", { name: "Change password" }));
+    expect(onChangePassword).toHaveBeenCalledTimes(1);
+    expect(onLogout).not.toHaveBeenCalled();
   });
 
   test("the theme switch flips the theme and touches nothing else", async () => {
