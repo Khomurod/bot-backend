@@ -72,7 +72,12 @@ in a forward migration** — `npm run migrate:new -- <name>`. Never hand-edit
 ### 4. Seed the admin user and start
 
 ```bash
-ADMIN_PASSWORD='at-least-10-chars' npm run seed-admin   # first admin, given super_admin
+# First admin, given super_admin. Type a password of your own (10+ characters);
+# it is read without echo and cleared afterwards, never written in a command.
+read -rsp 'New admin password (10+ characters): ' ADMIN_PASSWORD; echo
+export ADMIN_PASSWORD
+npm run seed-admin
+unset ADMIN_PASSWORD
 npm start          # bot + API (port 3001) + leads-bot subprocess
 ```
 
