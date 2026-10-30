@@ -1,5 +1,5 @@
 /**
- * Users → Company Employees: the staff list with the American name, the
+ * Birthdays → Employees: the staff list with the American name, the
  * Telegram account and the photo the birthday card needs.
  */
 

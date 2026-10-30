@@ -1,5 +1,5 @@
 /**
- * Settings → Telegram Groups: each bonus category has its own destination, and
+ * Settings → Bonus Groups: each bonus category has its own destination, and
  * the two save independently of each other.
  *
  * The driver-raise review's two fields (REQUESTS to dispatch, RESULTS to

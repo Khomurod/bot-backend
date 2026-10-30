@@ -1,7 +1,7 @@
 /**
  * Settings → RingCentral: a settings read that fails is said, with a retry,
  * and the form is NOT drawn — it used to be drawn against no settings and
- * throw ("This section has a bug"), like Settings → Live Location did.
+ * throw ("This section has a bug"), like Settings → Location Providers did.
  */
 import React from "react";
 import { beforeEach, expect, test, vi } from "vitest";

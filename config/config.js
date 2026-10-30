@@ -158,7 +158,7 @@ module.exports = {
   employeeGroupId: process.env.EMPLOYEE_GROUP_ID || '-1003284808897',
   // Telegram destinations for the bonus / CPM-review message categories. These
   // are OPTIONAL, backwards-compatible env fallbacks only — the primary,
-  // runtime-editable source of truth is the admin Settings → Telegram Groups tab
+  // runtime-editable source of truth is the admin Settings → Bonus Groups section
   // (message_group_settings). Deliberately NO hardcoded group-id default: when a
   // category has neither a DB value nor an env value, its message is not sent
   // and a clear configuration error is logged (never a silent old default).

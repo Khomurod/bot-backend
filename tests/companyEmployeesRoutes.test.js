@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * Admin → Users → Company Employees routes. The store and the card renderer
+ * Admin → Birthdays → Employees routes. The store and the card renderer
  * are stand-ins; made-up names throughout.
  */
 const test = require('node:test');

@@ -162,7 +162,8 @@ opens on Announcement, as Send Message always did.
 
 | Old address | Opens |
 |---|---|
-| `#settings`, `#settings_integrations` | `#settings/location` |
+| `#settings_integrations` | `#settings/location` |
+| `#settings` | unchanged: still the Settings page, opening its first section (Location Providers) |
 | `#settings_board` | `#settings/board` |
 | `#settings_ai` | `#settings/ai` |
 | `#settings_notifications` | `#settings/notifications` |

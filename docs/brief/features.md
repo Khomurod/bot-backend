@@ -343,11 +343,12 @@ company's template** to the employee group — their photo, full first name and
 American name — with the owner's **fixed caption** tagging their Telegram
 account. No model writes it (the AI birthday message was removed on
 2026-10-23). The staff list, its American names, Telegram accounts and photos
-are kept in Users → **Company Employees** (formerly the always-empty
-"Dispatchers" filter); names and dates on the Birthdays page. Telegram accounts
-can be *suggested* from the accounts the bot has seen — by display name, never
-by username — and a suggestion never overwrites one a person typed or
-confirmed. Exactly one card per employee per day. See
+are kept in Birthdays → **Employees** (Users → Company Employees until
+October 2026, and before that the always-empty "Dispatchers" filter); names
+and dates on the page's first tab, Birthdays. Telegram accounts can be
+*suggested* from the accounts the bot has seen — by display name, never by
+username — and a suggestion never overwrites one a person typed or confirmed.
+Exactly one card per employee per day. See
 [`docs/architecture/employee-birthday-cards.md`](../architecture/employee-birthday-cards.md).
 
 ### Recruiting and leads

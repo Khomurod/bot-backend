@@ -1,7 +1,7 @@
 /**
  * Message routing settings — single-row store (id = 1).
  *
- * Backs the admin panel's Settings → Telegram Groups tab. Holds the Telegram
+ * Backs the admin panel's Settings → Bonus Groups section. Holds the Telegram
  * group ID that each bonus / review message category is delivered to. These IDs
  * used to be hardcoded constants / default env values (BONUS_GROUP_CHAT_ID,
  * EMPLOYEE_GROUP_ID); they are now edited in the panel.

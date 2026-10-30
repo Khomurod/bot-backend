@@ -73,7 +73,7 @@ function capAdvice(capped = []) {
         : `auto-apply cannot process this batch: ${c.wanted} findings exceed the hard `
           + `maximum of ${MAX_AUTO_PER_RUN} on max_auto_per_run, so no cap unblocks it. `
           + `Narrow the batch (dismiss or snooze what does not belong) or work it in `
-          + `reviewed batches from Admin → Operations → Needs Attention.`,
+          + `reviewed batches from Admin → Monitoring → Needs Attention.`,
     };
   });
 }
