@@ -7,6 +7,7 @@ import AdminSidebar, { labelForPage } from "./components/AdminSidebar";
 import Icon from "./components/ui/Icon";
 import PageErrorBoundary from "./components/PageErrorBoundary";
 import DatabaseUsageBanner from "./components/DatabaseUsageBanner";
+import ChangePasswordModal from "./components/ChangePasswordModal";
 import { DEFAULT_PAGE_KEY, hashForRoute, routeFromHash } from "./navigation/pageKeys";
 
 // Every other page is lazy-loaded so its code is fetched only when the page
@@ -138,6 +139,7 @@ export default function App() {
   const [route, setRoute] = useState(() => currentRoute());
   const page = route.page;
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [changingPassword, setChangingPassword] = useState(false);
   const isRecruitersPublicPage = page === "recruiters_public";
   const grossRaceView = { gross_race_teams: "teams", gross_race_dispatchers: "dispatchers" }[page] || null;
 
@@ -277,7 +279,14 @@ export default function App() {
         mobileMenuOpen={mobileMenuOpen}
         onNavigateToPage={navigateToPage}
         onLogout={handleLogout}
+        onChangePassword={() => { setMobileMenuOpen(false); setChangingPassword(true); }}
       />
+      {changingPassword && (
+        <ChangePasswordModal
+          onClose={() => setChangingPassword(false)}
+          onSignInAgain={() => { setChangingPassword(false); handleLogout(); }}
+        />
+      )}
       {/* On a phone the sidebar is a drawer; tapping outside it closes it. */}
       <div
         className={`sidebar-backdrop ${mobileMenuOpen ? "is-open" : ""}`}

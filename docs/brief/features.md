@@ -9,7 +9,7 @@ The admin panel has five sidebar groups — **Drivers · Recruiting ·
 Communications · Monitoring · Administration** — with one entry per page (14),
 and no collapsed "Admin" drawer: every section needs the same permission, so a
 section named after the permission said nothing about what was in it. Settings
-is ONE entry; its 13 sections sit under six groups in the page's own list.
+is ONE entry; its 14 sections sit under seven groups in the page's own list.
 Where each function lives, and why: `docs/redesign/structure.md`.
 
 **Every admin page and every page-level tab has a URL.** The page is the hash

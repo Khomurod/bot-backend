@@ -82,6 +82,7 @@ export default function AdminSidebar({
   mobileMenuOpen,
   onNavigateToPage,
   onLogout,
+  onChangePassword,
 }) {
   const isFullAdmin = session?.permissions?.includes('admin.full_access');
   const visibleSections = isFullAdmin ? NAV_SECTIONS : [];
@@ -141,6 +142,12 @@ export default function AdminSidebar({
           <span className="nav-icon"><Icon name={theme === 'dark' ? 'sun' : 'moon'} /></span>
           {theme === 'dark' ? 'Light mode' : 'Dark mode'}
         </button>
+        {onChangePassword && (
+          <button type="button" className="logout-btn" onClick={onChangePassword}>
+            <span className="nav-icon"><Icon name="key" /></span>
+            Change password
+          </button>
+        )}
         <button type="button" className="logout-btn logout-btn--danger" onClick={onLogout}>
           <span className="nav-icon"><Icon name="logout" /></span>
           Sign Out

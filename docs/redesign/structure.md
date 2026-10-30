@@ -62,6 +62,7 @@ desktop, a single picker on a phone. Every section has its own address.
 | Telegram Bot | Notifications (`notifications`) · Bonus Groups (`groups`) · Group Access (`access`) · Auto Reactions (`reactions`) |
 | Recruiting | Safety Approvals (`safety`) |
 | Office Screens | Gross Grand Prix (`grossrace`) |
+| Administration | Admin Accounts (`admins`) — added after the October 2026 audit |
 | Maintenance | Retired Leftovers (`leftovers`) |
 
 **Every page-level tab is an address** (`#page/tab`). Switching a tab updates
@@ -86,7 +87,7 @@ opens on Announcement, as Send Message always did.
 - **One Settings entry.** Configuration is set up once and visited rarely. Six
   sidebar entries for it pushed daily work down the list and still did not show
   where most settings were. The Settings page's own grouped list now shows all
-  13 sections at once.
+  of its sections at once (13, and 14 since Admin Accounts was added).
 - **Settings grouped by kind.** Credentials for outside systems (Integrations);
   the AI configuration; where the bot posts and what it may do in groups
   (Telegram Bot); a recruiting-group workflow (Recruiting); the office race

@@ -222,3 +222,19 @@ describe("tabs and sections have addresses", () => {
     expect(employees).toHaveAttribute("aria-selected", "true");
   });
 });
+
+describe("account controls", () => {
+  test("Change password in the sidebar opens the dialog, and Cancel closes it", async () => {
+    await renderShell();
+    await userEvent.click(screen.getByRole("button", { name: "Change password" }));
+    expect(screen.getByRole("dialog", { name: "Change password" })).toBeTruthy();
+    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("dialog", { name: "Change password" })).toBeNull();
+  });
+
+  test("#settings/admins opens Admin Accounts", async () => {
+    goTo("#settings/admins");
+    await renderShell();
+    await waitFor(() => expect(screen.getByRole("region", { name: "Admin Accounts" })).toBeTruthy());
+  });
+});

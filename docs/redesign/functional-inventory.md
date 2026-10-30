@@ -28,6 +28,7 @@ and `/presentation` (server-rendered pages).
 | Back/forward | `popstate` + `hashchange` move page and highlight | `App.jsx` |
 | Public pages | `/recruiters` (leaderboard), `/dispatch`, `/dispatchteam` (race) — no chrome, no auth | `App.jsx` |
 | Sign out | clears session, drops the hash | `App.jsx` |
+| Change password (added after the October 2026 audit) | sidebar footer, every signed-in account; current + new twice; success ends the session and offers sign-in | `ChangePasswordModal.jsx` |
 | Sidebar | 5 sections, 18 items (order in `NAV_SECTIONS`); mobile drawer | `components/AdminSidebar.jsx` |
 | Database banner | shown at 80%+ of the monthly transfer allowance | `components/DatabaseUsageBanner.jsx` |
 | Page error boundary | per page, resets on navigation; "Could not load this page" + retry | `components/PageErrorBoundary.jsx`, `PageFailure.jsx` |
@@ -81,6 +82,7 @@ and `/presentation` (server-rendered pages).
 | Bot Group Access | settings, groups table, recheck, request admin, export (download) |
 | Gross Grand Prix | celebration video upload / delete (confirm) / pause, Windows sound command (copy) |
 | Retired Leftovers | list, purge config, drop tables (typed confirmation) |
+| Admin Accounts (added after the October 2026 audit) | list (roles, state, last sign-in, you marked), create (username, password twice, roles), disable / enable (confirm), reset password — not on your own row; a 403 is explained |
 
 ## States checked on every screen
 

@@ -1,5 +1,5 @@
 /**
- * Settings' own navigation: thirteen sections under six groups, every one of
+ * Settings' own navigation: fourteen sections under seven groups, every one of
  * them reachable, and the choice is the PAGE's (and so the address's) — the
  * navigation only reports it.
  */
@@ -11,9 +11,9 @@ import SettingsNav from "./SettingsNav";
 import { SETTINGS_GROUPS, SETTINGS_SECTION_KEYS, settingsSectionLabel } from "./sections";
 
 describe("Settings sections", () => {
-  test("six groups, thirteen sections, each key once, in this order", () => {
+  test("seven groups, fourteen sections, each key once, in this order", () => {
     expect(SETTINGS_GROUPS.map((g) => g.label)).toEqual([
-      "Integrations", "AI", "Telegram Bot", "Recruiting", "Office Screens", "Maintenance",
+      "Integrations", "AI", "Telegram Bot", "Recruiting", "Office Screens", "Administration", "Maintenance",
     ]);
     expect(SETTINGS_SECTION_KEYS).toEqual([
       "location", "samsara", "board", "ringcentral", "metacrm",
@@ -21,6 +21,7 @@ describe("Settings sections", () => {
       "notifications", "groups", "access", "reactions",
       "safety",
       "grossrace",
+      "admins",
       "leftovers",
     ]);
     expect(new Set(SETTINGS_SECTION_KEYS).size).toBe(SETTINGS_SECTION_KEYS.length);

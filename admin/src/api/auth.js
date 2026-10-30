@@ -24,6 +24,20 @@ export async function verifyAuth() {
   return res.json();
 }
 
+/**
+ * Change the signed-in account's own password. The server ends every session
+ * of this account on success, so the caller signs out afterwards.
+ */
+export async function changePassword(currentPassword, newPassword) {
+  const res = await fetch(`${API_BASE}/auth/change-password`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
 export function logout() {
   localStorage.removeItem('token');
 }

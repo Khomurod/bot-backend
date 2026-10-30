@@ -137,7 +137,7 @@ const PRESENTATION = {
   [FAILURE_KIND.PERMISSION]: {
     title: 'This account may not open this section',
     explanation:
-      'You are signed in, but your permissions do not include this area. An administrator can grant it under Users. This is a permission decision, not a failure.',
+      'You are signed in, but your permissions do not include this area. Ask a super administrator: accounts are managed under Settings → Admin Accounts. This is a permission decision, not a failure.',
     action: 'none',
   },
   [FAILURE_KIND.QUOTA]: {

@@ -50,6 +50,7 @@ const GroupAccessPanel = lazy(() => import("./settings/bot/GroupAccessPanel"));
 const RetiredLeftoversTab = lazy(() => import("./settings/RetiredLeftoversTab"));
 const GrossRaceTab = lazy(() => import("./settings/GrossRaceTab"));
 const MetaCrmTab = lazy(() => import("./settings/MetaCrmTab"));
+const AdminAccountsTab = lazy(() => import("./settings/admins/AdminAccountsTab"));
 
 /**
  * `tab` is the section named in the address (`#settings/board`) and
@@ -62,7 +63,7 @@ export default function SettingsPage({ tab: routeTab, onTabChange }) {
     <div>
       <div className="page-header">
         <h2>Settings</h2>
-        <p>Connections to outside services, the AI, where the bot posts, and maintenance.</p>
+        <p>Connections to outside services, the AI, where the bot posts, who can sign in, and maintenance.</p>
       </div>
       <div className="settings-layout">
         <SettingsNav value={tab} onChange={setTab} />
@@ -84,6 +85,7 @@ export default function SettingsPage({ tab: routeTab, onTabChange }) {
             {tab === "reactions" && <AutoReactionsPanel />}
             {tab === "access" && <GroupAccessPanel />}
             {tab === "grossrace" && <GrossRaceTab />}
+            {tab === "admins" && <AdminAccountsTab />}
             {tab === "leftovers" && <RetiredLeftoversTab />}
           </Suspense>
           </PageErrorBoundary>
