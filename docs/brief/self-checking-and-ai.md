@@ -65,7 +65,16 @@ feature it belongs to.
   features: `samsara.vehicle_on_two_active_groups`,
   `samsara.vehicle_link_disagrees` and `raise.progress_without_person` (one
   aggregated finding about mileage-bonus rows — the name predates the raise
-  review's removal and outlived it). The two auto actions live in
+  review's removal and outlived it). `checks/vehicleMatch.js` (October 2026
+  audit) puts the duplicate-unit scan's OPEN Samsara driver-match reports on
+  the page — `samsara.driver_name_mismatch` (the Samsara vehicle for the unit
+  lists another driver) and `samsara.ambiguous_unit_match` (several vehicles
+  share the unit, none clearly this driver's; serious). Before that they sat in
+  `duplicate_unit_reports` behind three admin routes no screen called, now
+  removed; a dismissal with a reason is the old "resolve". The scan stays the
+  judge — it resolves a report once the names agree, and the finding follows on
+  the next sweep — and a failed or full read throws, so it never clears them.
+  Report only: the fix is in Samsara or the profile. The two auto actions live in
   `corrections/identityActions.js`, re-derive under lock, refuse when stale, and
   revert without deleting (a created person row stays; a previous truck is
   reopened as a new row). Both ship **disabled** like every other check. Guarded

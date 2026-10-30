@@ -118,7 +118,12 @@ and every API client function is exactly what it was.
   [`retired-route-control.md`](../architecture/retired-route-control.md).
 - **Duplicate unit check** — every 15 minutes, scans active driver groups for
   duplicate unit numbers and Samsara driver-name mismatches, and stores findings
-  in `duplicate_unit_reports`. It **deliberately never messages driver groups.**
+  in `duplicate_unit_reports`. The open driver-name mismatches and ambiguous
+  matches reach a person on **Needs Attention** (`samsara.driver_name_mismatch`,
+  `samsara.ambiguous_unit_match`, via `checks/vehicleMatch.js`); the three
+  `/api/live-locations/duplicate-reports*` routes that once listed, re-ran and
+  resolved them had no screen and were removed (October 2026 audit). It
+  **deliberately never messages driver groups.**
   It is also **the writer of `groups.samsara_vehicle_id`**, because resolving a
   group to a vehicle is something it already does in order to compare driver
   names. It writes a link only when the resolution is unambiguous in *both*

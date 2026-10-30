@@ -127,6 +127,20 @@ async function loadSnapshot(db = defaultDb) {
     return null;
   });
 
+  // The duplicate-unit scan's open Samsara driver-match reports (checks/vehicleMatch.js).
+  // The plain duplicate_unit rows are left out: identity.duplicate_unit files those.
+  const vehicleMatchReports = await db.query(
+    `SELECT id, unit_number, report_type, group_ids, group_names, group_driver_name,
+            provider_driver_name, detail, severity, first_seen_at, last_seen_at
+       FROM duplicate_unit_reports
+      WHERE status = 'open' AND report_type IN ('name_mismatch', 'ambiguous_match')
+      ORDER BY id
+      LIMIT 500`
+  ).then((r) => r.rows).catch((err) => {
+    console.warn('[SNAPSHOT] could not read Samsara driver-match reports:', err.message);
+    return null;
+  });
+
   return {
     now: new Date(),
     groups: groups.rows,
@@ -143,6 +157,7 @@ async function loadSnapshot(db = defaultDb) {
     },
     engineeringRequests,
     roadBonusReviews,
+    vehicleMatchReports,
     ...layer,
   };
 }
