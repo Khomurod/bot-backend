@@ -28,7 +28,8 @@ const QUESTIONS = [
   { id: 3, created_at: HOUR_AGO, active: false, translations: en("Closed question"), last_sent_at: HOUR_AGO, last_sent_groups: 5, response_count: 1 },
   { id: 4, created_at: HOUR_AGO, active: true, translations: en("Old question"), last_sent_at: null, response_count: 2 },
 ];
-const GROUPS = [{ id: 1, active: true }, { id: 2, active: true }, { id: 3, active: false }];
+// A NULL `active` is not sent to (the sender selects active = TRUE), so it is not counted.
+const GROUPS = [{ id: 1, active: true }, { id: 2, active: true }, { id: 3, active: false }, { id: 4, active: null }];
 
 const cardOf = (text) => screen.getByText(text).closest(".question-card");
 

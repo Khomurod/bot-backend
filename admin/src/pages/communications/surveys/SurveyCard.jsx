@@ -49,7 +49,9 @@ export default function SurveyCard({ question, expanded, onToggle, onChanged }) 
     setBusy("send");
     try {
       const groups = await api.getGroupsManage();
-      const count = groups.filter((g) => g.active !== false).length;
+      // Exactly the groups the sender will use (`getAllGroups`: active = TRUE);
+      // `groups.active` is nullable, and a NULL one is not sent to.
+      const count = groups.filter((g) => g.active === true).length;
       if (count === 0) { setError("There are no active driver groups to send it to."); return; }
       const again = sentBefore
         ? ` It already went out${question.last_sent_at ? ` ${relativeTime(question.last_sent_at)}` : ""}; drivers who answered cannot answer again.`
