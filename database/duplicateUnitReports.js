@@ -5,7 +5,11 @@
  * share a unit number, and where a provider vehicle label's driver disagrees
  * with the group it is matched to. Reports are keyed by (unit_number,
  * report_type), reopened/refreshed on each run, and auto-resolved when the issue
- * clears — so the admin sees only currently-open problems.
+ * clears. The open Samsara driver-match rows (name_mismatch, ambiguous_match)
+ * reach a person through Needs Attention: the sweep reads them in
+ * `services/operations/snapshot/loaders.js` and `checks/vehicleMatch.js` files
+ * them. The admin routes that once listed and resolved these rows had no
+ * screen and were removed (October 2026 audit).
  */
 const { query } = require('./db');
 
@@ -77,35 +81,8 @@ async function resolveStaleReports(keepIds = [], evaluatedTypes = []) {
   return res.rows.length;
 }
 
-async function listDuplicateUnitReports({ status = 'open', limit = 200 } = {}) {
-  const clauses = [];
-  const values = [];
-  let i = 1;
-  if (status && status !== 'all') { clauses.push(`status = $${i++}`); values.push(status); }
-  const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
-  values.push(limit);
-  const res = await query(
-    `SELECT * FROM duplicate_unit_reports ${where}
-     ORDER BY (severity = 'serious') DESC, last_seen_at DESC
-     LIMIT $${i}`,
-    values
-  );
-  return res.rows;
-}
-
-async function resolveDuplicateUnitReport(id) {
-  const res = await query(
-    `UPDATE duplicate_unit_reports SET status = 'resolved', resolved_at = NOW()
-     WHERE id = $1 RETURNING *`,
-    [id]
-  );
-  return res.rows[0] || null;
-}
-
 module.exports = {
   listActiveDriverUnits,
   upsertDuplicateUnitReport,
   resolveStaleReports,
-  listDuplicateUnitReports,
-  resolveDuplicateUnitReport,
 };

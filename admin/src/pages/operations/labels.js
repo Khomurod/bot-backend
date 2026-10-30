@@ -67,6 +67,8 @@ const CHECK_LABELS = {
   'identity.stale_unit_assignment': "Driver's recorded truck is behind the profile",
   'samsara.vehicle_on_two_active_groups': 'One Samsara vehicle on two active groups',
   'samsara.vehicle_link_disagrees': "Group's Samsara vehicle differs from the driver's truck",
+  'samsara.driver_name_mismatch': 'Samsara lists a different driver for this truck',
+  'samsara.ambiguous_unit_match': "Several Samsara trucks share the unit; none is clearly this driver's",
   'fuel.watch_on_inactive_group': 'Fuel watch running for an inactive group',
   'dispatch.team_driver_on_inactive_group': "Team seat points at a chat the driver left",
   'raise.progress_without_person': 'Mileage drivers not matched to an identity',

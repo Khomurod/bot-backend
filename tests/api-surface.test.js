@@ -160,8 +160,10 @@ test('GET /api/health, /health, HEAD; the removed dispatch APIs; the race displa
     // Routes no screen called, removed after the October 2026 audit: AI
     // Reports / Insights, the old driver-group writes and lists, the AI
     // status "run now", the old profile AI parse, one correction's detail,
-    // a knowledge entry's history, the music download, and the root-level
-    // webhook-log duplicates. Same rule: a valid token, so only "gone" is 404.
+    // a knowledge entry's history, the music download, the root-level
+    // webhook-log duplicates, and the duplicate-truck report list / scan /
+    // resolve (those reports now reach Needs Attention through the sweep).
+    // Same rule: a valid token, so only "gone" is 404.
     for (const [method, retired] of [
       ['GET', '/api/ai-reports'], ['POST', '/api/ai-reports/generate'],
       ['GET', '/api/ai-insights/reports'], ['POST', '/api/ai-insights/annotate'],
@@ -173,6 +175,9 @@ test('GET /api/health, /health, HEAD; the removed dispatch APIs; the race displa
       ['GET', '/api/recruiting-knowledge/1/history'],
       ['GET', '/api/settings/safety-events/music/1/download'],
       ['GET', '/leads-log'], ['GET', '/retry/1'],
+      ['GET', '/api/live-locations/duplicate-reports'],
+      ['POST', '/api/live-locations/duplicate-reports/scan'],
+      ['POST', '/api/live-locations/duplicate-reports/1/resolve'],
     ]) {
       const res = await httpJson(server, method, retired, { Authorization: `Bearer ${adminToken}` });
       assert.equal(res.status, 404, `${method} ${retired} is gone`);
@@ -182,7 +187,10 @@ test('GET /api/health, /health, HEAD; the removed dispatch APIs; the race displa
     }
     // The control: their live neighbours still answer, so the 404s above are
     // "removed", not a harness that 404s everything.
-    for (const live of ['/api/groups/manage', '/api/facebook-leads/webhook-log', '/api/recruiting-knowledge']) {
+    for (const live of [
+      '/api/groups/manage', '/api/facebook-leads/webhook-log', '/api/recruiting-knowledge',
+      '/api/live-locations/config',
+    ]) {
       const res = await httpJson(server, 'GET', live, { Authorization: `Bearer ${adminToken}` });
       assert.notEqual(res.status, 404, `${live} is still mounted`);
     }

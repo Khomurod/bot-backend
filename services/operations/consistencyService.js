@@ -25,6 +25,7 @@ const homeTimeContinuity = require('./checks/homeTimeContinuity');
 const telegramIdentity = require('./checks/telegramIdentity');
 const engineering = require('./checks/engineering');
 const roadBonus = require('./checks/roadBonus');
+const vehicleMatch = require('./checks/vehicleMatch');
 const retired = require('./checks/retired');
 const { runAutoCorrections } = require('./corrections/autoApply');
 const { withRunRecord } = require('./runLedger');
@@ -42,6 +43,7 @@ const CHECK_MODULES = [
   { name: 'telegramIdentity', keys: telegramIdentity.CHECK_KEYS, run: telegramIdentity.runTelegramIdentityChecks },
   { name: 'engineering', keys: engineering.CHECK_KEYS, run: engineering.runEngineeringChecks },
   { name: 'roadBonus', keys: roadBonus.CHECK_KEYS, run: roadBonus.runRoadBonusChecks },
+  { name: 'vehicleMatch', keys: vehicleMatch.CHECK_KEYS, run: vehicleMatch.runVehicleMatchChecks },
   // Removed features' keys: finds nothing, so the sweep resolves what they left open.
   { name: 'retired', keys: retired.CHECK_KEYS, run: retired.runRetiredChecks },
 ];
