@@ -82,3 +82,29 @@ test("seed-admin's explicit grant gives super_admin only to a role-less account"
   assert.equal(await rbac.grantSuperAdminIfRoleless(clerk.id), false, 'an account with a role keeps exactly it');
   assert.deepEqual(await rolesOf(harness), { clerk: 'custom_office_desk', first: 'super_admin' });
 });
+
+test('the database re-checks under lock: a stale route check cannot touch a super administrator', { skip: skipWithoutPg(), timeout: 30000 }, async (t) => {
+  // The route decides on a snapshot read before the update locks the row; if
+  // that snapshot was stale (another administrator changed the account a
+  // moment earlier), the locked re-check in rbac.updateAdminUser still holds.
+  const harness = await createPgHarness(t);
+  const rbac = loadRbac(harness);
+  const office = await rbac.createRole({ displayName: 'Night Office', permissionKeys: [] });
+  const { rows: [superRole] } = await harness.query("SELECT id FROM roles WHERE system_key = 'super_admin'");
+  const { rows: [boss] } = await harness.query("INSERT INTO admins (username, password_hash) VALUES ('boss', 'x') RETURNING id");
+  const { rows: [clerk] } = await harness.query("INSERT INTO admins (username, password_hash) VALUES ('clerk', 'x') RETURNING id");
+  await harness.query('INSERT INTO admin_user_roles (admin_id, role_id) VALUES ($1, $2), ($3, $4)', [boss.id, superRole.id, clerk.id, office.id]);
+  const manager = ['custom_night_office'];
+  const superOnly = (e) => e.status === 403 && e.code === 'SUPER_ADMIN_ONLY';
+
+  await assert.rejects(() => rbac.updateAdminUser(boss.id, { passwordHash: 'stolen', actorRoleKeys: manager }), superOnly);
+  await assert.rejects(() => rbac.updateAdminUser(clerk.id, { roleIds: [office.id, superRole.id], actorRoleKeys: manager }), superOnly);
+  await assert.rejects(() => rbac.updateAdminUser(clerk.id, { roleIds: [], actorRoleKeys: ['super_admin'] }), (e) => e.code === 'ROLE_REQUIRED');
+  const { rows: [still] } = await harness.query('SELECT password_hash FROM admins WHERE id = $1', [boss.id]);
+  assert.equal(still.password_hash, 'x', 'nothing was written');
+
+  // An ordinary account stays with its manager; a super administrator may do either.
+  assert.ok(await rbac.updateAdminUser(clerk.id, { passwordHash: 'fresh', actorRoleKeys: manager }));
+  assert.ok(await rbac.updateAdminUser(clerk.id, { roleIds: [office.id, superRole.id], actorRoleKeys: ['super_admin'] }));
+});
+

@@ -70,26 +70,32 @@ const managerActor = { id: 4, role_keys: ['custom_user_manager'] };
 
 test('no account may be left without a role — disabling is how access is stopped', () => {
   assert.throws(
-    () => guards.assertRoleChangeAllowed({ actor: superActor, target: dispatcher, selectedRoles: [] }),
+    () => guards.assertAccountChangeAllowed({ actor: superActor, target: dispatcher, selectedRoles: [] }),
     (e) => e.status === 400 && e.code === 'ROLE_REQUIRED' && /disable the account/.test(e.message),
   );
   // A request that does not touch roles is not a role change at all.
-  guards.assertRoleChangeAllowed({ actor: managerActor, target: dispatcher, roleIdsGiven: false });
+  guards.assertAccountChangeAllowed({ actor: managerActor, target: dispatcher, roleIdsGiven: false });
 });
 
-test('only a super administrator grants or removes super_admin; other roles move freely', () => {
+test('only a super administrator grants super_admin or touches a super administrator; ordinary accounts stay open', () => {
   const superOnly = (e) => e.status === 403 && e.code === 'SUPER_ADMIN_ONLY';
   // Grant on create, grant on update, removal on update — all refused for a non-super actor.
-  assert.throws(() => guards.assertRoleChangeAllowed({ actor: managerActor, selectedRoles: [SUPER_ROLE] }), superOnly);
-  assert.throws(() => guards.assertRoleChangeAllowed({ actor: managerActor, target: dispatcher, selectedRoles: [SUPER_ROLE] }), superOnly);
-  assert.throws(() => guards.assertRoleChangeAllowed({ actor: managerActor, target: superAdmin2, selectedRoles: [OFFICE_ROLE] }), superOnly);
+  assert.throws(() => guards.assertAccountChangeAllowed({ actor: managerActor, selectedRoles: [SUPER_ROLE] }), superOnly);
+  assert.throws(() => guards.assertAccountChangeAllowed({ actor: managerActor, target: dispatcher, selectedRoles: [SUPER_ROLE] }), superOnly);
+  assert.throws(() => guards.assertAccountChangeAllowed({ actor: managerActor, target: superAdmin2, selectedRoles: [OFFICE_ROLE] }), superOnly);
   // An actor with no role keys at all is not a super administrator either.
-  assert.throws(() => guards.assertRoleChangeAllowed({ actor: { id: 9 }, selectedRoles: [SUPER_ROLE] }), superOnly);
+  assert.throws(() => guards.assertAccountChangeAllowed({ actor: { id: 9 }, selectedRoles: [SUPER_ROLE] }), superOnly);
   // Allowed: a super administrator moving it, anyone moving ordinary roles,
   // and keeping super_admin where it already is.
-  guards.assertRoleChangeAllowed({ actor: superActor, target: dispatcher, selectedRoles: [SUPER_ROLE] });
-  guards.assertRoleChangeAllowed({ actor: superActor, target: superAdmin2, selectedRoles: [OFFICE_ROLE] });
-  guards.assertRoleChangeAllowed({ actor: managerActor, target: dispatcher, selectedRoles: [OFFICE_ROLE] });
-  guards.assertRoleChangeAllowed({ actor: managerActor, target: superAdmin2, selectedRoles: [SUPER_ROLE, OFFICE_ROLE] });
+  guards.assertAccountChangeAllowed({ actor: superActor, target: dispatcher, selectedRoles: [SUPER_ROLE] });
+  guards.assertAccountChangeAllowed({ actor: superActor, target: superAdmin2, selectedRoles: [OFFICE_ROLE] });
+  guards.assertAccountChangeAllowed({ actor: managerActor, target: dispatcher, selectedRoles: [OFFICE_ROLE] });
+  guards.assertAccountChangeAllowed({ actor: managerActor, target: dispatcher, roleIdsGiven: false });
+  // A super administrator's account is out of an account manager's reach even
+  // with the role kept, and with no role change at all — a password reset or a
+  // disable would otherwise be a way into super administrator.
+  assert.throws(() => guards.assertAccountChangeAllowed({ actor: managerActor, target: superAdmin2, selectedRoles: [SUPER_ROLE, OFFICE_ROLE] }), superOnly);
+  assert.throws(() => guards.assertAccountChangeAllowed({ actor: managerActor, target: superAdmin2, roleIdsGiven: false }), superOnly);
+  guards.assertAccountChangeAllowed({ actor: superActor, target: superAdmin2, roleIdsGiven: false });
 });
 

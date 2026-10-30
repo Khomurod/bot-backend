@@ -103,6 +103,30 @@ test('an account manager who is not a super administrator cannot move super_admi
   assert.equal(office.status, 200);
 });
 
+test("an account manager cannot reset a super administrator's password or disable one; an ordinary account they can", async () => {
+  const manager = { id: 2, role_keys: ['custom_office'] };
+  let written = 0;
+  const db = { updateAdminUser: async () => { written += 1; return { id: 1 }; } };
+  const resetSuper = await send(appWith(db, manager), 'PUT', '/api/admin/users/1', { password: 'a-new-password-1' });
+  const disableSuper = await send(appWith(db, manager), 'PUT', '/api/admin/users/3', { active: false });
+  for (const res of [resetSuper, disableSuper]) {
+    assert.equal(res.status, 403);
+    assert.equal(res.json.code, 'SUPER_ADMIN_ONLY');
+  }
+  assert.equal(written, 0);
+  const resetOffice = await send(appWith(db, manager), 'PUT', '/api/admin/users/2', { password: 'a-new-password-1' });
+  assert.equal(resetOffice.status, 200);
+  assert.equal(written, 1);
+});
+
+test('the actor\'s roles reach the locked re-check in the database', async () => {
+  let seen = null;
+  const res = await send(appWith({ updateAdminUser: async (id, body) => { seen = body.actorRoleKeys; return { id: Number(id) }; } },
+    { id: 1, role_keys: ['super_admin'] }), 'PUT', '/api/admin/users/2', { password: 'a-new-password-1' });
+  assert.equal(res.status, 200);
+  assert.deepEqual(seen, ['super_admin']);
+});
+
 test('a super administrator may grant super_admin', async () => {
   const res = await send(appWith({ updateAdminUser: async (id, body) => ({ id: Number(id), roleIds: body.roleIds }) },
     { id: 1, role_keys: ['super_admin'] }), 'PUT', '/api/admin/users/2', { role_ids: [5, 9] });

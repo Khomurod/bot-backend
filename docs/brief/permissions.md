@@ -77,10 +77,15 @@ prefixed key and may never claim a reserved key or `super_`/`admin_` prefix
   deploy. The fix had to be in the baseline statement itself — it runs on every
   boot, and no forward migration can change what it does — and
   `tests/adminRoleBootstrapPg.test.js` proves both halves.
-- **Only a super administrator grants or removes `super_admin`**, on create
-  and on update (403 `SUPER_ADMIN_ONLY`; `adminUserGuards.assertRoleChangeAllowed`).
-  Otherwise `users.manage` alone could make anyone — the holder included —
-  super administrator. Ordinary roles stay with `users.manage`.
+- **Only a super administrator touches super administrators**: granting
+  `super_admin`, and changing a super administrator's account in any way —
+  roles, password, disabling, renaming (403 `SUPER_ADMIN_ONLY`). Otherwise
+  `users.manage` alone could make anyone super administrator, or reset a
+  super administrator's password and sign in as them. Ordinary accounts stay
+  with `users.manage`. The route answers first
+  (`adminUserGuards.assertAccountChangeAllowed`, on a snapshot), and
+  `rbac.updateAdminUser` repeats the rule on the row it has locked `FOR UPDATE`,
+  so a concurrent edit cannot make a stale snapshot pass.
 - **`npm run seed-admin` needs `ADMIN_PASSWORD` of at least 10 characters**
   and refuses before touching the database otherwise; it used to create the
   first admin with an empty password, which sign-in refuses. A new account is

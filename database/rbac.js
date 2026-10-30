@@ -148,7 +148,36 @@ async function countActiveSuperAdmins(client) {
   return res.rows[0]?.count || 0;
 }
 
-async function updateAdminUser(adminId, { username, active, roleIds, passwordHash, actorId }) {
+/**
+ * Who may make this change, decided on the LOCKED row (October 2026 audit).
+ * The route checks the same rule first for a clear answer, but on a snapshot
+ * read before this transaction; a concurrent edit (another administrator
+ * removing super_admin a moment earlier) could make that snapshot stale, so the
+ * authoritative check is here, after `FOR UPDATE`. Only a super administrator
+ * may change a super administrator's account at all or grant super_admin, and
+ * no account may be left without a role.
+ */
+async function assertMayChangeAccount(client, { targetIsSuper, roleIds, actorRoleKeys }) {
+  let grantsSuper = false;
+  if (Array.isArray(roleIds)) {
+    if (!roleIds.length) {
+      throw Object.assign(
+        new Error('An account needs at least one role. To stop someone signing in, disable the account.'),
+        { status: 400, code: 'ROLE_REQUIRED' },
+      );
+    }
+    const selected = await client.query('SELECT system_key FROM roles WHERE id = ANY($1::int[])', [roleIds.map(Number)]);
+    grantsSuper = selected.rows.some((r) => r.system_key === 'super_admin');
+  }
+  if ((targetIsSuper || grantsSuper) && !(actorRoleKeys || []).includes('super_admin')) {
+    throw Object.assign(
+      new Error("Only a super administrator can grant the super administrator role or change a super administrator's account."),
+      { status: 403, code: 'SUPER_ADMIN_ONLY' },
+    );
+  }
+}
+
+async function updateAdminUser(adminId, { username, active, roleIds, passwordHash, actorId, actorRoleKeys = [] }) {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -158,6 +187,11 @@ async function updateAdminUser(adminId, { username, active, roleIds, passwordHas
       `SELECT r.system_key FROM admin_user_roles aur JOIN roles r ON r.id = aur.role_id WHERE aur.admin_id = $1`,
       [adminId],
     );
+    await assertMayChangeAccount(client, {
+      targetIsSuper: existingRoles.rows.some((r) => r.system_key === 'super_admin'),
+      roleIds,
+      actorRoleKeys,
+    });
     const removingLastSuper = existingRoles.rows.some((r) => r.system_key === 'super_admin')
       && (active === false || Array.isArray(roleIds));
     if (removingLastSuper && await countActiveSuperAdmins(client) <= 1) {

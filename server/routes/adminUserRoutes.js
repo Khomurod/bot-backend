@@ -35,7 +35,7 @@ function createAdminUserRoutes({db,authMiddleware,requirePermission}){
         return res.status(400).json({error:'Username, password of at least 10 characters, and roles are required.'});
       }
       // An empty list reaches the guard, so it answers ROLE_REQUIRED here too.
-      guards.assertRoleChangeAllowed({actor:req.admin,selectedRoles:await validateAssignableRoles(roleIds)});
+      guards.assertAccountChangeAllowed({actor:req.admin,selectedRoles:await validateAssignableRoles(roleIds)});
       const user=await db.createAdminUser({username,passwordHash:await bcrypt.hash(password,12),roleIds,actorId:req.admin.id});
       res.status(201).json({user});
     }catch(e){res.status(status(e)).json(errorBody(e,'Could not create user.'));}
@@ -45,15 +45,16 @@ function createAdminUserRoutes({db,authMiddleware,requirePermission}){
       const body=req.body||{}; const roleIds=body.role_ids;
       const users=await db.listAdminUsers();
       const target=guards.resolveTargetOr404(users,req.params.id);
-      // No role-less account, and only a super administrator moves super_admin.
+      // No role-less account; only a super administrator grants super_admin or
+      // changes a super administrator's account (repeated under lock in rbac.js).
       if(roleIds!=null&&!Array.isArray(roleIds))return res.status(400).json({error:'role_ids must be a list.'});
-      guards.assertRoleChangeAllowed({actor:req.admin,target,roleIdsGiven:Array.isArray(roleIds),
+      guards.assertAccountChangeAllowed({actor:req.admin,target,roleIdsGiven:Array.isArray(roleIds),
         selectedRoles:Array.isArray(roleIds)?await validateAssignableRoles(roleIds):[]});
       // The last active super administrator cannot be deactivated or demoted.
       guards.assertSuperAdminFloor(users,target,{nextRoleIds:roleIds,nextActive:body.active});
       const passwordHash=body.password?await bcrypt.hash(String(body.password),12):null;
       if(body.password&&String(body.password).length<10)return res.status(400).json({error:'Password must be at least 10 characters.'});
-      const user=await db.updateAdminUser(req.params.id,{username:body.username,active:body.active,roleIds,passwordHash,actorId:req.admin.id});
+      const user=await db.updateAdminUser(req.params.id,{username:body.username,active:body.active,roleIds,passwordHash,actorId:req.admin.id,actorRoleKeys:req.admin.role_keys||[]});
       res.json({user});
     }catch(e){res.status(status(e)).json(errorBody(e,'Could not update user.'));}
   });
