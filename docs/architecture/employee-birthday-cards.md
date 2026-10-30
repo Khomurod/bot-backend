@@ -3,7 +3,7 @@
 > Read this before changing `services/employeeBirthdayWishService.js`,
 > `services/employees/`, `database/companyEmployees.js`, `assets/birthday/`,
 > the employee columns of `employee_birthdays` (migration 0084), or the admin's
-> Users → Company Employees tab.
+> Birthdays → Employees tab (Users → Company Employees until October 2026).
 
 ## What the owner asked for (23 October 2026)
 
@@ -89,14 +89,16 @@ one message for the whole day; it is still honoured, so a deploy on such a day
 does not wish anyone twice. "Congratulate selected" claims nothing — it is a
 deliberate manual re-post.
 
-## Company Employees (Users page)
+## Employees (Birthdays page)
 
 The Users page's old **Dispatchers** filter read `bot_users.source`, which
-nothing fills in, so it was always empty. It is now **Company Employees**: every
+nothing fills in, so it was always empty. It became **Company Employees**, and
+since October 2026 it is the **Employees** tab of Communications → Birthdays,
+beside the birthdays it is for (Telegram Users keeps a link to it): every
 row of `employee_birthdays`, with the American name, the Telegram account
 (username and/or user ID), the photo, and a **Card** preview drawn exactly as it
 would be posted (rendered, never sent). Names, birthdays, adding and removing
-employees stay on the Birthdays page. API: `/api/company-employees`,
+employees stay on the Birthdays tab. API: `/api/company-employees`,
 `admin.full_access`.
 
 **Photos** are uploaded there (JPG, PNG or WEBP, at most 10 MB), re-encoded to

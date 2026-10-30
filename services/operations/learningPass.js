@@ -227,7 +227,7 @@ async function runLearningPass({ now = Date.now(), deps = defaultDeps(), options
         lines: lesson.lines,
         reason: lesson.suggestion,
         action: lesson.applyAction
-          ? 'Nothing has changed yet. Accepting it in Operations → What Wenze learned '
+          ? 'Nothing has changed yet. Accepting it in Needs Attention → Suggestions '
             + 'will switch the setting, and one click puts it back'
           : 'Nothing has changed. Accepting records agreement; somebody still has to do it',
         subjectType: 'learning',

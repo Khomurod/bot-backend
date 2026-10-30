@@ -240,11 +240,10 @@ export default function CompanyBirthdaysPage() {
     <div>
       <div className="page-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
         <div>
-          <h2>Birthdays</h2>
           <p>
             Manage office staff birthdays (soonest first).
             {settings ? (
-              <> Birthday cards are posted at <strong>{formatSchedule(settings)}</strong>. American names, Telegram accounts and photos are in Users → Company Employees.</>
+              <> Birthday cards are posted at <strong>{formatSchedule(settings)}</strong>. American names, Telegram accounts and photos are on the Employees tab.</>
             ) : (
               " Loading schedule..."
             )}

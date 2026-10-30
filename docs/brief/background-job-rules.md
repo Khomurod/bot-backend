@@ -78,8 +78,8 @@ per category, nine rows forever, no bodies and no subjects. "Not configured"
 becomes "1,247 notices thrown away, 900 of them Needs attention", which is a
 sentence somebody acts on. It shows on `/api/health →
 operations.notifications.discarded`, in Settings → Notifications, and as a
-`needs_human_attention` row in Operations → What is running, plus a banner on
-the Operations page itself.
+`needs_human_attention` row in Monitoring → System Health, plus a banner on
+Needs Attention and System Health themselves.
 
 ### It counts things unheard, not passes — and did not at first
 
@@ -162,8 +162,8 @@ owns merely quiet. `blocked` is configuration rather than failure, because an
 unconfigured feature painted red is how a real outage gets lost among things
 nobody switched on.
 
-Seen at `/api/health → operations.workers` and in Admin → Operations → **What is
-running**. Full rules in
+Seen at `/api/health → operations.workers` and in Admin → Monitoring → **System
+Health**. Full rules in
 [`docs/architecture/self-healing-and-learning.md`](../architecture/self-healing-and-learning.md).
 
 **Three missing overlap guards were fixed at the same time.** `retention/watch`,

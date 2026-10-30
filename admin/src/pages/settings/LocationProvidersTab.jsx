@@ -3,7 +3,7 @@ import * as api from "../../api";
 import { KeyField, Banner } from "./fields";
 import PageFailure from "../../components/PageFailure";
 
-// ─────────────────────────────── Live Location tab ───────────────────────────
+// ──────────────────── Location Providers (was the Live Location tab) ──────────
 //
 // When the stored settings cannot be read, the tab says so and offers a retry
 // INSTEAD of the form. It used to render the form against `settings === null`
@@ -116,7 +116,7 @@ export default function LocationProvidersTab() {
 
   if (loading) return <div className="loading"><div className="spinner"></div> Loading…</div>;
   if (!settings) {
-    return <PageFailure error={loadError} where="Live Location settings" onRetry={load} />;
+    return <PageFailure error={loadError} where="Location Providers settings" onRetry={load} />;
   }
 
   const TestBadge = ({ provider }) => {

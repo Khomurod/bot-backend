@@ -1,7 +1,8 @@
 'use strict';
 
 /**
- * Admin → Operations → What is running, on the one field it did not carry.
+ * Admin → Monitoring → System Health (formerly Operations → What is running),
+ * on the one field it did not carry.
  *
  * FOUND IN PRODUCTION, not in review. `return_to_road` reached
  * `repeatedly_failing` and every surface said the same thing about it: "3

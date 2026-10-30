@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import useTabRoute from "../navigation/useTabRoute";
 import HomeTimeEfficiencyTab from "./HomeTimeEfficiencyTab";
 import HomeTimeSettingsCard from "./HomeTimeSettingsCard";
 import ViolationAlertsCard from "./homeTime/ViolationAlertsCard";
@@ -31,9 +32,16 @@ import TabBar, { tabPanelProps } from "../components/ui/TabBar";
  * Every edit reloads the whole overview, because the server recomputes bonus,
  * on-road days and next-eligible-home-time from each write.
  */
-export default function HomeTimePage() {
+const HOME_TIME_TABS = [
+  { key: "overview", label: "Overview" },
+  { key: "efficiency", label: "Efficiency" },
+  { key: "settings", label: "Settings & Alerts" },
+];
+
+/** The open tab is the second half of the address (`#home_time/efficiency`). */
+export default function HomeTimePage({ tab: routeTab, onTabChange }) {
   const [status, setStatus] = useState(null);
-  const [activeTab, setActiveTab] = useState("overview");
+  const [activeTab, setActiveTab] = useTabRoute(HOME_TIME_TABS.map((t) => t.key), { tab: routeTab, onTabChange });
 
   const flash = (type, text) => setStatus({ type, text });
 
@@ -68,10 +76,7 @@ export default function HomeTimePage() {
       )}
 
       <TabBar
-        tabs={[
-          { key: "overview", label: "Overview" },
-          { key: "efficiency", label: "Driver Home Time Efficiency" },
-        ]}
+        tabs={HOME_TIME_TABS}
         value={activeTab}
         onChange={setActiveTab}
         ariaLabel="Home time views"
@@ -88,10 +93,6 @@ export default function HomeTimePage() {
       <>
       <DriverListCard {...overview} />
 
-      <HomeTimeSettingsCard settings={settings} saving={saving} onSave={saveSettings} />
-
-      <ViolationAlertsCard settings={settings} saving={saving} onSave={saveSettings} />
-
       <ScreenshotImportCard {...importer} />
 
       <UnlinkedActivityCard unlinkedActivity={overview.unlinkedActivity} />
@@ -99,6 +100,17 @@ export default function HomeTimePage() {
       {isDetailOpen && selectedStatus && (
         <DriverDetailModal {...overview} flash={flash} />
       )}
+      </>
+      )}
+
+      {/* Configuration on its own tab rather than under the driver list: the
+          policy, the notice groups and accounting's violation alerts are set
+          once and were two screenfuls below the table people use daily. */}
+      {activeTab === "settings" && (
+      <>
+      <HomeTimeSettingsCard settings={settings} saving={saving} onSave={saveSettings} />
+
+      <ViolationAlertsCard settings={settings} saving={saving} onSave={saveSettings} />
       </>
       )}
       </div>

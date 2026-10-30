@@ -1,5 +1,5 @@
 /**
- * Admin → Settings → Recruiting hours.
+ * Admin → Customer Inquiries → Teach Wenze → Working hours.
  *
  * Two things are configured here and they are deliberately not the same switch:
  * WHEN the recruiting team works, and WHETHER Wenze may answer a candidate when

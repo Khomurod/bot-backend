@@ -216,8 +216,8 @@ feature it belongs to.
   Returned to Road runs its AI analysis under the first and its automatic state
   change under the second (`operational_check_settings`), and the
   Responsibilities card carries both switches side by side. The automatic one
-  writes the SAME `operational_check_settings` row that Operations → Needs
-  attention → Automation writes — one owner for the setting, two places that can
+  writes the SAME `operational_check_settings` row that Needs Attention →
+  Automation writes — one owner for the setting, two places that can
   reach it, so the two screens cannot disagree about what the software may do.
   Analysis on with automatic changes off is a sensible way to run a fleet, and
   it only works if turning one off leaves the other alone —

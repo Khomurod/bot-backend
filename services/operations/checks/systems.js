@@ -155,7 +155,7 @@ function checkNotificationDestination({ notificationSettings }) {
         .filter((k) => String(notificationSettings.categoryChatIds[k] || '').trim()),
       whatIsLost: 'automatic corrections, safety escalations, retention signals, '
         + 'self-healing notices and learning suggestions',
-      where: 'Settings → Telegram Groups → AI & Operations notifications',
+      where: 'Settings → Notifications → AI & Operations notifications',
     },
   }];
 }

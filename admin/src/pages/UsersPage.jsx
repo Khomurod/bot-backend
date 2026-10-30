@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import * as api from "../api";
-import CompanyEmployeesTab from "./users/CompanyEmployeesTab";
 import TabBar from "../components/ui/TabBar";
 
 function formatDateTime(iso) {
@@ -20,9 +19,6 @@ const SOURCE_LABEL = {
 const FILTERS = [
   { key: "all", label: "All" },
   { key: "admins", label: "Admins" },
-  // Was "Dispatchers": a filter on bot_users.source, which nothing fills in, so
-  // it was always empty. Since October 2026 it is the staff list itself.
-  { key: "employees", label: "Company Employees" },
   { key: "drivers", label: "Drivers" },
   { key: "unknown", label: "Unknown" },
   { key: "recent", label: "Recently seen" },
@@ -35,10 +31,8 @@ export default function UsersPage() {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
 
-  const showEmployees = filter === "employees";
 
   const fetchUsers = useCallback(async () => {
-    if (filter === "employees") return;
     setLoading(true);
     try {
       const data = await api.getBotUsers({ filter });
@@ -72,10 +66,14 @@ export default function UsersPage() {
   return (
     <div>
       <div className="page-header">
-        <h2>Users</h2>
+        <h2>Telegram Users</h2>
         <p>
           Everyone the bot has seen: anyone who texts in a group the bot is in, plus users who tap
           the bot's inline buttons. Keyed by a stable Telegram user ID. No message text is stored.
+        </p>
+        <p>
+          Company employees — the American names, Telegram accounts and photos their birthday
+          cards use — are under <a href="#company_birthdays/employees">Birthdays → Employees</a>.
         </p>
       </div>
 
@@ -87,8 +85,6 @@ export default function UsersPage() {
 
       <TabBar filter tabs={FILTERS} value={filter} onChange={setFilter} ariaLabel="Which users" />
 
-      {showEmployees ? <CompanyEmployeesTab /> : (
-      <>
       <div style={{ display: "flex", gap: "12px", alignItems: "center", marginBottom: "16px", flexWrap: "wrap" }}>
         <input
           type="text"
@@ -143,8 +139,6 @@ export default function UsersPage() {
             </tbody>
           </table>
         </div>
-      )}
-      </>
       )}
     </div>
   );

@@ -7,12 +7,11 @@ import FindingDetailModal from "./operations/FindingDetailModal";
 import HistoryTab from "./operations/HistoryTab";
 import ChecksTab from "./operations/ChecksTab";
 import IdentityTab from "./operations/IdentityTab";
-import RetentionTab from "./operations/RetentionTab";
 import LearningTab from "./operations/LearningTab";
-import SystemsTab from "./operations/SystemsTab";
 import ConfigurationBanner from "./operations/ConfigurationBanner";
 import * as api from "../api";
 import TabBar, { tabPanelProps } from "../components/ui/TabBar";
+import useTabRoute from "../navigation/useTabRoute";
 
 /**
  * Needs Attention — where the system says its own facts disagree.
@@ -20,35 +19,35 @@ import TabBar, { tabPanelProps } from "../components/ui/TabBar";
  * Layout and wiring only. Every fetch, every piece of state and every action
  * lives in `operations/useOperations.js`, the same split HomeTimePage uses.
  *
- * Three tabs, in the order the work actually happens: what is wrong, what has
- * been done about it, and what the system is allowed to do by itself. The last
- * one is deliberately last — a page that opens on its automation settings
- * invites turning things on before reading what they would do.
+ * The tabs are one pipeline, in the order the work happens: what is wrong,
+ * what has been done about it, what the system may do by itself, the identity
+ * backfill (a correction-grade action on the same permission), and what Wenze
+ * learned from how its corrections were received. Automation is never first —
+ * a page that opens on its automation settings invites turning things on
+ * before reading what they would do.
+ *
+ * Retention and "What is running" were tabs here until October 2026 and are
+ * pages of their own now (Drivers → Retention, Monitoring → System Health):
+ * neither is a finding. docs/redesign/structure.md.
  */
 const TABS = [
   { key: "findings", label: "Needs attention" },
   { key: "history", label: "History" },
   { key: "checks", label: "Automation" },
-  { key: "identity", label: "Identity" },
-  { key: "retention", label: "Retention" },
-  { key: "learning", label: "What Wenze learned" },
-  { key: "systems", label: "What is running" },
+  { key: "identity", label: "Driver Identity" },
+  // "Suggestions", not "What Wenze learned": Settings → AI has a card called
+  // "What Wenze learned from you" that is a different thing (lessons from the
+  // owner's answers), and two screens with one name is a search for the wrong one.
+  { key: "learning", label: "Suggestions" },
 ];
 
-/**
- * `initialTab` lets a sidebar entry open this page on a tab other than the
- * first — "System & AI Health" is its own nav item onto `systems`, because
- * "is everything running?" is a question about the whole system rather than a
- * sub-question of Needs attention. Validated here, where the key list lives.
- */
-export default function OperationsPage({ initialTab }) {
+/** The open tab is the second half of the address (`#operations/history`). */
+export default function OperationsPage({ tab: routeTab, onTabChange }) {
   const [status, setStatus] = React.useState(null);
   const [preview, setPreview] = React.useState(null);
   const flash = React.useCallback((type, text) => setStatus({ type, text }), []);
-  const ops = useOperations({
-    flash,
-    initialTab: TABS.some((t) => t.key === initialTab) ? initialTab : undefined,
-  });
+  const [tab, setTab] = useTabRoute(TABS.map((t) => t.key), { tab: routeTab, onTabChange });
+  const ops = useOperations({ flash, tab, setTab });
 
   const loadPreview = React.useCallback(async () => {
     try {
@@ -101,9 +100,7 @@ export default function OperationsPage({ initialTab }) {
         <ChecksTab {...ops} preview={preview} loadPreview={loadPreview} />
       )}
       {ops.tab === "identity" && <IdentityTab flash={flash} />}
-      {ops.tab === "retention" && <RetentionTab flash={flash} />}
       {ops.tab === "learning" && <LearningTab flash={flash} />}
-      {ops.tab === "systems" && <SystemsTab flash={flash} />}
       </div>
 
       {ops.selectedId && <FindingDetailModal {...ops} />}

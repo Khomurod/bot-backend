@@ -69,7 +69,11 @@
   border: 1px solid transparent;
   outline: none;
   /* Labels wrap, as they always did: a long label (a finding title, a group
-     name) must never push the rest of its row out of view on a phone. */
+     name) must never push the rest of its row out of view on a phone. They
+     wrap BETWEEN words — a card's `overflow-wrap: anywhere` would otherwise
+     split "Recheck" into "Rechec / k" — except where a page asks for more
+     (a check key with no spaces, FindingsListCard). */
+  overflow-wrap: break-word;
   text-decoration: none;
   user-select: none;
 }

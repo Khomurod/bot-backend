@@ -383,7 +383,7 @@ test('no destination at all is SERIOUS, and says what is being lost', () => {
   assert.equal(finding.severity, 'serious');
   assert.equal(finding.tier, 'warning', 'nothing here is auto-correctable — it is a decision');
   assert.match(finding.evidence.whatIsLost, /retention/);
-  assert.match(finding.evidence.where, /Settings → Telegram Groups/);
+  assert.match(finding.evidence.where, /Settings → Notifications/);
 });
 
 test('some categories configured but no default is a WARNING — the rest are silent', () => {

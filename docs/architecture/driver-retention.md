@@ -1,7 +1,8 @@
 # Driver retention: what Wenze notices, and what it will never do
 
 **Read this before changing anything under `lib/retention/`,
-`services/retention/`, `database/retention*.js`, or the Retention tab.**
+`services/retention/`, `database/retention*.js`, or the Retention page
+(Drivers → Retention; a tab of Needs Attention until October 2026).**
 
 Related: [`operational-notifications.md`](operational-notifications.md) (where
 the notice goes), [`ai-decisions.md`](ai-decisions.md) (what a model may
@@ -81,7 +82,7 @@ means anything.
 The four chat signals read `chat_logs`, which nothing wrote to for a long time,
 so they answered a reassuring zero. **The owner decided on 2026-10-06 that Wenze
 may read driver messages.** `driver_chat_capture_settings` (migration 0065)
-holds that decision as a switch — Operations → Retention, one checkbox — so
+holds that decision as a switch — Drivers → Retention, one checkbox — so
 turning it off is a click, not a deploy, and it **fails closed**: a switch that
 cannot be read records nothing.
 
@@ -178,7 +179,7 @@ pass. `shouldNotify` in `database/retentionAssessments.js`:
 
 ## What the screen cannot do
 
-Operations → Retention has exactly **two** endpoints: read the list, and say
+Drivers → Retention has exactly **two** endpoints: read the list, and say
 "we know" about one. There is no note field, no rating, no dismissal, and no
 control that touches anybody's employment. A screen that let a dispatcher file
 an opinion would, within a month, be the performance record this whole design

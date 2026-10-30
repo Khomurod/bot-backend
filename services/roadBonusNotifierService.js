@@ -27,7 +27,7 @@
  * transition records the leg as waiting, and a decided leg that cannot be sent
  * (Telegram down, no group configured yet) is retried on the next pass.
  *
- * Destination is admin-configured (Settings → Telegram Groups). With no
+ * Destination is admin-configured (Settings → Bonus Groups). With no
  * configured group we do NOT fall back to any old hardcoded default — we skip
  * the send and log a clear configuration error, leaving the leg un-posted so it
  * is delivered once the group is set.

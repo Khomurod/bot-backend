@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import useTabRoute from "../navigation/useTabRoute";
 import { timeAgo, friendlyTimezone } from "../utils/formatTime";
 import { useAutoMessages } from "./facebookLeads/useAutoMessages";
 import { useLeadsInfrastructure } from "./facebookLeads/useLeadsInfrastructure";
@@ -26,9 +27,13 @@ import TabBar, { tabPanelProps } from "../components/ui/TabBar";
  * diagnosing a missed lead — and the tab list is filtered by the same flag, so
  * it cannot be reached by clicking either.
  */
-export default function FacebookLeadsPage() {
+/** The open tab is the second half of the address (`#facebook_leads/teach`). */
+export default function FacebookLeadsPage({ tab: routeTab, onTabChange }) {
   const isDev = new URLSearchParams(window.location.search).get('dev') === '1';
-  const [tab, setTab] = useState("auto");
+  const [tab, setTab] = useTabRoute(
+    ["auto", "pages", "teach", ...(isDev ? ["log"] : [])],
+    { tab: routeTab, onTabChange },
+  );
   const [status, setStatus] = useState(null);
 
   const auto = useAutoMessages(setStatus);

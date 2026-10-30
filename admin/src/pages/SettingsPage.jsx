@@ -1,5 +1,8 @@
-import React, { Suspense, lazy, useState } from "react";
-import TabBar, { tabPanelProps } from "../components/ui/TabBar";
+import React, { Suspense, lazy } from "react";
+import useTabRoute from "../navigation/useTabRoute";
+import PageErrorBoundary from "../components/PageErrorBoundary";
+import SettingsNav from "./settings/SettingsNav";
+import { SETTINGS_SECTION_KEYS, settingsSectionLabel } from "./settings/sections";
 
 /**
  * Settings — tab shell. Each tab lives in ./settings/ and is lazy-loaded so
@@ -25,6 +28,13 @@ import TabBar, { tabPanelProps } from "../components/ui/TabBar";
  * the connection, the safety-event switches, missing-video recovery and the
  * driver-group music overlay (still its own component, ./settings/
  * SafetyEventsTab.jsx) all live under it.
+ *
+ * GROUPED, AND EVERY SECTION HAS AN ADDRESS (October 2026). Thirteen sections in
+ * one row of tabs read as a list of everything ever added; they are now under
+ * six groups (./settings/sections.js) in the page's own navigation, and the
+ * open section is the second half of the address — `#settings/board`. One
+ * sidebar entry opens this page; the six it used to have are legacy keys that
+ * land on the same sections.
  */
 
 const LocationProvidersTab = lazy(() => import("./settings/LocationProvidersTab"));
@@ -41,54 +51,43 @@ const RetiredLeftoversTab = lazy(() => import("./settings/RetiredLeftoversTab"))
 const GrossRaceTab = lazy(() => import("./settings/GrossRaceTab"));
 const MetaCrmTab = lazy(() => import("./settings/MetaCrmTab"));
 
-const SETTINGS_TABS = [
-  { key: "location", label: "Live Location" },
-  { key: "ringcentral", label: "RingCentral" },
-  { key: "metacrm", label: "Facebook ↔ Bitrix" },
-  { key: "groups", label: "Telegram Groups" },
-  { key: "samsara", label: "Samsara" },
-  { key: "board", label: "Dispatcher Board" },
-  { key: "safety", label: "Safety Approvals" },
-  { key: "ai", label: "AI" },
-  { key: "notifications", label: "Notifications" },
-  { key: "reactions", label: "Auto Reactions" },
-  { key: "access", label: "Bot Group Access" },
-  { key: "grossrace", label: "Gross Grand Prix" },
-  { key: "leftovers", label: "Retired Leftovers" },
-];
-const TAB_KEYS = SETTINGS_TABS.map((t) => t.key);
-
 /**
- * `initialTab` is which tab to OPEN ON, not which tab is shown — the buttons
- * below still own that afterwards. Three sidebar entries point here (Integrations,
- * Dispatcher Board, AI & Autonomy) because "Settings" alone does not say which
- * settings; an unrecognised value opens the first tab rather than a blank page.
+ * `tab` is the section named in the address (`#settings/board`) and
+ * `onTabChange` writes a new one; rendered on its own, `tab` is only where it
+ * opens. An unrecognised section opens the first one rather than a blank page.
  */
-export default function SettingsPage({ initialTab }) {
-  const [tab, setTab] = useState(() => (TAB_KEYS.includes(initialTab) ? initialTab : "location"));
+export default function SettingsPage({ tab: routeTab, onTabChange }) {
+  const [tab, setTab] = useTabRoute(SETTINGS_SECTION_KEYS, { tab: routeTab, onTabChange });
   return (
     <div>
       <div className="page-header">
         <h2>Settings</h2>
-        <p>Integration credentials and configuration for the bot's external services.</p>
+        <p>Connections to outside services, the AI, where the bot posts, and maintenance.</p>
       </div>
-      <TabBar tabs={SETTINGS_TABS} value={tab} onChange={setTab} ariaLabel="Settings sections" idPrefix="settings" />
-      <div {...tabPanelProps("settings", tab)}>
-      <Suspense fallback={<div className="loading"><div className="spinner"></div> Loading…</div>}>
-        {tab === "location" && <LocationProvidersTab />}
-        {tab === "ringcentral" && <RingCentralTab />}
-        {tab === "metacrm" && <MetaCrmTab />}
-        {tab === "groups" && <TelegramGroupsTab />}
-        {tab === "samsara" && <SamsaraTab />}
-        {tab === "board" && <DispatcherBoardTab />}
-        {tab === "safety" && <SafetyApprovalsTab />}
-        {tab === "ai" && <AiTab />}
-        {tab === "notifications" && <NotificationsTab />}
-        {tab === "reactions" && <AutoReactionsPanel />}
-        {tab === "access" && <GroupAccessPanel />}
-        {tab === "grossrace" && <GrossRaceTab />}
-        {tab === "leftovers" && <RetiredLeftoversTab />}
-      </Suspense>
+      <div className="settings-layout">
+        <SettingsNav value={tab} onChange={setTab} />
+        <section className="settings-content" aria-label={settingsSectionLabel(tab)}>
+          {/* One boundary per section, keyed on it: a section that fails (or
+              whose chunk does not load after a deploy) leaves the section list
+              usable, and choosing another section clears it. */}
+          <PageErrorBoundary resetKey={tab}>
+          <Suspense fallback={<div className="loading"><div className="spinner"></div> Loading…</div>}>
+            {tab === "location" && <LocationProvidersTab />}
+            {tab === "ringcentral" && <RingCentralTab />}
+            {tab === "metacrm" && <MetaCrmTab />}
+            {tab === "groups" && <TelegramGroupsTab />}
+            {tab === "samsara" && <SamsaraTab />}
+            {tab === "board" && <DispatcherBoardTab />}
+            {tab === "safety" && <SafetyApprovalsTab />}
+            {tab === "ai" && <AiTab />}
+            {tab === "notifications" && <NotificationsTab />}
+            {tab === "reactions" && <AutoReactionsPanel />}
+            {tab === "access" && <GroupAccessPanel />}
+            {tab === "grossrace" && <GrossRaceTab />}
+            {tab === "leftovers" && <RetiredLeftoversTab />}
+          </Suspense>
+          </PageErrorBoundary>
+        </section>
       </div>
     </div>
   );

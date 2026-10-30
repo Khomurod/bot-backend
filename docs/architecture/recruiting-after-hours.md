@@ -34,7 +34,7 @@ for a screen: by the time it has a reason there is already a candidate waiting.
 `lib/recruiting/readiness.js` answers the question **before** anybody texts, so
 the gap is visible on a quiet Tuesday afternoon. Each blocker names what is
 missing and which settings screen fixes it — a warning without an address is a
-mood — and it shows as `recruiting_after_hours` in Operations → What is running
+mood — and it shows as `recruiting_after_hours` in Monitoring → System Health
 and in `/api/health`.
 
 A missing field counts as **missing, never as satisfied**: a readiness check

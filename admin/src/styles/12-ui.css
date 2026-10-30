@@ -131,6 +131,19 @@
     box-shadow: none;
   }
 
+  /* In the drawer the whole panel scrolls as one, footer included. With only
+     the list scrolling, the account footer covered the last entries
+     (Settings) on an ordinary phone. */
+  .sidebar {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .sidebar-nav {
+    flex: none;
+    overflow-y: visible;
+  }
+
   .sidebar.mobile-open {
     transform: translateX(0);
     visibility: visible;

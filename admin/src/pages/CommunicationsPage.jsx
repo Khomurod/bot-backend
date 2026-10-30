@@ -1,9 +1,12 @@
-import React, { Suspense, lazy, useState } from "react";
+import React, { Suspense, lazy } from "react";
 import PageErrorBoundary from "../components/PageErrorBoundary";
 import TabBar, { tabPanelProps } from "../components/ui/TabBar";
+import useTabRoute from "../navigation/useTabRoute";
 
 /**
- * Communications — everything Wenze says to a driver group, on one page.
+ * Communications → Messages — everything Wenze says to a driver group, on one
+ * page. (The page was titled "Communications", the same as its sidebar group;
+ * since October 2026 the entry and the page say what it holds.)
  *
  * These five screens were five separate sidebar entries, and three of them sat
  * under the collapsible admin block rather than next to the other two, so
@@ -26,11 +29,9 @@ import TabBar, { tabPanelProps } from "../components/ui/TabBar";
  * because Surveys failed. As five separate pages each had its own key and each
  * failure stayed put; this keeps that true.
  *
- * NO `initialTab` PROP AND NO EXPORTED TAB LIST YET. Both were drafted for the
- * deep links that C3's page-key map introduces; adding them here would be a
- * public surface whose only caller would be its own test, which is the shape
- * that has produced three tested-but-uncalled modules in this repository
- * already. They arrive with the thing that needs them.
+ * THE OPEN TAB IS IN THE ADDRESS (`#communications/scheduled`), and the five
+ * retired page keys land on their own tab (navigation/pageKeys.js). The key
+ * list is exported for the test that holds those legacy links to real tabs.
  */
 
 const SendMessageTab = lazy(() => import("./communications/SendMessageTab"));
@@ -40,29 +41,31 @@ const HistoryTab = lazy(() => import("./communications/HistoryTab"));
 const EditByLinkTab = lazy(() => import("./communications/EditByLinkTab"));
 
 const TABS = [
-  { key: "send", icon: "📢", label: "Send Message", Component: SendMessageTab },
-  { key: "surveys", icon: "📝", label: "Surveys", Component: SurveysTab },
-  { key: "scheduled", icon: "📅", label: "Scheduled", Component: ScheduledTab },
-  { key: "history", icon: "📨", label: "History", Component: HistoryTab },
-  { key: "edit_by_link", icon: "🛠️", label: "Edit by Link", Component: EditByLinkTab },
+  { key: "send", label: "Send Message", Component: SendMessageTab },
+  { key: "surveys", label: "Surveys", Component: SurveysTab },
+  { key: "scheduled", label: "Scheduled", Component: ScheduledTab },
+  { key: "history", label: "History", Component: HistoryTab },
+  { key: "edit_by_link", label: "Edit by Link", Component: EditByLinkTab },
 ];
 
-export default function CommunicationsPage() {
-  const [tab, setTab] = useState(TABS[0].key);
+export const COMMUNICATIONS_TAB_KEYS = Object.freeze(TABS.map((t) => t.key));
+
+export default function CommunicationsPage({ tab: routeTab, onTabChange }) {
+  const [tab, setTab] = useTabRoute(COMMUNICATIONS_TAB_KEYS, { tab: routeTab, onTabChange });
   const active = TABS.find((t) => t.key === tab) || TABS[0];
   const Active = active.Component;
 
   return (
     <div>
       <div className="page-header">
-        <h2>Communications</h2>
+        <h2>Messages</h2>
         <p>Messages, surveys and the queue — what the bot says to driver groups.</p>
       </div>
       <TabBar
         tabs={TABS.map((t) => ({ key: t.key, label: t.label }))}
         value={tab}
         onChange={setTab}
-        ariaLabel="Communications sections"
+        ariaLabel="Message sections"
         idPrefix="communications"
       />
       <div {...tabPanelProps("communications", tab)}>

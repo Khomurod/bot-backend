@@ -7,13 +7,13 @@ import AdminSidebar, { labelForPage } from "./components/AdminSidebar";
 import Icon from "./components/ui/Icon";
 import PageErrorBoundary from "./components/PageErrorBoundary";
 import DatabaseUsageBanner from "./components/DatabaseUsageBanner";
-import { DEFAULT_PAGE_KEY, hashForPageKey, pageKeyFromHash } from "./navigation/pageKeys";
+import { DEFAULT_PAGE_KEY, hashForRoute, routeFromHash } from "./navigation/pageKeys";
 
 // Every other page is lazy-loaded so its code is fetched only when the page
 // is opened — the initial admin bundle stays small.
 const GroupsPage = lazy(() => import("./pages/GroupsPage"));
 const CommunicationsPage = lazy(() => import("./pages/CommunicationsPage"));
-const CompanyBirthdaysPage = lazy(() => import("./pages/CompanyBirthdaysPage"));
+const BirthdaysPage = lazy(() => import("./pages/BirthdaysPage"));
 const FacebookLeadsPage = lazy(() => import("./pages/FacebookLeadsPage"));
 const LeadsPage = lazy(() => import("./pages/LeadsPage"));
 const MileageBonusPage = lazy(() => import("./pages/MileageBonusPage"));
@@ -25,6 +25,8 @@ const RecruitersPublicPage = lazy(() => import("./pages/RecruitersPublicPage"));
 const GrossRacePage = lazy(() => import("./pages/grossRace/GrossRacePage"));
 const LiveLocationsPage = lazy(() => import("./pages/LiveLocationsPage"));
 const OperationsPage = lazy(() => import("./pages/OperationsPage"));
+const RetentionPage = lazy(() => import("./pages/RetentionPage"));
+const SystemHealthPage = lazy(() => import("./pages/SystemHealthPage"));
 
 const pageLoadingFallback = (
   <div className="loading">
@@ -43,14 +45,12 @@ const pageLoadingFallback = (
  * all reported "Could not load this page" because only the first one had
  * actually failed.
  *
- * THE CALLER ALSO PASSES `key={page}`, and that is load-bearing rather than
- * tidiness. Several page keys render the SAME component on a different tab —
- * `settings_integrations` / `settings_board` / `settings_ai` are one
- * SettingsPage, `operations` / `system_health` one OperationsPage. React
- * reconciles same-type elements in the same position, so without a key the
- * instance survives the navigation and a tab read once in a `useState`
- * initialiser keeps whatever it opened on: the URL moves, the sidebar
- * highlight moves, the screen does not.
+ * THE CALLER ALSO PASSES `key={page}`, so leaving a page and coming back is a
+ * fresh mount — and a tab change within a page is NOT one: the tab comes from
+ * the address as a prop, and remounting the page on every tab would refetch
+ * everything it had loaded. `pageKey` DOES include the tab, so a section that
+ * failed is cleared by choosing another one — the six sidebar entries Settings
+ * used to have did that by being six keys.
  */
 function LazyPage({ pageKey, children }) {
   return (
@@ -61,9 +61,10 @@ function LazyPage({ pageKey, children }) {
 }
 
 /**
- * Which page a URL names.
+ * Which page — and which of its tabs — a URL names.
  *
- * THE PATH DECIDES THE SHELL; THE HASH DECIDES THE ADMIN PAGE. The two public
+ * THE PATH DECIDES THE SHELL; THE HASH DECIDES THE ADMIN PAGE AND TAB
+ * (`/admin#settings/board`). The two public
  * pages have paths of their own and no sidebar. Every admin page shares
  * `/admin`, so the page within it is the hash — which is new. Until now
  * `/admin` was the only URL the panel ever produced, so no admin screen could
@@ -79,17 +80,17 @@ function LazyPage({ pageKey, children }) {
  * link gets "this feature has been removed" rather than the shell quietly
  * rendering Driver Groups. See server/routes/retiredRoutes.js.
  */
-function pageFromLocation(pathname, hash) {
-  if (pathname === "/dispatch") return "gross_race_dispatchers";
-  if (pathname === "/dispatchteam") return "gross_race_teams";
+function routeFromLocation(pathname, hash) {
+  if (pathname === "/dispatch") return { page: "gross_race_dispatchers", tab: null };
+  if (pathname === "/dispatchteam") return { page: "gross_race_teams", tab: null };
   if (pathname === "/recruiters" || pathname.startsWith("/recruiters/")) {
-    return "recruiters_public";
+    return { page: "recruiters_public", tab: null };
   }
-  return pageKeyFromHash(hash) || DEFAULT_PAGE_KEY;
+  return routeFromHash(hash) || { page: DEFAULT_PAGE_KEY, tab: null };
 }
 
-function initialPage() {
-  return pageFromLocation(window.location.pathname, window.location.hash);
+function currentRoute() {
+  return routeFromLocation(window.location.pathname, window.location.hash);
 }
 
 /**
@@ -100,39 +101,32 @@ function initialPage() {
  * `navigation/pageKeys.test.jsx` assert they agree, which nothing did before —
  * a typo in either simply missed the lookup and rendered Driver Groups.
  *
- * Several keys are the same component on a different tab. That is the point:
- * "Dispatcher Board" is what a person looks for in a sidebar, and it happens to
- * be a tab of the Settings page.
+ * Each entry is a function of the route, because a page with tabs takes its
+ * open tab from the address (`#settings/board`) and reports a change back; a
+ * page without tabs ignores it. One key, one page: a tab is no longer a key.
  */
 const PAGE_COMPONENTS = {
-  facebook_leads: <FacebookLeadsPage />,
-  leads: <LeadsPage />,
-  // Send Message, Surveys, Scheduled, History and Edit by Link are five tabs
-  // of ONE page. Their old keys live in LEGACY_PAGE_KEYS, not here, so a
-  // bookmarked `#broadcast` resolves to this page instead of silently opening
-  // Driver Groups. See pages/CommunicationsPage.jsx.
-  communications: <CommunicationsPage />,
-  groups: <GroupsPage />,
-  company_birthdays: <CompanyBirthdaysPage />,
-  mileage_bonus: <MileageBonusPage />,
-  home_time: <HomeTimePage />,
-  users: <UsersPage />,
-  // Three sidebar entries, one Settings page. "Settings" alone did not say
-  // which settings, so the bare key is retired into LEGACY_PAGE_KEYS and each
-  // entry names the thing a person came looking for.
-  settings_integrations: <SettingsPage />,
-  settings_board: <SettingsPage initialTab="board" />,
-  settings_ai: <SettingsPage initialTab="ai" />,
-  settings_notifications: <SettingsPage initialTab="notifications" />,
-  settings_reactions: <SettingsPage initialTab="reactions" />,
-  settings_access: <SettingsPage initialTab="access" />,
-  recruiter_kpis: <RecruiterKpiPage />,
-  live_locations: <LiveLocationsPage />,
-  operations: <OperationsPage />,
-  // "Is everything running?" is a question about the whole system, not a
-  // sub-question of Needs Attention, so it gets its own sidebar entry onto the
-  // tab that answers it.
-  system_health: <OperationsPage initialTab="systems" />,
+  // Drivers
+  groups: () => <GroupsPage />,
+  live_locations: () => <LiveLocationsPage />,
+  home_time: (route) => <HomeTimePage {...route} />,
+  mileage_bonus: () => <MileageBonusPage />,
+  retention: () => <RetentionPage />,
+  // Recruiting
+  leads: () => <LeadsPage />,
+  facebook_leads: (route) => <FacebookLeadsPage {...route} />,
+  recruiter_kpis: () => <RecruiterKpiPage />,
+  // Communications. Send Message, Surveys, Scheduled, History and Edit by Link
+  // are five tabs of ONE page; their old keys live in LEGACY_PAGE_KEYS, so a
+  // bookmarked `#broadcast` opens that tab instead of Driver Groups.
+  communications: (route) => <CommunicationsPage {...route} />,
+  company_birthdays: (route) => <BirthdaysPage {...route} />,
+  // Monitoring
+  operations: (route) => <OperationsPage {...route} />,
+  system_health: () => <SystemHealthPage />,
+  // Administration
+  users: () => <UsersPage />,
+  settings: (route) => <SettingsPage {...route} />,
 };
 
 export { PAGE_COMPONENTS };
@@ -141,7 +135,8 @@ export default function App() {
   const [authed, setAuthed] = useState(false);
   const [session, setSession] = useState(null);
   const [checking, setChecking] = useState(true);
-  const [page, setPage] = useState(() => initialPage());
+  const [route, setRoute] = useState(() => currentRoute());
+  const page = route.page;
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const isRecruitersPublicPage = page === "recruiters_public";
   const grossRaceView = { gross_race_teams: "teams", gross_race_dispatchers: "dispatchers" }[page] || null;
@@ -151,7 +146,18 @@ export default function App() {
     // `hashchange` is listened to as well as `popstate` because a hash-only
     // change made by typing in the address bar does not always fire popstate.
     const handleLocationChange = () => {
-      setPage(initialPage());
+      const next = currentRoute();
+      setRoute(next);
+      // An old or mangled admin hash is rewritten IN PLACE to the address of
+      // what it opened (`#settings_board` → `#settings/board`), so the link
+      // somebody copies from here on is the current one. replaceState: the old
+      // address must not become a Back step that re-redirects.
+      if (window.location.pathname.startsWith("/admin") && window.location.hash) {
+        const canonical = hashForRoute(next.page, next.tab);
+        if (window.location.hash !== canonical) {
+          window.history.replaceState({}, "", `${window.location.pathname}${window.location.search}${canonical}`);
+        }
+      }
     };
 
     window.addEventListener("popstate", handleLocationChange);
@@ -184,15 +190,30 @@ export default function App() {
   }, []);
 
   const navigateToPage = (nextPage) => {
-    setPage(nextPage);
+    setRoute({ page: nextPage, tab: null });
     setMobileMenuOpen(false);
 
     // pushState, not replaceState: moving between sections is navigation a
     // person expects Back to undo. The hash is what makes the destination
     // nameable at all — every admin page is the same path.
-    const nextUrl = `/admin${hashForPageKey(nextPage)}`;
+    const nextUrl = `/admin${hashForRoute(nextPage)}`;
     if (`${window.location.pathname}${window.location.hash}` !== nextUrl) {
       window.history.pushState({}, "", nextUrl);
+    }
+  };
+
+  // A tab change REPLACES the address rather than adding to it: Back leaves the
+  // page, as it did before tabs had addresses, instead of stepping through
+  // every tab somebody glanced at. The address still names the tab, so it can
+  // be bookmarked and shared.
+  //
+  // The query string is KEPT: `?dev=1` is what shows Customer Inquiries' Activity
+  // Log tab, and dropping it on the first tab click took the tab away.
+  const changeTab = (nextTab) => {
+    setRoute((current) => ({ ...current, tab: nextTab }));
+    const nextHash = hashForRoute(page, nextTab);
+    if (window.location.hash !== nextHash) {
+      window.history.replaceState({}, "", `${window.location.pathname}${window.location.search}${nextHash}`);
     }
   };
 
@@ -200,9 +221,9 @@ export default function App() {
     api.logout();
     setAuthed(false);
     setSession(null);
-    setPage(DEFAULT_PAGE_KEY);
+    setRoute({ page: DEFAULT_PAGE_KEY, tab: null });
     setMobileMenuOpen(false);
-    // Drop the hash too: leaving `#settings_ai` on a signed-out shell would
+    // Drop the hash too: leaving `#settings/ai` on a signed-out shell would
     // send the next person who signs in straight back to it.
     if (`${window.location.pathname}${window.location.hash}` !== "/admin") {
       window.history.replaceState({}, "", "/admin");
@@ -235,7 +256,7 @@ export default function App() {
         onLogin={(loginSession) => {
           setAuthed(true);
           setSession(loginSession);
-          setPage(initialPage());
+          setRoute(currentRoute());
         }}
       />
     );
@@ -285,8 +306,8 @@ export default function App() {
             running out is not discovered by reads starting to fail. */}
         <DatabaseUsageBanner />
         {isFullAdmin ? (
-          <LazyPage key={page} pageKey={page}>
-            {PAGE_COMPONENTS[page] || PAGE_COMPONENTS[DEFAULT_PAGE_KEY]}
+          <LazyPage key={page} pageKey={`${page}/${route.tab || ""}`}>
+            {(PAGE_COMPONENTS[page] || PAGE_COMPONENTS[DEFAULT_PAGE_KEY])({ tab: route.tab, onTabChange: changeTab })}
           </LazyPage>
         ) : (
           <div className="card">

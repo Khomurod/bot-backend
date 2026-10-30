@@ -64,7 +64,7 @@ test("renders both cards — neither was left behind on the old tab", async () =
 
 test("says where the per-workflow group ids went, rather than just not having them", async () => {
   render(<NotificationsTab />);
-  expect(screen.getByText(/Telegram Groups/i)).toBeTruthy();
+  expect(screen.getByRole("link", { name: /Bonus Groups/i })).toHaveAttribute("href", "#settings/groups");
 });
 
 test("a card's message has somewhere to appear", async () => {

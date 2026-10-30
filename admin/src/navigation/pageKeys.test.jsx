@@ -16,13 +16,17 @@ import {
   DEFAULT_PAGE_KEY,
   LEGACY_PAGE_KEYS,
   PAGE_KEYS,
-  hashForPageKey,
-  isLivePageKey,
-  pageKeyFromHash,
-  resolvePageKey,
+  hashForRoute,
+  resolveRoute,
+  routeFromHash,
 } from "./pageKeys";
 import { NAV_SECTIONS } from "../components/AdminSidebar";
 import { PAGE_COMPONENTS } from "../App";
+import { COMMUNICATIONS_TAB_KEYS } from "../pages/CommunicationsPage";
+import { SETTINGS_SECTION_KEYS } from "../pages/settings/sections";
+
+/** The tab keys of each page a legacy key may land inside. */
+const TABS_OF = { communications: COMMUNICATIONS_TAB_KEYS, settings: SETTINGS_SECTION_KEYS };
 
 describe("the three lists agree", () => {
   test("every sidebar item names a live page key", () => {
@@ -63,48 +67,71 @@ describe("the three lists agree", () => {
     }
   });
 
-  test("the five sections are in the order somebody reads them", () => {
+  test("the five groups are in the order somebody reads them", () => {
+    // Business work first, the system after it, configuration last —
+    // docs/redesign/structure.md.
     expect(NAV_SECTIONS.map((s) => s.label)).toEqual([
-      "Operations", "Groups", "Communications", "Recruiting", "Settings",
+      "Drivers", "Recruiting", "Communications", "Monitoring", "Administration",
     ]);
+  });
+
+  test("one entry per page: no two sidebar entries open the same page", () => {
+    // Six entries used to open the one Settings page on different tabs, and
+    // the highlight stayed on whichever was clicked while the tab moved on.
+    const components = Object.values(PAGE_COMPONENTS).map((render) => render({}).type);
+    expect(new Set(components).size).toBe(components.length);
   });
 });
 
-describe("resolvePageKey", () => {
+describe("resolveRoute", () => {
   test("a live key is returned unchanged", () => {
-    for (const key of PAGE_KEYS) expect(resolvePageKey(key)).toBe(key);
+    for (const key of PAGE_KEYS) expect(resolveRoute(key).page).toBe(key);
   });
 
-  test("every legacy key lands on a live page", () => {
+  test("every legacy key lands on a live page, and on a tab that page really has", () => {
     for (const [old, moved] of Object.entries(LEGACY_PAGE_KEYS)) {
-      expect(PAGE_KEYS, `${old} -> ${moved}`).toContain(moved);
-      expect(resolvePageKey(old)).toBe(moved);
+      const route = resolveRoute(old);
+      expect(PAGE_KEYS, `${old} -> ${moved}`).toContain(route.page);
+      if (route.tab) {
+        expect(TABS_OF[route.page], `${old} -> ${moved}`).toContain(route.tab);
+      }
     }
   });
 
-  test("the five retired messaging keys all open Communications", () => {
-    for (const old of ["broadcast", "questions", "scheduled", "bot_messages", "manager"]) {
-      expect(resolvePageKey(old)).toBe("communications");
-    }
+  test("the five retired messaging keys each open their own tab of Messages", () => {
+    expect(resolveRoute("broadcast")).toEqual({ page: "communications", tab: "send" });
+    expect(resolveRoute("questions")).toEqual({ page: "communications", tab: "surveys" });
+    expect(resolveRoute("scheduled")).toEqual({ page: "communications", tab: "scheduled" });
+    expect(resolveRoute("bot_messages")).toEqual({ page: "communications", tab: "history" });
+    expect(resolveRoute("manager")).toEqual({ page: "communications", tab: "edit_by_link" });
+  });
+
+  test("every old Settings entry opens its own section, never just the first one", () => {
+    expect(resolveRoute("settings_integrations")).toEqual({ page: "settings", tab: "location" });
+    expect(resolveRoute("settings_board")).toEqual({ page: "settings", tab: "board" });
+    expect(resolveRoute("settings_ai")).toEqual({ page: "settings", tab: "ai" });
+    expect(resolveRoute("settings_notifications")).toEqual({ page: "settings", tab: "notifications" });
+    expect(resolveRoute("settings_reactions")).toEqual({ page: "settings", tab: "reactions" });
+    expect(resolveRoute("settings_access")).toEqual({ page: "settings", tab: "access" });
   });
 
   test("a live key wins over a legacy one of the same name", () => {
     // So that re-using a retired name for a new page can never be shadowed by
-    // its own history. `settings` is retired today; if it ever came back as a
-    // live key, this is the rule that would make it win.
+    // its own history — `settings` was retired, and came back as a live key in
+    // October 2026.
     for (const old of Object.keys(LEGACY_PAGE_KEYS)) {
-      expect(isLivePageKey(old), `${old} must not be live while retired`).toBe(false);
+      expect(PAGE_KEYS.includes(old), `${old} must not be live while retired`).toBe(false);
     }
   });
 
   test("anything unrecognised opens the default page, never nothing", () => {
     for (const junk of ["", "   ", null, undefined, "nope", "../etc/passwd", 7, {}]) {
-      expect(resolvePageKey(junk)).toBe(DEFAULT_PAGE_KEY);
+      expect(resolveRoute(junk).page).toBe(DEFAULT_PAGE_KEY);
     }
   });
 
   test("surrounding whitespace is tolerated", () => {
-    expect(resolvePageKey("  home_time  ")).toBe("home_time");
+    expect(resolveRoute("  home_time  ").page).toBe("home_time");
   });
 });
 
@@ -112,31 +139,42 @@ describe("hash round-trip", () => {
   test("no hash at all means no opinion", () => {
     // null, not the default — the caller decides, and a path-based public page
     // must not be overridden by an empty hash.
-    expect(pageKeyFromHash("")).toBeNull();
-    expect(pageKeyFromHash("#")).toBeNull();
-    expect(pageKeyFromHash(null)).toBeNull();
+    expect(routeFromHash("")).toBeNull();
+    expect(routeFromHash("#")).toBeNull();
+    expect(routeFromHash(null)).toBeNull();
   });
 
   test("a hash names its page, with or without the #", () => {
-    expect(pageKeyFromHash("#live_locations")).toBe("live_locations");
-    expect(pageKeyFromHash("live_locations")).toBe("live_locations");
+    expect(routeFromHash("#live_locations").page).toBe("live_locations");
+    expect(routeFromHash("live_locations").page).toBe("live_locations");
   });
 
-  test("a tab hint after the page is ignored, not treated as junk", () => {
-    // `#communications/scheduled` is a page and a hint at a tab within it.
+  test("the second half of the hash is the tab, and anything deeper is ignored", () => {
     // Reading the whole thing as one key would fall back to Driver Groups.
-    expect(pageKeyFromHash("#communications/scheduled")).toBe("communications");
-    expect(pageKeyFromHash("#settings_ai/anything/deeper")).toBe("settings_ai");
+    expect(routeFromHash("#communications/scheduled")).toEqual({ page: "communications", tab: "scheduled" });
+    expect(routeFromHash("#settings/board/anything")).toEqual({ page: "settings", tab: "board" });
+    expect(routeFromHash("#home_time")).toEqual({ page: "home_time", tab: null });
+  });
+
+  test("a legacy key's own tab is replaced by the one its content moved to", () => {
+    expect(routeFromHash("#settings_ai/anything")).toEqual({ page: "settings", tab: "ai" });
   });
 
   test("a bookmarked hash from before a page moved still opens its content", () => {
-    expect(pageKeyFromHash("#broadcast")).toBe("communications");
-    expect(pageKeyFromHash("#settings")).toBe("settings_integrations");
+    expect(routeFromHash("#broadcast").page).toBe("communications");
+    expect(routeFromHash("#settings_board")).toEqual({ page: "settings", tab: "board" });
   });
 
   test("every live key survives a round trip through the hash", () => {
     for (const key of PAGE_KEYS) {
-      expect(pageKeyFromHash(hashForPageKey(key))).toBe(key);
+            expect(routeFromHash(hashForRoute(key, "x"))).toEqual({ page: key, tab: "x" });
     }
+  });
+
+  test("a legacy key's address is the address of where it went", () => {
+    // What App rewrites an old bookmark to, in place.
+    expect(hashForRoute("settings_board")).toBe("#settings/board");
+    expect(hashForRoute("broadcast")).toBe("#communications/send");
+    expect(hashForRoute("groups")).toBe("#groups");
   });
 });

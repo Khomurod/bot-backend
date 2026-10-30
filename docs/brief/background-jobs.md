@@ -336,7 +336,7 @@ driver. `refuseEmploymentLanguage` refuses a notice that strays, on the model's
 output and again on the finished body.
 
 Said once. Said again only when the score rises by 3 or more, or a week has
-passed. An acknowledgement from Operations → Retention buys silence until it
+passed. An acknowledgement from Drivers → Retention buys silence until it
 gets materially worse — never indefinitely.
 
 ## The roster itself

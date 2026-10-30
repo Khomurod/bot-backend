@@ -2,7 +2,7 @@
 
 The checklist the redesign was verified against. Every row was a working part of
 the panel at main `2b5dd31` (restore point: branch `backup/pre-redesign-2026-10-30`).
-After the redesign each row was re-checked — see [`verification.md`](verification.md).
+After the redesign each row was re-checked — see [`verification.md`](verification.md). Where each row lives since the October 2026 structure: [`structure.md`](structure.md).
 
 Machine-made companions, on the never-merged branch `redesign/visual-baseline`:
 `before/inventory-{desktop,mobile}.json` (every visible button, link, field and

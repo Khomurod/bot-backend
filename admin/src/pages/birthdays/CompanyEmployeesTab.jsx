@@ -2,13 +2,15 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import * as api from "../../api";
 
 /**
- * Users → Company Employees: every employee with the American name, the
- * Telegram account and the photo their birthday card needs.
+ * Communications → Birthdays → Employees: every employee with the American
+ * name, the Telegram account and the photo their birthday card needs. (It was
+ * Users → Company Employees until October 2026; the card's data now sits on
+ * the same page as the birthdays it is for.)
  *
  * "Suggest Telegram accounts" matches employees to the Telegram users the bot
  * has seen, by display name only; a suggestion is marked as such until a
  * person confirms it or types another. Names and birthdays are edited on the
- * Birthdays page. See docs/architecture/employee-birthday-cards.md.
+ * Birthdays tab beside it. See docs/architecture/employee-birthday-cards.md.
  */
 
 function titleCase(text) {

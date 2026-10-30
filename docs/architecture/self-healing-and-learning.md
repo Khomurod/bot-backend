@@ -149,8 +149,8 @@ flap go to `system_errors` and say what does.
 
 `/api/health → operations.workers` carries counts per state plus the components
 that are actionable, each **named** with its reason — "3 needing attention"
-without saying which three is a number nobody can act on. Admin → Operations →
-**What is running** shows the same thing grouped by integration / queue / engine
+without saying which three is a number nobody can act on. Admin → Monitoring →
+**System Health** shows the same thing grouped by integration / queue / engine
 / routine, sorted so the rows with something to DO are first, with the reason as
 the loudest text on the row: "no Google Maps key configured" is an instruction,
 "failing" is not.
