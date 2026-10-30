@@ -35,7 +35,7 @@ function WindowRow({ win, onChange, onRemove }) {
   return (
     <div style={{
       display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap",
-      padding: "8px 0", borderBottom: "1px solid rgba(148,163,184,0.15)",
+      padding: "8px 0", borderBottom: "1px solid var(--border)",
     }}>
       <div style={{ display: "flex", gap: 2 }}>
         {DAYS.map((d) => (
@@ -124,7 +124,7 @@ export default function WorkingHoursCard({ flash }) {
       {/* What would happen this minute, before any of the controls. */}
       <div style={{
         padding: "10px 12px", borderRadius: 8, marginBottom: 12,
-        background: now.aiWouldAnswer ? "rgba(34,197,94,0.12)" : "rgba(148,163,184,0.12)",
+        background: now.aiWouldAnswer ? "var(--success-soft)" : "var(--neutral-soft)",
       }}>
         <strong>
           {now.open
@@ -224,7 +224,7 @@ export default function WorkingHoursCard({ flash }) {
       {conversations.map((c) => (
         <div key={c.driverPhone} style={{
           display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap",
-          padding: "6px 0", borderBottom: "1px solid rgba(148,163,184,0.15)",
+          padding: "6px 0", borderBottom: "1px solid var(--border)",
         }}>
           <div>
             <strong>{c.leadName || c.driverPhone}</strong>

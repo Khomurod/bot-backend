@@ -39,13 +39,17 @@ function GroupRow({ group, expanded, onToggle, onOpen }) {
   const meta = SEVERITY_META[group.severity] || SEVERITY_META.info;
   return (
     <>
-      <tr style={{ borderTop: "1px solid rgba(148,163,184,0.15)" }}>
+      <tr style={{ borderTop: "1px solid var(--border)" }}>
         <td style={{ padding: "10px 8px" }}>
           <button
             type="button"
             className="btn btn-ghost btn-sm"
             onClick={onToggle}
             aria-expanded={expanded}
+            // A check key such as `home_time.board_disagrees_with_state` has no
+            // space; on a phone it must break rather than push the severity
+            // and count out of view.
+            style={{ textAlign: "left", overflowWrap: "anywhere" }}
           >
             {expanded ? "▾" : "▸"} {group.label}
           </button>
@@ -58,23 +62,23 @@ function GroupRow({ group, expanded, onToggle, onOpen }) {
         </td>
       </tr>
       {expanded && group.items.map((finding) => (
-        <tr key={finding.id} style={{ borderTop: "1px solid rgba(148,163,184,0.08)" }}>
+        <tr key={finding.id} style={{ borderTop: "1px solid var(--border)" }}>
           <td style={{ padding: "6px 8px 6px 28px", fontSize: 13 }}>
             <button
               type="button"
               className="btn btn-ghost btn-sm"
               onClick={() => onOpen(finding.id)}
-              style={{ textAlign: "left" }}
+              style={{ textAlign: "left", overflowWrap: "anywhere" }}
             >
               {finding.title}
             </button>
-            <div style={{ color: "#94a3b8", fontSize: 11, paddingLeft: 8 }}>
+            <div style={{ color: "var(--text-muted)", fontSize: 11, paddingLeft: 8 }}>
               first seen {formatAgo(finding.firstSeenAt)}
               {finding.status !== "open" ? ` · ${finding.status}` : ""}
               {finding.snoozedUntil ? " · snoozed" : ""}
             </div>
           </td>
-          <td colSpan={2} style={{ padding: "6px 8px", fontSize: 11, color: "#94a3b8" }}>
+          <td colSpan={2} style={{ padding: "6px 8px", fontSize: 11, color: "var(--text-muted)" }}>
             {(TIER_META[finding.tier] || TIER_META.warning).label}
           </td>
         </tr>
@@ -110,7 +114,7 @@ export default function FindingsListCard({
             <strong>Findings</strong>
             {/* Why the sweep line is here: an empty page and a stopped sweep look
                 identical, and mean opposite things. */}
-            <div style={{ color: "#94a3b8", fontSize: 12 }}>
+            <div style={{ color: "var(--text-muted)", fontSize: 12 }}>
               {summary?.sweep?.running === false
                 ? "The consistency sweep is not running."
                 : `Checks last ran ${formatAgo(summary?.sweep?.lastRun?.at)}.`}
@@ -129,7 +133,7 @@ export default function FindingsListCard({
             </div>
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <label style={{ fontSize: 12, color: "#94a3b8", display: "flex", gap: 6 }}>
+            <label style={{ fontSize: 12, color: "var(--text-muted)", display: "flex", gap: 6 }}>
               <input
                 type="checkbox"
                 checked={includeDismissed}

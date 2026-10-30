@@ -18,7 +18,7 @@ export function SendConfirmDialog({
   {showSendConfirm && (
     <div className="confirm-overlay" onClick={() => setShowSendConfirm(null)}>
       <div className="confirm-dialog" onClick={(e) => e.stopPropagation()}>
-        <h3>📢 Send Broadcast?</h3>
+        <h3>Send Broadcast?</h3>
         {showSendConfirm === 'regular' ? (
           <p>{targetType === 'all' ? 'This will send your message to ALL driver groups. This cannot be undone.' : `This will send to ${selectedDriverIds.length || 'selected'} groups.`}</p>
         ) : (

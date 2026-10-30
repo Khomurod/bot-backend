@@ -3,7 +3,8 @@ import * as api from "./api";
 // LoginPage stays eager: it is the auth gate and must render instantly.
 import LoginPage from "./pages/LoginPage";
 import { AuthProvider } from "./context/AuthContext";
-import AdminSidebar from "./components/AdminSidebar";
+import AdminSidebar, { labelForPage } from "./components/AdminSidebar";
+import Icon from "./components/ui/Icon";
 import PageErrorBoundary from "./components/PageErrorBoundary";
 import DatabaseUsageBanner from "./components/DatabaseUsageBanner";
 import { DEFAULT_PAGE_KEY, hashForPageKey, pageKeyFromHash } from "./navigation/pageKeys";
@@ -256,18 +257,30 @@ export default function App() {
         onNavigateToPage={navigateToPage}
         onLogout={handleLogout}
       />
+      {/* On a phone the sidebar is a drawer; tapping outside it closes it. */}
+      <div
+        className={`sidebar-backdrop ${mobileMenuOpen ? "is-open" : ""}`}
+        onClick={() => setMobileMenuOpen(false)}
+        aria-hidden="true"
+      />
       <main className="main-content" onClick={() => setMobileMenuOpen(false)}>
-        <div style={{ display: "flex", alignItems: "center", marginBottom: "20px" }}>
+        {/* Phones and narrow tablets only (CSS): the menu button and where you are. */}
+        <div className="topbar">
           <button
+            type="button"
             className="mobile-menu-btn"
+            aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
+            aria-expanded={mobileMenuOpen}
             onClick={(event) => {
               event.stopPropagation();
               setMobileMenuOpen(!mobileMenuOpen);
             }}
           >
-            ☰
+            <Icon name={mobileMenuOpen ? "close" : "menu"} size={20} />
           </button>
+          <span className="topbar-title">{(isFullAdmin && labelForPage(page)) || "Wenze"}</span>
         </div>
+        <div className="main-inner">
         {/* Shown only at 80%+ of the monthly database transfer allowance, so
             running out is not discovered by reads starting to fail. */}
         <DatabaseUsageBanner />
@@ -285,6 +298,7 @@ export default function App() {
             </p>
           </div>
         )}
+        </div>
       </main>
     </div>
     </AuthProvider>

@@ -34,7 +34,7 @@ export default function NotificationsTab() {
 
   return (
     <div>
-      <p style={{ color: "#94a3b8", marginTop: 0 }}>
+      <p style={{ color: "var(--text-muted)", marginTop: 0 }}>
         Everything Wenze <strong>notices</strong> — corrections it made, risks it found, problems
         it recovered from — and the one channel it can be <strong>answered</strong> on. The
         per-workflow message groups (mileage bonus, road bonus) are on the{" "}

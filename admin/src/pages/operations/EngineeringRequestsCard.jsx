@@ -19,11 +19,11 @@ import * as api from "../../api";
  * source, and the shortest way to keep that true is to give this page no way to.
  */
 const STATUS = {
-  open: { label: "Waiting", colour: "#eab308" },
-  accepted: { label: "Accepted", colour: "#0891b2" },
-  in_progress: { label: "Being built", colour: "#0891b2" },
-  done: { label: "Done", colour: "#16a34a" },
-  declined: { label: "Not doing it", colour: "#64748b" },
+  open: { label: "Waiting", colour: "var(--warning)" },
+  accepted: { label: "Accepted", colour: "var(--info)" },
+  in_progress: { label: "Being built", colour: "var(--info)" },
+  done: { label: "Done", colour: "var(--success)" },
+  declined: { label: "Not doing it", colour: "var(--text-muted)" },
 };
 
 /** Still somebody's job. A terminal one is history and needs no buttons. */
@@ -69,7 +69,7 @@ function Request({ row, onDecide, busy }) {
       </div>
 
       {/* THEIR WORDS, NOT A SUMMARY. A restatement is somebody else's reading. */}
-      <blockquote style={{ margin: "8px 0", fontSize: 13, borderLeft: "3px solid #cbd5e1", paddingLeft: 10 }}>
+      <blockquote style={{ margin: "8px 0", fontSize: 13, borderLeft: "3px solid var(--border-strong)", paddingLeft: 10 }}>
         {row.requestText}
       </blockquote>
 

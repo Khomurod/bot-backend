@@ -51,7 +51,7 @@ export default function CheckList({ result }) {
       <div style={{ fontWeight: 600, marginBottom: 8 }}>
         {headline(result)}
         {result.usedStoredToken && (
-          <span style={{ fontWeight: 400, fontSize: 12, color: "#94a3b8" }}> (tested with the token already in use)</span>
+          <span style={{ fontWeight: 400, fontSize: 12, color: "var(--text-muted)" }}> (tested with the token already in use)</span>
         )}
       </div>
       {result.checks.map((c) => {
@@ -64,7 +64,7 @@ export default function CheckList({ result }) {
             </div>
             <div style={{ fontSize: 13, marginTop: 4 }}>{c.message}</div>
             {c.detail?.metaError && (
-              <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 4 }}>Meta said: {c.detail.metaError}</div>
+              <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>Meta said: {c.detail.metaError}</div>
             )}
             {c.key === "dry_run" && <DryRunDetail detail={c.detail} />}
           </div>

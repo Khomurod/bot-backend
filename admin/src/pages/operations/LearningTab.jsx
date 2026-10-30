@@ -33,15 +33,15 @@ const KIND_LABEL = {
 };
 
 const STATUS = {
-  proposed: { label: "Waiting for you", colour: "#eab308" },
+  proposed: { label: "Waiting for you", colour: "var(--warning)" },
   // FIVE STATES, and the middle two are the whole point of this screen.
-  accepted_active: { label: "Agreed — and the setting is changed", colour: "#16a34a" },
-  accepted_manual: { label: "Agreed — needs you to do it", colour: "#0891b2" },
+  accepted_active: { label: "Agreed — and the setting is changed", colour: "var(--success)" },
+  accepted_manual: { label: "Agreed — needs you to do it", colour: "var(--info)" },
   // Rows decided before anything could be applied. They are agreements and
   // nothing more; relabelling them would invent a history they do not have.
-  accepted: { label: "Agreed (before Wenze could apply anything)", colour: "#64748b" },
-  dismissed: { label: "You said no", colour: "#64748b" },
-  reverted: { label: "Undone", colour: "#64748b" },
+  accepted: { label: "Agreed (before Wenze could apply anything)", colour: "var(--text-muted)" },
+  dismissed: { label: "You said no", colour: "var(--text-muted)" },
+  reverted: { label: "Undone", colour: "var(--text-muted)" },
 };
 
 function Suggestion({ row, onDecide, onAccept, onRevert, busy }) {
@@ -55,7 +55,7 @@ function Suggestion({ row, onDecide, onAccept, onRevert, busy }) {
 
   return (
     <div style={{
-      border: "1px solid rgba(148,163,184,0.25)",
+      border: "1px solid var(--border)",
       borderLeft: `3px solid ${state.colour}`,
       borderRadius: 8, padding: "10px 12px", marginBottom: 8,
     }}>

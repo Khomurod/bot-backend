@@ -145,7 +145,7 @@ export default function ProviderCard({ provider, onSaved, flash }) {
           <strong>{provider.label || provider.providerKey}</strong>{" "}
           <span className="badge badge-muted">{provider.adapter}</span>{" "}
           {provider.isFree && <span className="badge">free tier</span>}
-          <div style={{ color: "#94a3b8", fontSize: 11 }}>
+          <div style={{ color: "var(--text-muted)", fontSize: 11 }}>
             <code>{provider.providerKey}</code>
             {provider.apiKeyFromEnv && " · key inherited from the environment"}
             {provider.apiKeyMasked && !provider.apiKeyFromEnv && ` · ${provider.apiKeyMasked}`}
@@ -163,7 +163,7 @@ export default function ProviderCard({ provider, onSaved, flash }) {
 
       {/* A cooldown always says why — the schema refuses one without a reason. */}
       {(provider.cooledUntil || hasPausedModel(provider)) && (
-        <div style={{ marginTop: 8, fontSize: 12, color: "#f59e0b" }}>
+        <div style={{ marginTop: 8, fontSize: 12, color: "var(--warning)" }}>
           {provider.cooledUntil
             ? <>Not being asked right now: {provider.cooldownReason}{" "}</>
             : <>Some models are waiting for their allowance to reset; the others are asked meanwhile.{" "}</>}
@@ -181,7 +181,7 @@ export default function ProviderCard({ provider, onSaved, flash }) {
         cooldowns={provider.modelCooldowns || {}}
         onChange={(next) => set("modelChain", next)}
       />
-      <div style={{ marginTop: 4, fontSize: 11, color: "#94a3b8" }}>
+      <div style={{ marginTop: 4, fontSize: 11, color: "var(--text-muted)" }}>
         {provider.discoveredModels?.length > 0 && (
           <>
             {provider.discoveredModels.filter((m) => m.chat).length} usable of{" "}
@@ -190,7 +190,7 @@ export default function ProviderCard({ provider, onSaved, flash }) {
           </>
         )}
         {provider.modelsRefreshError && (
-          <span style={{ color: "#f59e0b" }}> · last check failed: {provider.modelsRefreshError}</span>
+          <span style={{ color: "var(--warning)" }}> · last check failed: {provider.modelsRefreshError}</span>
         )}
       </div>
 
@@ -229,7 +229,7 @@ export default function ProviderCard({ provider, onSaved, flash }) {
             </div>
           )}
         </div>
-        <div style={{ color: "#94a3b8", fontSize: 11 }}>
+        <div style={{ color: "var(--text-muted)", fontSize: 11 }}>
           For a provider Wenze knows, this is filled in automatically.
           Change it only for a custom endpoint.
         </div>
@@ -259,13 +259,13 @@ export default function ProviderCard({ provider, onSaved, flash }) {
       </div>
 
       {refreshNote && (
-        <div role="status" style={{ marginTop: 8, fontSize: 12, color: refreshNote.ok ? "#22c55e" : "#f59e0b" }}>
+        <div role="status" style={{ marginTop: 8, fontSize: 12, color: refreshNote.ok ? "var(--success)" : "var(--warning)" }}>
           {refreshNote.text}
         </div>
       )}
 
       {result && (
-        <div style={{ marginTop: 8, fontSize: 12, color: result.ok ? "#22c55e" : "#f59e0b" }}>
+        <div style={{ marginTop: 8, fontSize: 12, color: result.ok ? "var(--success)" : "var(--warning)" }}>
           {result.ok
             ? `Answered in ${result.latencyMs}ms — “${result.sample}”`
             : (KIND_WORDING[result.failureKind] || result.error)}

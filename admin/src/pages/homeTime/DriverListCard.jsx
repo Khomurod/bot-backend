@@ -74,7 +74,7 @@ export function DriverListCard(p) {
       </div>
       <div
         className="home-time-summary-chip"
-        style={overLimit.length ? { borderColor: "rgba(239, 68, 68, 0.45)" } : undefined}
+        style={overLimit.length ? { borderColor: "var(--danger-border)" } : undefined}
       >
         <strong>{overLimit.length}</strong>
         <span>Over limit</span>

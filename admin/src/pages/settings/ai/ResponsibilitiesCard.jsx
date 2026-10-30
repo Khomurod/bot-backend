@@ -79,7 +79,7 @@ export default function ResponsibilitiesCard({ flash }) {
 
   return (
     <div className="card">
-      <h3>🧠 AI Responsibilities</h3>
+      <h3>AI Responsibilities</h3>
       <p className="muted">
         Every decision Wenze can use AI for. Switching one off does not break the feature —
         each one says below what Wenze does instead.
@@ -99,7 +99,7 @@ export default function ResponsibilitiesCard({ flash }) {
             <div
               key={cap.key}
               style={{
-                border: "1px solid rgba(148,163,184,0.25)",
+                border: "1px solid var(--border)",
                 borderRadius: 8,
                 padding: "10px 12px",
                 marginBottom: 8,
@@ -113,7 +113,7 @@ export default function ResponsibilitiesCard({ flash }) {
                       title={cap.stateNote || ""}
                       style={{
                         marginLeft: 8, fontSize: 11, padding: "1px 6px", borderRadius: 999,
-                        background: "rgba(234,179,8,0.18)", color: "#a16207",
+                        background: "var(--warning-soft)", color: "var(--warning)",
                       }}
                     >
                       can change information
@@ -124,7 +124,7 @@ export default function ResponsibilitiesCard({ flash }) {
                       title="The prompt includes message text from a driver group."
                       style={{
                         marginLeft: 6, fontSize: 11, padding: "1px 6px", borderRadius: 999,
-                        background: "rgba(148,163,184,0.18)",
+                        background: "var(--neutral-soft)",
                       }}
                     >
                       sends message text
@@ -149,7 +149,7 @@ export default function ResponsibilitiesCard({ flash }) {
               {cap.automation && (
                 <div
                   style={{
-                    marginTop: 8, paddingTop: 8, borderTop: "1px dashed rgba(148,163,184,0.25)",
+                    marginTop: 8, paddingTop: 8, borderTop: "1px dashed var(--border)",
                     fontSize: 13,
                   }}
                 >

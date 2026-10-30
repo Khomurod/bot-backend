@@ -240,7 +240,7 @@ export default function CompanyBirthdaysPage() {
     <div>
       <div className="page-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
         <div>
-          <h2>🎂 Birthdays</h2>
+          <h2>Birthdays</h2>
           <p>
             Manage office staff birthdays (soonest first).
             {settings ? (
@@ -261,7 +261,7 @@ export default function CompanyBirthdaysPage() {
       {status && <div className={`alert alert-${status.type}`} style={{ marginBottom: 20 }}>{status.text}</div>}
 
       <div className="card" style={{ marginBottom: 24 }}>
-        <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16 }}>🎂 Birthday Wishes Settings</h3>
+        <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16 }}>Birthday Wishes Settings</h3>
         <form onSubmit={handleSaveSettings}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12, marginBottom: 16 }}>
             <div className="form-group" style={{ marginBottom: 0 }}>
@@ -335,7 +335,7 @@ export default function CompanyBirthdaysPage() {
       </div>
 
       <div className="card" style={{ marginBottom: 24 }}>
-        <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16 }}>➕ Manual Entry</h3>
+        <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16 }}>Manual Entry</h3>
         <form onSubmit={handleManualAdd} style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
           <div className="form-group" style={{ flex: 1, minWidth: 150, marginBottom: 0 }}>
             <label>First Name</label>

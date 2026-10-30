@@ -37,15 +37,15 @@ function capabilityLabel(key) {
  */
 function HealthRow({ row }) {
   return (
-    <tr style={{ borderTop: "1px solid rgba(148,163,184,0.15)" }}>
+    <tr style={{ borderTop: "1px solid var(--border)" }}>
       <td style={{ padding: "6px 8px" }}><code>{row.providerKey}</code></td>
       <td style={{ padding: "6px 8px" }}>{row.successPct == null ? "—" : `${row.successPct}%`}</td>
       <td style={{ padding: "6px 8px" }}>{row.avgLatencyMs == null ? "—" : `${row.avgLatencyMs}ms`}</td>
-      <td style={{ padding: "6px 8px", color: row.quota ? "#f59e0b" : "#94a3b8" }}>{row.quota}</td>
-      <td style={{ padding: "6px 8px", color: row.credential ? "#f87171" : "#94a3b8" }}>
+      <td style={{ padding: "6px 8px", color: row.quota ? "var(--warning)" : "var(--text-muted)" }}>{row.quota}</td>
+      <td style={{ padding: "6px 8px", color: row.credential ? "var(--danger)" : "var(--text-muted)" }}>
         {row.credential}
       </td>
-      <td style={{ padding: "6px 8px", color: "#94a3b8" }}>{row.transient}</td>
+      <td style={{ padding: "6px 8px", color: "var(--text-muted)" }}>{row.transient}</td>
     </tr>
   );
 }
@@ -92,7 +92,7 @@ export default function AiTab() {
 
       <div className="card" style={{ marginBottom: 16 }}>
         <strong>🤖 How AI is used</strong>
-        <div style={{ color: "#94a3b8", fontSize: 12, marginTop: 4 }}>
+        <div style={{ color: "var(--text-muted)", fontSize: 12, marginTop: 4 }}>
           AI accelerates work here; it never decides anything on its own. With this
           switched off, every feature falls back to its deterministic logic and the
           application keeps working — that is a supported mode, not an outage.
@@ -169,19 +169,19 @@ export default function AiTab() {
 
       <div className="card" style={{ marginTop: 16 }}>
         <strong>Health, last 24 hours</strong>
-        <div style={{ color: "#94a3b8", fontSize: 12 }}>
+        <div style={{ color: "var(--text-muted)", fontSize: 12 }}>
           Split by what went wrong: a spent allowance and a dead key need
           different answers from you, and one percentage would hide which it is.
         </div>
         {health.length === 0 ? (
-          <div style={{ color: "#94a3b8", fontSize: 12, marginTop: 8 }}>
+          <div style={{ color: "var(--text-muted)", fontSize: 12, marginTop: 8 }}>
             No calls recorded yet.
           </div>
         ) : (
           <div className="table-container" style={{ marginTop: 8 }}>
             <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>
               <tbody>
-                <tr style={{ color: "#94a3b8" }}>
+                <tr style={{ color: "var(--text-muted)" }}>
                   <td style={{ padding: "4px 8px" }}>Provider</td>
                   <td style={{ padding: "4px 8px" }}>Answered</td>
                   <td style={{ padding: "4px 8px" }}>Typical</td>
@@ -216,7 +216,7 @@ export default function AiTab() {
         <details className="collapse-panel card" style={{ marginTop: 16 }}>
           <summary>
             <strong>Model changes</strong>{" "}
-            <span style={{ color: "#94a3b8", fontSize: 12 }}>
+            <span style={{ color: "var(--text-muted)", fontSize: 12 }}>
               — what Wenze added, retired or replaced, and why
             </span>
           </summary>
@@ -227,7 +227,7 @@ export default function AiTab() {
                 {e.model && <> <code>{e.model}</code></>}
                 {e.detail?.replacement && <> → <code>{e.detail.replacement}</code></>}
                 {e.detail?.chain && <> ({e.detail.chain.join(" → ")})</>}
-                <span style={{ color: "#94a3b8" }}> · {e.initiator}</span>
+                <span style={{ color: "var(--text-muted)" }}> · {e.initiator}</span>
               </li>
             ))}
           </ul>

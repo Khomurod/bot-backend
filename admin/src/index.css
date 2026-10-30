@@ -1,12 +1,15 @@
 /**
  * The admin panel's stylesheet — a manifest, not a stylesheet.
  *
- * This was one 2 500-line file. The partials below are the same declarations in
- * the same order: `@import` is inlined at build time by Vite's PostCSS pass, so
- * the emitted CSS is byte-for-byte what the single file produced. THE ORDER IS
- * THE CASCADE — a later partial deliberately overrides an earlier one (the
- * responsive blocks and the "modernization" overrides at the end especially),
+ * `@import` is inlined at build time by Vite's PostCSS pass, so this ships as
+ * one file. THE ORDER IS THE CASCADE — a later partial deliberately overrides
+ * an earlier one (the responsive blocks and 12-ui.css at the end especially),
  * so partials must not be reordered or alphabetised.
+ *
+ * 01-design-system.css holds every colour as a token, for both the light and
+ * the dark theme; the partials after it only use `var(--…)`. The shared UI
+ * pieces those classes belong to (TabBar, Icon, the theme switch) live in
+ * src/components/ui/. See docs/redesign/ for the October 2026 redesign.
  *
  * Imports must stay at the top of the file: CSS ignores an `@import` that
  * follows a declaration.
@@ -22,3 +25,4 @@
 @import "./styles/09-navigation.css";
 @import "./styles/10-components.css";
 @import "./styles/11-responsive.css";
+@import "./styles/12-ui.css";

@@ -25,7 +25,7 @@ import BoardBitrixCard from "./dispatcherBoard/BoardBitrixCard";
 function Row({ label, value }) {
   return (
     <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", fontSize: 13 }}>
-      <span style={{ color: "#94a3b8" }}>{label}</span>
+      <span style={{ color: "var(--text-muted)" }}>{label}</span>
       <strong>{value}</strong>
     </div>
   );
@@ -50,11 +50,11 @@ function TestResult({ result }) {
       {result.normalisedLabels > 0 && (
         <Row label="Misspelled labels accepted" value={result.normalisedLabels} />
       )}
-      <div style={{ marginTop: 10, fontSize: 12, color: "#94a3b8" }}>
+      <div style={{ marginTop: 10, fontSize: 12, color: "var(--text-muted)" }}>
         Statuses: {Object.entries(status).map(([k, v]) => `${k} ${v}`).join(" · ") || "none"}
       </div>
       {result.unknownFields?.length > 0 && (
-        <div style={{ marginTop: 8, fontSize: 12, color: "#f59e0b" }}>
+        <div style={{ marginTop: 8, fontSize: 12, color: "var(--warning)" }}>
           Columns Wenze does not read yet: {result.unknownFields.join(", ")}
         </div>
       )}
@@ -118,12 +118,12 @@ export default function DispatcherBoardTab() {
     finally { setTesting(false); }
   };
 
-  if (loading) return <div style={{ padding: 20, color: "#94a3b8" }}>Loading…</div>;
+  if (loading) return <div style={{ padding: 20, color: "var(--text-muted)" }}>Loading…</div>;
 
   return (
     <div className="ios-glass" style={{ padding: 20 }}>
-      <h3 style={{ marginTop: 0 }}>🗂️ Dispatcher Board</h3>
-      <p style={{ color: "#94a3b8", fontSize: 13, marginTop: 0 }}>
+      <h3 style={{ marginTop: 0 }}>Dispatcher Board</h3>
+      <p style={{ color: "var(--text-muted)", fontSize: 13, marginTop: 0 }}>
         The board is the source of truth for <strong>today's assignment</strong> — truck, trailer,
         status, ETA and dispatcher. Wenze remains the source of truth for who a driver is and what
         has happened to them. Nothing is read until this is switched on.
@@ -144,7 +144,7 @@ export default function DispatcherBoardTab() {
 
       <div className="form-group">
         <label style={{ display: "block", fontWeight: 600, marginBottom: 4 }}>Board web app URL</label>
-        <div style={{ fontSize: 12, color: "#94a3b8", marginBottom: 6 }}>
+        <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 6 }}>
           The Apps Script link that ends in <code>/exec</code>.
         </div>
         <input

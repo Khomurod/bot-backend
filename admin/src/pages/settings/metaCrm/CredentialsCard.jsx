@@ -58,13 +58,13 @@ export default function CredentialsCard({ settings, onSaved }) {
       <h3 style={{ marginTop: 0 }}>Credentials</h3>
       <div className="form-group">
         <label htmlFor="meta-crm-dataset" style={{ display: "block", fontWeight: 600, marginBottom: 4 }}>Dataset ID</label>
-        <div style={{ fontSize: 12, color: "#94a3b8", marginBottom: 6 }}>Events Manager → your CRM dataset → Settings. Digits only.</div>
+        <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 6 }}>Events Manager → your CRM dataset → Settings. Digits only.</div>
         <input id="meta-crm-dataset" className="form-input" inputMode="numeric" value={form.datasetId}
           placeholder="e.g. 1234567890123456" onChange={(e) => setField("datasetId", e.target.value)} style={{ maxWidth: 320 }} />
       </div>
       <div className="form-group">
         <label htmlFor="meta-crm-token" style={{ display: "block", fontWeight: 600, marginBottom: 4 }}>Access token</label>
-        <div style={{ fontSize: 12, color: "#94a3b8", marginBottom: 6 }}>
+        <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 6 }}>
           The same dataset's Settings → Conversions API → Generate access token.
           {settings.tokenSet ? ` Leave blank to keep the one in use (${settings.tokenMasked}).` : ""}
         </div>
@@ -74,7 +74,7 @@ export default function CredentialsCard({ settings, onSaved }) {
       </div>
       <div className="form-group">
         <label htmlFor="meta-crm-test-code" style={{ display: "block", fontWeight: 600, marginBottom: 4 }}>Test event code (optional)</label>
-        <div style={{ fontSize: 12, color: "#94a3b8", marginBottom: 6 }}>
+        <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 6 }}>
           Events Manager → the dataset → Test events. With it, Test sends ONE test event you can see there — a copy of a
           lead Meta already received as Qualified in the last 47 hours, so Meta counts it once (a test code alone does not
           keep an event out of ads). With no such lead it does not send. The code is never saved.
@@ -90,7 +90,7 @@ export default function CredentialsCard({ settings, onSaved }) {
         <button className="btn btn-primary touch-target" onClick={save} disabled={!saveAllowed}>
           {saving ? "Saving…" : "Save"}
         </button>
-        <span style={{ fontSize: 12, color: "#94a3b8" }}>
+        <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
           {edited ? "The values changed after the test — test again to save." : (saveAllowed ? "" : "Save unlocks after a passing Test.")}
         </span>
       </div>

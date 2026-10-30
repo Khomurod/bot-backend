@@ -49,8 +49,8 @@ export default function WindowsSoundCard({ origin = window.location.origin }) {
   const commands = boardCommands(origin);
   return (
     <div className="ios-glass" style={{ padding: 20 }}>
-      <h3 style={{ marginTop: 0 }}>🔊 Always with sound: set up the office computer (Windows)</h3>
-      <p style={{ color: "#94a3b8", fontSize: 13, marginTop: 0 }}>
+      <h3 style={{ marginTop: 0 }}>Always with sound: set up the office computer (Windows)</h3>
+      <p style={{ color: "var(--text-muted)", fontSize: 13, marginTop: 0 }}>
         A browser does not let a page start sound by itself, so without this the video plays muted.
         Opening the board with the shortcut below allows it, full screen, every time.
       </p>
@@ -63,7 +63,7 @@ export default function WindowsSoundCard({ origin = window.location.origin }) {
         <li>To open it by itself whenever the computer starts: press <strong>Win + R</strong>, type <code>shell:startup</code>, press Enter, and copy the shortcut into the folder that opens.</li>
         <li>Check it: on the board press <strong>Test sound</strong>. It should say sound may start by itself. Keep the Windows volume up and the TV not muted.</li>
       </ol>
-      <div style={{ fontSize: 13, color: "#94a3b8" }}>
+      <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
         If Chrome is installed somewhere else (for example <code>C:\Program Files (x86)\Google\Chrome\Application\chrome.exe</code>),
         change the first part of the command to that path. Without Chrome, Microsoft Edge works the same way:
       </div>

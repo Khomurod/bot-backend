@@ -6,21 +6,21 @@ import { driverTypeLabel } from "./homeTimeViewModel";
 // and table badge also carries a text label + count + %). Matches the request
 // status colors used elsewhere on the page for consistency.
 const CATEGORY_META = {
-  compliant: { label: "Policy compliant", color: "#22c55e" },
-  approved_exception: { label: "Approved exception", color: "#38bdf8" },
-  non_compliant: { label: "Policy not followed", color: "#ef4444" },
-  incomplete: { label: "Incomplete data", color: "#94a3b8" },
-  not_applicable: { label: "Policy not applicable", color: "#a78bfa" },
+  compliant: { label: "Policy compliant", color: "var(--success)" },
+  approved_exception: { label: "Approved exception", color: "var(--info)" },
+  non_compliant: { label: "Policy not followed", color: "var(--danger)" },
+  incomplete: { label: "Incomplete data", color: "var(--text-muted)" },
+  not_applicable: { label: "Policy not applicable", color: "var(--accent-text)" },
 };
 
 // Company-commitment verdicts: did what actually happened match the approved
 // (registered) home dates? Kept text-labelled (never color-only).
 const COMMITMENT_META = {
-  met: { label: "Commitment met", color: "#22c55e" },
-  broken: { label: "Commitment broken", color: "#ef4444" },
-  incomplete: { label: "Awaiting return", color: "#94a3b8" },
-  none: { label: "No approved dates", color: "#64748b" },
-  not_applicable: { label: "N/A", color: "#a78bfa" },
+  met: { label: "Commitment met", color: "var(--success)" },
+  broken: { label: "Commitment broken", color: "var(--danger)" },
+  incomplete: { label: "Awaiting return", color: "var(--text-muted)" },
+  none: { label: "No approved dates", color: "var(--text-muted)" },
+  not_applicable: { label: "N/A", color: "var(--accent-text)" },
 };
 
 const RANGES = [
@@ -84,7 +84,7 @@ function Donut({ segments, size = 168, stroke = 26 }) {
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} role="img" aria-label="Cycle compliance breakdown">
       <g transform={`rotate(-90 ${size / 2} ${size / 2})`}>
-        <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="rgba(148,163,184,0.18)" strokeWidth={stroke} />
+        <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="var(--neutral-soft)" strokeWidth={stroke} />
         {total > 0 && segments.filter((s) => s.value > 0).map((s) => {
           const len = (s.value / total) * circumference;
           const dash = `${len} ${circumference - len}`;
@@ -260,7 +260,7 @@ export default function HomeTimeEfficiencyTab({ flash }) {
           approved exceptions. Incomplete cycles (home stay not yet closed) are excluded from both.
         </p>
 
-        <div style={{ borderTop: "1px solid rgba(148,163,184,0.18)", marginTop: 16, paddingTop: 16 }}>
+        <div style={{ borderTop: "1px solid var(--border)", marginTop: 16, paddingTop: 16 }}>
           <h4 style={{ margin: "0 0 4px" }}>Company home-time commitment</h4>
           <p className="home-time-muted" style={{ marginTop: 0 }}>
             Of the home windows the company <strong>approved</strong>, how often did what actually happened match the
@@ -375,7 +375,7 @@ export default function HomeTimeEfficiencyTab({ flash }) {
                   </tr>
                   {expanded === d.group_id && (
                     <tr>
-                      <td colSpan={10} style={{ background: "rgba(148,163,184,0.06)" }}>
+                      <td colSpan={10} style={{ background: "var(--neutral-soft)" }}>
                         <div style={{ padding: "6px 4px" }}>
                           <div style={{ marginBottom: 8, fontSize: 13, opacity: 0.8 }}>
                             {d.too_short_road} too-short-road · {d.too_long_home} too-long-home ·

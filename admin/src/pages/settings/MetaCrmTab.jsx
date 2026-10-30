@@ -47,7 +47,7 @@ export default function MetaCrmTab() {
 
   return (
     <div>
-      <p style={{ color: "#94a3b8", marginTop: 0 }}>
+      <p style={{ color: "var(--text-muted)", marginTop: 0 }}>
         Tells Facebook which leads become drivers, so ad delivery learns from it. Every 15 minutes Wenze reads the
         hiring-pipeline deals Bitrix changed in the last 7 days and reports each Facebook lead's stage to Meta:
         Interested, Documents, Talking to Dispatch or Sent to Safety → <strong>Qualified</strong>, Hired →{" "}

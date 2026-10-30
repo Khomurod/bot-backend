@@ -102,7 +102,7 @@ export function DriverDetailModal({
             ))}
           </select>
           {membersState.error && (
-            <div style={{ fontSize: 12, color: "#ef4444", marginTop: 4 }}>{membersState.error}</div>
+            <div style={{ fontSize: 12, color: "var(--danger)", marginTop: 4 }}>{membersState.error}</div>
           )}
           <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
             Selecting a member stores their Telegram user id + username as the source of truth

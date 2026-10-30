@@ -29,7 +29,7 @@ function GroupIdField({ id, label, help, placeholder, value, onChange, status })
   return (
     <div className="card" style={{ marginBottom: 16 }}>
       <label htmlFor={id} style={{ display: "block", fontWeight: 600, marginBottom: 4 }}>{label}</label>
-      <div style={{ fontSize: 12, color: "#94a3b8", marginBottom: 8 }}>{help}</div>
+      <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 8 }}>{help}</div>
       <input
         id={id}
         className="form-input"
@@ -96,7 +96,7 @@ export default function TelegramGroupsTab() {
 
   return (
     <div>
-      <p style={{ color: "#94a3b8", marginTop: 0 }}>
+      <p style={{ color: "var(--text-muted)", marginTop: 0 }}>
         The Telegram group each message category is sent to. Enter the group's chat ID
         (e.g. <code>-1001234567890</code>). Each category has its own destination — enter the
         same ID in more than one field to share a group. If a field is left blank, that
@@ -120,7 +120,7 @@ export default function TelegramGroupsTab() {
 
       <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
         <button className="btn btn-primary" onClick={save} disabled={saving}>{saving ? "Saving…" : "Save settings"}</button>
-        {settings?.updatedAt && <span style={{ fontSize: 12, color: "#94a3b8" }}>Last updated {new Date(settings.updatedAt).toLocaleString()}</span>}
+        {settings?.updatedAt && <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Last updated {new Date(settings.updatedAt).toLocaleString()}</span>}
       </div>
 
       {/*

@@ -34,8 +34,8 @@ function Entry({ entry, onConfirm, onReject, onRetire, busy }) {
   return (
     <div
       style={{
-        border: "1px solid rgba(148,163,184,0.25)",
-        borderLeft: waiting ? "3px solid #eab308" : "1px solid rgba(148,163,184,0.25)",
+        border: "1px solid var(--border)",
+        borderLeft: waiting ? "3px solid var(--warning-solid)" : "1px solid var(--border)",
         borderRadius: 8, padding: "10px 12px", marginBottom: 8,
       }}
     >
@@ -133,7 +133,7 @@ export default function TeachWenzeCard({ flash }) {
     }
   }
 
-  if (loading) return <div className="card"><h3>🎓 Teach Wenze</h3><p>Loading…</p></div>;
+  if (loading) return <div className="card"><h3>Teach Wenze</h3><p>Loading…</p></div>;
 
   const waiting = data.entries.filter((e) => e.status === "proposed");
   const inUse = data.entries.filter((e) => e.status === "active");
@@ -141,7 +141,7 @@ export default function TeachWenzeCard({ flash }) {
 
   return (
     <div className="card">
-      <h3>🎓 Teach Wenze</h3>
+      <h3>Teach Wenze</h3>
       <p className="muted">
         Tell Wenze something about the offer in your own words. It will say back what it
         thinks you mean, and nothing reaches a candidate until you agree.

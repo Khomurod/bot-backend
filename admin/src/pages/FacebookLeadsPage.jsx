@@ -8,6 +8,7 @@ import WorkingHoursCard from "./settings/recruiting/WorkingHoursCard";
 import { ConnectedPagesTab } from "./facebookLeads/ConnectedPagesTab";
 import { WebhookLogTab } from "./facebookLeads/WebhookLogTab";
 import { ResetConfirmDialog } from "./facebookLeads/ResetConfirmDialog";
+import TabBar, { tabPanelProps } from "../components/ui/TabBar";
 
 /**
  * Customer Inquiries — page container.
@@ -61,7 +62,7 @@ export default function FacebookLeadsPage() {
   return (
     <div>
       <div className="page-header">
-        <h2>👥 Customer Inquiries</h2>
+        <h2>Customer Inquiries</h2>
         <p>Manage automated responses for new customer inquiries from Facebook ads.</p>
       </div>
 
@@ -92,23 +93,20 @@ export default function FacebookLeadsPage() {
       )}
 
       {/* ─── Tabs ─── */}
-      <div className="broadcast-tabs" style={{ marginBottom: 24 }}>
-        {[
-          { id: "auto", label: "Auto-Reply Setup" },
-          { id: "pages", label: "Connected Pages" },
-          { id: "teach", label: "Teach Wenze" },
-          ...(isDev ? [{ id: "log", label: "Activity Log" }] : []),
-        ].map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            className={`broadcast-tab-btn ${tab === t.id ? "active" : ""}`}
-            onClick={() => setTab(t.id)}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <TabBar
+        tabs={[
+          { key: "auto", label: "Auto-Reply Setup" },
+          { key: "pages", label: "Connected Pages" },
+          { key: "teach", label: "Teach Wenze" },
+          ...(isDev ? [{ key: "log", label: "Activity Log" }] : []),
+        ]}
+        value={tab}
+        onChange={setTab}
+        ariaLabel="Customer inquiry sections"
+        idPrefix="inquiries"
+      />
+
+      <div {...tabPanelProps("inquiries", tab)}>
 
       {tab === "auto" && auto.settings && (
         <AutoMessagesTab {...auto} nowSubtitle={nowSubtitle} editingLabel={editingLabel} />
@@ -143,6 +141,7 @@ export default function FacebookLeadsPage() {
           handleRetry={infra.handleRetry}
         />
       )}
+      </div>
 
       {auto.showResetConfirm && (
         <ResetConfirmDialog

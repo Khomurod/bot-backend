@@ -16,7 +16,7 @@ const when = (iso) => (iso ? new Date(iso).toLocaleString() : "");
 
 function LastRun({ run }) {
   if (!run) {
-    return <div style={{ fontSize: 13, color: "#94a3b8" }}>No pass has run yet. The first runs a few minutes after the server starts, then every 15 minutes.</div>;
+    return <div style={{ fontSize: 13, color: "var(--text-muted)" }}>No pass has run yet. The first runs a few minutes after the server starts, then every 15 minutes.</div>;
   }
   const status = {
     ok: "✅ ran normally",
@@ -32,7 +32,7 @@ function LastRun({ run }) {
       <div>Last pass: <strong>{status}</strong> · {when(run.finishedAt)}</div>
       {counts && <div style={{ marginTop: 2 }}>{counts}</div>}
       {run.error && (
-        <div style={{ marginTop: 4, color: run.status === "error" ? "#f87171" : "#94a3b8" }}>
+        <div style={{ marginTop: 4, color: run.status === "error" ? "var(--danger)" : "var(--text-muted)" }}>
           {run.status === "blocked" ? "Why: " : "Last error: "}{run.error}
         </div>
       )}
@@ -57,13 +57,13 @@ export default function StatusCard({ settings, onToggle, toggling }) {
         </div>
       )}
       <div style={{ fontSize: 14, marginTop: 10, lineHeight: 1.7 }}>
-        <div>Dataset ID: <strong>{settings.datasetId || "—"}</strong> <span style={{ color: "#94a3b8" }}>({SOURCE[settings.datasetSource] || settings.datasetSource})</span></div>
+        <div>Dataset ID: <strong>{settings.datasetId || "—"}</strong> <span style={{ color: "var(--text-muted)" }}>({SOURCE[settings.datasetSource] || settings.datasetSource})</span></div>
         <div>
           Access token: <strong>{settings.tokenSet ? settings.tokenMasked : "not set"}</strong>{" "}
-          <span style={{ color: "#94a3b8" }}>({SOURCE[settings.tokenSource] || settings.tokenSource})</span>
+          <span style={{ color: "var(--text-muted)" }}>({SOURCE[settings.tokenSource] || settings.tokenSource})</span>
         </div>
         {settings.updatedAt && settings.updatedBy && (
-          <div style={{ fontSize: 12, color: "#94a3b8" }}>Last changed {when(settings.updatedAt)} by {settings.updatedBy}</div>
+          <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Last changed {when(settings.updatedAt)} by {settings.updatedBy}</div>
         )}
       </div>
       {settings.tokenUnreadable && (

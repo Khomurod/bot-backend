@@ -66,18 +66,18 @@ export default function LiveLocationsPage() {
   const { fitAll } = map;
 
   const cards = summary ? [
-    { label: "Units visible", value: filtered.length, color: "#6366f1" },
-    { label: "Active loads", value: summary.activeLoads, color: "#22c55e" },
-    { label: "Stale GPS", value: summary.staleGps, color: "#f59e0b" },
-    { label: "No active load", value: summary.noActiveLoad, color: "#3b82f6" },
-    { label: "Provider errors", value: summary.providerErrors, color: "#ef4444" },
+    { label: "Units visible", value: filtered.length, color: "var(--accent-text)" },
+    { label: "Active loads", value: summary.activeLoads, color: "var(--success)" },
+    { label: "Stale GPS", value: summary.staleGps, color: "var(--warning)" },
+    { label: "No active load", value: summary.noActiveLoad, color: "var(--info)" },
+    { label: "Provider errors", value: summary.providerErrors, color: "var(--danger)" },
   ] : [];
 
   return (
     <div>
       <div className="page-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
         <div>
-          <h2>📍 Live Locations</h2>
+          <h2>Live Locations</h2>
           <p>Current truck locations, active loads, and ETA to next pickup or delivery.</p>
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>

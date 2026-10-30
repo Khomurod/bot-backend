@@ -26,9 +26,9 @@ const ORIGIN_LABEL = {
 };
 
 const SEVERITY_STYLE = {
-  info: { color: "#94a3b8", mark: "ℹ️" },
-  warning: { color: "#f59e0b", mark: "⚠️" },
-  serious: { color: "#f87171", mark: "🚨" },
+  info: { color: "var(--text-muted)", mark: "ℹ️" },
+  warning: { color: "var(--warning)", mark: "⚠️" },
+  serious: { color: "var(--danger)", mark: "🚨" },
 };
 
 function Finding({ finding, onAcknowledge }) {
@@ -36,21 +36,21 @@ function Finding({ finding, onAcknowledge }) {
   const style = SEVERITY_STYLE[finding.severity] || SEVERITY_STYLE.info;
 
   return (
-    <div style={{ borderTop: "1px solid rgba(148,163,184,0.15)", padding: "8px 0" }}>
+    <div style={{ borderTop: "1px solid var(--border)", padding: "8px 0" }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
         <div style={{ flex: 1 }}>
           <span style={{ color: style.color }}>{style.mark}</span>{" "}
           <strong>{finding.providerKey}</strong>{" "}
-          <span style={{ color: "#94a3b8", fontSize: 11 }}>{finding.category}</span>
+          <span style={{ color: "var(--text-muted)", fontSize: 11 }}>{finding.category}</span>
           <div style={{ fontSize: 12, marginTop: 2 }}>{finding.summary}</div>
           {finding.suspendedProvider && (
-            <div style={{ color: "#f87171", fontSize: 11, marginTop: 2 }}>
+            <div style={{ color: "var(--danger)", fontSize: 11, marginTop: 2 }}>
               Paused by rule <code>{finding.suspensionRule}</code> — clear the cooldown above
               once you have reviewed it.
             </div>
           )}
           {!finding.aiAssisted && (
-            <div style={{ color: "#94a3b8", fontSize: 11, fontStyle: "italic", marginTop: 2 }}>
+            <div style={{ color: "var(--text-muted)", fontSize: 11, fontStyle: "italic", marginTop: 2 }}>
               No AI was available to summarise this; it is reported from the raw difference.
             </div>
           )}
@@ -78,7 +78,7 @@ function Finding({ finding, onAcknowledge }) {
             <div style={{ fontSize: 12 }}><b>Why it matters:</b> {finding.whyItMatters}</div>
           )}
           <pre style={{
-            fontSize: 11, background: "rgba(148,163,184,0.08)", padding: 8,
+            fontSize: 11, background: "var(--neutral-soft)", padding: 8,
             borderRadius: 6, whiteSpace: "pre-wrap", marginTop: 6, maxHeight: 260, overflow: "auto",
           }}>
             {finding.quotedPassage}
@@ -168,7 +168,7 @@ export default function PolicyWatcherCard({ providers, flash }) {
   return (
     <div className="card" style={{ marginTop: 16 }}>
       <strong>📜 Provider terms watcher</strong>
-      <div style={{ color: "#94a3b8", fontSize: 12, marginTop: 4 }}>
+      <div style={{ color: "var(--text-muted)", fontSize: 12, marginTop: 4 }}>
         Checks each enabled provider's own pages twice a week. A page that only
         re-rendered costs nothing and reaches no model — only a change that a
         difference actually proves is real gets read and reported.
@@ -205,7 +205,7 @@ export default function PolicyWatcherCard({ providers, flash }) {
               Use {suggestion} instead
             </button>
           )}
-          <div style={{ color: "#94a3b8", fontSize: 11, marginTop: 4 }}>
+          <div style={{ color: "var(--text-muted)", fontSize: 11, marginTop: 4 }}>
             A group, or a person the bot can message.
           </div>
           {/* onMouseDown preventDefault keeps focus on the input, so clicking
@@ -219,7 +219,7 @@ export default function PolicyWatcherCard({ providers, flash }) {
             {testing ? "Sending…" : "Send a test message"}
           </button>
           {testResult && (
-            <div role="status" style={{ fontSize: 12, marginTop: 4, color: testResult.ok ? "#22c55e" : "#f59e0b" }}>
+            <div role="status" style={{ fontSize: 12, marginTop: 4, color: testResult.ok ? "var(--success)" : "var(--warning)" }}>
               {testResult.text}
             </div>
           )}
@@ -252,7 +252,7 @@ export default function PolicyWatcherCard({ providers, flash }) {
           </button>
         </div>
         {sources.length === 0 ? (
-          <div style={{ color: "#94a3b8", fontSize: 12, marginTop: 6 }}>
+          <div style={{ color: "var(--text-muted)", fontSize: 12, marginTop: 6 }}>
             No pages yet. For a provider Wenze knows, its official pages are added
             automatically the next time the watcher runs — or press Check now.
           </div>
@@ -266,12 +266,12 @@ export default function PolicyWatcherCard({ providers, flash }) {
                   {ORIGIN_LABEL[s.sourceOrigin] || s.sourceOrigin}
                 </span>
                 {s.movedFrom && (
-                  <span style={{ color: "#94a3b8" }}> — moved from {s.movedFrom}</span>
+                  <span style={{ color: "var(--text-muted)" }}> — moved from {s.movedFrom}</span>
                 )}
                 {s.lostReportedAt && (
-                  <span style={{ color: "#f87171" }}> — could not be found; you have been told</span>
+                  <span style={{ color: "var(--danger)" }}> — could not be found; you have been told</span>
                 )}
-                {s.lastError && !s.lostReportedAt && <span style={{ color: "#f59e0b" }}> — {s.lastError}</span>}
+                {s.lastError && !s.lostReportedAt && <span style={{ color: "var(--warning)" }}> — {s.lastError}</span>}
                 <button
                   type="button" className="btn btn-ghost btn-sm"
                   onClick={async () => {
@@ -288,7 +288,7 @@ export default function PolicyWatcherCard({ providers, flash }) {
 
         <details className="collapse-panel" style={{ marginTop: 8 }}>
           <summary style={{ fontSize: 12 }}>Add a page by hand</summary>
-          <div style={{ color: "#94a3b8", fontSize: 11, marginTop: 4 }}>
+          <div style={{ color: "var(--text-muted)", fontSize: 11, marginTop: 4 }}>
             Only needed for a custom provider, or a page Wenze does not know about.
             Pages found automatically are kept current — followed when they move,
             searched for when they disappear.
@@ -352,7 +352,7 @@ export default function PolicyWatcherCard({ providers, flash }) {
       <div style={{ marginTop: 14 }}>
         <strong style={{ fontSize: 13 }}>What has changed</strong>
         {findings.length === 0 ? (
-          <div style={{ color: "#94a3b8", fontSize: 12, marginTop: 4 }}>
+          <div style={{ color: "var(--text-muted)", fontSize: 12, marginTop: 4 }}>
             Nothing yet. The first look at a page is recorded as a baseline, not
             reported as a change.
           </div>

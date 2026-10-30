@@ -1,0 +1,187 @@
+/* ─── Shared UI: tabs, top bar, drawer backdrop ───
+ *
+ * Last in the manifest on purpose: the shell and the shared controls must win
+ * over the feature partials above when both style the same element.
+ */
+
+/* ─── Tabs (components/ui/TabBar.jsx) ─── */
+.wz-tabs {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  margin-bottom: 20px;
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  max-width: 100%;
+}
+
+.wz-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 500;
+  line-height: 1.2;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: var(--transition);
+}
+
+.wz-tab:hover {
+  color: var(--text-primary);
+}
+
+.wz-tab.is-active {
+  background: var(--bg-card);
+  color: var(--text-primary);
+  border-color: var(--border);
+  box-shadow: var(--shadow-xs);
+}
+
+.wz-tab:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+.wz-tab-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--neutral-soft);
+  color: var(--text-secondary);
+  font-size: 11.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.wz-tab.is-active .wz-tab-count {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+
+.wz-tabs--sm .wz-tab {
+  min-height: 26px;
+  padding: 0 10px;
+  font-size: 13px;
+}
+
+/* ─── Top bar: phones and narrow tablets only ─── */
+@media (max-width: 1024px) {
+  .topbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    position: sticky;
+    top: 0;
+    z-index: 90;
+    height: var(--topbar-height);
+    margin: -16px -16px 16px;
+    padding: 0 12px;
+    background: color-mix(in srgb, var(--bg-primary) 88%, transparent);
+    backdrop-filter: saturate(1.4) blur(10px);
+    -webkit-backdrop-filter: saturate(1.4) blur(10px);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .topbar-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+  }
+
+  .topbar .mobile-menu-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--bg-card);
+    color: var(--text-primary);
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+
+  /* Closed, the drawer is also invisible to the keyboard and screen readers —
+     `visibility` flips after the slide-out, and before the slide-in. */
+  .sidebar {
+    transform: translateX(-100%);
+    visibility: hidden;
+    transition: transform 0.22s ease, visibility 0s linear 0.22s;
+    width: min(84vw, 300px);
+    box-shadow: none;
+  }
+
+  .sidebar.mobile-open {
+    transform: translateX(0);
+    visibility: visible;
+    transition: transform 0.22s ease, visibility 0s;
+    box-shadow: var(--shadow-lg);
+  }
+
+  .sidebar-backdrop.is-open {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 95;
+    background: var(--overlay);
+  }
+
+  .main-content {
+    margin-left: 0;
+    padding: 16px 16px 40px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar { transition: none; }
+}
+
+/* Comfortable touch targets where the pointer is a finger. */
+@media (pointer: coarse) {
+  .btn,
+  .wz-tab,
+  .nav-item,
+  .logout-btn {
+    min-height: 40px;
+  }
+}
+
+/* ─── Classes the pages always used and nothing styled ───
+   `alert-danger` (Users page errors rendered with no colour), `muted`
+   (71 secondary sentences rendered as body text), `error`. */
+.alert-danger {
+  background: var(--danger-soft);
+  color: var(--danger);
+  border-color: var(--danger-border);
+}
+
+.muted {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+p.error,
+div.error {
+  color: var(--danger);
+  font-size: 13px;
+}

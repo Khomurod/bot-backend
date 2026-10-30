@@ -3,10 +3,10 @@ import * as api from "../api";
 import useVisibleInterval from "../utils/useVisibleInterval";
 
 const STATUS_BADGE = {
-  pending: { label: "Pending", bg: "rgba(245,158,11,0.18)", color: "#f59e0b" },
-  paid: { label: "Paid", bg: "rgba(34,197,94,0.18)", color: "#22c55e" },
-  rejected: { label: "Rejected", bg: "rgba(239,68,68,0.18)", color: "#ef4444" },
-  disregarded: { label: "Disregarded", bg: "rgba(148,163,184,0.18)", color: "#94a3b8" },
+  pending: { label: "Pending", bg: "var(--warning-soft)", color: "var(--warning)" },
+  paid: { label: "Paid", bg: "var(--success-soft)", color: "var(--success)" },
+  rejected: { label: "Rejected", bg: "var(--danger-soft)", color: "var(--danger)" },
+  disregarded: { label: "Disregarded", bg: "var(--neutral-soft)", color: "var(--text-muted)" },
 };
 
 function fmtMiles(value) {
@@ -23,7 +23,7 @@ function fmtDate(value) {
 }
 
 function StatusBadge({ status }) {
-  const cfg = STATUS_BADGE[status] || { label: status || "—", bg: "rgba(148,163,184,0.18)", color: "#94a3b8" };
+  const cfg = STATUS_BADGE[status] || { label: status || "—", bg: "var(--neutral-soft)", color: "var(--text-muted)" };
   return (
     <span style={{
       display: "inline-block",
@@ -43,8 +43,8 @@ function ProgressBar({ current, target }) {
   const pct = target ? Math.min(100, Math.round((current / target) * 100)) : 100;
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 160 }}>
-      <div style={{ flex: 1, height: 8, borderRadius: 999, background: "rgba(148,163,184,0.25)", overflow: "hidden" }}>
-        <div style={{ width: `${pct}%`, height: "100%", background: pct >= 100 ? "#22c55e" : "#6366f1" }} />
+      <div style={{ flex: 1, height: 8, borderRadius: 999, background: "var(--neutral-soft)", overflow: "hidden" }}>
+        <div style={{ width: `${pct}%`, height: "100%", background: pct >= 100 ? "var(--success-solid)" : "var(--accent)" }} />
       </div>
       <span style={{ fontSize: 12, color: "var(--text-muted)", width: 36, textAlign: "right" }}>{pct}%</span>
     </div>
@@ -196,7 +196,7 @@ export default function MileageBonusPage() {
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12, marginBottom: 16 }}>
         <div>
-          <h2 style={{ margin: 0 }}>🏁 Mileage Bonuses</h2>
+          <h2 style={{ margin: 0 }}>Mileage Bonuses</h2>
           <p style={{ color: "var(--text-muted)", margin: "4px 0 0" }}>
             Company drivers only · counting from {overview?.programStart || "2026-04-17"} → pay period{" "}
             {overview?.lastRun?.periodEnd ? `ending ${overview.lastRun.periodEnd}` : "(2 weeks behind)"}
@@ -243,7 +243,7 @@ export default function MileageBonusPage() {
           </div>
         )}
         {overview?.lastRunRecord?.status === "failed" && (
-          <div style={{ marginTop: 10, fontSize: 13, color: "#ef4444" }}>
+          <div style={{ marginTop: 10, fontSize: 13, color: "var(--danger)" }}>
             Last run failed: {overview.lastRunRecord.error || "Unknown error"}. It will retry automatically.
           </div>
         )}
@@ -295,7 +295,7 @@ export default function MileageBonusPage() {
                   <td>
                     {d.next_tier
                       ? <>{fmtMiles(d.next_tier)} mi <span style={{ color: "var(--text-muted)", fontSize: 12 }}>({fmtMiles(d.miles_to_next_tier)} to go)</span></>
-                      : <span style={{ color: "#22c55e" }}>All reached 🎉</span>}
+                      : <span style={{ color: "var(--success)" }}>All reached 🎉</span>}
                   </td>
                   <td>
                     <ProgressBar current={Number(d.total_miles)} target={d.next_tier || d.highest_tier_reached || 1} />
@@ -308,7 +308,7 @@ export default function MileageBonusPage() {
                         {notif
                           ? <StatusBadge status={notif.status} />
                           : reached
-                            ? <span title="Reached, not yet notified" style={{ color: "#f59e0b" }}>● ready</span>
+                            ? <span title="Reached, not yet notified" style={{ color: "var(--warning)" }}>● ready</span>
                             : <span style={{ color: "var(--text-muted)" }}>—</span>}
                       </td>
                     );
@@ -364,7 +364,7 @@ export default function MileageBonusPage() {
                         {n.status !== "disregarded" && (
                           <button
                             className="btn btn-ghost"
-                            style={{ padding: "4px 8px", fontSize: 12, color: "#ef4444" }}
+                            style={{ padding: "4px 8px", fontSize: 12, color: "var(--danger)" }}
                             disabled={Boolean(rowBusy[`notification:${n.id}`])}
                             onClick={() => handleDisregard(n)}
                           >

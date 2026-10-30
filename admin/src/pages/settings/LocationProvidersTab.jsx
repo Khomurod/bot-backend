@@ -128,12 +128,12 @@ export default function LocationProvidersTab() {
   const TestMessage = ({ provider }) => {
     const r = testResults[provider];
     if (!r || !r.message) return null;
-    return <div style={{ fontSize: 12, color: r.connected ? "#22c55e" : "#f87171", marginTop: 4 }}>{r.message}</div>;
+    return <div style={{ fontSize: 12, color: r.connected ? "var(--success)" : "var(--danger)", marginTop: 4 }}>{r.message}</div>;
   };
 
   return (
     <div>
-      <p style={{ color: "#94a3b8", marginTop: 0 }}>
+      <p style={{ color: "var(--text-muted)", marginTop: 0 }}>
         Credentials the bot uses to look up a driver's live truck GPS. Samsara is the primary source;
         Factor ELD and Leader ELD (Drive HoS) are the fallbacks, tried in that order.
       </p>
@@ -142,14 +142,14 @@ export default function LocationProvidersTab() {
       <div className="card" style={{ marginBottom: 16 }}>
         <div className="form-group" style={{ marginBottom: 0 }}>
           <label style={{ display: "block", fontWeight: 600, marginBottom: 4 }}>Test unit number (optional)</label>
-          <div style={{ fontSize: 12, color: "#94a3b8", marginBottom: 6 }}>Enter a unit number to check a specific truck; blank just verifies the credentials.</div>
+          <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 6 }}>Enter a unit number to check a specific truck; blank just verifies the credentials.</div>
           <input className="form-input" style={{ maxWidth: 240 }} value={testUnit} placeholder="e.g. 2614" onChange={(e) => setTestUnit(e.target.value)} />
         </div>
       </div>
 
       <div className="card" style={{ marginBottom: 16 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-          <h3 style={{ margin: 0 }}>🛰️ Samsara <span style={{ fontSize: 12, color: "#94a3b8" }}>(primary)</span></h3>
+          <h3 style={{ margin: 0 }}>Samsara <span style={{ fontSize: 12, color: "var(--text-muted)" }}>(primary)</span></h3>
           <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 14 }}>
             <input type="checkbox" checked={form.samsaraEnabled} onChange={(e) => setField("samsaraEnabled", e.target.checked)} /> Enabled
           </label>
@@ -159,7 +159,7 @@ export default function LocationProvidersTab() {
             row the Samsara tab manages — it is the only copy the separate
             Samsara poller can read — so the two screens can never disagree
             about which key is live. */}
-        <div style={{ fontSize: 12, color: "#94a3b8", marginTop: -6, marginBottom: 8 }}>
+        <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: -6, marginBottom: 8 }}>
           Shared with <strong>Settings → Samsara</strong>, which also covers safety events and
           missing-video recovery.
         </div>
@@ -168,17 +168,17 @@ export default function LocationProvidersTab() {
       </div>
 
       <div className="card" style={{ marginBottom: 16 }}>
-        <h3 style={{ marginTop: 0 }}>🔗 Drive HoS (Factor &amp; Leader platform)</h3>
-        <p style={{ fontSize: 13, color: "#94a3b8", marginTop: 0 }}>The shared <code>X-API-Provider-Key</code> identifies our integration and is used for both Factor and Leader requests.</p>
+        <h3 style={{ marginTop: 0 }}>Drive HoS (Factor &amp; Leader platform)</h3>
+        <p style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 0 }}>The shared <code>X-API-Provider-Key</code> identifies our integration and is used for both Factor and Leader requests.</p>
         <KeyField label="Provider Key (X-API-Provider-Key)" hint={settings.driveHosProviderKeySet ? settings.driveHosProviderKeyMasked : "not set"} fromEnv={settings.driveHosProviderFromEnv} value={form.driveHosProviderKey} onChange={(v) => setField("driveHosProviderKey", v)} />
         <div className="form-group">
           <label style={{ display: "block", fontWeight: 600, marginBottom: 4 }}>API Base URL</label>
           <input className="form-input" value={form.driveHosApiBase} placeholder="https://api.drivehos.app" onChange={(e) => setField("driveHosApiBase", e.target.value)} />
-          <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 4 }}>
+          <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
             The real API host (e.g. <code>https://api.drivehos.app</code>) — <strong>not</strong> the Swagger/documentation page.
           </div>
           {apiBaseIsDocs && (
-            <div style={{ fontSize: 12, color: "#f87171", marginTop: 6, fontWeight: 600 }}>
+            <div style={{ fontSize: 12, color: "var(--danger)", marginTop: 6, fontWeight: 600 }}>
               ⚠️ This looks like a documentation URL, not the actual API base URL. Requests will fail until this points at the real API host.
             </div>
           )}
@@ -187,7 +187,7 @@ export default function LocationProvidersTab() {
 
       <div className="card" style={{ marginBottom: 16 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-          <h3 style={{ margin: 0 }}>🚛 Factor ELD <span style={{ fontSize: 12, color: "#94a3b8" }}>(fallback 1)</span></h3>
+          <h3 style={{ margin: 0 }}>Factor ELD <span style={{ fontSize: 12, color: "var(--text-muted)" }}>(fallback 1)</span></h3>
           <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 14 }}>
             <input type="checkbox" checked={form.factorEnabled} onChange={(e) => setField("factorEnabled", e.target.checked)} /> Enabled
           </label>
@@ -199,7 +199,7 @@ export default function LocationProvidersTab() {
 
       <div className="card" style={{ marginBottom: 16 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-          <h3 style={{ margin: 0 }}>🚛 Leader ELD <span style={{ fontSize: 12, color: "#94a3b8" }}>(fallback 2)</span></h3>
+          <h3 style={{ margin: 0 }}>Leader ELD <span style={{ fontSize: 12, color: "var(--text-muted)" }}>(fallback 2)</span></h3>
           <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 14 }}>
             <input type="checkbox" checked={form.leaderEnabled} onChange={(e) => setField("leaderEnabled", e.target.checked)} /> Enabled
           </label>
@@ -211,7 +211,7 @@ export default function LocationProvidersTab() {
 
       <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
         <button className="btn btn-primary" onClick={save} disabled={saving}>{saving ? "Saving…" : "Save settings"}</button>
-        {settings.updatedAt && <span style={{ fontSize: 12, color: "#94a3b8" }}>Last updated {new Date(settings.updatedAt).toLocaleString()}</span>}
+        {settings.updatedAt && <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Last updated {new Date(settings.updatedAt).toLocaleString()}</span>}
       </div>
     </div>
   );

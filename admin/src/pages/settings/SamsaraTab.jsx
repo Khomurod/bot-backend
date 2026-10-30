@@ -93,7 +93,7 @@ export default function SamsaraTab() {
 
   return (
     <div>
-      <p style={{ color: "#94a3b8", marginTop: 0 }}>
+      <p style={{ color: "var(--text-muted)", marginTop: 0 }}>
         Samsara safety events are polled by a separate service that reads these settings from
         the shared database. Changes here reach it within five minutes — no redeploy.
       </p>
@@ -102,7 +102,7 @@ export default function SamsaraTab() {
       <ConnectionCard settings={settings} form={form} setField={setField} onSaved={applySettings} />
 
       <div className="card" style={{ marginBottom: 16 }}>
-        <h3 style={{ marginTop: 0 }}>🚨 Safety events</h3>
+        <h3 style={{ marginTop: 0 }}>Safety events</h3>
         <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 14, marginBottom: 10 }}>
           <input
             type="checkbox"
@@ -127,17 +127,17 @@ export default function SamsaraTab() {
           {saving ? "Saving…" : "Save Samsara settings"}
         </button>
         {settings?.updatedAt && (
-          <span style={{ fontSize: 12, color: "#94a3b8" }}>
+          <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
             Last updated {new Date(settings.updatedAt).toLocaleString()}
             {settings.updatedBy ? ` by ${settings.updatedBy}` : ""}
           </span>
         )}
       </div>
 
-      <h3 style={{ borderTop: "1px solid rgba(148,163,184,0.2)", paddingTop: 16 }}>
-        🎵 Safety-event video &amp; music
+      <h3 style={{ borderTop: "1px solid var(--border)", paddingTop: 16 }}>
+        Safety-event video &amp; music
       </h3>
-      <Suspense fallback={<div style={{ padding: 12, color: "#94a3b8" }}>Loading…</div>}>
+      <Suspense fallback={<div style={{ padding: 12, color: "var(--text-muted)" }}>Loading…</div>}>
         <SafetyEventsTab />
       </Suspense>
     </div>

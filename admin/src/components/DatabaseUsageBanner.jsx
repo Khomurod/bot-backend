@@ -44,9 +44,9 @@ import useVisibleInterval from "../utils/useVisibleInterval";
 const REFRESH_MS = 15 * 60 * 1000;
 
 const LEVEL_STYLE = {
-  warning: { color: "#f59e0b", label: "Heads up" },
-  high: { color: "#f97316", label: "Warning" },
-  critical: { color: "#ef4444", label: "Critical" },
+  warning: { color: "var(--warning)", label: "Heads up" },
+  high: { color: "var(--caution)", label: "Warning" },
+  critical: { color: "var(--danger)", label: "Critical" },
 };
 
 /**

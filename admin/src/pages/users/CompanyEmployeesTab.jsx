@@ -205,7 +205,7 @@ export default function CompanyEmployeesTab() {
       {preview && (
         <div className="confirm-overlay" onClick={() => setPreview(null)}>
           <div className="confirm-dialog" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 560 }}>
-            <h3>🎂 {preview.name}&apos;s birthday card</h3>
+            <h3>{preview.name}&apos;s birthday card</h3>
             <img src={preview.url} alt={`Birthday card for ${preview.name}`} style={{ width: "100%", borderRadius: 8 }} />
             <div className="confirm-actions">
               <button className="btn btn-ghost" onClick={() => setPreview(null)}>Close</button>

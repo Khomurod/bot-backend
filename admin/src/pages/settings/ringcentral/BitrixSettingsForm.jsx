@@ -45,7 +45,7 @@ const seed = (s) => ({
 });
 
 const label = { display: "block", fontWeight: 600, marginBottom: 4, fontSize: 13 };
-const hint = { fontSize: 12, color: "#94a3b8", marginTop: 4 };
+const hint = { fontSize: 12, color: "var(--text-muted)", marginTop: 4 };
 
 export default function BitrixSettingsForm({ settings, onSaved, onMessage }) {
   const [form, setForm] = useState(() => seed(settings));
@@ -105,13 +105,13 @@ export default function BitrixSettingsForm({ settings, onSaved, onMessage }) {
     : "not set";
 
   return (
-    <div style={{ marginTop: 12, padding: 12, borderRadius: 8, background: "rgba(148,163,184,0.06)" }}>
-      <div style={{ fontSize: 13, fontWeight: 700, color: "#cbd5e1", marginBottom: 8 }}>Bitrix24 connection</div>
+    <div style={{ marginTop: 12, padding: 12, borderRadius: 8, background: "var(--neutral-soft)" }}>
+      <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-secondary)", marginBottom: 8 }}>Bitrix24 connection</div>
 
       <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, marginBottom: 10 }}>
         <input type="checkbox" checked={form.enabled} onChange={(e) => setField("enabled", e.target.checked)} />
         Send every Facebook lead to Bitrix24
-        {settings?.fromEnv?.enabled && <span style={{ color: "#64748b", fontSize: 12 }}>(currently from environment)</span>}
+        {settings?.fromEnv?.enabled && <span style={{ color: "var(--text-muted)", fontSize: 12 }}>(currently from environment)</span>}
       </label>
 
       <KeyField
@@ -147,7 +147,7 @@ export default function BitrixSettingsForm({ settings, onSaved, onMessage }) {
           <div style={hint}>
             Numeric only — from the profile URL <code>/company/personal/user/<strong>17</strong>/</code>.
             {settings?.assignedByIdIgnored && (
-              <span style={{ color: "#f87171" }}>
+              <span style={{ color: "var(--danger)" }}>
                 {" "}Currently "{settings.assignedByIdRaw}", which Bitrix ignores — save with this
                 blank to clear it, or type a user id.
               </span>
@@ -205,11 +205,11 @@ export default function BitrixSettingsForm({ settings, onSaved, onMessage }) {
           {saving ? "Saving…" : "Save Bitrix24 settings"}
         </button>
         {settings?.updatedAt && (
-          <span style={{ fontSize: 12, color: "#94a3b8" }}>Last saved {new Date(settings.updatedAt).toLocaleString()}</span>
+          <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Last saved {new Date(settings.updatedAt).toLocaleString()}</span>
         )}
       </div>
       {error && (
-        <div role="alert" style={{ marginTop: 8, fontSize: 13, color: "#f87171" }}>
+        <div role="alert" style={{ marginTop: 8, fontSize: 13, color: "var(--danger)" }}>
           Not saved: {error}
         </div>
       )}

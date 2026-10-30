@@ -1,5 +1,6 @@
 import React, { Suspense, lazy, useState } from "react";
 import PageErrorBoundary from "../components/PageErrorBoundary";
+import TabBar, { tabPanelProps } from "../components/ui/TabBar";
 
 /**
  * Communications — everything Wenze says to a driver group, on one page.
@@ -54,26 +55,23 @@ export default function CommunicationsPage() {
   return (
     <div>
       <div className="page-header">
-        <h2>💬 Communications</h2>
+        <h2>Communications</h2>
         <p>Messages, surveys and the queue — what the bot says to driver groups.</p>
       </div>
-      <div className="ios-glass ai-tab-bar" style={{ marginBottom: 20 }}>
-        {TABS.map((t) => (
-          <button
-            key={t.key}
-            type="button"
-            className={`btn ${tab === t.key ? "btn-primary" : "btn-ghost"} touch-target`}
-            onClick={() => setTab(t.key)}
-          >
-            {t.icon} {t.label}
-          </button>
-        ))}
-      </div>
+      <TabBar
+        tabs={TABS.map((t) => ({ key: t.key, label: t.label }))}
+        value={tab}
+        onChange={setTab}
+        ariaLabel="Communications sections"
+        idPrefix="communications"
+      />
+      <div {...tabPanelProps("communications", tab)}>
       <PageErrorBoundary resetKey={active.key}>
-        <Suspense fallback={<div style={{ padding: 20, color: "#94a3b8" }}>Loading…</div>}>
+        <Suspense fallback={<div className="loading"><div className="spinner"></div> Loading…</div>}>
           <Active />
         </Suspense>
       </PageErrorBoundary>
+      </div>
     </div>
   );
 }

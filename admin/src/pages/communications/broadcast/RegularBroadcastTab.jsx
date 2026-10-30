@@ -51,7 +51,7 @@ export function RegularBroadcastTab({
     <div className="broadcast-layout">
       <div className="broadcast-editor-section">
         <div className="card">
-          <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16 }}>✍️ Compose Message</h3>
+          <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16 }}>Compose Message</h3>
 
           <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12 }}>Use the toolbar to format text with Telegram-compatible HTML tags.</p>
           <PlaceholderChips
@@ -176,7 +176,7 @@ export function RegularBroadcastTab({
 
       <div className="broadcast-preview-section">
         <div className="card">
-          <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>📱 Live Preview</h3>
+          <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>Live Preview</h3>
           <TelegramPreview label="How it will look in Telegram" text={message}
             langTabs={{
               en: { text: message },
@@ -191,7 +191,7 @@ export function RegularBroadcastTab({
     {/* ─── Regular Broadcast History ─── */}
     <div className="card broadcast-history" style={{ marginTop: 24 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-        <h3 style={{ fontSize: 15, fontWeight: 600 }}>📋 Broadcast History</h3>
+        <h3 style={{ fontSize: 15, fontWeight: 600 }}>Broadcast History</h3>
         <button type="button" className="btn btn-ghost" onClick={loadRegularHistory} style={{ fontSize: 12, padding: '4px 12px', border: '1px solid var(--border)' }}>🔄 Refresh</button>
       </div>
       {regularHistoryLoading ? <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>Loading...</div>

@@ -64,7 +64,7 @@ test("opens on Send Message", async () => {
 for (const [label, intro] of TABS) {
   test(`the ${label} tab resolves, mounts, and brings no second header`, async () => {
     render(<CommunicationsPage />);
-    fireEvent.click(screen.getByRole("button", { name: new RegExp(label, "i") }));
+    fireEvent.click(screen.getByRole("tab", { name: new RegExp(label, "i") }));
     await waitFor(() => {
       expect(screen.getByText(intro)).toBeTruthy();
     });
@@ -79,7 +79,7 @@ test("only the open tab is mounted — the others are not rendered behind it", a
   render(<CommunicationsPage />);
   await waitFor(() => expect(screen.getByText(TABS[0][1])).toBeTruthy());
 
-  fireEvent.click(screen.getByRole("button", { name: /History/i }));
+  fireEvent.click(screen.getByRole("tab", { name: /History/i }));
   await waitFor(() => expect(screen.getByText(TABS[3][1])).toBeTruthy());
 
   // The composer's own intro is gone, so its hooks unmounted with it.
@@ -96,15 +96,15 @@ describe("one tab failing does not take the section down", () => {
     globalThis.__EXPLODE_SURVEYS__ = true;
     render(<CommunicationsPage />);
 
-    fireEvent.click(screen.getByRole("button", { name: /Surveys/i }));
+    fireEvent.click(screen.getByRole("tab", { name: /Surveys/i }));
     await waitFor(() => {
       expect(screen.queryByText(TABS[1][1])).toBeNull();
     });
     // The bar is still there...
-    expect(screen.getByRole("button", { name: /Scheduled/i })).toBeTruthy();
+    expect(screen.getByRole("tab", { name: /Scheduled/i })).toBeTruthy();
 
     // ...and it still works, without leaving the section.
-    fireEvent.click(screen.getByRole("button", { name: /Scheduled/i }));
+    fireEvent.click(screen.getByRole("tab", { name: /Scheduled/i }));
     await waitFor(() => {
       expect(screen.getByText(TABS[2][1])).toBeTruthy();
     });

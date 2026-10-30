@@ -1,23 +1,38 @@
-/* ─── Cards & Tables ─── */
+/* ─── Cards ─── */
 .card {
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.22);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
   border-radius: var(--radius);
-  padding: 24px;
+  padding: 20px;
   transition: var(--transition);
+  /* Every card is its own stacking context, as it was when cards were frosted
+     glass (backdrop-filter made one). Without it the Live Locations map's
+     panes (z-index 400–1000) would draw over the phone top bar and drawer. */
+  isolation: isolate;
 }
 
-.card:hover {
-  border-color: rgba(99, 102, 241, 0.3);
+/* A card inside a card is a quiet panel, not a second floating sheet. */
+.card .card,
+.ios-glass .card,
+.card .ios-glass,
+.ios-glass .ios-glass {
+  background: var(--surface-sunken);
+  box-shadow: none;
 }
 
+.card > h3:first-child,
+.card > h4:first-child {
+  margin-bottom: 4px;
+}
+
+/* ─── Tables ─── */
 .table-container {
   overflow-x: auto;
   border-radius: var(--radius);
   border: 1px solid var(--border);
+  background: var(--bg-card);
+  box-shadow: var(--shadow-xs);
 }
 
 table {
@@ -26,48 +41,60 @@ table {
 }
 
 thead {
-  background: var(--bg-secondary);
+  background: var(--surface-sunken);
 }
 
 th {
-  padding: 14px 20px;
+  padding: 10px 14px;
   text-align: left;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
   border-bottom: 1px solid var(--border);
+  white-space: nowrap;
 }
 
 td {
-  padding: 14px 20px;
+  padding: 10px 14px;
   font-size: 14px;
   color: var(--text-primary);
   border-bottom: 1px solid var(--border);
+  vertical-align: middle;
 }
 
 tr:last-child td {
   border-bottom: none;
 }
 
-tr:hover td {
+tbody tr:hover td {
   background: var(--bg-card-hover);
+}
+
+/* Controls inside a table row sit tighter than in a form. */
+td input:not([type="checkbox"]):not([type="radio"]),
+td select {
+  min-height: 32px;
+  padding-top: 5px;
+  padding-bottom: 5px;
+  font-size: 13px;
 }
 
 /* ─── Badges ─── */
 .badge {
   display: inline-flex;
   align-items: center;
-  padding: 4px 12px;
-  border-radius: 20px;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
+  line-height: 1.5;
+  border: 1px solid transparent;
 }
 
 .badge-en {
   background: var(--accent-soft);
-  color: var(--accent-hover);
+  color: var(--accent-text);
 }
 
 .badge-ru {
@@ -83,54 +110,77 @@ tr:hover td {
 .badge-active {
   background: var(--success-soft);
   color: var(--success);
+  border-color: var(--success-border);
 }
 
 .badge-inactive {
   background: var(--danger-soft);
   color: var(--danger);
+  border-color: var(--danger-border);
 }
 
 .badge-muted {
-  background: rgba(148, 163, 184, 0.14);
+  background: var(--neutral-soft);
   color: var(--text-secondary);
 }
 
 .badge-warning {
   background: var(--warning-soft);
   color: var(--warning);
+  border-color: var(--warning-border);
+}
+
+.badge-danger {
+  background: var(--danger-soft);
+  color: var(--danger);
+  border-color: var(--danger-border);
+}
+
+.badge-info {
+  background: var(--info-soft);
+  color: var(--info);
 }
 
 /* ─── Alerts ─── */
 .alert {
-  padding: 14px 20px;
+  padding: 12px 14px;
   border-radius: var(--radius-sm);
   font-size: 14px;
-  margin-bottom: 20px;
+  margin-bottom: 16px;
   display: flex;
   align-items: center;
   gap: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  line-height: 1.5;
 }
 
 .alert-error {
   background: var(--danger-soft);
   color: var(--danger);
-  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-color: var(--danger-border);
 }
 
 .alert-success {
   background: var(--success-soft);
   color: var(--success);
-  border: 1px solid rgba(34, 197, 94, 0.3);
+  border-color: var(--success-border);
 }
 
 .alert-info {
   background: var(--accent-soft);
-  color: var(--accent-hover);
-  border: 1px solid rgba(99, 102, 241, 0.3);
+  color: var(--accent-text);
+  border-color: var(--accent-border);
 }
 
 .alert-warning {
-  background: rgba(245, 158, 11, 0.12);
-  color: #f59e0b;
-  border: 1px solid rgba(245, 158, 11, 0.35);
+  background: var(--warning-soft);
+  color: var(--warning);
+  border-color: var(--warning-border);
+}
+
+/* Text inside an alert that is a sentence, not the alert colour itself. */
+.alert strong {
+  color: inherit;
 }

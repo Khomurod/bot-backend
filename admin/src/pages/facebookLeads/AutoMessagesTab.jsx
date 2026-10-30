@@ -59,7 +59,7 @@ export function AutoMessagesTab({
               <option key={tz} value={tz}>{friendlyTimezone(tz)} ({tz})</option>
             ))}
           </select>
-          <span style={{ display: "block", fontSize: 12, color: "#94a3b8", marginTop: 4 }}>
+          <span style={{ display: "block", fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
             All rule start/end times use this timezone.
           </span>
         </label>
@@ -89,7 +89,7 @@ export function AutoMessagesTab({
         </label>
       </div>
 
-      <p style={{ fontSize: 13, color: "#94a3b8" }}>
+      <p style={{ fontSize: 13, color: "var(--text-muted)" }}>
         First matching time rule wins (top to bottom). Outside all rules, the fallback message is used.
       </p>
     </div>
@@ -114,7 +114,7 @@ export function AutoMessagesTab({
           padding: 16,
           opacity: rule.is_active === false ? 0.6 : 1,
           outline: previewTarget.kind === "rule" && previewTarget.index === index
-            ? "1px solid #6366f1"
+            ? "1px solid var(--accent)"
             : undefined,
         }}
       >
@@ -191,7 +191,7 @@ export function AutoMessagesTab({
             />
           </label>
         </div>
-        <p style={{ fontSize: 11, color: "#64748b", margin: "0 0 8px" }}>
+        <p style={{ fontSize: 11, color: "var(--text-muted)", margin: "0 0 8px" }}>
           Times in {friendlyTimezone(timezone)} ({timezone})
         </p>
 
@@ -228,7 +228,7 @@ export function AutoMessagesTab({
       className="form-input"
       rows={4}
       style={{
-        outline: previewTarget.kind === "fallback" ? "1px solid #6366f1" : undefined,
+        outline: previewTarget.kind === "fallback" ? "1px solid var(--accent)" : undefined,
       }}
       value={settings.fallback_template || ""}
       onFocus={focusFallback}

@@ -216,12 +216,12 @@ export default function HistoryTab() {
                           <div style={{ whiteSpace: "pre-wrap" }}>{preview(row.message_text)}</div>
                           <div style={{ marginTop: 4, display: "flex", gap: 8, flexWrap: "wrap" }}>
                             {isDeleted && (
-                              <span className="badge" style={{ background: "#7f1d1d", color: "#fff", fontSize: 11 }}>
+                              <span className="badge badge-danger" style={{ fontSize: 11 }}>
                                 🗑️ deleted
                               </span>
                             )}
                             {!isDeleted && row.edited_at && (
-                              <span className="badge" style={{ background: "#1e3a8a", color: "#fff", fontSize: 11 }}>
+                              <span className="badge badge-info" style={{ fontSize: 11 }}>
                                 ✏️ edited
                               </span>
                             )}

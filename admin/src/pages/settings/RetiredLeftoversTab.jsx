@@ -99,7 +99,7 @@ export default function RetiredLeftoversTab() {
     }
   }
 
-  if (loading && !data) return <div style={{ padding: 20, color: "#94a3b8" }}>Loading…</div>;
+  if (loading && !data) return <div style={{ padding: 20, color: "var(--text-muted)" }}>Loading…</div>;
 
   return (
     <div>
@@ -132,7 +132,7 @@ export default function RetiredLeftoversTab() {
               <div style={{ color: "var(--text-muted)", fontSize: 13, margin: "4px 0" }}>{group.note}</div>
               <div style={{ fontSize: 13 }}>
                 {group.tables_present === 0
-                  ? <span style={{ color: "#22c55e" }}>✓ nothing left — already clean</span>
+                  ? <span style={{ color: "var(--success)" }}>✓ nothing left — already clean</span>
                   : <>
                       <strong>{group.tables_present}</strong> table{group.tables_present === 1 ? "" : "s"},{" "}
                       <strong>{group.total_rows.toLocaleString()}</strong> row{group.total_rows === 1 ? "" : "s"}
@@ -166,7 +166,7 @@ export default function RetiredLeftoversTab() {
       <div className="card" style={{ marginBottom: 12 }}>
         <h3 style={{ marginTop: 0 }}>Roles, permissions and accounts</h3>
         {(data?.rbac?.roles?.length || 0) === 0 && (data?.rbac?.permissions?.length || 0) === 0 ? (
-          <p style={{ color: "#22c55e" }}>✓ No retired roles or permissions remain.</p>
+          <p style={{ color: "var(--success)" }}>✓ No retired roles or permissions remain.</p>
         ) : (
           <>
             <p style={{ color: "var(--text-muted)" }}>
@@ -191,7 +191,7 @@ export default function RetiredLeftoversTab() {
         )}
       </div>
 
-      <div className="card" style={{ borderLeft: "3px solid #ef4444" }}>
+      <div className="card" style={{ borderLeft: "3px solid var(--danger-solid)" }}>
         <h3 style={{ marginTop: 0 }}>Delete the stored data</h3>
         <div className="alert alert-error">
           <strong>This cannot be undone.</strong> Dropping these tables permanently
@@ -244,7 +244,7 @@ export default function RetiredLeftoversTab() {
                 </li>
               )}
               {result.res.blocked.length > 0 && (
-                <li style={{ color: "#ef4444" }}>
+                <li style={{ color: "var(--danger)" }}>
                   {result.res.blocked.length} table(s) could NOT be dropped because something
                   still references them — nothing was cascaded:
                   <ul>{result.res.blocked.map((b) => <li key={b.table}><code>{b.table}</code>: {b.reason}</li>)}</ul>

@@ -36,7 +36,7 @@ export default function PageFailure({ error, where = "", onRetry = null, variant
     window.location.reload();
   };
 
-  const tone = failure.kind === FAILURE_KIND.PERMISSION ? "#f59e0b" : "#ef4444";
+  const tone = failure.kind === FAILURE_KIND.PERMISSION ? "var(--warning)" : "var(--danger)";
 
   if (variant === "inline") {
     return (
@@ -94,7 +94,7 @@ function FailureDetail({ technical, open = false }) {
           fontSize: 12,
           whiteSpace: "pre-wrap",
           wordBreak: "break-word",
-          background: "rgba(148, 163, 184, 0.12)",
+          background: "var(--neutral-soft)",
           borderRadius: 6,
         }}
       >

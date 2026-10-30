@@ -26,7 +26,7 @@ import * as api from "../../../api";
 function Row({ label, value, tone }) {
   return (
     <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", fontSize: 13 }}>
-      <span style={{ color: "#94a3b8" }}>{label}</span>
+      <span style={{ color: "var(--text-muted)" }}>{label}</span>
       <strong style={tone ? { color: tone } : undefined}>{value}</strong>
     </div>
   );
@@ -50,7 +50,7 @@ export default function FeedCard() {
   }, []);
   useEffect(() => { load(); }, [load]);
 
-  if (loading) return <div style={{ padding: 14, color: "#94a3b8" }}>Reading the feed…</div>;
+  if (loading) return <div style={{ padding: 14, color: "var(--text-muted)" }}>Reading the feed…</div>;
   if (error) return <div className="alert alert-error" style={{ marginTop: 16 }}>{error}</div>;
 
   const summary = feed?.summary || {};
@@ -68,7 +68,7 @@ export default function FeedCard() {
       </div>
 
       {neverRead ? (
-        <div style={{ fontSize: 13, color: "#94a3b8" }}>
+        <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
           The board has not been read yet. It is checked a minute after each deploy and then on the
           interval above — nothing is read while it is switched off.
         </div>
@@ -78,16 +78,16 @@ export default function FeedCard() {
           <Row
             label="Result"
             value={feed.lastPollOk ? "ok" : "failed"}
-            tone={feed.lastPollOk ? undefined : "#f87171"}
+            tone={feed.lastPollOk ? undefined : "var(--danger)"}
           />
           {feed.lastPollBoardDate && <Row label="Board date" value={feed.lastPollBoardDate} />}
           {feed.lastError && (
-            <div style={{ marginTop: 8, fontSize: 12, color: "#f87171" }}>{feed.lastError}</div>
+            <div style={{ marginTop: 8, fontSize: 12, color: "var(--danger)" }}>{feed.lastError}</div>
           )}
         </>
       )}
 
-      <div style={{ height: 1, background: "rgba(148,163,184,0.2)", margin: "10px 0" }} />
+      <div style={{ height: 1, background: "var(--neutral-soft)", margin: "10px 0" }} />
 
       <Row label="Rows on the board now" value={summary.present ?? 0} />
       <Row label="Rows Wenze has ever seen" value={summary.total ?? 0} />
@@ -97,17 +97,17 @@ export default function FeedCard() {
       <Row
         label="Fleet Wenze cannot read"
         value={fleet.unknown ?? 0}
-        tone={fleet.unknown ? "#f59e0b" : undefined}
+        tone={fleet.unknown ? "var(--warning)" : undefined}
       />
       <Row label="Teams" value={summary.teams ?? 0} />
       <Row label="Matched to a person" value={summary.linked ?? 0} />
 
-      <div style={{ marginTop: 10, fontSize: 12, color: "#94a3b8" }}>
+      <div style={{ marginTop: 10, fontSize: 12, color: "var(--text-muted)" }}>
         Statuses: {statuses.length
           ? statuses.map((s) => `${s.status} ${s.count}`).join(" · ")
           : "none"}
       </div>
-      <div style={{ marginTop: 8, fontSize: 12, color: "#64748b" }}>
+      <div style={{ marginTop: 8, fontSize: 12, color: "var(--text-muted)" }}>
         Matching a board row to a driver's permanent identity is a separate step and is not switched
         on yet — nothing here changes a driver's record.
       </div>

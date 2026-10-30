@@ -68,7 +68,7 @@ export default function AddProviderPanel({ onConnected, onCancel }) {
           <button type="button" className="btn btn-ghost btn-sm" onClick={onCancel}>Cancel</button>
         )}
       </div>
-      <div style={{ color: "#94a3b8", fontSize: 12, marginTop: 4 }}>
+      <div style={{ color: "var(--text-muted)", fontSize: 12, marginTop: 4 }}>
         Choose one, paste its API key, and Connect. Wenze works out the endpoint,
         finds the models, checks the key with one call and sets up a fallback order.
       </div>
@@ -102,7 +102,7 @@ export default function AddProviderPanel({ onConnected, onCancel }) {
       {picked && (
         <div style={{ marginTop: 12 }}>
           {picked.freeTierNote && (
-            <div style={{ color: "#94a3b8", fontSize: 12, marginBottom: 8 }}>{picked.freeTierNote}</div>
+            <div style={{ color: "var(--text-muted)", fontSize: 12, marginBottom: 8 }}>{picked.freeTierNote}</div>
           )}
           <div className="home-time-form-grid">
             {picked.needsBaseUrl && (
@@ -164,7 +164,7 @@ export default function AddProviderPanel({ onConnected, onCancel }) {
         >
           {result.message}
           {result.ok && result.report?.selected?.length > 0 && (
-            <div style={{ marginTop: 6, fontSize: 12, color: "#94a3b8" }}>
+            <div style={{ marginTop: 6, fontSize: 12, color: "var(--text-muted)" }}>
               Fallback order: {result.report.selected.join(" → ")}
             </div>
           )}

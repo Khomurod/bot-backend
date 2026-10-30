@@ -1,24 +1,5 @@
-/* ─── Responsive: Quick Query Cards ─── */
+/* ─── Responsive: summary cards ─── */
 @media (max-width: 768px) {
-  .quick-query-grid {
-    grid-template-columns: repeat(2, 1fr);
-    gap: 8px;
-  }
-
-  .wizard-progress {
-    margin-bottom: 24px;
-  }
-
-  .wizard-step-label {
-    font-size: 10px;
-    max-width: 60px;
-  }
-
-  .page-header-bar {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
   .summary-cards {
     grid-template-columns: repeat(2, 1fr);
   }
@@ -42,8 +23,8 @@
 
 .home-time-summary-chip,
 .home-time-metric {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   padding: 12px 14px;
   display: flex;
@@ -63,16 +44,9 @@
 .home-time-metric small,
 .home-time-muted,
 .home-time-subtext,
-.home-time-detail-header p,
 .home-time-section-head p {
   color: var(--text-secondary);
   font-size: 13px;
-}
-
-.home-time-detail-card {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
 }
 
 .home-time-sort-button {
@@ -98,23 +72,8 @@
   font-size: 11px;
 }
 
-.home-time-detail-header {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  align-items: start;
-  flex-wrap: wrap;
-}
-
-.home-time-detail-header h3,
 .home-time-section h4 {
   margin-bottom: 4px;
-}
-
-.home-time-detail-badges {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
 }
 
 .home-time-metrics {
@@ -125,7 +84,7 @@
 
 .home-time-section {
   padding-top: 18px;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-top: 1px solid var(--border);
 }
 
 .home-time-section-head {
@@ -149,7 +108,7 @@
   padding: 12px 16px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--surface-sunken);
   color: var(--text-primary);
 }
 
@@ -160,9 +119,7 @@
 .home-time-modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(3, 6, 14, 0.72);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  background: var(--overlay);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -206,9 +163,9 @@
   height: 40px;
   border-radius: 999px;
   border: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--bg-card);
   color: var(--text-primary);
-  font-size: 24px;
+  font-size: 22px;
   line-height: 1;
   cursor: pointer;
 }
@@ -219,11 +176,11 @@
 }
 
 .home-time-row-selected td {
-  background: rgba(99, 102, 241, 0.12);
+  background: var(--accent-soft);
 }
 
 .home-time-row-selected:hover td {
-  background: rgba(99, 102, 241, 0.16);
+  background: var(--accent-soft);
 }
 
 .home-time-empty-cell,
@@ -234,9 +191,9 @@
 
 .home-time-empty-box {
   padding: 32px 16px;
-  border: 1px dashed rgba(255, 255, 255, 0.14);
+  border: 1px dashed var(--border-strong);
   border-radius: var(--radius-sm);
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--surface-sunken);
 }
 
 .home-time-activity-list {
@@ -246,10 +203,10 @@
 }
 
 .home-time-activity-item {
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   padding: 14px;
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--surface-sunken);
 }
 
 .home-time-activity-top {
@@ -266,7 +223,7 @@
   font-size: 12px;
   font-weight: 600;
   color: var(--text-primary);
-  background: rgba(148, 163, 184, 0.14);
+  background: var(--neutral-soft);
   white-space: nowrap;
 }
 
@@ -323,18 +280,27 @@
   min-width: 0;
   max-width: 100%;
   overflow-x: hidden;
+  /* clip, where supported: it trims sideways overflow the same way but does
+     not make this a scroll container, so the phone top bar can stay sticky. */
+  overflow-x: clip;
 }
 
 /* Long unbroken strings (chat IDs, URLs, driver names) wrap instead of
    escaping their container. */
 .card,
-td,
-th,
 .alert,
-.lead-card,
 .broadcast-history-item,
 .delivery-row {
   overflow-wrap: anywhere;
+}
+
+/* Table cells use break-word, not anywhere: `anywhere` lets the table shrink
+   a column to one character (a group name read one letter per line on a
+   phone). With break-word a column stays as wide as its longest word and the
+   table scrolls sideways inside its card instead. */
+td,
+th {
+  overflow-wrap: break-word;
 }
 
 /* Cards containing a table become their own horizontal scroll area, so wide
@@ -359,22 +325,7 @@ table {
   overflow-x: auto;
 }
 
-/* Sidebar: keep its own scroll when nav grows taller than the viewport. */
-.sidebar-nav {
-  overflow-y: auto;
-}
-
-@media (max-width: 1024px) {
-  .main-content {
-    padding: 24px 20px;
-  }
-}
-
 @media (max-width: 480px) {
-  .main-content {
-    padding: 14px 12px;
-  }
-
   /* 16px stops iOS Safari from auto-zooming focused fields. */
   input:not([type="checkbox"]):not([type="radio"]),
   select,
@@ -385,13 +336,8 @@ table {
     font-size: 16px;
   }
 
-  .page-header h2,
-  .page-header-bar h2 {
-    font-size: 22px;
-  }
-
-  .btn {
-    padding: 10px 16px;
+  .page-header h2 {
+    font-size: 20px;
   }
 }
 
@@ -427,10 +373,9 @@ table {
 .formatting-toolbar .fmt-btn:active,
 .formatting-toolbar button:active {
   background: var(--accent-soft);
-  color: var(--accent-hover);
+  color: var(--accent-text);
 }
 
-.formatting-toolbar .divider,
 .formatting-toolbar .fmt-sep {
   width: 1px;
   height: 22px;

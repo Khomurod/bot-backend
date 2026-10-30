@@ -17,9 +17,9 @@ import * as api from "../../../api";
  * accounting are indistinguishable from here, and a wrong mapping texts a
  * driver from a colleague's phone.
  */
-const listStyle = { fontSize: 12, color: "#94a3b8", margin: "2px 0 0 0", paddingLeft: 16 };
+const listStyle = { fontSize: 12, color: "var(--text-secondary)", margin: "2px 0 0 0", paddingLeft: 16 };
 
-function Group({ title, tone = "#cbd5e1", children }) {
+function Group({ title, tone = "var(--text-secondary)", children }) {
   return (
     <div style={{ marginTop: 10 }}>
       <div style={{ fontSize: 12, fontWeight: 700, color: tone }}>{title}</div>
@@ -66,7 +66,7 @@ export default function BitrixAutomapPanel({ onMapped }) {
   const willWrite = (plan?.apply?.length || 0) + confirmed.length;
 
   return (
-    <div style={{ marginTop: 12, padding: 10, borderRadius: 8, background: "rgba(148,163,184,0.08)" }}>
+    <div style={{ marginTop: 12, padding: 10, borderRadius: 8, background: "var(--neutral-soft)" }}>
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
         <button className="btn btn-ghost btn-sm" onClick={preview} disabled={busy}>
           {busy && !result ? "Reading Bitrix…" : "Match recruiters to Bitrix users"}
@@ -76,33 +76,33 @@ export default function BitrixAutomapPanel({ onMapped }) {
             {willWrite === 0 ? "Nothing to apply" : `Apply ${willWrite} mapping${willWrite === 1 ? "" : "s"}`}
           </button>
         )}
-        <span style={{ fontSize: 12, color: "#64748b" }}>
+        <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>
           Reads the Bitrix user directory. Nothing is written until you apply.
         </span>
       </div>
 
       {plan && !plan.ok && (
-        <div style={{ marginTop: 8, fontSize: 12, color: "#f87171" }}>
+        <div style={{ marginTop: 8, fontSize: 12, color: "var(--danger)" }}>
           {plan.message || "Could not read the Bitrix user directory."}
-          {plan.detail ? <span style={{ color: "#94a3b8" }}> ({plan.detail})</span> : null}
+          {plan.detail ? <span style={{ color: "var(--text-secondary)" }}> ({plan.detail})</span> : null}
         </div>
       )}
 
       {plan?.ok && (
         <div style={{ marginTop: 8 }}>
-          <div style={{ fontSize: 12, color: "#94a3b8" }}>
+          <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>
             {plan.bitrixUsers} Bitrix user(s) · {plan.recruiters} recruiter(s)
           </div>
 
           {result && (
-            <Group title={`✓ Mapped ${result.applied?.length || 0} recruiter(s)`} tone="#22c55e">
+            <Group title={`✓ Mapped ${result.applied?.length || 0} recruiter(s)`} tone="var(--success)">
               <ul style={listStyle}>
                 {(result.applied || []).map((e) => (
                   <li key={e.recruiterId}>{e.recruiterName} → Bitrix #{e.bitrixUserId} ({e.bitrixUserName})</li>
                 ))}
               </ul>
               {(result.failed || []).length > 0 && (
-                <ul style={{ ...listStyle, color: "#f87171" }}>
+                <ul style={{ ...listStyle, color: "var(--danger)" }}>
                   {result.failed.map((e) => (
                     <li key={e.recruiterId}>{e.recruiterName}: {e.error}</li>
                   ))}
@@ -112,13 +112,13 @@ export default function BitrixAutomapPanel({ onMapped }) {
           )}
 
           {!result && (plan.apply || []).length > 0 && (
-            <Group title={`Will map ${plan.apply.length} recruiter(s)`} tone="#22c55e">
+            <Group title={`Will map ${plan.apply.length} recruiter(s)`} tone="var(--success)">
               <ul style={listStyle}>
                 {plan.apply.map((e) => (
                   <li key={e.recruiterId}>
                     {e.recruiterName} → Bitrix #{e.bitrixUserId} ({e.bitrixUserName})
-                    <span style={{ color: "#64748b" }}> · matched by {e.via === "phone" ? "phone number" : "full name"}</span>
-                    {e.bitrixUserActive === false && <span style={{ color: "#fbbf24" }}> · that Bitrix user is deactivated</span>}
+                    <span style={{ color: "var(--text-secondary)" }}> · matched by {e.via === "phone" ? "phone number" : "full name"}</span>
+                    {e.bitrixUserActive === false && <span style={{ color: "var(--warning)" }}> · that Bitrix user is deactivated</span>}
                   </li>
                 ))}
               </ul>
@@ -126,9 +126,9 @@ export default function BitrixAutomapPanel({ onMapped }) {
           )}
 
           {!result && (plan.propose || []).length > 0 && (
-            <Group title="Only a first name matched — confirm each one" tone="#fbbf24">
+            <Group title="Only a first name matched — confirm each one" tone="var(--warning)">
               {plan.propose.map((e) => (
-                <label key={e.recruiterId} style={{ display: "block", fontSize: 12, color: "#94a3b8", paddingLeft: 4 }}>
+                <label key={e.recruiterId} style={{ display: "block", fontSize: 12, color: "var(--text-secondary)", paddingLeft: 4 }}>
                   <input
                     type="checkbox"
                     checked={isConfirmed(e)}
@@ -142,7 +142,7 @@ export default function BitrixAutomapPanel({ onMapped }) {
           )}
 
           {(plan.ambiguous || []).length > 0 && (
-            <Group title="Matched more than one Bitrix user — map these by hand" tone="#fbbf24">
+            <Group title="Matched more than one Bitrix user — map these by hand" tone="var(--warning)">
               <ul style={listStyle}>
                 {plan.ambiguous.map((e) => (
                   <li key={e.recruiterId}>
@@ -154,7 +154,7 @@ export default function BitrixAutomapPanel({ onMapped }) {
           )}
 
           {(plan.conflicts || []).length > 0 && (
-            <Group title="Conflicts — nothing written for these" tone="#f87171">
+            <Group title="Conflicts — nothing written for these" tone="var(--danger)">
               <ul style={listStyle}>
                 {plan.conflicts.map((e, idx) => (
                   <li key={`${e.recruiterId}-${idx}`}>{e.recruiterName}: {e.reason}</li>
@@ -164,7 +164,7 @@ export default function BitrixAutomapPanel({ onMapped }) {
           )}
 
           {(plan.alreadyMapped || []).filter((e) => e.mismatch).length > 0 && (
-            <Group title="Already mapped, but the number says otherwise" tone="#fbbf24">
+            <Group title="Already mapped, but the number says otherwise" tone="var(--warning)">
               <ul style={listStyle}>
                 {plan.alreadyMapped.filter((e) => e.mismatch).map((e) => (
                   <li key={e.recruiterId}>

@@ -164,7 +164,7 @@ export default function RingCentralTab() {
 
   return (
     <div>
-      <p style={{ color: "#94a3b8", marginTop: 0 }}>
+      <p style={{ color: "var(--text-muted)", marginTop: 0 }}>
         RingCentral powers two things: recruiter call KPIs (the bot reads each recruiter's call
         log and scores it against the daily targets) and <strong>who texts a lead</strong> — a
         Facebook lead is texted from the number of whoever Bitrix24 assigned it to.
@@ -173,12 +173,12 @@ export default function RingCentralTab() {
 
       <div className="card" style={{ marginBottom: 16 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-          <h3 style={{ margin: 0 }}>📞 RingCentral Credentials</h3>
+          <h3 style={{ margin: 0 }}>RingCentral Credentials</h3>
           <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 14 }}>
             <input type="checkbox" checked={form.enabled} onChange={(e) => setField("enabled", e.target.checked)} /> Monitoring enabled
           </label>
         </div>
-        <p style={{ fontSize: 13, color: "#94a3b8", marginTop: 0 }}>
+        <p style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 0 }}>
           The <strong>shared Client ID/Secret</strong> are used by every number that doesn't have
           its own custom pair. Each number's own JWT token is entered on the recruiter row below.
           The shared JWT is optional — it's only used as a company-log fallback for numbers
@@ -190,17 +190,17 @@ export default function RingCentralTab() {
         <div className="form-group">
           <label style={{ display: "block", fontWeight: 600, marginBottom: 4 }}>API Base URL</label>
           <input className="form-input" value={form.apiBase} placeholder="https://platform.ringcentral.com" onChange={(e) => setField("apiBase", e.target.value)} />
-          <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 4 }}>Use <code>https://platform.ringcentral.com</code> for production, <code>https://platform.devtest.ringcentral.com</code> for sandbox.</div>
+          <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>Use <code>https://platform.ringcentral.com</code> for production, <code>https://platform.devtest.ringcentral.com</code> for sandbox.</div>
         </div>
         <button className="btn btn-ghost btn-sm" onClick={runTest} disabled={testing}>{testing ? "Testing…" : "Test connection"}</button>
         {test && <span className={`badge ${test.connected ? "badge-active" : "badge-inactive"}`} style={{ marginLeft: 8 }}>{test.connected ? "✓ Connected" : "✕ Not connected"}</span>}
-        {test?.message && <div style={{ fontSize: 12, color: test.connected ? "#22c55e" : "#f87171", marginTop: 4 }}>{test.message}</div>}
-        {settings.lastSyncedAt && <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 8 }}>Last sync: {new Date(settings.lastSyncedAt).toLocaleString()}{settings.lastSyncError ? ` · ⚠️ ${settings.lastSyncError}` : ""}</div>}
+        {test?.message && <div style={{ fontSize: 12, color: test.connected ? "var(--success)" : "var(--danger)", marginTop: 4 }}>{test.message}</div>}
+        {settings.lastSyncedAt && <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 8 }}>Last sync: {new Date(settings.lastSyncedAt).toLocaleString()}{settings.lastSyncError ? ` · ⚠️ ${settings.lastSyncError}` : ""}</div>}
       </div>
 
       <div className="card" style={{ marginBottom: 16 }}>
-        <h3 style={{ marginTop: 0 }}>🎯 Daily Targets &amp; Conversation Thresholds</h3>
-        <p style={{ fontSize: 13, color: "#94a3b8", marginTop: 0 }}>
+        <h3 style={{ marginTop: 0 }}>Daily Targets &amp; Conversation Thresholds</h3>
+        <p style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 0 }}>
           Main KPI: <strong>2.5h real call duration</strong> per recruiter per day — calls under 30
           seconds do not count. Secondary KPI: <strong>150 outbound calls</strong> per day.
         </p>
@@ -212,7 +212,7 @@ export default function RingCentralTab() {
           </div>
           <div>
             <NumField label="Minimum call duration counted toward talk time" value={form.nonValuableMaxSeconds} onChange={(v) => setField("nonValuableMaxSeconds", v)} suffix="seconds" />
-            <div style={{ fontSize: 12, color: "#94a3b8", marginTop: -6, marginBottom: 10, maxWidth: 320 }}>
+            <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: -6, marginBottom: 10, maxWidth: 320 }}>
               Calls shorter than this threshold do not count toward real talk time. Default: 30 seconds.
             </div>
             <NumField label="Real conversation (over)" value={form.realConversationMinSeconds} onChange={(v) => setField("realConversationMinSeconds", v)} suffix="seconds" />
@@ -230,14 +230,14 @@ export default function RingCentralTab() {
 
       <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 24 }}>
         <button className="btn btn-primary" onClick={save} disabled={saving}>{saving ? "Saving…" : "Save settings"}</button>
-        {settings.updatedAt && <span style={{ fontSize: 12, color: "#94a3b8" }}>Last updated {new Date(settings.updatedAt).toLocaleString()}</span>}
+        {settings.updatedAt && <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Last updated {new Date(settings.updatedAt).toLocaleString()}</span>}
       </div>
 
       <BitrixCard onMessage={setMessage} onMapped={refreshRecruiters} />
 
       <div className="card" style={{ marginBottom: 16 }}>
-        <h3 style={{ marginTop: 0 }}>🔗 Invite A Recruiter To Connect RingCentral</h3>
-        <p style={{ fontSize: 13, color: "#94a3b8", marginTop: 0 }}>
+        <h3 style={{ marginTop: 0 }}>Invite A Recruiter To Connect RingCentral</h3>
+        <p style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 0 }}>
           The easy way to add someone: send them a link, they sign in to RingCentral as
           themselves, and their number and extension are read from their account — nobody
           has to generate or paste a JWT. If the number is not on the platform yet, the
@@ -254,22 +254,22 @@ export default function RingCentralTab() {
           <button className="btn btn-primary btn-sm" onClick={inviteNewRecruiter}>Create sign-in link</button>
         </div>
         {inviteUrl && (
-          <div style={{ marginTop: 10, padding: 10, borderRadius: 8, background: "rgba(34,197,94,0.1)" }}>
-            <div style={{ fontSize: 12, color: "#cbd5e1", marginBottom: 4 }}>
+          <div style={{ marginTop: 10, padding: 10, borderRadius: 8, background: "var(--success-soft)" }}>
+            <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 4 }}>
               Send this link to the recruiter. It expires in 30 minutes and works once.
             </div>
             <input className="form-input" readOnly value={inviteUrl} onFocus={(e) => e.target.select()} />
           </div>
         )}
-        <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 10 }}>
+        <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 10 }}>
           After they connect, set their <strong>Bitrix24 user ID</strong> on their row below —
           that is what matches an assigned lead to their number.
         </div>
       </div>
 
       <div className="card" style={{ marginBottom: 16 }}>
-        <h3 style={{ marginTop: 0 }}>➕ Add Recruiter &amp; Number Manually</h3>
-        <p style={{ fontSize: 13, color: "#94a3b8", marginTop: 0 }}>
+        <h3 style={{ marginTop: 0 }}>Add Recruiter &amp; Number Manually</h3>
+        <p style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 0 }}>
           Each recruiter has one dedicated RingCentral direct number, and each number has its own
           JWT token. The Client ID/Secret default to the shared pair above; tick the checkbox to
           use a separate pair for this number.
@@ -299,7 +299,7 @@ export default function RingCentralTab() {
           </label>
         </div>
         {newRec.useCustom && (
-          <div style={{ paddingLeft: 12, borderLeft: "2px solid rgba(148,163,184,0.25)", marginBottom: 8 }}>
+          <div style={{ paddingLeft: 12, borderLeft: "2px solid var(--border)", marginBottom: 8 }}>
             <div className="form-group" style={{ marginBottom: 8 }}>
               <label style={{ display: "block", fontSize: 12, marginBottom: 4 }}>Custom Client ID</label>
               <input className="form-input" type="password" autoComplete="new-password" value={newRec.clientId} onChange={(e) => setNewRec((n) => ({ ...n, clientId: e.target.value }))} />
@@ -314,8 +314,8 @@ export default function RingCentralTab() {
       </div>
 
       <div style={{ marginBottom: 8 }}>
-        <h3 style={{ margin: "0 0 4px" }}>👤 Recruiters &amp; Assigned Numbers</h3>
-        <p style={{ fontSize: 13, color: "#94a3b8", marginTop: 0 }}>
+        <h3 style={{ margin: "0 0 4px" }}>Recruiters &amp; Assigned Numbers</h3>
+        <p style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 0 }}>
           A row that says <strong>Sends as self</strong> and carries a <strong>Bitrix #</strong> will
           text its own leads. Anything else falls back to the shared company number. Use
           <strong> Test connection</strong> for a quick check, <strong>Diagnose</strong> for a
@@ -324,7 +324,7 @@ export default function RingCentralTab() {
         </p>
       </div>
       {recruiters.length === 0 ? (
-        <div className="card"><div style={{ fontSize: 13, color: "#94a3b8" }}>No recruiters yet.</div></div>
+        <div className="card"><div style={{ fontSize: 13, color: "var(--text-muted)" }}>No recruiters yet.</div></div>
       ) : (
         recruiters.map((r) => (
           <RecruiterCard

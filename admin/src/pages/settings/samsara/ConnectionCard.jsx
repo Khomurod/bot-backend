@@ -43,7 +43,7 @@ export function ConnectionCard({ settings, form, setField, onSaved }) {
 
   return (
     <div className="card" style={{ marginBottom: 16 }}>
-      <h3 style={{ marginTop: 0 }}>🔌 Connection</h3>
+      <h3 style={{ marginTop: 0 }}>Connection</h3>
 
       <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 14, marginBottom: 12 }}>
         <input
@@ -60,7 +60,7 @@ export function ConnectionCard({ settings, form, setField, onSaved }) {
         value={form.apiKey}
         onChange={(v) => setField("apiKey", v)}
       />
-      <div style={{ fontSize: 12, color: "#94a3b8", marginTop: -6, marginBottom: 10 }}>
+      <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: -6, marginBottom: 10 }}>
         Currently {sourceLabel}. Leave blank to keep it; enter a new key to replace it
         everywhere, including the Samsara poller.
       </div>
@@ -95,7 +95,7 @@ export function ConnectionCard({ settings, form, setField, onSaved }) {
           {testing ? "Testing…" : "Test connection"}
         </button>
         {settings.apiKeySource === "database" && (
-          <button className="btn btn-ghost btn-sm" style={{ color: "#f87171" }} onClick={clearKey}>
+          <button className="btn btn-ghost btn-sm" style={{ color: "var(--danger)" }} onClick={clearKey}>
             Remove saved key
           </button>
         )}

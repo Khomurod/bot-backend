@@ -24,7 +24,7 @@ function LessonRow({ lesson, scopes, onRemove, busy }) {
   const removed = Boolean(lesson.removedAt);
   return (
     <li style={{ marginBottom: 10, opacity: removed ? 0.55 : 1 }}>
-      <div style={{ fontSize: 12, color: "#94a3b8" }}>
+      <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
         {scopes[lesson.scope] || lesson.scope}
         {" · "}
         {lesson.source === "accounting_reason" ? "Accounting's reason" : "Your answer"}
@@ -32,10 +32,10 @@ function LessonRow({ lesson, scopes, onRemove, busy }) {
         {` · ${when(lesson.createdAt)}`}
         {removed ? ` · removed ${when(lesson.removedAt)}` : ""}
       </div>
-      <div style={{ fontSize: 12, color: "#94a3b8" }}>{lesson.about}</div>
+      <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{lesson.about}</div>
       <div style={{ fontSize: 13 }}>“{lesson.statement}”</div>
       {lesson.understoodAs && lesson.understoodAs !== lesson.statement && (
-        <div style={{ fontSize: 12, color: "#94a3b8" }}>Understood: {lesson.understoodAs}</div>
+        <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Understood: {lesson.understoodAs}</div>
       )}
       {!removed && (
         <button
@@ -97,7 +97,7 @@ export default function LessonsCard({ learningEnabled, onToggle, flash }) {
   return (
     <div className="card" style={{ marginTop: 16 }}>
       <strong>🧠 What Wenze learned from you</strong>
-      <div style={{ color: "#94a3b8", fontSize: 12, marginTop: 4 }}>
+      <div style={{ color: "var(--text-muted)", fontSize: 12, marginTop: 4 }}>
         When the AI is still not sure after Claude, Wenze asks you in the notifications
         group — one question at a time. Reply to it in plain words; Wenze says back what it
         understood and uses your answer from then on. Accounting&apos;s reasons for
@@ -115,21 +115,21 @@ export default function LessonsCard({ learningEnabled, onToggle, flash }) {
       {data?.current && (
         <div style={{ marginTop: 10, fontSize: 13 }}>
           <div>Waiting for your answer in the group:</div>
-          <div style={{ color: "#94a3b8" }}>{data.current.ask}</div>
+          <div style={{ color: "var(--text-muted)" }}>{data.current.ask}</div>
           <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={skip}>
             Skip this question
           </button>
         </div>
       )}
       {data && (
-        <div style={{ color: "#94a3b8", fontSize: 12, marginTop: 8 }}>
+        <div style={{ color: "var(--text-muted)", fontSize: 12, marginTop: 8 }}>
           {data.counts?.queued || 0} waiting to be asked · {data.counts?.answered || 0} answered
           · {data.counts?.skipped || 0} skipped · {live} lesson(s) in use
         </div>
       )}
 
       {lessons.length === 0 ? (
-        <div style={{ color: "#94a3b8", fontSize: 13, marginTop: 10 }}>Nothing learned yet.</div>
+        <div style={{ color: "var(--text-muted)", fontSize: 13, marginTop: 10 }}>Nothing learned yet.</div>
       ) : (
         <ul style={{ marginTop: 10, paddingLeft: 18 }}>
           {lessons.map((l) => (

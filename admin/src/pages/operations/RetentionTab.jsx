@@ -18,15 +18,15 @@ import * as api from "../../api";
  * find them a load.
  */
 const LEVEL = {
-  urgent: { label: "Urgent", colour: "#dc2626", tint: "rgba(220,38,38,0.10)" },
-  watch: { label: "Watch", colour: "#d97706", tint: "rgba(217,119,6,0.10)" },
+  urgent: { label: "Urgent", colour: "var(--danger)", tint: "var(--danger-soft)" },
+  watch: { label: "Watch", colour: "var(--warning)", tint: "var(--warning-soft)" },
 };
 
 function Tile({ label, value, colour }) {
   return (
     <div style={{
       flex: "1 1 120px", padding: "10px 12px", borderRadius: 8,
-      border: "1px solid rgba(148,163,184,0.25)",
+      border: "1px solid var(--border)",
     }}>
       <div style={{ fontSize: 22, fontWeight: 600, color: colour || "inherit" }}>{value ?? 0}</div>
       <div className="muted" style={{ fontSize: 12 }}>{label}</div>
@@ -38,7 +38,7 @@ function Row({ row, onAcknowledge, busy }) {
   const level = LEVEL[row.level] || LEVEL.watch;
   return (
     <div style={{
-      border: "1px solid rgba(148,163,184,0.25)",
+      border: "1px solid var(--border)",
       borderLeft: `3px solid ${level.colour}`,
       background: row.acknowledgedAt ? "transparent" : level.tint,
       borderRadius: 8, padding: "10px 12px", marginBottom: 8,
