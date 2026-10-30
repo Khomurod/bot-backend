@@ -89,7 +89,12 @@ async function refreshProviderModels(providerKey, { initiator = 'refresh', updat
   const changed = !r.unverified
     && (r.retired.length > 0 || r.chain.join('|') !== provider.modelChain.join('|'));
   if (changed) {
-    await deps.aiProviders.upsertProvider(providerKey, { modelChain: r.chain, updatedBy });
+    // Update-only: a provider removed while its listing was being read stays
+    // removed — `upsertProvider` would insert it again.
+    const stillThere = await deps.aiProviders.updateProviderModelChain(providerKey, r.chain, updatedBy);
+    if (!stillThere) {
+      return { ok: false, providerKey, removed: true, error: 'The provider was removed while its models were being checked' };
+    }
     for (const model of r.retired) {
       const replacement = r.added[r.retired.indexOf(model)] || null;
       await deps.modelEvents.recordModelEvent({

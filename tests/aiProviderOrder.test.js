@@ -195,7 +195,7 @@ test('the daily refresh tells reconcile a paid provider is not to be topped up',
         return { ...claude({ modelChain: ['claude-sonnet-4-5'] }), catalogKey: 'anthropic' };
       },
       async saveDiscoveredModels() {},
-      async upsertProvider(key, patch) { writes.push(patch); },
+      async updateProviderModelChain(key, chain) { writes.push({ modelChain: chain }); return true; },
     },
     aiSettings: { async getAiSettings() { return { freeOnlyMode: false }; } },
     modelEvents: { async recordModelEvent() {} },

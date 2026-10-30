@@ -17,8 +17,9 @@ const openai = (id, extra = {}) => normaliseModel({ id, ...extra }, 'openai_chat
 
 function deps({
   models = [], listError = null, callImpl = async () => ({ text: 'ok' }), freeOnlyMode = false, existing = null,
+  removedDuringListing = false,
 } = {}) {
-  const saw = { upserts: [], discovered: [], events: [], sources: [], invalidated: 0, calls: [] };
+  const saw = { upserts: [], chainWrites: [], discovered: [], events: [], sources: [], invalidated: 0, calls: [] };
   return {
     saw,
     listModels: async () => { if (listError) throw listError; return models; },
@@ -28,6 +29,11 @@ function deps({
       async getProviderSecretsByKey() { return existing; },
       async nextPriority() { return 30; },
       async upsertProvider(key, patch) { saw.upserts.push({ key, ...patch }); return { providerKey: key }; },
+      async updateProviderModelChain(key, chain) {
+        if (removedDuringListing) return false;
+        saw.chainWrites.push({ key, chain });
+        return true;
+      },
       async saveDiscoveredModels(key, payload) { saw.discovered.push({ key, ...payload }); },
     },
     aiSettings: { async getAiSettings() { return { freeOnlyMode }; } },
@@ -164,12 +170,31 @@ test('refresh retires what the provider stopped listing and records every step',
   assert.equal(r.ok, true);
   assert.deepEqual(r.retired, ['mixtral-8x7b-32768']);
   assert.equal(r.changed, true);
-  assert.equal(d.saw.upserts[0].modelChain.includes('mixtral-8x7b-32768'), false);
+  assert.equal(d.saw.chainWrites[0].chain.includes('mixtral-8x7b-32768'), false);
+  assert.equal(d.saw.upserts.length, 0, 'a refresh only updates; it never inserts a provider');
   const retired = d.saw.events.find((e) => e.event === 'retired');
   assert.equal(retired.model, 'mixtral-8x7b-32768');
   assert.equal(retired.initiator, 'refresh');
   assert.ok(d.saw.events.some((e) => e.event === 'selected'));
   assert.equal(d.saw.invalidated, 1);
+});
+
+test('a provider removed while its listing was read stays removed: nothing re-creates it', async () => {
+  // Remove on the provider card can land while a refresh (by hand, or the
+  // maintenance job) is awaiting the provider's listing. The chain write is
+  // update-only, so the late write finds no row and says so — no insert, no
+  // model events, no registry reload for a provider that is gone.
+  const d = deps({
+    models: [openai('llama-3.1-8b-instant')].map((m) => ({ ...m, providerKey: 'groq' })),
+    existing: { providerKey: 'groq', adapter: 'openai_chat', baseUrl: 'https://api.groq.com/openai/v1', apiKey: 'gsk_x', modelChain: ['mixtral-8x7b-32768'] },
+    removedDuringListing: true,
+  });
+  const r = await refreshProviderModels('groq', { initiator: 'refresh' }, d);
+  assert.equal(r.ok, false);
+  assert.equal(r.removed, true);
+  assert.equal(d.saw.upserts.length, 0);
+  assert.deepEqual(d.saw.events, []);
+  assert.equal(d.saw.invalidated, 0);
 });
 
 test('a failed listing changes nothing and records the error', async () => {
@@ -180,6 +205,7 @@ test('a failed listing changes nothing and records the error', async () => {
   const r = await refreshProviderModels('groq', {}, d);
   assert.equal(r.ok, false);
   assert.equal(d.saw.upserts.length, 0, 'one bad fetch must never strip a working chain');
+  assert.equal(d.saw.chainWrites.length, 0);
   assert.match(d.saw.discovered[0].error, /Service Unavailable/, 'the admin can see WHY the listing is stale');
 });
 

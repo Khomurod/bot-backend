@@ -78,3 +78,20 @@ test("while a removal is in flight, Save is disabled — a late save cannot brin
   expect(screen.getByRole("button", { name: "Removing…" })).toBeDisabled();
   finish({ deleted: true });
 });
+
+test("while a model refresh is in flight, Remove is disabled — and the refresh is disabled while removing", async () => {
+  let finishRefresh;
+  api.refreshAiProviderModels.mockReturnValue(new Promise((resolve) => { finishRefresh = resolve; }));
+  renderCard();
+
+  fireEvent.click(screen.getByRole("button", { name: "Refresh models" }));
+
+  await waitFor(() => expect(screen.getByRole("button", { name: "Remove" })).toBeDisabled());
+  finishRefresh({ ok: true, chain: ["model-a"], retired: [], added: [], changed: false });
+  await waitFor(() => expect(screen.getByRole("button", { name: "Remove" })).not.toBeDisabled());
+
+  vi.spyOn(window, "confirm").mockReturnValue(true);
+  api.deleteAiProvider.mockReturnValue(new Promise(() => {}));
+  fireEvent.click(screen.getByRole("button", { name: "Remove" }));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Refresh models" })).toBeDisabled());
+});

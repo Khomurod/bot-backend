@@ -344,6 +344,24 @@ async function upsertProvider(providerKey, {
 }
 
 /**
+ * Replace an EXISTING provider's model chain. Update-only on purpose: a model
+ * refresh — by hand or the maintenance job — awaits the provider's own listing,
+ * and if the provider is removed during that wait, `upsertProvider` would
+ * insert a bare row and bring it back (possibly inheriting an environment
+ * key). This cannot: it changes a row that exists and reports one that does not.
+ * @returns {Promise<boolean>} false when no such provider exists any more.
+ */
+async function updateProviderModelChain(providerKey, modelChain, updatedBy = null) {
+  const res = await query(
+    `UPDATE ai_providers
+        SET model_chain = $2::jsonb, updated_by = $3, updated_at = NOW()
+      WHERE provider_key = $1`,
+    [providerKey, JSON.stringify(Array.isArray(modelChain) ? modelChain : []), updatedBy]
+  );
+  return res.rowCount > 0;
+}
+
+/**
  * What discovery last saw. Written by Connect and by the maintenance refresh;
  * `error` records a listing that failed so the admin can see WHY the models
  * shown are stale rather than wondering.
@@ -443,6 +461,7 @@ module.exports = {
   upsertProvider,
   setProviderOrder,
   saveDiscoveredModels,
+  updateProviderModelChain,
   nextPriority,
   recordSuccess,
   recordFailure,

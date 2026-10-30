@@ -16,12 +16,12 @@ npm run build:schema:check                        # schema.sql is in sync with b
 
 - **The Node suite passes clean with no secrets and no database.** Verified
   baseline (2026-10-30, after the hidden-functions audit's first change, deps
-  installed): the 378 non-`*Pg` files with no application env — **4007 tests,
-  4007 pass, 0 fail** (the 702 `*Pg` tests in the same run skip without
+  installed): the 378 non-`*Pg` files with no application env — **4008 tests,
+  4008 pass, 0 fail** (the 703 `*Pg` tests in the same run skip without
   `TEST_DATABASE_URL`) — and the 96 `*Pg` files against a local PostgreSQL 16 —
-  **754 tests, 754 pass, 0 fail, 0 skipped**. CI runs the non-`*Pg` files with
+  **755 tests, 755 pass, 0 fail, 0 skipped**. CI runs the non-`*Pg` files with
   no application env at all and the `*Pg` files against a real Postgres; both
-  jobs fail on any skip. The admin suite is **482 pass in 65 files**; the
+  jobs fail on any skip. The admin suite is **483 pass in 65 files**; the
   Python leads tests are **81 pass**.
   **A test that pins `now` must pin every other clock it reads.** One pinned
   `now` to 2026-09-20 while the health code compared it with the REAL process

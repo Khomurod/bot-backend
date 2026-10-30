@@ -23,6 +23,9 @@ import ModelChainEditor from "./ModelChainEditor";
  * deletes the provider and its key, which is the only way to get a key out of
  * Wenze once it is no longer used (a rotated or leaked key). It asks first, and
  * says plainly that the provider stops being used until it is added again.
+ * Remove, Save and Refresh models never run together on one card; a refresh
+ * started elsewhere (the maintenance job) writes update-only, so it cannot
+ * bring a removed provider back either.
  */
 const KIND_WORDING = {
   credential: "The key was rejected. Check it and try again.",
@@ -262,7 +265,7 @@ export default function ProviderCard({ provider, onSaved, flash }) {
         <button type="button" className="btn btn-primary btn-sm" disabled={saving || removing} onClick={save}>
           {saving ? "Saving…" : "Save"}
         </button>
-        <button type="button" className="btn btn-secondary btn-sm" disabled={refreshing} onClick={refreshModels}>
+        <button type="button" className="btn btn-secondary btn-sm" disabled={refreshing || removing} onClick={refreshModels}>
           {refreshing ? "Checking…" : "Refresh models"}
         </button>
         <button
@@ -281,7 +284,7 @@ export default function ProviderCard({ provider, onSaved, flash }) {
         </label>
         <button
           type="button" className="btn btn-danger btn-sm" style={{ marginLeft: "auto" }}
-          disabled={removing || saving} onClick={remove}
+          disabled={removing || saving || refreshing} onClick={remove}
         >
           {removing ? "Removing…" : "Remove"}
         </button>
