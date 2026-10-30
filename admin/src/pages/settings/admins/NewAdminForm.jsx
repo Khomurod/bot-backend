@@ -15,6 +15,9 @@ export default function NewAdminForm({ roles, onCreated, flash }) {
   const [confirm, setConfirm] = React.useState("");
   const [roleIds, setRoleIds] = React.useState([]);
   const [saving, setSaving] = React.useState(false);
+  // A failure is shown here, beside the button, not in the tab's banner — with
+  // a long list of accounts that banner is scrolled out of sight by now.
+  const [error, setError] = React.useState(null);
 
   const assignable = roles.filter((r) => r.active !== false);
   const problem = !username.trim() ? "Enter a username."
@@ -23,21 +26,24 @@ export default function NewAdminForm({ roles, onCreated, flash }) {
         : roleIds.length === 0 ? "Choose at least one role."
           : null;
 
-  const toggleRole = (id) => setRoleIds((prev) => (
-    prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
-  ));
+  const edit = (setter) => (e) => { setter(e.target.value); setError(null); };
+  const toggleRole = (id) => {
+    setError(null);
+    setRoleIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  };
 
   const submit = async (e) => {
     e.preventDefault();
     if (problem) return;
     setSaving(true);
+    setError(null);
     try {
       const user = await api.createAdminUser({ username: username.trim(), password, roleIds });
       flash("success", `${user?.username || username.trim()} can now sign in.`);
       setUsername(""); setPassword(""); setConfirm(""); setRoleIds([]);
       onCreated();
     } catch (err) {
-      flash("error", err?.message || "Could not create the account.");
+      setError(err?.message || "Could not create the account.");
     } finally {
       setSaving(false);
     }
@@ -51,21 +57,21 @@ export default function NewAdminForm({ roles, onCreated, flash }) {
           <label htmlFor="new-admin-username">Username</label>
           <input
             id="new-admin-username" className="form-input" autoComplete="off"
-            value={username} onChange={(e) => setUsername(e.target.value)}
+            value={username} onChange={edit(setUsername)}
           />
         </div>
         <div className="form-group">
           <label htmlFor="new-admin-password">Password</label>
           <input
             id="new-admin-password" className="form-input" type="password" autoComplete="new-password"
-            value={password} onChange={(e) => setPassword(e.target.value)}
+            value={password} onChange={edit(setPassword)}
           />
         </div>
         <div className="form-group">
           <label htmlFor="new-admin-confirm">Password again</label>
           <input
             id="new-admin-confirm" className="form-input" type="password" autoComplete="new-password"
-            value={confirm} onChange={(e) => setConfirm(e.target.value)}
+            value={confirm} onChange={edit(setConfirm)}
           />
         </div>
       </div>
@@ -84,6 +90,7 @@ export default function NewAdminForm({ roles, onCreated, flash }) {
           </label>
         ))}
       </fieldset>
+      {error && <div className="alert alert-error" role="alert" style={{ marginBottom: 8 }}>{error}</div>}
       <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
         <button type="submit" className="btn btn-primary btn-sm" disabled={saving || Boolean(problem)}>
           {saving ? "Creating…" : "Create account"}

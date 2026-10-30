@@ -12,12 +12,18 @@ import { MIN_PASSWORD } from "./NewAdminForm";
  * YOUR OWN ROW HAS NEITHER. Disabling yourself locks you out mid-task, and a
  * reset of your own password belongs behind your current password — the
  * sidebar's Change password asks for it.
+ *
+ * A refusal (the last super administrator, a password the server rejects) is
+ * shown under this row, where the person pressed the button — the tab's banner
+ * is out of sight with a long list. Successes still go to the banner, because
+ * the list reloads.
  */
 export default function AdminAccountRow({ user, isSelf, onChanged, flash }) {
   const [busy, setBusy] = React.useState(false);
   const [resetting, setResetting] = React.useState(false);
   const [password, setPassword] = React.useState("");
   const [confirm, setConfirm] = React.useState("");
+  const [error, setError] = React.useState(null);
 
   const roleNames = (user.roles || []).map((r) => r.display_name).join(", ") || "—";
   const active = user.active !== false;
@@ -26,12 +32,13 @@ export default function AdminAccountRow({ user, isSelf, onChanged, flash }) {
 
   const run = async (work, success) => {
     setBusy(true);
+    setError(null);
     try {
       await work();
       flash("success", success);
       onChanged();
     } catch (err) {
-      flash("error", err?.message || "Could not change the account.");
+      setError(err?.message || "Could not change the account.");
     } finally {
       setBusy(false);
     }
@@ -87,19 +94,24 @@ export default function AdminAccountRow({ user, isSelf, onChanged, flash }) {
             <form onSubmit={submitReset} aria-label={`Reset password for ${user.username}`} style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
               <input
                 className="form-input" type="password" autoComplete="new-password" placeholder="New password"
-                aria-label="New password" value={password} onChange={(e) => setPassword(e.target.value)}
+                aria-label="New password" value={password} onChange={(e) => { setPassword(e.target.value); setError(null); }}
                 style={{ maxWidth: 220 }}
               />
               <input
                 className="form-input" type="password" autoComplete="new-password" placeholder="New password again"
-                aria-label="New password again" value={confirm} onChange={(e) => setConfirm(e.target.value)}
+                aria-label="New password again" value={confirm} onChange={(e) => { setConfirm(e.target.value); setError(null); }}
                 style={{ maxWidth: 220 }}
               />
               <button type="submit" className="btn btn-primary btn-sm" disabled={busy || Boolean(resetProblem)}>Set password</button>
-              <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setResetting(false); setPassword(""); setConfirm(""); }}>Cancel</button>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setResetting(false); setPassword(""); setConfirm(""); setError(null); }}>Cancel</button>
               {resetProblem && password && <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{resetProblem}</span>}
             </form>
           </td>
+        </tr>
+      )}
+      {error && (
+        <tr>
+          <td colSpan={5}><div className="alert alert-error" role="alert" style={{ margin: 0 }}>{error}</div></td>
         </tr>
       )}
     </>

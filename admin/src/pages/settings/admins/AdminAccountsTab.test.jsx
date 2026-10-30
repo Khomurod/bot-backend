@@ -97,7 +97,24 @@ test("Disable asks first; the server's refusal (last super administrator) is sho
 
   expect(window.confirm.mock.calls[0][0]).toMatch(/Disable dispatcher.anna\? They are signed out/);
   await waitFor(() => expect(api.updateAdminUser).toHaveBeenCalledWith(11, { active: false }));
-  expect(await screen.findByText("The last active super administrator cannot be deactivated.")).toBeInTheDocument();
+  // Shown under the row that was pressed, not in a banner above a long list.
+  const refusal = await within(screen.getByRole("table")).findByRole("alert");
+  expect(refusal).toHaveTextContent("The last active super administrator cannot be deactivated.");
+});
+
+test("a refused create is shown beside the form and cleared when a field changes", async () => {
+  api.createAdminUser.mockRejectedValue(apiError(409, "That username is already taken."));
+  await open();
+  const form = screen.getByRole("form", { name: "New admin account" });
+  fireEvent.change(within(form).getByLabelText("Username"), { target: { value: "dispatcher.anna" } });
+  fireEvent.change(within(form).getByLabelText("Password"), { target: { value: "long-enough-1" } });
+  fireEvent.change(within(form).getByLabelText("Password again"), { target: { value: "long-enough-1" } });
+  fireEvent.click(within(form).getByRole("checkbox", { name: /Office/ }));
+  fireEvent.click(within(form).getByRole("button", { name: "Create account" }));
+
+  expect(await within(form).findByRole("alert")).toHaveTextContent("That username is already taken.");
+  fireEvent.change(within(form).getByLabelText("Username"), { target: { value: "anna.second" } });
+  expect(within(form).queryByRole("alert")).toBeNull();
 });
 
 test("a disabled account can be enabled again", async () => {

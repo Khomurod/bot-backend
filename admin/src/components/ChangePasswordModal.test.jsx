@@ -55,6 +55,51 @@ test("a wrong current password is shown and nothing else happens", async () => {
   expect(onSignInAgain).not.toHaveBeenCalled();
 });
 
+test("focus moves in on open, Tab stays inside, Escape closes, and focus returns to the opener", () => {
+  const opener = document.createElement("button");
+  opener.textContent = "Change password (sidebar)";
+  document.body.appendChild(opener);
+  opener.focus();
+  const onClose = vi.fn();
+  const { unmount } = render(<ChangePasswordModal onClose={onClose} onSignInAgain={vi.fn()} />);
+
+  const currentField = screen.getByLabelText("Current password");
+  expect(document.activeElement).toBe(currentField);
+  const cancel = screen.getByRole("button", { name: "Cancel" });
+  cancel.focus();
+  fireEvent.keyDown(cancel, { key: "Tab" });
+  expect(document.activeElement).toBe(currentField);
+  fireEvent.keyDown(currentField, { key: "Tab", shiftKey: true });
+  expect(document.activeElement).toBe(cancel);
+
+  fireEvent.keyDown(document.activeElement, { key: "Escape" });
+  expect(onClose).toHaveBeenCalledTimes(1);
+  unmount();
+  expect(document.activeElement).toBe(opener);
+  opener.remove();
+});
+
+test("while the request is in flight it cannot be dismissed, so its result is always seen", async () => {
+  let resolve;
+  api.changePassword.mockReturnValue(new Promise((r) => { resolve = r; }));
+  const onClose = vi.fn();
+  render(<ChangePasswordModal onClose={onClose} onSignInAgain={vi.fn()} />);
+  fill();
+  fireEvent.click(screen.getByRole("button", { name: "Change password" }));
+
+  expect(await screen.findByRole("button", { name: "Changing…" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+  fireEvent.keyDown(document, { key: "Escape" });
+  fireEvent.click(screen.getByRole("dialog").parentElement);
+  expect(onClose).not.toHaveBeenCalled();
+
+  resolve({ changed: true, sign_in_again: true });
+  expect(await screen.findByText(/Every session of this account has ended/)).toBeInTheDocument();
+  expect(document.activeElement).toBe(screen.getByRole("button", { name: "Sign in again" }));
+  fireEvent.keyDown(document, { key: "Escape" });
+  expect(onClose).not.toHaveBeenCalled();
+});
+
 test("Cancel closes without a request", () => {
   const onClose = vi.fn();
   render(<ChangePasswordModal onClose={onClose} onSignInAgain={vi.fn()} />);

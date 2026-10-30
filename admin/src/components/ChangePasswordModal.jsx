@@ -3,6 +3,7 @@ import React from "react";
 import * as api from "../api";
 
 const MIN_PASSWORD = 10;
+const FOCUSABLE = 'button:not([disabled]), input:not([disabled]), [href], [tabindex]:not([tabindex="-1"])';
 
 /**
  * Change your own password: the current one, the new one twice.
@@ -12,6 +13,12 @@ const MIN_PASSWORD = 10;
  * and offers the sign-in screen rather than leaving a person on a page whose
  * next request would fail. Open to every signed-in account, including one
  * without full access — it is the sidebar's, not a section's.
+ *
+ * It behaves as a modal for the keyboard too: focus moves in when it opens and
+ * back to whatever opened it when it closes, Tab stays inside, Escape closes.
+ * It CANNOT be dismissed while the request is in flight — a request that
+ * succeeds after the dialog was closed would end the session with nobody told
+ * — nor after success, when the only way on is to sign in again.
  */
 export default function ChangePasswordModal({ onClose, onSignInAgain }) {
   const [current, setCurrent] = React.useState("");
@@ -20,6 +27,42 @@ export default function ChangePasswordModal({ onClose, onSignInAgain }) {
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState(null);
   const [done, setDone] = React.useState(false);
+  const dialogRef = React.useRef(null);
+  const dismissable = !saving && !done;
+
+  React.useEffect(() => {
+    const opener = document.activeElement;
+    dialogRef.current?.querySelector(FOCUSABLE)?.focus();
+    return () => { if (opener?.isConnected && typeof opener.focus === "function") opener.focus(); };
+  }, []);
+
+  // The form gives way to the success message; keep focus inside the dialog.
+  React.useEffect(() => {
+    if (done) dialogRef.current?.querySelector(FOCUSABLE)?.focus();
+  }, [done]);
+
+  React.useEffect(() => {
+    const onKeyDown = (event) => {
+      const dialog = dialogRef.current;
+      if (!dialog) return;
+      if (event.key === "Escape") {
+        if (dismissable) onClose();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const items = [...dialog.querySelectorAll(FOCUSABLE)];
+      if (items.length === 0) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      const active = document.activeElement;
+      if (!dialog.contains(active) || (event.shiftKey ? active === first : active === last)) {
+        event.preventDefault();
+        (event.shiftKey && dialog.contains(active) ? last : first).focus();
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [dismissable, onClose]);
 
   const problem = !current ? "Enter your current password."
     : next.length < MIN_PASSWORD ? `The new password needs at least ${MIN_PASSWORD} characters.`
@@ -43,9 +86,9 @@ export default function ChangePasswordModal({ onClose, onSignInAgain }) {
   };
 
   return (
-    <div className="home-time-modal-backdrop" onClick={done ? undefined : onClose}>
+    <div className="home-time-modal-backdrop" onClick={dismissable ? onClose : undefined}>
       <div
-        className="card home-time-modal-card" role="dialog" aria-modal="true" aria-labelledby="change-password-title"
+        ref={dialogRef} className="card home-time-modal-card" role="dialog" aria-modal="true" aria-labelledby="change-password-title"
         style={{ width: "min(440px, 100%)" }} onClick={(e) => e.stopPropagation()}
       >
         <h3 id="change-password-title" style={{ marginTop: 0 }}>Change password</h3>
@@ -79,7 +122,7 @@ export default function ChangePasswordModal({ onClose, onSignInAgain }) {
               <button type="submit" className="btn btn-primary" disabled={saving || Boolean(problem)}>
                 {saving ? "Changing…" : "Change password"}
               </button>
-              <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
+              <button type="button" className="btn btn-secondary" disabled={saving} onClick={onClose}>Cancel</button>
             </div>
           </form>
         )}

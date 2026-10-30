@@ -73,7 +73,9 @@ role); **disable / re-enable** it; **reset its password**. Disable and reset
 bump the account's `auth_version`, so that person's sessions end at once. The
 server's guard stays the only authority on "the last active super administrator
 cannot be disabled or demoted" (`adminUserGuards.js`, `database/rbac.js`); the
-screen shows its refusal. Your own row has neither action: disabling yourself
+screen shows its refusal, under the row that was pressed. A username already in
+use is a 409 "That username is already taken." (`USERNAME_TAKEN`, on create and
+on rename), not a 500. Your own row has neither action: disabling yourself
 locks you out mid-task, and a new password for yourself belongs behind your
 current one — **Change password** in the sidebar footer
 (`POST /api/auth/change-password`), open to every signed-in account including
