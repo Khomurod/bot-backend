@@ -69,8 +69,8 @@ function runVehicleMatchChecks(snapshot) {
         samsaraDriverName: r.provider_driver_name || null,
         groups,
         detail: r.detail || null,
-        firstSeenAt: r.first_seen_at || null,
-        lastSeenAt: r.last_seen_at || null,
+        scanFirstSeenAt: r.first_seen_at || null,
+        scanLastSeenAt: r.last_seen_at || null,
         note: checkKey === 'samsara.driver_name_mismatch'
           ? 'Fix the driver on the Samsara vehicle or on the driver profile; the next scan '
             + 'clears this once the names agree.'
