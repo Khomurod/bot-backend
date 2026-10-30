@@ -107,9 +107,11 @@
   which
   `App.jsx` reads from `window.location`. Pages are lazy-loaded behind a
   chunk-error boundary.
-- **Committed artifacts, not runtime logic**: `birthdays.csv`
-  (read by `scripts/import-birthdays.js`). `eng.traineddata`, the Tesseract OCR
-  model, was removed with `tesseract.js` on 2026-10-23: its last possible
+- **Committed artifacts, not runtime logic**: none left. `birthdays.csv` — 76
+  real drivers' names and birth dates, read only by the one-time
+  `scripts/import-birthdays.js` — was removed with that script in the October
+  2026 audit and is gitignored; it remains in git history.
+  `eng.traineddata`, the Tesseract OCR model, was removed with `tesseract.js` on 2026-10-23: its last possible
   caller, the Finance Monitor's PDF reader, went that day. The old committed
   log snapshots and the `scratch/`, `brain/`, `reports/` and `.cursor/` working
   directories have been removed and gitignored — nothing in the application
