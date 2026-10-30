@@ -71,10 +71,14 @@ feature it belongs to.
   lists another driver) and `samsara.ambiguous_unit_match` (several vehicles
   share the unit, none clearly this driver's; serious). Before that they sat in
   `duplicate_unit_reports` behind three admin routes no screen called, now
-  removed; a dismissal with a reason is the old "resolve". The scan stays the
-  judge — it resolves a report once the names agree, and the finding follows on
-  the next sweep — and a failed or full read throws, so it never clears them.
-  Report only: the fix is in Samsara or the profile. The two auto actions live in
+  removed. The scan stays the judge — it resolves a report once the names
+  agree, and the finding follows on the next sweep — and a failed or full read
+  throws, so it never clears them. Report only: the fix is in Samsara or the
+  profile. **Dismissing is not the old "resolve".** The old resolve was undone
+  by the next scan that still saw the problem; a dismissal (with its reason)
+  hides that check for that unit for good — even if the mismatch clears and
+  later comes back, possibly with another driver — because the engine reopens
+  only resolved findings, never dismissed ones. "Not now" is **Snooze**. The two auto actions live in
   `corrections/identityActions.js`, re-derive under lock, refuse when stale, and
   revert without deleting (a created person row stays; a previous truck is
   reopened as a new row). Both ship **disabled** like every other check. Guarded

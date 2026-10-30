@@ -18,10 +18,12 @@
  * Until October 2026 those reports were visible only through three
  * `/api/live-locations/duplicate-reports*` routes no screen called (the
  * hidden-functions audit). This check puts each OPEN report on Needs Attention,
- * where a person sees it, and where a dismissal with a reason is the way to say
- * "known, leave it" — the old routes' "resolve". The scan stays the judge: it
- * resolves a report once the names agree, and the finding then resolves on the
- * next sweep. The plain duplicate_unit report is not repeated here:
+ * where a person sees it. The scan stays the judge: it resolves a report once
+ * the names agree, and the finding then resolves on the next sweep. A DISMISSAL
+ * IS NOT THE OLD "RESOLVE": that one was undone by the next scan still seeing
+ * the problem, while a dismissed finding stays dismissed for that unit even if
+ * the mismatch clears and comes back (the engine reopens only resolved
+ * findings) — so "not now" is Snooze, and dismissing means "known, for good". The plain duplicate_unit report is not repeated here:
  * `identity.duplicate_unit` already files that, fleet-aware.
  *
  * Nothing here is auto-correctable: only a person knows which truck a driver is
