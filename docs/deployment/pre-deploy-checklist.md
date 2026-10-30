@@ -135,6 +135,7 @@ after deploy on the live service.
 | # | What / Why | How to check |
 |---|---|---|
 | F1 | Feedback survey works. | **[AUTO]** `anonymousFeedbackHandlers.test.js`; **[MANUAL]** submit an answer. |
+| F1b | Surveys: a new survey is saved without being sent; Send asks first and names the number of active driver groups; a closed survey can be neither sent nor answered. | **[AUTO]** `surveySends.test.js`, `surveySendsPg.test.js`, admin `communications/surveys/Surveys.test.jsx`; **[MANUAL]** save a survey and use its test send to the management group — never Send on production to check. |
 | F2 | Broadcast works. | **[AUTO]** `broadcastTargetService.test.js`; **[MANUAL]** test send. |
 | F3 | ~~Driver of the Week voting~~ **REMOVED** — feature retired. | **[MANUAL]** Confirm no "Driver Polls" tab in admin and no `/voting` endpoints. |
 | F4 | ~~BOL/POD delivery works (idempotent).~~ **REMOVED** — BOL/POD forwarding retired October 2026 (`docs/architecture/retired-bol-pod.md`). | **[AUTO]** `removedFeaturesStayRemoved.test.js`; **[MANUAL]** confirm no "BOL / POD" tab in Settings. |

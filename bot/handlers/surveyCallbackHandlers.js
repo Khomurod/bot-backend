@@ -125,6 +125,14 @@ function registerSurveyCallbackHandlers(bot) {
 
       if (isNaN(questionId) || isNaN(optionId)) return;
 
+      // A closed survey (Messages → Surveys → Close survey) takes no more
+      // answers; the buttons stay on old messages, so say so instead of
+      // recording one. A survey that no longer exists reads the same.
+      if (await db.isQuestionOpen(questionId) !== true) {
+        await ctx.answerCbQuery('This survey is closed.');
+        return;
+      }
+
       // Get or register driver
       const driver = await db.upsertDriver(
         ctx.from.id,

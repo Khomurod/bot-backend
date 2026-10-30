@@ -55,9 +55,25 @@ across two parts of the nav (two under Communications, three inside the
 collapsible admin block). **Nothing on the server moved with them**: every route
 and every API client function is exactly what it was.
 
-- **Surveys / feedback** — admin creates a question, `translationService` produces
-  EN/RU/UZ, it is sent to groups by language, answers are relayed to the
-  management group in English. **Answers are multiple-choice only**: `responses`
+- **Surveys / feedback** — **Messages → Surveys → New survey** (a screen only
+  since the October 2026 audit; before it the tab was read-only and the routes
+  had no caller): the question and 2–10 answer options in English, **Translate**
+  fills Russian and Uzbek through `translationService` (both stay editable and
+  can be typed by hand when the AI is not configured; an English edit after
+  translating is flagged, never re-translated), an optional English-only test
+  send to the management group (answers to it are never recorded), then
+  **Save** — which does NOT send. `POST /api/questions` refuses anything short
+  of the question and every option, non-blank, in all three languages
+  (`server/routes/helpers/surveyBodyHelpers.js`). Each card then offers
+  **Send** — every ACTIVE driver group, each in its own language, after a
+  confirmation that names how many groups (and says when it already went out);
+  the result names the groups that could not be reached — and **Close survey**.
+  A send that reached at least one group is remembered on the question
+  (`last_sent_at`, `last_sent_groups`, migration 0089); a survey from before that
+  with answers reads "Sent earlier". **A closed survey can be neither sent
+  (409) nor answered**: a driver tapping an old button is told "This survey is
+  closed." and nothing is recorded. Answers are relayed to the management group
+  in English. **Answers are multiple-choice only**: `responses`
   stores an `option_id` and has no text column, so a question must have options
   and a driver answers by tapping an inline button. Deduped by a unique index on
   `(driver_id, question_id)`. Free-text driver input reaches the company through

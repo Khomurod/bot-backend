@@ -127,7 +127,7 @@ organization should converge toward.
 
 | Concern | Current files |
 |---|---|
-| Feedback surveys (multilingual) | `bot/anonymousFeedbackHandlers.js`, questions/options/responses in `database/db.js`, `services/translationService.js`, admin `pages/communications/SurveysTab.jsx` |
+| Feedback surveys (multilingual) | `server/routes/questionsRoutes.js` (+ `helpers/surveyBodyHelpers.js`), `bot/senders/questionSenders.js` (send, remember the send, refuse a closed survey), `bot/handlers/surveyCallbackHandlers.js` (answers; a closed survey takes none), `database/questions.js`, `services/translationService.js`, admin `pages/communications/SurveysTab.jsx` + `communications/surveys/*`. The anonymous-feedback flow is separate: `bot/anonymousFeedbackHandlers.js` |
 | Broadcasts & scheduled messages | `services/schedulerService.js`, `scheduledMessageUtils.js`, `broadcastTargetService.js`, `broadcastTemplateService.js`, `bot/creatorMessageManager.js`, admin `pages/communications/{SendMessageTab,ScheduledTab,EditByLinkTab}.jsx` (+ `communications/broadcast/*`) |
 | Home-time tracking | `services/homeTimeService.js`, `homeTimeRequestService.js`, `homeTimeImportService.js`, `homeTimeConstants.js`, `bot/homeTimeRequestHandlers.js`, `server/routes/homeTimeRoutes.js`, `database/homeTime.js`, admin `HomeTimePage.jsx` |
 | Birthdays (driver + employee) | `services/birthdayService.js`, `employeeBirthdayWishService.js`, `services/employees/` (card, caption, Telegram suggestions), `database/companyEmployees.js`, `assets/birthday/`, `utils/birthdaySort.js`, `birthdays.csv`, `scripts/import-birthdays.js`, admin `BirthdaysPage.jsx` (tabs: `CompanyBirthdaysPage.jsx`, `birthdays/CompanyEmployeesTab.jsx`) |

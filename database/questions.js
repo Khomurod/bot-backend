@@ -90,10 +90,15 @@ async function getActiveQuestions() {
   return res.rows;
 }
 
+// Each survey with its last send (migration 0089; NULL = never sent from here)
+// and its answer count, so the list says which went out and how many drivers
+// answered without opening every card.
 async function getAllQuestions() {
   const res = await query(
     `SELECT q.id, q.created_at, q.active, q.media_position,
+            q.last_sent_at, q.last_sent_groups,
             (SELECT COUNT(*) FROM question_media qm WHERE qm.question_id = q.id)::int AS media_count,
+            (SELECT COUNT(*) FROM responses r WHERE r.question_id = q.id)::int AS response_count,
             json_agg(DISTINCT jsonb_build_object(
               'language', qt.language,
               'question_text', qt.question_text
@@ -154,6 +159,24 @@ async function deactivateQuestion(questionId) {
   await query('UPDATE questions SET active = FALSE WHERE id = $1', [questionId]);
 }
 
+/** Remember the last send: when, and to how many groups it was delivered. */
+async function recordQuestionSent(questionId, deliveredGroups) {
+  await query(
+    'UPDATE questions SET last_sent_at = NOW(), last_sent_groups = $2 WHERE id = $1',
+    [questionId, deliveredGroups]
+  );
+}
+
+/**
+ * Whether a survey still takes answers: true while open, false once closed,
+ * null when there is no such survey.
+ */
+async function isQuestionOpen(questionId) {
+  const res = await query('SELECT active FROM questions WHERE id = $1', [questionId]);
+  if (res.rows.length === 0) return null;
+  return res.rows[0].active !== false;
+}
+
 // ─── Responses ───
 
 async function saveResponse(driverId, groupId, questionId, optionId) {
@@ -206,6 +229,8 @@ module.exports = {
   getAllQuestions,
   getQuestionWithOptions,
   deactivateQuestion,
+  recordQuestionSent,
+  isQuestionOpen,
   saveResponse,
   getQuestionResponses,
 };
