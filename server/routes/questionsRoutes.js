@@ -7,6 +7,7 @@
  */
 const express = require('express');
 const { getNormalizedMediaItemsFromBody } = require('./helpers/broadcastBodyHelpers');
+const { normalizeSurveyBody } = require('./helpers/surveyBodyHelpers');
 
 function createQuestionsRoutes({
   db,
@@ -45,29 +46,9 @@ function createQuestionsRoutes({
   // POST /api/questions
   router.post('/api/questions', authMiddleware, async (req, res) => {
     try {
-      const { translations, options } = req.body;
-
-      // Validate translations
-      if (!translations || !Array.isArray(translations) || translations.length === 0) {
-        return res.status(400).json({ error: 'Translations are required' });
-      }
-
-      // Ensure all 3 languages are present
-      const langs = translations.map((t) => t.language);
-      if (!langs.includes('en') || !langs.includes('ru') || !langs.includes('uz')) {
-        return res.status(400).json({ error: 'Translations for en, ru, and uz are required' });
-      }
-
-      // Validate options
-      if (!options || !Array.isArray(options) || options.length === 0) {
-        return res.status(400).json({ error: 'At least one option is required' });
-      }
-
-      for (const opt of options) {
-        if (!opt.translations || opt.translations.length < 3) {
-          return res.status(400).json({ error: 'Each option must have translations for en, ru, and uz' });
-        }
-      }
+      // The question and every option, non-blank, in en / ru / uz; 2–10 options.
+      const survey = normalizeSurveyBody(req.body);
+      if (survey.error) return res.status(400).json({ error: survey.error });
 
       // Optional media items — validate if provided
       let mediaItems = null;
@@ -82,7 +63,7 @@ function createQuestionsRoutes({
         return res.status(400).json({ error: 'media_position must be above or below' });
       }
 
-      const question = await db.createQuestion(translations, options, mediaItems, mediaPosition || 'above');
+      const question = await db.createQuestion(survey.translations, survey.options, mediaItems, mediaPosition || 'above');
       const full = await db.getQuestionWithOptions(question.id);
       res.status(201).json(full);
     } catch (err) {
@@ -110,7 +91,7 @@ function createQuestionsRoutes({
       res.json(results);
     } catch (err) {
       console.error('[API] Error sending question:', err.message);
-      res.status(500).json({ error: err.message || 'Server error' });
+      res.status(err.status || 500).json({ error: err.message || 'Server error' });
     }
   });
 

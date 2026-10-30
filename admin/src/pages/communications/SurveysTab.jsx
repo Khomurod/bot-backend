@@ -1,151 +1,94 @@
-import React, { useState, useEffect, useCallback } from "react";
-import * as api from "../../api";
-import { relativeTime } from "./format";
+import React, { useCallback, useEffect, useState } from "react";
 
+import * as api from "../../api";
+import NewSurveyForm from "./surveys/NewSurveyForm";
+import SurveyCard from "./surveys/SurveyCard";
+
+/**
+ * Messages → Surveys: multiple-choice questions to driver groups.
+ *
+ * Until the October 2026 audit this tab could only READ surveys — the server
+ * could create, send and close one (`server/routes/questionsRoutes.js`) but no
+ * screen called it. Now: New survey writes one (saving does not send), each
+ * card sends it to the active driver groups after a confirmation, or closes it.
+ */
 export default function SurveysTab() {
   const [questions, setQuestions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [expanded, setExpanded] = useState(null);
-  const [responses, setResponses] = useState({});
+  const [creating, setCreating] = useState(false);
+  const [status, setStatus] = useState(null);
 
-  const fetchQuestions = useCallback(async () => {
+  const load = useCallback(async () => {
     try {
       const data = await api.getQuestions();
-      setQuestions(data);
+      setQuestions(Array.isArray(data) ? data : []);
+      setError(null);
     } catch (err) {
-      setError(err.message);
+      setError(err?.message || "Could not load the surveys.");
     } finally {
       setLoading(false);
     }
   }, []);
 
-  useEffect(() => {
-    let isMounted = true;
-    const fetchData = async () => {
-      try {
-        const data = await api.getQuestions();
-        if (isMounted) setQuestions(data);
-      } catch (err) {
-        if (isMounted) setError(err.message);
-      } finally {
-        if (isMounted) setLoading(false);
-      }
-    };
-    fetchData();
-    return () => { isMounted = false; };
-  }, []);
+  useEffect(() => { load(); }, [load]);
 
-  const toggleQuestion = async (id) => {
-    if (expanded === id) {
-      setExpanded(null);
-      return;
-    }
-    setExpanded(id);
-    if (!responses[id]) {
-      try {
-        const data = await api.getResponses(id);
-        setResponses(prev => ({ ...prev, [id]: data }));
-      } catch (err) {
-        console.error('Failed to fetch responses:', err);
-      }
-    }
-  };
-
-  const getQuestionText = (question) => {
-    if (question.text_en) return question.text_en;
-    if (!Array.isArray(question.translations)) return "(no survey text)";
-    const en = question.translations.find((t) => t && t.language === "en");
-    const fallback = question.translations.find((t) => t && typeof t.question_text === "string");
-    return (en && en.question_text) || (fallback && fallback.question_text) || "(no survey text)";
-  };
-
-  const totalResponses = questions.reduce((sum, q) => sum + (responses[q.id]?.length || 0), 0);
+  const open = questions.filter((q) => q.active !== false).length;
+  const answers = questions.reduce((sum, q) => sum + (Number(q.response_count) || 0), 0);
 
   return (
     <div>
-      <p style={{ color: "var(--text-secondary)", fontSize: 14, marginBottom: 20 }}>Create and manage driver feedback surveys.</p>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap", marginBottom: 16 }}>
+        <p style={{ color: "var(--text-secondary)", fontSize: 14, margin: 0, maxWidth: 640 }}>
+          Multiple-choice questions to driver groups, each in its own language. A driver answers by tapping
+          a button, once; every answer is also relayed to the management group.
+        </p>
+        {!creating && (
+          <button type="button" className="btn btn-primary btn-sm" onClick={() => { setStatus(null); setCreating(true); }}>New survey</button>
+        )}
+      </div>
+
+      {status && <div className="alert alert-success" role="status" style={{ marginBottom: 12 }}>{status}</div>}
+      {creating && (
+        <NewSurveyForm
+          onCancel={() => setCreating(false)}
+          onSaved={() => {
+            setCreating(false);
+            setStatus("Survey saved. It has not been sent yet — use Send on its card when it is ready.");
+            load();
+          }}
+        />
+      )}
 
       {!loading && !error && questions.length > 0 && (
-        <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', marginBottom: 24 }}>
-          <div className="stat-card">
-            <div className="stat-value">{questions.length}</div>
-            <div className="stat-label">Total Surveys</div>
-          </div>
-          <div className="stat-card">
-            <div className="stat-value">{totalResponses}</div>
-            <div className="stat-label">Responses Loaded</div>
-          </div>
+        <div className="stats-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", marginBottom: 24 }}>
+          <div className="stat-card"><div className="stat-value">{questions.length}</div><div className="stat-label">Surveys</div></div>
+          <div className="stat-card"><div className="stat-value">{open}</div><div className="stat-label">Open</div></div>
+          <div className="stat-card"><div className="stat-value">{answers}</div><div className="stat-label">Answers</div></div>
         </div>
       )}
 
       {loading ? (
-        <div className="loading"><div className="spinner"></div> Loading surveys...</div>
+        <div className="loading"><div className="spinner"></div> Loading surveys…</div>
       ) : error ? (
-        <div className="alert alert-error">⚠️ {error}</div>
+        <div className="alert alert-error">
+          {error}{" "}
+          <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setLoading(true); load(); }}>Try again</button>
+        </div>
       ) : questions.length === 0 ? (
         <div className="empty-state">
-          <div className="icon">📝</div>
           <h3>No surveys yet</h3>
-          <p>Surveys will appear here once they are created by the bot.</p>
+          <p>Use New survey to write the first one.</p>
         </div>
       ) : (
         <div className="questions-list">
-          {questions.map(q => (
-            <div key={q.id} className="card question-card" style={{ marginBottom: 12 }}>
-              <div className="question-header" onClick={() => toggleQuestion(q.id)} style={{ cursor: 'pointer' }}>
-                <div className="question-info">
-                  <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{relativeTime(q.created_at)}</span>
-                  <h3 style={{ margin: '4px 0 0' }}>{getQuestionText(q)}</h3>
-                </div>
-                <div className="question-stats" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <span className={`status-pill ${(responses[q.id]?.length || 0) > 0 ? 'status-pill--success' : 'status-pill--neutral'}`}>
-                    {responses[q.id]?.length || 0} {(responses[q.id]?.length || 0) === 1 ? 'response' : 'responses'}
-                  </span>
-                  <span className="expand-icon" style={{ fontSize: 12, color: 'var(--text-muted)' }}>{expanded === q.id ? '▲' : '▼'}</span>
-                </div>
-              </div>
-
-              {expanded === q.id && (
-                <div className="responses-container" style={{ marginTop: 16 }}>
-                  {!responses[q.id] ? (
-                    <div className="loading" style={{ padding: 20 }}><div className="spinner"></div> Loading responses...</div>
-                  ) : responses[q.id].length === 0 ? (
-                    <div className="empty-state" style={{ padding: 32 }}>
-                      <div className="icon">💬</div>
-                      <h3>No responses yet</h3>
-                      <p>Driver responses will appear here once they reply to this survey.</p>
-                    </div>
-                  ) : (
-                    <div className="table-container">
-                      <table>
-                        <thead>
-                          <tr>
-                            <th>Driver</th>
-                            <th>Group</th>
-                            <th>Response</th>
-                            <th>Submitted</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {responses[q.id].map(r => (
-                            <tr key={r.id}>
-                              <td>
-                                <strong>{r.first_name} {r.last_name}</strong>
-                                {r.username && <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>@{r.username}</div>}
-                              </td>
-                              <td>{r.group_name}</td>
-                              <td>{r.response_text}</td>
-                              <td style={{ whiteSpace: 'nowrap' }}>{relativeTime(r.created_at)}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
+          {questions.map((q) => (
+            <SurveyCard
+              key={q.id} question={q} expanded={expanded === q.id}
+              onToggle={() => setExpanded((cur) => (cur === q.id ? null : q.id))}
+              onChanged={load}
+            />
           ))}
         </div>
       )}

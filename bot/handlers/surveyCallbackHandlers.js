@@ -125,6 +125,14 @@ function registerSurveyCallbackHandlers(bot) {
 
       if (isNaN(questionId) || isNaN(optionId)) return;
 
+      // A closed survey (Messages → Surveys → Close survey) takes no more
+      // answers; the buttons stay on old messages, so say so instead of
+      // recording one. A survey that no longer exists reads the same.
+      if (await db.isQuestionOpen(questionId) !== true) {
+        await ctx.answerCbQuery('This survey is closed.');
+        return;
+      }
+
       // Get or register driver
       const driver = await db.upsertDriver(
         ctx.from.id,
@@ -159,7 +167,11 @@ function registerSurveyCallbackHandlers(bot) {
       );
 
       if (!response) {
-        await ctx.answerCbQuery('You have already answered this question.');
+        // Nothing was written. The insert itself refuses a survey closed a
+        // moment ago (and an option that is not this survey's), so ask again
+        // which it was rather than call every refusal a duplicate.
+        const stillOpen = await db.isQuestionOpen(questionId);
+        await ctx.answerCbQuery(stillOpen === true ? 'You have already answered this question.' : 'This survey is closed.');
         return;
       }
 

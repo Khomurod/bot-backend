@@ -2,7 +2,9 @@
  * Sending SURVEY QUESTIONS to driver groups, and the management-group preview.
  *
  * One question fans out to every active driver group in its own language, with
- * the inline answer keyboard. A permanent send error (the bot was removed from a
+ * the inline answer keyboard. A closed survey is refused (409); a send that
+ * reached at least one group is remembered on the question (last_sent_at /
+ * last_sent_groups). A permanent send error (the bot was removed from a
  * group) deactivates that group rather than retrying forever; a transient one
  * backs off.
  *
@@ -28,7 +30,12 @@ function createQuestionSenders({ bot, db, config, sendMedia }) {
   // ─── Send question to all groups ───
   async function sendQuestionToGroups(questionId) {
     const question = await db.getQuestionWithOptions(questionId);
-    if (!question) throw new Error(`Question not found: ${questionId}`);
+    if (!question) throw Object.assign(new Error(`Question not found: ${questionId}`), { status: 404 });
+    // A closed survey stays closed: sending it would put buttons in front of
+    // drivers that only answer "this survey is closed".
+    if (question.active === false) {
+      throw Object.assign(new Error('This survey is closed; it can no longer be sent.'), { status: 409 });
+    }
 
     const groups = await db.getAllGroups();
     const results = { sent: 0, failed: 0, errors: [] };
@@ -142,6 +149,16 @@ function createQuestionSenders({ bot, db, config, sendMedia }) {
         }
       }
       await sleep(50);
+    }
+
+    // Remember the send (migration 0089) so Messages → Surveys shows it went
+    // out. Failing to record it must not turn delivered messages into an error.
+    if (results.sent > 0) {
+      try {
+        await db.recordQuestionSent(questionId, results.sent);
+      } catch (err) {
+        console.error(`[BOT] Could not record the send of question ${questionId}:`, err.message);
+      }
     }
 
     return results;
