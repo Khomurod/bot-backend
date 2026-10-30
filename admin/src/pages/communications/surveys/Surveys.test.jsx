@@ -91,6 +91,15 @@ test("right after a send, before the list has refreshed, a second Send is still 
   fireEvent.click(within(card).getByRole("button", { name: "Send again…" }));
   await waitFor(() => expect(window.confirm).toHaveBeenCalledTimes(2));
   expect(window.confirm.mock.calls[1][0]).toMatch(/It already went out; drivers who answered cannot answer again\.$/);
+
+  // Saying No to that, then trying again, must not forget it went out.
+  window.confirm.mockReturnValueOnce(false);
+  fireEvent.click(within(card).getByRole("button", { name: "Send again…" }));
+  await waitFor(() => expect(window.confirm).toHaveBeenCalledTimes(3));
+  await waitFor(() => expect(within(card).getByRole("button", { name: "Send again…" })).not.toBeDisabled());
+  fireEvent.click(within(card).getByRole("button", { name: "Send again…" }));
+  await waitFor(() => expect(window.confirm).toHaveBeenCalledTimes(4));
+  expect(window.confirm.mock.calls[3][0]).toMatch(/It already went out/);
 });
 
 test("a send that reached nobody is an error, and a long list of unreachable groups is cut short", async () => {

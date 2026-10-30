@@ -37,13 +37,17 @@ function statusOf(question) {
 export default function SurveyCard({ question, expanded, onToggle, onChanged }) {
   const [busy, setBusy] = React.useState(null);
   const [result, setResult] = React.useState(null);
+  // Sticky once a send from this card reached a group: `result` is cleared at
+  // the start of every attempt, and a cancelled, failed or zero-delivery attempt
+  // must not make the next click forget that the survey already went out.
+  const [sentHere, setSentHere] = React.useState(false);
   const [error, setError] = React.useState(null);
   const closed = question.active === false;
   const status = statusOf(question);
   const answers = Number(question.response_count) || 0;
   // A send from this card counts at once: the list's refresh is asynchronous,
   // and until it lands a second click must still be warned it went out.
-  const sentBefore = Boolean(question.last_sent_at) || answers > 0 || Number(result?.sent) > 0;
+  const sentBefore = Boolean(question.last_sent_at) || answers > 0 || sentHere;
 
   const send = async () => {
     setError(null);
@@ -60,6 +64,7 @@ export default function SurveyCard({ question, expanded, onToggle, onChanged }) 
         : "";
       if (!window.confirm(`Send this survey to ${count} active driver ${count === 1 ? "group" : "groups"}, each in its own language?${again}`)) return;
       const outcome = await api.sendQuestion(question.id);
+      if (Number(outcome?.sent) > 0) setSentHere(true);
       setResult(outcome);
       onChanged();
     } catch (err) {
