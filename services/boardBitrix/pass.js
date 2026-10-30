@@ -25,7 +25,10 @@
 const { compareBoardWithBitrix } = require('../../lib/boardBitrix/compare');
 const { askNext, sayUnder } = require('./ask');
 
-/** The Board snapshot must have been read within this, or twice its own interval. */
+/**
+ * The Board snapshot must have been read within max(30 minutes, twice its own
+ * poll interval + 5 minutes) — see `boardFreshnessMs`.
+ */
 const MIN_BOARD_FRESHNESS_MS = 30 * 60 * 1000;
 /** More present Board lines than this and the read may be cut off — a failure, not a list. */
 const BOARD_ROW_LIMIT = 5000;

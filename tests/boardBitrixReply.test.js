@@ -88,6 +88,18 @@ test('"skip" comes back tomorrow and the next question goes out', async () => {
   assert.equal(calls.asked, 1);
 });
 
+test('economy mode: "skip" is still honoured (the owner\'s own action) — snoozed, and the paused ask sends nothing', async () => {
+  const { deps, calls } = fakes();
+  const asked = [];
+  deps.askNext = async () => { asked.push('ask'); return { asked: false, reason: 'paused' }; };
+  const out = await handleBoardBitrixReply(reply({ text: 'skip' }), deps);
+  assert.equal(out.outcome, 'skipped');
+  assert.deepEqual(calls.snoozed, [24]);
+  assert.match(calls.said[0].text, /Skipped/);
+  assert.deepEqual(asked, ['ask'], 'asked, and the ask itself stands down');
+  assert.equal(calls.rechecks.length, 0, 'nothing read from Bitrix');
+});
+
 test('anything else: one line on what to type; nothing re-read, nothing moved', async () => {
   const { deps, calls } = fakes();
   const out = await handleBoardBitrixReply(reply({ text: 'who is this?' }), deps);

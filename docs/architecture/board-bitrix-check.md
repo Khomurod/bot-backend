@@ -17,7 +17,10 @@ Decided with the owner the same day:
   Bitrix at once, **confirms** and asks the next — or says what is still
   different. "skip" brings it back tomorrow.
 - A difference of a letter or two, an extra space or the other word order in a
-  name is the **same person** and is not asked about.
+  name is the **same person** and is not asked about. Words shorter than four
+  letters get no typo allowance ("ALI" and "ALX" are different people), and at
+  most two letters may differ across the whole name
+  (`lib/boardBitrix/names.js`).
 - Board `HOME` = Bitrix HOME, `SHOP` = SHOP, `VACATION` = VACATION (a driver on
   vacation is not working), every working word = WORKING; a driver not on the
   Board should be TERMINATED / LEFT / RESIGNED. A Bitrix `NEW` with no Board line
@@ -58,11 +61,14 @@ driver's fleet plus that number.
   asserts every call is a `.list`. "done" means a person changed Bitrix.
 - **Nothing is decided from an incomplete read.** The pass stops before the
   queue is touched when the check or the Board feed is off (`blocked`), Bitrix
-  is not connected (`blocked`), the Board has not been read successfully within
-  twice its own interval (at least 30 minutes), the Board snapshot names nobody
-  or may be cut off (5 000 lines), Bitrix returns no active driver, any page
-  fails, an ACTIVE list (drivers, trucks) is longer than one pass reads (2 000),
-  or a field the comparison needs no longer comes back (`error`). Resolving or
+  is not connected (`blocked`), the Board's last successful read is older than
+  **max(30 minutes, 2 × its poll interval + 5 minutes)** (`boardFreshnessMs` —
+  35 minutes at the default 5-minute interval, 125 minutes at the slowest
+  hour), the Board snapshot names nobody or may be cut off (5 000 lines),
+  Bitrix returns no active driver, any page fails, an ACTIVE list (drivers,
+  trucks) is longer than one pass reads (2 000), a field the comparison needs no
+  longer comes back, or the Trucks list holds none of the trucks the active
+  drivers point at (`error`). Resolving or
   asking from half a list would call every driver on the missing pages "not in
   Bitrix".
 - **Closed deals are read newest first, and only the newest 500.** They grow
@@ -118,8 +124,10 @@ driver's fleet plus that number.
   a deploy asks nobody anything by itself. Switching on runs a pass at once.
 - **Stood down in economy mode** with the other automatic checks and the
   questions they raise (`lib/operations/economyMode.js`): no pass, no new
-  question, no reminder — "skip" included; while paused, "done" is answered
-  with "could not check".
+  question, no reminder; while paused, "done" is answered with "could not
+  check". **"skip" is the one thing still honoured** — it is the owner's own
+  action, reads nothing and asks nothing: the question is put off for a day and
+  no next question goes out until economy mode ends.
 - **An unchanged difference is not rewritten.** One batched upsert per pass;
   a row whose details are the same is left alone (`last_changed_at` moves only
   on a change), so a quiet fleet costs the database almost nothing.

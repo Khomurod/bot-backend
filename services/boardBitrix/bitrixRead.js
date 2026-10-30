@@ -7,7 +7,8 @@
  * (services/bitrix24DealStages.js callBitrix); nothing here can write.
  *
  * THE ACTIVE LISTS MUST BE COMPLETE. A page that fails, an active list
- * longer than MAX_PAGES, or a field Bitrix no longer returns throws — and the
+ * longer than MAX_PAGES, a field Bitrix no longer returns, or a Trucks list
+ * holding none of the trucks the active drivers point at throws — and the
  * pass stops before it decides anything. Resolving or asking from half a list
  * would call every driver on the missing pages "not in Bitrix".
  *
@@ -113,10 +114,18 @@ async function readBitrix(deps = defaultDeps()) {
       deals.push(mapDeal({ STAGE_SEMANTIC_ID: semantic, ...r }));
     }
   }
-  return {
-    deals,
-    trucks: rawTrucks.filter((t) => t && t.id).map((t) => ({ id: Number(t.id), title: t.title || '', stageId: t.stageId || null })),
-  };
+  const trucks = rawTrucks.filter((t) => t && t.id).map((t) => ({ id: Number(t.id), title: t.title || '', stageId: t.stageId || null }));
+
+  // Active drivers point at trucks, and not one of those trucks came back: the
+  // Trucks list is empty or is the wrong one (a renamed smart process, a
+  // webhook that cannot see it). Compared anyway, every driver would be "no
+  // truck assigned" — a queue of false questions.
+  const pointedAt = new Set(deals.filter((d) => d.semantic === 'P' && d.truckId).map((d) => d.truckId));
+  const known = new Set(trucks.map((t) => t.id));
+  if (pointedAt.size && ![...pointedAt].some((id) => known.has(id))) {
+    throw new Error(`Bitrix returned none of the ${pointedAt.size} truck(s) the active drivers are assigned; nothing was compared`);
+  }
+  return { deals, trucks };
 }
 
 module.exports = { readBitrix, PAGE_SIZE, MAX_PAGES, CLOSED_MAX_PAGES, __test: { mapDeal } };
