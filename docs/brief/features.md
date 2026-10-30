@@ -12,16 +12,18 @@ section named after the permission said nothing about what was in it. Settings
 is ONE entry; its 13 sections sit under six groups in the page's own list.
 Where each function lives, and why: `docs/redesign/structure.md`.
 
-**Every admin screen and every tab has a URL.** The page is the hash and the
-tab its second half (`/admin#settings/board`, `#operations/history`), so a
-screen can be bookmarked, pasted into a chat, or reached with Back — until
+**Every admin page and every page-level tab has a URL.** The page is the hash
+and the tab its second half (`/admin#settings/board`, `#operations/history`),
+so a screen can be bookmarked, pasted into a chat, or reached with Back — until
 Stage C3 `/admin` was the only URL the panel ever produced, and until October
 2026 a tab changed inside a page reached neither the address nor the sidebar
 highlight. A tab change replaces the address (Back leaves the page); a page
 change adds to it. A hash naming a page that has since moved opens the exact
 tab its content went to (`#broadcast` → Messages → Send Message,
 `#settings_board` → Settings → Dispatcher Board) and is rewritten in place to
-the new address; anything unrecognised opens Driver Groups.
+the new address; anything unrecognised opens Driver Groups. List filters stay
+out of the address, and so does the one tab bar nested inside a tab (Send
+Message's Announcement / Confirmation), which always opens on Announcement.
 `admin/src/navigation/pageKeys.js`.
 
 ### How the panel looks (October 2026 redesign)

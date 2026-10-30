@@ -64,10 +64,13 @@ desktop, a single picker on a phone. Every section has its own address.
 | Office Screens | Gross Grand Prix (`grossrace`) |
 | Maintenance | Retired Leftovers (`leftovers`) |
 
-**Every tab is an address** (`#page/tab`). Switching a tab updates the address
-without adding a Back step; a page from the sidebar is a Back step. A list
-filter (Driver Groups' views, Telegram Users, Live Locations' units, Leads'
-source) is not a tab and stays out of the address.
+**Every page-level tab is an address** (`#page/tab`). Switching a tab updates
+the address without adding a Back step; a page from the sidebar is a Back step.
+A list filter (Driver Groups' views, Telegram Users, Live Locations' units,
+Leads' source) is not a tab and stays out of the address. So does the one tab
+bar nested inside a tab — Messages → Send Message's Announcement /
+Confirmation: it is local to the composer, so `#communications/send` always
+opens on Announcement, as Send Message always did.
 
 ## Why each decision
 
@@ -187,9 +190,9 @@ source) is not a tab and stays out of the address.
 
 ## How it was verified
 
-- A crawl opened every page and every tab **by its new address**, desktop
-  (1440×900) and phone (390×844), clicked every list filter and nested tab and
-  opened the three modals; 0 console errors.
+- A crawl opened every page and every page-level tab **by its new address**,
+  desktop (1440×900) and phone (390×844), clicked every list filter and nested
+  tab and opened the three modals; 0 console errors.
 - Each of the 69 screens of the previous crawl was matched to the screen it
   moved to, and every content control (buttons, fields, links, table columns)
   compared, navigation excluded. Nothing was lost. The differences are the

@@ -141,4 +141,4 @@ card per employee, the per-employee claim, a failed card retried alone, an
 unreadable photo), `tests/companyEmployeesRoutes.test.js`,
 `tests/companyEmployeesPg.test.js` (a suggestion never overwrites a person; the
 list never reads photo bytes; a photo goes with its employee — requires
-`TEST_DATABASE_URL`), `admin/src/pages/users/CompanyEmployeesTab.test.jsx`.
+`TEST_DATABASE_URL`), `admin/src/pages/birthdays/CompanyEmployeesTab.test.jsx`.
