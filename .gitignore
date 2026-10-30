@@ -37,3 +37,6 @@ reports/
 
 # The 4 PM celebration video and other runtime files (a volume in production)
 /data/
+
+# Personal data (drivers' names and birth dates) must never be committed again.
+birthdays.csv
