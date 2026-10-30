@@ -1,0 +1,8 @@
+
+## home_time__driver_home_time_efficiency
+  MISSING: select:select-one|date range (2->1) ; input:text|search driver (2->1) ; select:select-one|driver type (2->1) ; select:select-one|compliance (2->1) ; button|driver <> (2->1) ; button|unit <> (2->1) ; button|cycles <> (2->1) ; button|compliant <> (2->1) ; button|violations <> (2->1) ; button|efficiency ^ (2->1) ; button|avg road <> (2->1) ; button|avg home <> (2->1)
++ screen only after: leads__all
++ screen only after: leads__facebook
++ screen only after: leads__indeed
+
+screens before 150, after 153; potential losses 12

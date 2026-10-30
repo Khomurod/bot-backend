@@ -1,0 +1,605 @@
+
+## communications
+  MISSING: button| (2->1)
+  added: button|open menu (0->1)
+
+## communications__edit_by_link
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## communications__history
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## communications__scheduled
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## communications__send_message
+  MISSING: button| (2->1)
+  added: button|open menu (0->1)
+
+## communications__send_message__announcement
+  MISSING: button| (2->1)
+  added: button|open menu (0->1)
+
+## communications__send_message__confirmation
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## communications__surveys
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## company_birthdays
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## facebook_leads
+  MISSING: button| (3->2)
+  added: button|open menu (0->1)
+
+## facebook_leads__auto_reply_setup
+  MISSING: button| (3->2)
+  added: button|open menu (0->1)
+
+## facebook_leads__connected_pages
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## facebook_leads__teach_wenze
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## groups
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## groups__active_drivers_5
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## groups__all_7
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## groups__company_chats_1
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## groups__inactive_drivers_1
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## groups__modal_driver
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## groups__needs_review_0
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## home_time
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## home_time__driver_home_time_efficiency
+  MISSING: button| (1->0) ; select:select-one|date range (2->1) ; input:text|search driver (2->1) ; select:select-one|driver type (2->1) ; select:select-one|compliance (2->1) ; button|driver <> (2->1) ; button|unit <> (2->1) ; button|cycles <> (2->1) ; button|compliant <> (2->1) ; button|violations <> (2->1) ; button|efficiency ^ (2->1) ; button|avg road <> (2->1) ; button|avg home <> (2->1)
+  added: button|open menu (0->1)
+
+## home_time__modal_driver
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## home_time__overview
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## leads
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
++ screen only after: leads__all
++ screen only after: leads__facebook
++ screen only after: leads__indeed
+
+## live_locations
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## live_locations__active_load
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## live_locations__all
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## live_locations__factor_eld
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## live_locations__leader_eld
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## live_locations__no_active_load
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## live_locations__samsara
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## live_locations__stale_gps
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## mileage_bonus
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## operations
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## operations__automation
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## operations__history
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## operations__identity
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## operations__modal_finding
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## operations__needs_attention
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## operations__retention
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## operations__what_is_running
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## operations__what_wenze_learned
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## recruiter_kpis
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_access
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_access__ai
+  MISSING: button| (2->1)
+  added: button|open menu (0->1)
+
+## settings_access__auto_reactions
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_access__auto_reactions__
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_access__bot_group_access
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_access__dispatcher_board
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_access__facebook_bitrix
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_access__gross_grand_prix
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_access__live_location
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_access__notifications
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_access__retired_leftovers
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_access__ringcentral
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_access__safety_approvals
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_access__samsara
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_access__telegram_groups
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_ai
+  MISSING: button| (2->1)
+  added: button|open menu (0->1)
+
+## settings_ai__ai
+  MISSING: button| (2->1)
+  added: button|open menu (0->1)
+
+## settings_ai__auto_reactions
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_ai__auto_reactions__
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_ai__bot_group_access
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_ai__dispatcher_board
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_ai__facebook_bitrix
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_ai__gross_grand_prix
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_ai__live_location
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_ai__notifications
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_ai__retired_leftovers
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_ai__ringcentral
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_ai__safety_approvals
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_ai__samsara
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_ai__telegram_groups
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_board
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_board__ai
+  MISSING: button| (2->1)
+  added: button|open menu (0->1)
+
+## settings_board__auto_reactions
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_board__auto_reactions__
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_board__bot_group_access
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_board__dispatcher_board
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_board__facebook_bitrix
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_board__gross_grand_prix
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_board__live_location
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_board__notifications
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_board__retired_leftovers
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_board__ringcentral
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_board__safety_approvals
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_board__samsara
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_board__telegram_groups
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_integrations
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_integrations__ai
+  MISSING: button| (2->1)
+  added: button|open menu (0->1)
+
+## settings_integrations__auto_reactions
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_integrations__auto_reactions__
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_integrations__bot_group_access
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_integrations__dispatcher_board
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_integrations__facebook_bitrix
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_integrations__gross_grand_prix
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_integrations__live_location
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_integrations__notifications
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_integrations__retired_leftovers
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_integrations__ringcentral
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_integrations__safety_approvals
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_integrations__samsara
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_integrations__telegram_groups
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_notifications
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_notifications__ai
+  MISSING: button| (2->1)
+  added: button|open menu (0->1)
+
+## settings_notifications__auto_reactions
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_notifications__auto_reactions__
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_notifications__bot_group_access
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_notifications__dispatcher_board
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_notifications__facebook_bitrix
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_notifications__gross_grand_prix
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_notifications__live_location
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_notifications__notifications
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_notifications__retired_leftovers
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_notifications__ringcentral
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_notifications__safety_approvals
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_notifications__samsara
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_notifications__telegram_groups
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_reactions
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_reactions__ai
+  MISSING: button| (2->1)
+  added: button|open menu (0->1)
+
+## settings_reactions__auto_reactions
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_reactions__auto_reactions__
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_reactions__bot_group_access
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_reactions__dispatcher_board
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_reactions__facebook_bitrix
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_reactions__gross_grand_prix
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_reactions__live_location
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_reactions__notifications
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_reactions__retired_leftovers
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_reactions__ringcentral
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_reactions__safety_approvals
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_reactions__samsara
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## settings_reactions__telegram_groups
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## system_health
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## system_health__automation
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## system_health__history
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## system_health__identity
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## system_health__needs_attention
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## system_health__retention
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## system_health__what_is_running
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## system_health__what_wenze_learned
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## users
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## users__admins
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## users__all
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## users__company_employees
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## users__drivers
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## users__recently_seen
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## users__unknown
+  MISSING: button| (1->0)
+  added: button|open menu (0->1)
+
+## zz-mobile-menu-open
+  MISSING: button| (1->0)
+  added: button|close menu (0->1)
+
+screens before 151, after 154; potential losses 162
