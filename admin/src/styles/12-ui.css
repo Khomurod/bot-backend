@@ -121,15 +121,20 @@
     flex-shrink: 0;
   }
 
+  /* Closed, the drawer is also invisible to the keyboard and screen readers —
+     `visibility` flips after the slide-out, and before the slide-in. */
   .sidebar {
     transform: translateX(-100%);
-    transition: transform 0.22s ease;
+    visibility: hidden;
+    transition: transform 0.22s ease, visibility 0s linear 0.22s;
     width: min(84vw, 300px);
     box-shadow: none;
   }
 
   .sidebar.mobile-open {
     transform: translateX(0);
+    visibility: visible;
+    transition: transform 0.22s ease, visibility 0s;
     box-shadow: var(--shadow-lg);
   }
 

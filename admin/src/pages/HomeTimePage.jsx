@@ -8,7 +8,7 @@ import { DriverListCard } from "./homeTime/DriverListCard";
 import { ScreenshotImportCard } from "./homeTime/ScreenshotImportCard";
 import { UnlinkedActivityCard } from "./homeTime/UnlinkedActivityCard";
 import { DriverDetailModal } from "./homeTime/DriverDetailModal";
-import TabBar from "../components/ui/TabBar";
+import TabBar, { tabPanelProps } from "../components/ui/TabBar";
 
 /**
  * Driver Home Time — page container.
@@ -75,7 +75,10 @@ export default function HomeTimePage() {
         value={activeTab}
         onChange={setActiveTab}
         ariaLabel="Home time views"
+        idPrefix="home-time"
       />
+
+      <div {...tabPanelProps("home-time", activeTab)}>
 
       {/* Rendered ONCE. It used to appear twice — the whole efficiency report
           drawn two times on the same tab — until the October 2026 redesign. */}
@@ -98,6 +101,7 @@ export default function HomeTimePage() {
       )}
       </>
       )}
+      </div>
     </div>
   );
 }

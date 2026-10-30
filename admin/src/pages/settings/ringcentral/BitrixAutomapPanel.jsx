@@ -17,7 +17,7 @@ import * as api from "../../../api";
  * accounting are indistinguishable from here, and a wrong mapping texts a
  * driver from a colleague's phone.
  */
-const listStyle = { fontSize: 12, color: "var(--text-muted)", margin: "2px 0 0 0", paddingLeft: 16 };
+const listStyle = { fontSize: 12, color: "var(--text-secondary)", margin: "2px 0 0 0", paddingLeft: 16 };
 
 function Group({ title, tone = "var(--text-secondary)", children }) {
   return (
@@ -76,7 +76,7 @@ export default function BitrixAutomapPanel({ onMapped }) {
             {willWrite === 0 ? "Nothing to apply" : `Apply ${willWrite} mapping${willWrite === 1 ? "" : "s"}`}
           </button>
         )}
-        <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+        <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>
           Reads the Bitrix user directory. Nothing is written until you apply.
         </span>
       </div>
@@ -84,13 +84,13 @@ export default function BitrixAutomapPanel({ onMapped }) {
       {plan && !plan.ok && (
         <div style={{ marginTop: 8, fontSize: 12, color: "var(--danger)" }}>
           {plan.message || "Could not read the Bitrix user directory."}
-          {plan.detail ? <span style={{ color: "var(--text-muted)" }}> ({plan.detail})</span> : null}
+          {plan.detail ? <span style={{ color: "var(--text-secondary)" }}> ({plan.detail})</span> : null}
         </div>
       )}
 
       {plan?.ok && (
         <div style={{ marginTop: 8 }}>
-          <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+          <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>
             {plan.bitrixUsers} Bitrix user(s) · {plan.recruiters} recruiter(s)
           </div>
 
@@ -117,7 +117,7 @@ export default function BitrixAutomapPanel({ onMapped }) {
                 {plan.apply.map((e) => (
                   <li key={e.recruiterId}>
                     {e.recruiterName} → Bitrix #{e.bitrixUserId} ({e.bitrixUserName})
-                    <span style={{ color: "var(--text-muted)" }}> · matched by {e.via === "phone" ? "phone number" : "full name"}</span>
+                    <span style={{ color: "var(--text-secondary)" }}> · matched by {e.via === "phone" ? "phone number" : "full name"}</span>
                     {e.bitrixUserActive === false && <span style={{ color: "var(--warning)" }}> · that Bitrix user is deactivated</span>}
                   </li>
                 ))}
@@ -128,7 +128,7 @@ export default function BitrixAutomapPanel({ onMapped }) {
           {!result && (plan.propose || []).length > 0 && (
             <Group title="Only a first name matched — confirm each one" tone="var(--warning)">
               {plan.propose.map((e) => (
-                <label key={e.recruiterId} style={{ display: "block", fontSize: 12, color: "var(--text-muted)", paddingLeft: 4 }}>
+                <label key={e.recruiterId} style={{ display: "block", fontSize: 12, color: "var(--text-secondary)", paddingLeft: 4 }}>
                   <input
                     type="checkbox"
                     checked={isConfirmed(e)}

@@ -60,7 +60,7 @@ and `/presentation` (server-rendered pages).
 | Screen | Tabs | Actions and fields | Modals / conditional |
 |---|---|---|---|
 | Leads `#leads` | — | leads table (source, name, contact, status…), copy phone / email (clipboard), open in Bitrix (new tab) | empty state |
-| Customer Inquiries `#facebook_leads` | Auto-Reply Setup · Connected Pages · Teach Wenze | auto messages per page (edit, preview, save), recruiter messages; pages + webhook log, retry an event (confirm); teach Wenze (statements, list) | — |
+| Customer Inquiries `#facebook_leads` | Auto-Reply Setup · Connected Pages · Teach Wenze | auto messages per page (edit, preview, save), recruiter messages; pages + webhook log, retry an event (confirm); teach Wenze (statements, list) and working hours | — |
 | Recruiter KPIs `#recruiter_kpis` | — | period select, stats table, Sync calls | — |
 | `/recruiters` public | — | leaderboard, auto refresh | full-bleed, no auth |
 
@@ -75,8 +75,8 @@ and `/presentation` (server-rendered pages).
 | Samsara | connection (key, test, save, confirm on clear), safety events music (upload / activate / deactivate / delete), video recovery, export (download) |
 | Dispatcher Board | enabled, URL, token (write-only), interval, Save, Test connection, Feed card (refresh), Board ↔ Bitrix check card (switch, counts, Check now) |
 | Safety Approvals | chat, topic, switches, validate chat, test post, save; hiring-stage proposals card |
-| AI | master switch, providers (add, test, refresh models, cooldown clear, edit), provider order, model chains, responsibilities (capability modes, check modes), policy watcher (sources add / delete, run, test notification, acknowledge), control channel (operators add / remove, settings, remembered answers forget), lessons (remove, skip question), working hours |
-| Notifications | default group, per-category overrides, test a chat, preview, save |
+| AI | master switch, providers (add, test, refresh models, cooldown clear, edit), provider order, model chains, responsibilities (capability modes, check modes), lessons (remove, skip question), policy watcher (sources add / delete, run, test notification, acknowledge) |
+| Notifications | default group, per-category overrides, test a chat, preview, save; control channel (operators add / remove, settings, remembered answers forget) |
 | Auto Reactions | list / manual mode, emoji picker, rules enable / delete (confirm), save |
 | Bot Group Access | settings, groups table, recheck, request admin, export (download) |
 | Gross Grand Prix | celebration video upload / delete (confirm) / pause, Windows sound command (copy) |

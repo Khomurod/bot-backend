@@ -7,7 +7,7 @@ import { TargetingSection } from "./broadcast/TargetingSection";
 import { RegularBroadcastTab } from "./broadcast/RegularBroadcastTab";
 import { ConfirmationBroadcastTab } from "./broadcast/ConfirmationBroadcastTab";
 import { SendConfirmDialog } from "./broadcast/SendConfirmDialog";
-import TabBar from "../../components/ui/TabBar";
+import TabBar, { tabPanelProps } from "../../components/ui/TabBar";
 
 /**
  * Send Message — the composer tab of Communications (was the Broadcast Center
@@ -100,8 +100,10 @@ export default function SendMessageTab() {
         value={broadcastTab}
         onChange={setBroadcastTab}
         ariaLabel="Message type"
+        idPrefix="message-type"
       />
 
+      <div {...tabPanelProps("message-type", broadcastTab)}>
       <TargetingSection {...targeting} />
 
       {/* ════════ TAB 1: REGULAR ════════ */}
@@ -125,6 +127,7 @@ export default function SendMessageTab() {
           insertTokenIntoEditor={insertTokenIntoEditor}
         />
       )}
+      </div>
 
       {/* ════════ SEND CONFIRMATION DIALOG ════════ */}
       <SendConfirmDialog

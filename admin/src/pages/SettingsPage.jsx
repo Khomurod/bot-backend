@@ -1,5 +1,5 @@
 import React, { Suspense, lazy, useState } from "react";
-import TabBar from "../components/ui/TabBar";
+import TabBar, { tabPanelProps } from "../components/ui/TabBar";
 
 /**
  * Settings — tab shell. Each tab lives in ./settings/ and is lazy-loaded so
@@ -72,7 +72,8 @@ export default function SettingsPage({ initialTab }) {
         <h2>Settings</h2>
         <p>Integration credentials and configuration for the bot's external services.</p>
       </div>
-      <TabBar tabs={SETTINGS_TABS} value={tab} onChange={setTab} ariaLabel="Settings sections" />
+      <TabBar tabs={SETTINGS_TABS} value={tab} onChange={setTab} ariaLabel="Settings sections" idPrefix="settings" />
+      <div {...tabPanelProps("settings", tab)}>
       <Suspense fallback={<div className="loading"><div className="spinner"></div> Loading…</div>}>
         {tab === "location" && <LocationProvidersTab />}
         {tab === "ringcentral" && <RingCentralTab />}
@@ -88,6 +89,7 @@ export default function SettingsPage({ initialTab }) {
         {tab === "grossrace" && <GrossRaceTab />}
         {tab === "leftovers" && <RetiredLeftoversTab />}
       </Suspense>
+      </div>
     </div>
   );
 }

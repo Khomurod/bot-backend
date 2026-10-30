@@ -67,7 +67,7 @@ export function MapAndUnitList({
           onChange={(e) => setSearch(e.target.value)}
           style={{ marginBottom: 10 }}
         />
-        <TabBar size="sm" tabs={FILTERS} value={filter} onChange={setFilter} ariaLabel="Which units" style={{ marginBottom: 10 }} />
+        <TabBar filter size="sm" tabs={FILTERS} value={filter} onChange={setFilter} ariaLabel="Which units" style={{ marginBottom: 10 }} />
         <div style={{ overflowY: "auto", flex: 1, margin: "0 -8px" }}>
           {filtered.length === 0 ? (
             <div className="empty-state" style={{ padding: 20 }}>

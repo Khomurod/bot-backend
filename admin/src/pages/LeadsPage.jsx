@@ -172,6 +172,7 @@ export default function LeadsPage() {
         onChange={(key) => setSource(key === "all" ? "" : key)}
         ariaLabel="Lead source"
         size="sm"
+        filter
       />
 
       {loading ? (

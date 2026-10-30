@@ -12,7 +12,7 @@ import LearningTab from "./operations/LearningTab";
 import SystemsTab from "./operations/SystemsTab";
 import ConfigurationBanner from "./operations/ConfigurationBanner";
 import * as api from "../api";
-import TabBar from "../components/ui/TabBar";
+import TabBar, { tabPanelProps } from "../components/ui/TabBar";
 
 /**
  * Needs Attention — where the system says its own facts disagree.
@@ -92,8 +92,9 @@ export default function OperationsPage({ initialTab }) {
         </div>
       )}
 
-      <TabBar tabs={TABS} value={ops.tab} onChange={ops.setTab} ariaLabel="Operations sections" />
+      <TabBar tabs={TABS} value={ops.tab} onChange={ops.setTab} ariaLabel="Operations sections" idPrefix="operations" />
 
+      <div {...tabPanelProps("operations", ops.tab)}>
       {ops.tab === "findings" && <FindingsListCard {...ops} />}
       {ops.tab === "history" && <HistoryTab {...ops} />}
       {ops.tab === "checks" && (
@@ -103,6 +104,7 @@ export default function OperationsPage({ initialTab }) {
       {ops.tab === "retention" && <RetentionTab flash={flash} />}
       {ops.tab === "learning" && <LearningTab flash={flash} />}
       {ops.tab === "systems" && <SystemsTab flash={flash} />}
+      </div>
 
       {ops.selectedId && <FindingDetailModal {...ops} />}
     </div>

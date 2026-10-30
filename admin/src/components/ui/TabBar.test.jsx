@@ -11,7 +11,7 @@ import React, { useState } from "react";
 import { describe, expect, test, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import TabBar from "./TabBar";
+import TabBar, { tabPanelProps } from "./TabBar";
 
 const TABS = [
   { key: "one", label: "One" },
@@ -76,6 +76,33 @@ describe("TabBar", () => {
     await userEvent.keyboard(" ");
     expect(onChange).toHaveBeenLastCalledWith("one");
     expect(onChange).toHaveBeenCalledTimes(2);
+  });
+
+  test("section tabs with idPrefix name the panel the page renders", () => {
+    render(
+      <>
+        <TabBar tabs={TABS} value="two" onChange={() => {}} ariaLabel="Things" idPrefix="things" />
+        <div {...tabPanelProps("things", "two")}>Two's content</div>
+      </>,
+    );
+    const two = screen.getByRole("tab", { name: "Two" });
+    expect(two).toHaveAttribute("id", "things-tab-two");
+    expect(two).toHaveAttribute("aria-controls", "things-panel");
+    const panel = screen.getByRole("tabpanel", { name: "Two" });
+    expect(panel).toHaveAttribute("id", "things-panel");
+    expect(panel.textContent).toBe("Two's content");
+  });
+
+  test("a filter bar is a group of pressed / not-pressed buttons, not tabs", async () => {
+    const onChange = vi.fn();
+    render(<TabBar filter tabs={TABS} value="one" onChange={onChange} ariaLabel="Which things" />);
+    expect(screen.queryByRole("tablist")).toBeNull();
+    expect(screen.queryByRole("tab")).toBeNull();
+    expect(screen.getByRole("group", { name: "Which things" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "One" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Two" })).toHaveAttribute("aria-pressed", "false");
+    await userEvent.click(screen.getByRole("button", { name: "Three" }));
+    expect(onChange).toHaveBeenCalledWith("three");
   });
 
   test("tabs are buttons that never submit a surrounding form", () => {

@@ -8,7 +8,7 @@ import WorkingHoursCard from "./settings/recruiting/WorkingHoursCard";
 import { ConnectedPagesTab } from "./facebookLeads/ConnectedPagesTab";
 import { WebhookLogTab } from "./facebookLeads/WebhookLogTab";
 import { ResetConfirmDialog } from "./facebookLeads/ResetConfirmDialog";
-import TabBar from "../components/ui/TabBar";
+import TabBar, { tabPanelProps } from "../components/ui/TabBar";
 
 /**
  * Customer Inquiries — page container.
@@ -103,7 +103,10 @@ export default function FacebookLeadsPage() {
         value={tab}
         onChange={setTab}
         ariaLabel="Customer inquiry sections"
+        idPrefix="inquiries"
       />
+
+      <div {...tabPanelProps("inquiries", tab)}>
 
       {tab === "auto" && auto.settings && (
         <AutoMessagesTab {...auto} nowSubtitle={nowSubtitle} editingLabel={editingLabel} />
@@ -138,6 +141,7 @@ export default function FacebookLeadsPage() {
           handleRetry={infra.handleRetry}
         />
       )}
+      </div>
 
       {auto.showResetConfirm && (
         <ResetConfirmDialog

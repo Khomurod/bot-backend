@@ -51,7 +51,7 @@
 
 /* ─── Buttons ───
    primary (solid accent) · secondary (bordered surface) · ghost (bordered,
-   quiet) · danger (red) · success (green). One height scale: 36px, sm 32px. */
+   quiet) · danger (red). One height scale: 36px, sm 32px. */
 .btn {
   display: inline-flex;
   align-items: center;

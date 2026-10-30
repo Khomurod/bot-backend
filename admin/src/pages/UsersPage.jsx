@@ -85,7 +85,7 @@ export default function UsersPage() {
         </div>
       )}
 
-      <TabBar tabs={FILTERS} value={filter} onChange={setFilter} ariaLabel="Which users" />
+      <TabBar filter tabs={FILTERS} value={filter} onChange={setFilter} ariaLabel="Which users" />
 
       {showEmployees ? <CompanyEmployeesTab /> : (
       <>

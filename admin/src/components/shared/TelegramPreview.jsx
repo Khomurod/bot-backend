@@ -239,7 +239,8 @@ export const TelegramPreview = React.memo(function TelegramPreview({ text, butto
               textAlign: "center",
               borderRadius: 10,
               fontSize: 15,
-              color: "#007aff",
+              // Telegram's own #007aff reads at ~3.6:1 on the light panel.
+              color: "var(--info)",
               fontWeight: 500,
               cursor: "pointer",
               border: "1px solid var(--border)",

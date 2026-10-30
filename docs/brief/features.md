@@ -29,6 +29,8 @@ dark follows the operating system** until a person picks one with the switch in
 the sidebar footer (remembered per browser, applied before first paint). Every
 tabbed screen uses the one shared tab bar (`admin/src/components/ui/TabBar.jsx`)
 — the page still owns which tab is open; arrow keys move focus and Enter opens.
+Tabs that switch sections pass `idPrefix` and wrap the open section in a
+`tabpanel`; a bar that only filters one list passes `filter`.
 On a phone the sidebar is a drawer behind a sticky top bar. The admin
 typography is scoped to the panel (`.app-layout`, `.login-container`) so the
 public displays served by the same app keep their own. The redesign changed no

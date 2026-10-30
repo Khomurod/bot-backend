@@ -74,6 +74,7 @@ export default function GroupsPage() {
         value={activeTab}
         onChange={setActiveTab}
         ariaLabel="Driver group views"
+        filter
       />
 
       {activeTab === "review" && tabCounts.review > 0 && (

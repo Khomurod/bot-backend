@@ -15,7 +15,7 @@ the revert touches no API, schema, job or bot behaviour.
 |---|---|
 | One design system: every colour is a token in `admin/src/styles/01-design-system.css`, in a light theme (default) and a dark one | Any route, request, response, permission check or API client function |
 | Light / dark switch in the sidebar footer; no choice = follow the operating system; remembered per browser (`localStorage` key `wz-theme`), applied before first paint by `admin/index.html` | Business logic, validation, confirmations, what a button sends |
-| One shared tab bar (`components/ui/TabBar.jsx`, WAI-ARIA tablist; ←/→/Home/End move focus, Enter / Space opens, so arrowing never opens a tab on the way) on every tabbed screen: Settings, Communications, Send Message, Operations, Groups, Customer Inquiries, Users, Live Locations, Home Time, Leads | Tab names, order, counts, and which tab a deep link opens |
+| One shared tab bar (`components/ui/TabBar.jsx`) on every tabbed screen. Section tabs — Settings, Communications, Send Message, Needs Attention, Home Time, Customer Inquiries — are a WAI-ARIA tablist with a `tabpanel` (←/→/Home/End move focus, Enter / Space opens, so arrowing never opens a tab on the way); list filters — Groups, Users, Live Locations, Leads — look the same but are announced as a group of pressed / not-pressed buttons | Tab names, order, counts, and which tab a deep link opens |
 | New shell: sidebar with line icons (`components/ui/Icon.jsx`), user chip, theme switch; on phones and narrow tablets a sticky top bar with the menu button and the page title, a drawer sidebar and a backdrop that closes it | Sidebar sections, entries, labels and order; every `/admin#<key>` and legacy hash |
 | Decorative emoji removed from page and card headings (content, buttons and messages keep theirs) | Text of buttons, labels, messages and help |
 | ~430 hard-coded colours in page code replaced with tokens, so text stays readable in both themes; a separate orange `--caution` keeps "Failing" apart from "Blipped" (Systems) and the 90% database banner apart from the 80% one | The public `/recruiters` leaderboard and the Gross Grand Prix displays (the admin typography is scoped to `.app-layout` / `.login-container` so they keep their own headings and links); Telegram's blue in the message preview; the Facebook / Indeed brand badges; the map pins |
@@ -51,8 +51,9 @@ person can notice beyond the look:
 - The Home Time efficiency report is drawn — and its data loaded — once.
 - Tab bars answer the keyboard: arrows move focus, Enter / Space opens.
 - The light / dark switch in the sidebar.
-- On a phone the top bar stays at the top while scrolling, and tapping outside
-  the open menu closes it.
+- On a phone the top bar stays at the top while scrolling, tapping outside
+  the open menu closes it, and the closed menu is out of the keyboard's Tab
+  order.
 - An account without access sees "Wenze" in the phone top bar rather than the
   name of a page it cannot open.
 

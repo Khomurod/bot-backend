@@ -1,6 +1,6 @@
 import React, { Suspense, lazy, useState } from "react";
 import PageErrorBoundary from "../components/PageErrorBoundary";
-import TabBar from "../components/ui/TabBar";
+import TabBar, { tabPanelProps } from "../components/ui/TabBar";
 
 /**
  * Communications — everything Wenze says to a driver group, on one page.
@@ -63,12 +63,15 @@ export default function CommunicationsPage() {
         value={tab}
         onChange={setTab}
         ariaLabel="Communications sections"
+        idPrefix="communications"
       />
+      <div {...tabPanelProps("communications", tab)}>
       <PageErrorBoundary resetKey={active.key}>
         <Suspense fallback={<div className="loading"><div className="spinner"></div> Loading…</div>}>
           <Active />
         </Suspense>
       </PageErrorBoundary>
+      </div>
     </div>
   );
 }
