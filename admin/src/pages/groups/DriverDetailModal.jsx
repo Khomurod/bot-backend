@@ -108,7 +108,8 @@ export function DriverDetailModal({
             Selecting a member stores their Telegram user id and username. Wenze uses this
             account to tell which messages in the group are the driver&apos;s own: a status it
             reads from free text (for example &quot;uyda&quot;) is applied only when the linked
-            account wrote it. Telegram bots cannot list all group members, so only people the
+            account wrote it. (An exact &quot;Status: Home / Ready / Rolling&quot; line is applied
+            whoever writes it.) Telegram bots cannot list all group members, so only people the
             bot has seen interact here appear; a silent member shows up after their first
             message in the group.
           </div>
@@ -167,7 +168,8 @@ export function DriverDetailModal({
             ) : (
               <>
                 Not linked — Wenze cannot tell which messages here are the driver&apos;s own, so it
-                will not apply a status it reads from free text.
+                will not apply a status it reads from free text (exact &quot;Status:&quot; lines still
+                count).
               </>
             )}
           </div>

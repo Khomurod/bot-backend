@@ -176,6 +176,9 @@ test('GET /api/health, /health, HEAD; the removed dispatch APIs; the race displa
     ]) {
       const res = await httpJson(server, method, retired, { Authorization: `Bearer ${adminToken}` });
       assert.equal(res.status, 404, `${method} ${retired} is gone`);
+      // No JSON body: Express's unmatched-route 404, not a handler that is
+      // still mounted and answering "not found" for its own reasons.
+      assert.equal(res.json, null, `${method} ${retired} reached no handler`);
     }
     // The control: their live neighbours still answer, so the 404s above are
     // "removed", not a harness that 404s everything.

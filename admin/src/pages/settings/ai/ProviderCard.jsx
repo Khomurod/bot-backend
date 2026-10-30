@@ -259,7 +259,7 @@ export default function ProviderCard({ provider, onSaved, flash }) {
       </details>
 
       <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
-        <button type="button" className="btn btn-primary btn-sm" disabled={saving} onClick={save}>
+        <button type="button" className="btn btn-primary btn-sm" disabled={saving || removing} onClick={save}>
           {saving ? "Saving…" : "Save"}
         </button>
         <button type="button" className="btn btn-secondary btn-sm" disabled={refreshing} onClick={refreshModels}>
@@ -281,7 +281,7 @@ export default function ProviderCard({ provider, onSaved, flash }) {
         </label>
         <button
           type="button" className="btn btn-danger btn-sm" style={{ marginLeft: "auto" }}
-          disabled={removing} onClick={remove}
+          disabled={removing || saving} onClick={remove}
         >
           {removing ? "Removing…" : "Remove"}
         </button>

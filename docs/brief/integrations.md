@@ -18,36 +18,29 @@
 | **Bitrix24 CRM** | **Entered in Settings → RingCentral → Bitrix24** and stored in `bitrix_settings` (single row, webhook encrypted); `BITRIX24_*` env vars are the fallback for anything never saved — the DB row wins once set. The field maps stay file/env-based in `config/`. **The assignee must be a NUMERIC user id** — a name there is ignored by Bitrix, so leads go to the webhook owner; the form refuses a name, the mapper warns once, and the card reports an env-supplied name as ignored | dual delivery of every Facebook lead, **and reading back who owns it** (`crm.lead.get` → `ASSIGNED_BY_ID`) to pick the SMS sender; and **moving a candidate's deal to another stage** (`crm.deal.update`, `STAGE_ID` only) — only when a person presses Move on a proposal in the recruiting group (`docs/architecture/hiring-stage-proposals.md`); and **reading pipeline 0's recently changed deals** (`crm.deal.list`, never a write) to report Facebook leads' stages to Meta (`services/metaCrm/stageSync.js`); and **reading pipeline 33 ("6. HOMETIME MONITORING")** — `crm.deal.list` / `crm.deal.get` / `crm.deal.fields` / `crm.status.list`, never a write — for the home-time violation alerts to accounting, woken by a Bitrix robot's webhook (`docs/architecture/home-time-violation-alerts.md`); and **reading pipeline 3 ("4. DRIVER RELATION") and the "Trucks" smart process** (`crm.deal.list` / `crm.item.list`, never a write) for the Board ↔ Bitrix check, which compares them with the Dispatcher Board as the source of truth (`docs/architecture/board-bitrix-check.md`) | best-effort; never blocks the Telegram post, and an unreadable assignee degrades to the shared sending number. A form answer with no Bitrix field is written into the lead's COMMENTS rather than dropped. `POST /api/settings/bitrix/diagnose` reports the whole chain; the webhook URL is a credential and is never returned, only its host |
 | **AI: Groq and Gemini** | `GROQ_API_KEY`, `GEMINI_API_KEY` | retention message labelling, group-status classification, driver-profile parsing, home-time intent, translation (AI Reports / Insights were removed 2026-10-30) | **the fallback is per-consumer, not global** — see below |
 
-**There is no single AI stack — check the provider before you touch a consumer.**
-`services/groqClient.js` and `services/geminiClient.js` are independent clients,
-and each feature picks its own:
+**Every AI call goes through one router** (`services/ai/router.js`; the full
+rules are in [§4b](ai-gateway.md)). `services/groqClient.js` and
+`services/geminiClient.js` are compatibility façades over it: the provider a
+caller names only says which provider its preferred models belong to. The order
+providers are tried in is the admin's — Settings → AI → **Order of providers** —
+and a failure moves to the next enabled provider. The one narrowing is a call
+that builds Gemini-shaped `contents` (`callGeminiGenerateContent`), which only a
+Gemini-adapter provider can serve. Before the router each consumer picked its
+own provider and fallback; the last two-way consumer went with the Dispatch
+Center ([`../architecture/retired-dispatch-center.md`](../architecture/retired-dispatch-center.md)).
 
-- **Groq-first, Gemini fallback** inside the consumer (e.g.
-  `translationService.js`, `aiAnnotationService.js` — they catch the Groq error
-  and retry on Gemini only if `GEMINI_API_KEY` is set).
-- **Groq only**: `datUiInspectorService.js`. (`aiAnalysisService.js` and
-  `aiInsightsService.js` went with AI Reports / Insights on 2026-10-30.)
-- **Gemini only**: the home-time services, `driverProfileAiParser.js`.
-  (`pinnedContext/aiExtraction.js` was here until the pinned-load reading was
-  removed on 2026-10-23.)
+So an AI call is resilient only as far as the enabled providers go: with every
+provider off or cooled it throws `AiUnavailableError`, and consumers must
+degrade or fail closed — the home-time intent services treat an unavailable
+model as "no signal" rather than as a decision. Do not delete a provider as
+"redundant" without checking what it serves.
 
-There used to be a fourth shape — **two-way, order decided at runtime** —
-and it had exactly one consumer, which went with the Dispatch Center:
-`dispatchParserService.js` tried Gemini first when the extracted text was weak
-or came from PDF OCR, otherwise Groq first, with a deterministic parser beneath
-both. The text-extraction remnant `extractRateConRawTextFromFile` went with
-the pinned-load reading in October 2026. See
-[`../architecture/retired-dispatch-center.md`](../architecture/retired-dispatch-center.md)
-and [`../architecture/retired-dispatch-eta.md`](../architecture/retired-dispatch-eta.md).
-
-So an AI call is **not** automatically resilient — do not assume a fallback
-exists, and do not delete a provider as "redundant". Consumers must degrade or
-fail closed — the home-time intent services treat an unavailable model as "no
-signal" rather than as a decision.
-
-**AI prompt-injection fencing is a critical invariant.** Driver text is
-untrusted and is fenced (`<driver_transcript>` plus sanitizers) before reaching
-any model. See `tests/aiTranscriptFence.test.js`. Never remove the fencing.
+**Driver and candidate text is untrusted.** Each consumer that sends it to a
+model keeps it as data — `sanitizeForPrompt` in `services/aiAnnotationService.js`
+(retention labelling, `tests/aiAnnotation.test.js`), the Safety Approvals and
+hiring-stage readers, the after-hours composer. Never remove that handling. (The
+`<driver_transcript>` fence and `tests/aiTranscriptFence.test.js` went with AI
+Reports / Insights on 2026-10-30.)
 
 **Every image sent to a model goes through `services/aiImagePrep.js`.** It
 EXIF-rotates, bounds the long edge to 1600px, re-encodes JPEG and strips

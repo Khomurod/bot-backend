@@ -65,3 +65,16 @@ test("a refused removal is shown, and the button can be pressed again", async ()
   expect(onSaved).not.toHaveBeenCalled();
   expect(screen.getByRole("button", { name: "Remove" })).not.toBeDisabled();
 });
+
+test("while a removal is in flight, Save is disabled — a late save cannot bring the provider back", async () => {
+  vi.spyOn(window, "confirm").mockReturnValue(true);
+  let finish;
+  api.deleteAiProvider.mockReturnValue(new Promise((resolve) => { finish = resolve; }));
+  renderCard();
+
+  fireEvent.click(screen.getByRole("button", { name: "Remove" }));
+
+  await waitFor(() => expect(screen.getByRole("button", { name: "Save" })).toBeDisabled());
+  expect(screen.getByRole("button", { name: "Removing…" })).toBeDisabled();
+  finish({ deleted: true });
+});

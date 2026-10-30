@@ -362,6 +362,9 @@ test('the single-correction route is gone (2026-10-30): no screen read it', asyn
   const { app } = loadApp();
   const res = await call(app, 'GET', '/api/operations/corrections/5');
   assert.equal(res.status, 404);
+  // Express's own unmatched-route 404 has no JSON body; the removed handler
+  // answered a missing correction with a JSON 404, so this tells them apart.
+  assert.equal(res.body, null);
 });
 
 test('every check the registry can act on is listed, enabled or not', async () => {

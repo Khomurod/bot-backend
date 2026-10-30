@@ -13,8 +13,10 @@
 
 1. **Reliability over novelty.** The best change is the smallest safe one.
 2. **Structured API data first**, AI/OCR fallback second.
-3. **Untrusted driver text is fenced** before being sent to any model
-   (`services/aiAnnotationService.js` `sanitizeForPrompt`).
+3. **Untrusted driver and candidate text stays data** when it reaches a model:
+   each consumer that sends it keeps its own handling (for example
+   `sanitizeForPrompt` in `services/aiAnnotationService.js`, the Safety
+   Approvals and hiring-stage readers, the after-hours composer).
 4. **Idempotency is preserved** for every external send (Telegram, RingCentral,
    Bitrix24, Meta webhook, Datatruck). See the idempotency ledgers below.
 5. **Retries stay safe**, with exponential backoff where already used.
@@ -205,9 +207,12 @@ organization should converge toward.
 > See `docs/architecture/retired-ai-ask-chat-monitor.md`.
 
 **AI safety invariants — verify before any AI change:**
-- Untrusted driver transcripts are wrapped in fences and sanitized before the
-  model sees them; the system prompt says to treat fenced content as data, never
-  instructions. Covered by `tests/aiTranscriptFence.test.js`.
+- Untrusted driver text is sanitized before the retention labelling model sees
+  it: `sanitizeForPrompt` in `services/aiAnnotationService.js` removes
+  `driver_transcript` and `model_draft` tags, neutralizes code-fence markers and
+  truncates. Covered by `tests/aiAnnotation.test.js`. (The `<driver_transcript>`
+  fence and `tests/aiTranscriptFence.test.js` went with AI Reports / Insights on
+  2026-10-30.)
 
 ### 7. Admin / Settings Module
 
