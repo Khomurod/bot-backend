@@ -80,6 +80,19 @@ test("a confirmed send reports who could not be reached and reloads the list", a
   expect(api.getQuestions).toHaveBeenCalledTimes(2);
 });
 
+test("right after a send, before the list has refreshed, a second Send is still warned it already went out", async () => {
+  vi.spyOn(window, "confirm").mockReturnValue(true);
+  api.sendQuestion.mockResolvedValue({ sent: 2, failed: 0, errors: [] });
+  await open();
+  api.getQuestions.mockReturnValue(new Promise(() => {})); // the refresh never lands
+  const card = cardOf("Draft question");
+  fireEvent.click(within(card).getByRole("button", { name: "Send to driver groups…" }));
+  await within(card).findByRole("status");
+  fireEvent.click(within(card).getByRole("button", { name: "Send again…" }));
+  await waitFor(() => expect(window.confirm).toHaveBeenCalledTimes(2));
+  expect(window.confirm.mock.calls[1][0]).toMatch(/It already went out; drivers who answered cannot answer again\.$/);
+});
+
 test("a send that reached nobody is an error, and a long list of unreachable groups is cut short", async () => {
   vi.spyOn(window, "confirm").mockReturnValue(true);
   const errors = Array.from({ length: 7 }, (_, i) => ({ group: `G${i + 1}`, error: "chat not found" }));

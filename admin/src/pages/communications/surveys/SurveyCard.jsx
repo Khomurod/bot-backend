@@ -41,7 +41,9 @@ export default function SurveyCard({ question, expanded, onToggle, onChanged }) 
   const closed = question.active === false;
   const status = statusOf(question);
   const answers = Number(question.response_count) || 0;
-  const sentBefore = Boolean(question.last_sent_at) || answers > 0;
+  // A send from this card counts at once: the list's refresh is asynchronous,
+  // and until it lands a second click must still be warned it went out.
+  const sentBefore = Boolean(question.last_sent_at) || answers > 0 || Number(result?.sent) > 0;
 
   const send = async () => {
     setError(null);
