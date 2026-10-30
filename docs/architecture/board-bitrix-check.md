@@ -17,9 +17,10 @@ Decided with the owner the same day:
   Bitrix at once, **confirms** and asks the next — or says what is still
   different. "skip" brings it back tomorrow.
 - A difference of a letter or two, an extra space or the other word order in a
-  name is the **same person** and is not asked about. Words shorter than four
-  letters get no typo allowance ("ALI" and "ALX" are different people), and at
-  most two letters may differ across the whole name
+  name is the **same person** and is not asked about. Per word: none in a word
+  shorter than four letters ("ALI" and "ALX" are different people), one letter
+  in a word of four or five ("JOHN" and "JANE" are two apart, so different), two
+  only in a word of six or more; and at most two letters across the whole name
   (`lib/boardBitrix/names.js`).
 - Board `HOME` = Bitrix HOME, `SHOP` = SHOP, `VACATION` = VACATION (a driver on
   vacation is not working), every working word = WORKING; a driver not on the
@@ -63,7 +64,7 @@ driver's fleet plus that number.
   queue is touched when the check or the Board feed is off (`blocked`), Bitrix
   is not connected (`blocked`), the Board's last successful read is older than
   **max(30 minutes, 2 × its poll interval + 5 minutes)** (`boardFreshnessMs` —
-  35 minutes at the default 5-minute interval, 125 minutes at the slowest
+  30 minutes at the default 5-minute interval, 125 minutes at the slowest
   hour), the Board snapshot names nobody or may be cut off (5 000 lines),
   Bitrix returns no active driver, any page fails, an ACTIVE list (drivers,
   trucks) is longer than one pass reads (2 000), a field the comparison needs no
