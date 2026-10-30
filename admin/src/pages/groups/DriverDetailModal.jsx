@@ -105,9 +105,11 @@ export function DriverDetailModal({
             <div style={{ fontSize: 12, color: "var(--danger)", marginTop: 4 }}>{membersState.error}</div>
           )}
           <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
-            Selecting a member stores their Telegram user id + username as the source of truth
-            for tagging (home-time reminders) — drivers without an @username are tagged via
-            an inline mention. Telegram bots cannot list all group members, so only people the
+            Selecting a member stores their Telegram user id and username. Wenze uses this
+            account to tell which messages in the group are the driver&apos;s own: a status it
+            reads from free text (for example &quot;uyda&quot;) is applied only when the linked
+            account wrote it. (An exact &quot;Status: Home / Ready / Rolling&quot; line is applied
+            whoever writes it.) Telegram bots cannot list all group members, so only people the
             bot has seen interact here appear; a silent member shows up after their first
             message in the group.
           </div>
@@ -151,7 +153,7 @@ export function DriverDetailModal({
           <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 6 }}>
             {profile.telegram_user_id ? (
               <>
-                Active: <b>inline mention via Telegram user id</b> (<code>{profile.telegram_user_id}</code>)
+                Linked by <b>Telegram user id</b> (<code>{profile.telegram_user_id}</code>)
                 {profile.telegram_username
                   ? <> — <b>@{profile.telegram_username}</b> kept as a fallback.</>
                   : <>.</>}
@@ -159,12 +161,16 @@ export function DriverDetailModal({
               </>
             ) : profile.telegram_username ? (
               <>
-                Active: <b>@{profile.telegram_username}</b> (manual). No numeric id yet — it links
-                automatically the first time this username texts in the group, upgrading to the
-                more reliable id mention.
+                Linked by <b>@{profile.telegram_username}</b> only (typed by hand). A username can
+                change hands, so this is the weaker link; it upgrades to the user id automatically
+                the first time this username writes in the group.
               </>
             ) : (
-              <>Not linked — the driver is addressed by their plain name.</>
+              <>
+                Not linked — Wenze cannot tell which messages here are the driver&apos;s own, so it
+                will not apply a status it reads from free text (exact &quot;Status:&quot; lines still
+                count).
+              </>
             )}
           </div>
         </div>

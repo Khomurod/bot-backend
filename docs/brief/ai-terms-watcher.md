@@ -51,5 +51,11 @@ provider, never a model's opinion.
   CLAIM time, bounded budget, and exhaustion **counted** and surfaced. The
   Telegram destination is validated on save by `services/telegramChatIdCheck.js`,
   so this cannot repeat the `5052301861` failure that started the project.
+- **Watch, not Remove, keeps a page off.** A known provider's official pages are
+  added by the watcher itself, and a missing one is added back at the next
+  check — so Remove only sticks for a page added by hand. Each page has a
+  Watch box (`PUT /api/settings/ai/policy/sources/:id`); an unticked page stays
+  listed and is not fetched (`listSourcesToCheck` reads `enabled = TRUE` only).
+  The box was added after the October 2026 audit, when the route had no screen.
 - Ships **disabled**, with automatic suspension a separate switch also off.
 - Guarded by `tests/aiPolicy{Diff,Suspension,Watcher,Pg}.test.js`.

@@ -363,6 +363,21 @@
       "service": "bot (the consistency sweep's telegram-identity check and its correction), admin (person panel)",
       "sourceOfTruth": "This table, for who is behind an account. `uniq_person_telegram_open_account` is the anchor: ONE OPEN ROW PER ACCOUNT — one human per account at a time. The constraint is on the account and not the person, because somebody may carry a second phone.",
       "danger": "Contains Telegram account ids. Counts only leave through /api/health, and no id ever appears in a finding title or a notice — those reach a group chat's permanent history. A row is CLOSED, never deleted: an account that moved owners leaves a trail, and that trail is the point. `username_at_link` is a snapshot and is never matched on, because a username is reassignable."
+    },
+    "ai_reports": {
+      "purpose": "Draft and sent AI Reports: a model-written report about one driver group or the whole company, generated from chat_logs.",
+      "status": "retired",
+      "service": "none - AI Reports / Insights were removed on 2026-10-30. Kept: holds past reports; drop only as a separate decision after a backup (docs/architecture/retired-ai-reports.md)."
+    },
+    "ai_insights": {
+      "purpose": "AI Insights cards (a detector finding, its scores and a model-written sentence) belonging to an ai_reports row.",
+      "status": "retired",
+      "service": "none - removed with AI Reports on 2026-10-30. Kept: holds past reports; drop only as a separate decision after a backup (docs/architecture/retired-ai-reports.md)."
+    },
+    "sender_role_consensus": {
+      "purpose": "Per-sender role consensus (driver / dispatcher / ...) aggregated from chat_message_annotations for AI Insights.",
+      "status": "retired",
+      "service": "none - removed with AI Reports on 2026-10-30. Kept: holds past reports; drop only as a separate decision after a backup (docs/architecture/retired-ai-reports.md)."
     }
   }
 }

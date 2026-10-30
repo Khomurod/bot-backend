@@ -1,17 +1,18 @@
 // services/aiAnnotationService.js
 //
-// Stage A of the AI Insights pipeline.
+// Labels captured driver-group messages for Driver Retention.
 //
-// Reads rows from chat_logs that have no matching chat_message_annotations,
-// classifies them via Groq (batched JSON call), and inserts the results.
+// Classifies chat_logs rows via Groq (batched JSON call) and inserts the
+// results into chat_message_annotations. The caller is the retention chat
+// annotator (`services/retention/chatAnnotator.js`, background job
+// `chat_annotation`); only a message with a leaving cue is sent to a model
+// (`services/retention/leavingCue.js`, see docs/architecture/driver-retention.md).
 //
 // Role attribution is inferred per-message from context ONLY — no user_roles
-// table. The caller later aggregates per-sender consensus from many messages.
+// table.
 //
 // Public surface:
 //   - annotateChatLogs(logs, opts) -> writes rows, returns count annotated
-//   - ensureAnnotationsForRange(groupIds, daysBack) -> finds unannotated
-//     chat_logs in scope and annotates them
 //   - parseAnnotationBatchResponse(text) -> tested pure helper
 //   - buildAnnotationPrompt(batch) -> tested pure helper
 //   - VALID_INTENTS / VALID_ROLES
@@ -374,79 +375,6 @@ async function annotateChatLogs(allLogs, opts = {}) {
   return totalWritten;
 }
 
-/**
- * Find chat_logs in the given window that have no matching annotation row
- * and classify them. Returns { found, annotated }.
- */
-async function ensureAnnotationsForRange({ daysBack = 7, groupIds = null, onProgress } = {}) {
-  const params = [daysBack];
-  let groupClause = '';
-  if (Array.isArray(groupIds) && groupIds.length > 0) {
-    params.push(groupIds);
-    groupClause = `AND cl.group_id = ANY($${params.length}::int[])`;
-  }
-  const sql = `
-    SELECT cl.id, cl.group_id, cl.sender_name, cl.message_text, cl.created_at,
-           g.group_name
-      FROM chat_logs cl
-      JOIN groups g ON g.id = cl.group_id
-      LEFT JOIN chat_message_annotations a ON a.chat_log_id = cl.id
-     WHERE cl.created_at >= NOW() - ($1 || ' days')::INTERVAL
-       ${groupClause}
-       AND a.chat_log_id IS NULL
-     ORDER BY cl.created_at ASC
-     LIMIT 500
-  `;
-  
-  let totalFound = 0;
-  let totalAnnotated = 0;
-  let iterations = 0;
-  
-  while (iterations < 100) {
-    iterations++;
-    let { rows } = await db.query(sql, params);
-    if (!rows || rows.length === 0) break;
-    
-    totalFound += rows.length;
-    const annotated = await annotateChatLogs(rows, { onProgress });
-    totalAnnotated += annotated;
-    
-    rows = null;
-    
-    if (annotated === 0) break;
-  }
-  
-  return { found: totalFound, annotated: totalAnnotated };
-}
-
-/**
- * THERE IS NO BACKGROUND ANNOTATOR, AND THERE MUST NOT LOOK LIKE ONE.
- *
- * `startBackgroundAnnotator` and `stopBackgroundAnnotator` stood here with a
- * 120-second loop and a JSDoc explaining a subtlety about re-reading the AI
- * key each tick rather than at boot. Nothing ever called either of them. The
- * explanation described a fix to a loop that never ran, which is the most
- * misleading shape a comment can take: it reads as evidence the feature works.
- *
- * Removed rather than wired up, for two reasons that compound.
- *
- * It would have had nothing to annotate. `annotateChatLogs` reads `chat_logs`,
- * and that table's only writer has no caller — the bot deliberately stopped
- * persisting every group message. A loop waking every two minutes to find zero
- * rows is a cost with no product.
- *
- * And annotation already happens where it is needed: `ensureAnnotationsForRange`
- * runs on demand when an administrator generates a report
- * (`services/aiInsightsService.js`), which is the moment the answer is actually
- * read. Pre-computing for a screen nobody has open is the kind of work this
- * application has spent this whole phase removing.
- *
- * If message capture is ever re-enabled, a loop belongs in
- * `services/backgroundServices.js` with the rest of the roster and a
- * `withRunRecord` line, so that "it stopped" is answerable — which the deleted
- * version could not have been either.
- */
-
 module.exports = {
   MODEL_VERSION,
   BATCH_SIZE,
@@ -454,7 +382,6 @@ module.exports = {
   VALID_INTENTS,
   VALID_LANGUAGES,
   annotateChatLogs,
-  ensureAnnotationsForRange,
   // pure helpers exported for tests
   buildAnnotationPrompt,
   parseAnnotationBatchResponse,

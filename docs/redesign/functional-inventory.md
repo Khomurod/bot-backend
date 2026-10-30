@@ -44,7 +44,7 @@ and `/presentation` (server-rendered pages).
 
 | Screen | Tabs | Actions and fields | Modals / conditional |
 |---|---|---|---|
-| Groups `#groups` | All · Active Drivers · Inactive Drivers · Company Chats · Needs Review (with counts) | "AI: enrich status + identity" (confirm), per-row type select, status select, unit input, sort by status, driver name link | driver detail modal: names, team second driver, type, status, unit, language, dates, Telegram username/id, group members, person identity panel, save |
+| Groups `#groups` | All · Active Drivers · Inactive Drivers · Company Chats · Needs Review (with counts) | "AI: enrich status + identity" (confirm), per-row type select, status select, unit input, sort by status, driver name link | driver detail modal: names, team second driver, type, status, unit, language, dates, Telegram username/id, group members (the Driver Username picker; broken until the October 2026 audit — it called a client function that did not exist), person identity panel, save |
 | Mileage Bonuses `#mileage_bonus` | — | overview, Run check, Refresh progress, per-driver status, resend / disregard notification (each with confirm) | empty state before the first run |
 | Users & Access `#users` | All · Admins · Company Employees · Drivers · Unknown · Recently seen | search; Company Employees: edit, photo upload / delete, card link, Telegram suggest / confirm | per-row details |
 
@@ -75,7 +75,7 @@ and `/presentation` (server-rendered pages).
 | Samsara | connection (key, test, save, confirm on clear), safety events music (upload / activate / deactivate / delete), video recovery, export (download) |
 | Dispatcher Board | enabled, URL, token (write-only), interval, Save, Test connection, Feed card (refresh), Board ↔ Bitrix check card (switch, counts, Check now) |
 | Safety Approvals | chat, topic, switches, validate chat, test post, save; hiring-stage proposals card |
-| AI | master switch, providers (add, test, refresh models, cooldown clear, edit), provider order, model chains, responsibilities (capability modes, check modes), lessons (remove, skip question), policy watcher (sources add / delete, run, test notification, acknowledge) |
+| AI | master switch, providers (add, test, refresh models, cooldown clear, edit, remove — added after the October 2026 audit), provider order, model chains, responsibilities (capability modes, check modes), lessons (remove, skip question), policy watcher (sources add / delete / watch on-off — the last added after the audit, run, test notification, acknowledge) |
 | Notifications | default group, per-category overrides, test a chat, preview, save; control channel (operators add / remove, settings, remembered answers forget) |
 | Auto Reactions | list / manual mode, emoji picker, rules enable / delete (confirm), save |
 | Bot Group Access | settings, groups table, recheck, request admin, export (download) |

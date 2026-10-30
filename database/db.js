@@ -20,7 +20,6 @@ const scheduledMessagesDb = require('./scheduledMessages');
 const broadcastsDb = require('./broadcasts');
 const leadsDb = require('./leads');
 const chatLogsDb = require('./chatLogs');
-const aiReportsDb = require('./aiReports');
 const employeeBirthdaysDb = require('./employeeBirthdays');
 const facebookLeadsDb = require('./facebookLeads');
 const rbacDb = require('./rbac');
@@ -316,7 +315,6 @@ module.exports = {
   ...broadcastsDb,
   ...leadsDb,
   ...chatLogsDb,
-  ...aiReportsDb,
   ...employeeBirthdaysDb,
   ...facebookLeadsDb,
   ...rbacDb,

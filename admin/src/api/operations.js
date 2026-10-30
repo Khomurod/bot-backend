@@ -59,18 +59,6 @@ export async function getOperationsCorrections({
   return res.json();
 }
 
-/**
- * Returns { correction, subjectAudit }.
- *
- * `subjectAudit` is every correction event for the same SUBJECT, not just this
- * correction's: `admin_audit_log` holds no correction id to filter on.
- */
-export async function getOperationsCorrection(id) {
-  const res = await fetch(`${API_BASE}/operations/corrections/${id}`, { headers: getHeaders() });
-  if (!res.ok) { await handleApiError(res); }
-  return res.json();
-}
-
 /** Every check the registry can act on, with its permission. Default deny. */
 export async function getOperationsChecks() {
   const res = await fetch(`${API_BASE}/operations/checks`, { headers: getHeaders() });

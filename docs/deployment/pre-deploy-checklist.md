@@ -162,7 +162,7 @@ after deploy on the live service.
 
 | # | What / Why | How to check |
 |---|---|---|
-| H4 | **Untrusted driver text is fenced** before AI. | **[AUTO]** `aiTranscriptFence.test.js`; fencing in `aiAnalysisService.js` / `aiAnnotationService.js`. |
+| H4 | **Untrusted driver text is fenced** before AI. | **[AUTO]** `aiAnnotation.test.js` (`sanitizeForPrompt`); fencing in `aiAnnotationService.js`. (The transcript fence and its test went with AI Reports / Insights, 2026-10-30.) |
 
 > **Retired (checks removed):** H1–H3 covered the "Ask-the-Data" feature
 > (`aiAskService.js`, `POST /api/ai-ask`, `aiAsk.test.js`), which was fully

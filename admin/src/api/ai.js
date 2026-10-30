@@ -146,6 +146,18 @@ export async function addAiPolicySource({ providerKey, url, kind }) {
   return data.source;
 }
 
+/**
+ * Watch or stop watching one page. This, not Remove, is how a page Wenze found
+ * by itself stays off: a removed catalogue page is added back at the next check.
+ */
+export async function setAiPolicySourceEnabled(id, enabled) {
+  const res = await fetch(`${API_BASE}/settings/ai/policy/sources/${id}`, {
+    method: 'PUT', headers: getHeaders(), body: JSON.stringify({ enabled: enabled === true }),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return (await res.json()).source;
+}
+
 export async function deleteAiPolicySource(id) {
   const res = await fetch(`${API_BASE}/settings/ai/policy/sources/${id}`, {
     method: 'DELETE', headers: getHeaders(),

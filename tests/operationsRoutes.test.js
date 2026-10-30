@@ -355,18 +355,16 @@ test('an on-demand sweep goes through the overlap guard, not around it', async (
   assert.equal(res.body.running, true);
 });
 
-test('the correction detail says the audit rows are the SUBJECT\'s, not this one\'s', async () => {
+test('the single-correction route is gone (2026-10-30): no screen read it', async () => {
+  // History lists every correction with its revert; the one-correction view
+  // and its subject audit had no caller. The store functions stay — the audit
+  // reader is pinned by tests/operationalCorrectionsReadPg.test.js.
   const { app } = loadApp();
-  const path = require('node:path').resolve(__dirname, '../database/operationalCorrections.js');
-  const store = require.cache[path].exports;
-  store.getCorrectionById = async () => ({ id: 5, subjectType: 'group', subjectId: '42' });
-
   const res = await call(app, 'GET', '/api/operations/corrections/5');
-
-  assert.equal(res.status, 200);
-  assert.ok('subjectAudit' in res.body,
-    'admin_audit_log holds no correction id, so calling these one correction\'s trail is a lie');
-  assert.equal('audit' in res.body, false);
+  assert.equal(res.status, 404);
+  // Express's own unmatched-route 404 has no JSON body; the removed handler
+  // answered a missing correction with a JSON 404, so this tells them apart.
+  assert.equal(res.body, null);
 });
 
 test('every check the registry can act on is listed, enabled or not', async () => {

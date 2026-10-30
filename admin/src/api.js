@@ -17,7 +17,7 @@ export * from './api/broadcast';
 export * from './api/media';
 export * from './api/scheduled';
 export * from './api/leads';
-export * from './api/aiReports';
+export * from './api/messageManager';
 export * from './api/birthdays';
 export * from './api/companyEmployees';
 export * from './api/facebookLeads';

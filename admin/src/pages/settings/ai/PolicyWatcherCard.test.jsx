@@ -15,6 +15,7 @@ vi.mock("../../../api", () => ({
   testAiPolicyNotification: vi.fn(),
   addAiPolicySource: vi.fn(),
   deleteAiPolicySource: vi.fn(),
+  setAiPolicySourceEnabled: vi.fn(),
   acknowledgeAiPolicyFinding: vi.fn(),
   runAiPolicyCheck: vi.fn(),
 }));
@@ -88,4 +89,32 @@ test("testing a candidate destination does not save it first", async () => {
   await user.click(screen.getByRole("button", { name: /Send a test message/ }));
   await waitFor(() => expect(api.testAiPolicyNotification).toHaveBeenCalledWith({ chatId: "-2002" }));
   expect(api.updateAiPolicyWatcher).not.toHaveBeenCalled();
+});
+
+test("unticking Watch stops a page being checked, without removing it", async () => {
+  api.setAiPolicySourceEnabled.mockResolvedValue({ id: 1, enabled: false });
+  await open();
+  const watch = screen.getByRole("checkbox", { name: "Watch groq terms" });
+  expect(watch).toBeChecked();
+
+  fireEvent.click(watch);
+
+  await waitFor(() => expect(api.setAiPolicySourceEnabled).toHaveBeenCalledWith(1, false));
+  expect(api.deleteAiPolicySource).not.toHaveBeenCalled();
+  // The list is read again, so the page shows its new state.
+  await waitFor(() => expect(api.getAiPolicyWatcher).toHaveBeenCalledTimes(2));
+});
+
+test("a page that is not watched is shown unticked, and ticking it watches it again", async () => {
+  api.getAiPolicyWatcher.mockResolvedValue({
+    ...DATA, sources: [{ ...DATA.sources[0], enabled: false }],
+  });
+  api.setAiPolicySourceEnabled.mockResolvedValue({ id: 1, enabled: true });
+  render(<PolicyWatcherCard providers={[{ providerKey: "groq", label: "Groq" }]} flash={vi.fn()} />);
+  const watch = await screen.findByRole("checkbox", { name: "Watch groq terms" });
+  expect(watch).not.toBeChecked();
+
+  fireEvent.click(watch);
+
+  await waitFor(() => expect(api.setAiPolicySourceEnabled).toHaveBeenCalledWith(1, true));
 });

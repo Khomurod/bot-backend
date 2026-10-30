@@ -74,3 +74,18 @@ test('a Claude workspace id is stored, read back by the router, cleared by an em
 
   await assert.rejects(aiProviders.upsertProvider('anthropic', { workspaceId: 'drop table' }), (e) => e.statusCode === 400);
 });
+
+test('a model-chain refresh write only updates: a removed provider is not brought back', { skip: skipWithoutPg() }, async (t) => {
+  // Remove on the provider card can land while a refresh awaits the provider's
+  // listing; the refresh's chain write must not re-create the row
+  // (services/ai/discovery/refreshModels.js).
+  const { aiProviders } = await setup(t);
+  assert.equal(await aiProviders.updateProviderModelChain('groq', ['llama-3.1-8b-instant'], 'refresh'), true);
+  const groq = (await aiProviders.listProvidersForAdmin()).find((p) => p.providerKey === 'groq');
+  assert.deepEqual(groq.modelChain, ['llama-3.1-8b-instant']);
+
+  assert.equal(await aiProviders.deleteProvider('groq'), true);
+  assert.equal(await aiProviders.updateProviderModelChain('groq', ['llama-3.3-70b-versatile'], 'refresh'), false);
+  const keys = (await aiProviders.listProvidersForAdmin()).map((p) => p.providerKey);
+  assert.equal(keys.includes('groq'), false, 'the removed provider stays removed');
+});

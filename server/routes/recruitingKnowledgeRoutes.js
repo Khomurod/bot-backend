@@ -95,15 +95,6 @@ function createRecruitingKnowledgeRouter({ authMiddleware }) {
     }
   });
 
-  /** What a fact used to say, all the way back. */
-  router.get('/recruiting-knowledge/:id/history', authMiddleware, async (req, res) => {
-    try {
-      return res.json({ history: await store.knowledgeHistory(Number(req.params.id)) });
-    } catch (err) {
-      return sendFailure(res, err, { message: 'Failed to load the history', logPrefix: '[TEACH]' });
-    }
-  });
-
   return router;
 }
 

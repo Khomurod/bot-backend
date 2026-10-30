@@ -18,6 +18,14 @@ import ModelChainEditor from "./ModelChainEditor";
  * WHERE THIS PROVIDER STANDS in the order is not edited here: the Order of
  * providers card owns it, so a save here never sends a priority and can never
  * undo an order saved there.
+ *
+ * REMOVE IS NOT "SWITCH OFF". Unticking Enabled keeps the stored key; Remove
+ * deletes the provider and its key, which is the only way to get a key out of
+ * Wenze once it is no longer used (a rotated or leaked key). It asks first, and
+ * says plainly that the provider stops being used until it is added again.
+ * Remove, Save and Refresh models never run together on one card; a refresh
+ * started elsewhere (the maintenance job) writes update-only, so it cannot
+ * bring a removed provider back either.
  */
 const KIND_WORDING = {
   credential: "The key was rejected. Check it and try again.",
@@ -49,6 +57,7 @@ export default function ProviderCard({ provider, onSaved, flash }) {
   const [saving, setSaving] = React.useState(false);
   const [refreshing, setRefreshing] = React.useState(false);
   const [refreshNote, setRefreshNote] = React.useState(null);
+  const [removing, setRemoving] = React.useState(false);
 
   const set = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));
 
@@ -74,6 +83,23 @@ export default function ProviderCard({ provider, onSaved, flash }) {
       flash("error", err?.detail || err?.message || "Could not save.");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const remove = async () => {
+    const name = form.label || provider.providerKey;
+    if (!window.confirm(
+      `Remove ${name}? Wenze stops using this provider and its stored key is deleted. `
+      + "To use it again, add it back with \u201cAdd provider\u201d.",
+    )) return;
+    setRemoving(true);
+    try {
+      await api.deleteAiProvider(provider.providerKey);
+      flash("success", `${name} removed.`);
+      onSaved();
+    } catch (err) {
+      flash("error", err?.detail || err?.message || "Could not remove the provider.");
+      setRemoving(false);
     }
   };
 
@@ -236,10 +262,10 @@ export default function ProviderCard({ provider, onSaved, flash }) {
       </details>
 
       <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
-        <button type="button" className="btn btn-primary btn-sm" disabled={saving} onClick={save}>
+        <button type="button" className="btn btn-primary btn-sm" disabled={saving || removing} onClick={save}>
           {saving ? "Saving…" : "Save"}
         </button>
-        <button type="button" className="btn btn-secondary btn-sm" disabled={refreshing} onClick={refreshModels}>
+        <button type="button" className="btn btn-secondary btn-sm" disabled={refreshing || removing} onClick={refreshModels}>
           {refreshing ? "Checking…" : "Refresh models"}
         </button>
         <button
@@ -256,6 +282,12 @@ export default function ProviderCard({ provider, onSaved, flash }) {
           />
           Free tier
         </label>
+        <button
+          type="button" className="btn btn-danger btn-sm" style={{ marginLeft: "auto" }}
+          disabled={removing || saving || refreshing} onClick={remove}
+        >
+          {removing ? "Removing…" : "Remove"}
+        </button>
       </div>
 
       {refreshNote && (

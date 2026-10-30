@@ -43,6 +43,11 @@ function world() {
         providers.set(key, { ...(providers.get(key) || {}), providerKey: key, ...patch });
         return providers.get(key);
       },
+      async updateProviderModelChain(key, chain) {
+        if (!providers.has(key)) return false;
+        providers.set(key, { ...providers.get(key), modelChain: chain });
+        return true;
+      },
       async saveDiscoveredModels(key, payload) {
         providers.set(key, { ...(providers.get(key) || {}), discoveredModels: payload.models || [], modelsRefreshError: payload.error || null });
       },

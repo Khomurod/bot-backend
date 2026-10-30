@@ -20,15 +20,6 @@ const config = require('../config/config');
 const db = require('../database/db');
 const { bot, sendQuestionToGroups, sendTestQuestion, sendBroadcastTest, sendBroadcastToGroups, sendConfirmationBroadcast, sendConfirmationBroadcastTest } = require('../bot/bot');
 const { translateBatch } = require('../services/translationService');
-const { generateDriverReport, generateCompanyReport, AI_REPORT_GENERATION_FAILED, callGroq } = require('../services/aiAnalysisService');
-const { generateInsightReport } = require('../services/aiInsightsService');
-const { ensureAnnotationsForRange } = require('../services/aiAnnotationService');
-const { renderInsightReportForTelegram } = require('../services/insightRenderer');
-const { buildTelegramMessageUrl } = require('../services/telegramUrl');
-const {
-  sanitizeCompanyReportHtmlForTelegram,
-  sendTelegramHtmlChunks,
-} = require('../services/telegramHtml');
 const { processMessage: processScheduledMessage } = require('../services/schedulerService');
 const { listBroadcastPlaceholders } = require('../services/broadcastTemplateService');
 const {
@@ -39,7 +30,6 @@ const {
 const {
   createAuthMiddleware,
   createInternalSharedSecretGuard,
-  createProxyAuthGuard,
   requirePermission,
 } = require('./middleware/auth');
 
@@ -61,7 +51,6 @@ const { createQuestionsRoutes } = require('./routes/questionsRoutes');
 const { createBroadcastRoutes } = require('./routes/broadcastRoutes');
 const { createScheduledMessagesRoutes } = require('./routes/scheduledMessagesRoutes');
 const { createLeadsRoutes } = require('./routes/leadsRoutes');
-const { createAiReportsRoutes } = require('./routes/aiReportsRoutes');
 const { createMessageManagerRoutes } = require('./routes/messageManagerRoutes');
 const { createEmployeeBirthdayRoutes } = require('./routes/employeeBirthdayRoutes');
 const { createCompanyEmployeesRouter } = require('./routes/companyEmployeesRoutes');
@@ -91,7 +80,6 @@ app.set('trust proxy', 1); // Render terminates TLS upstream; needed for rate-li
 const authMiddleware = createAuthMiddleware(config, db);
 const legacyAuthMiddleware = [authMiddleware, requirePermission('admin.full_access')];
 const internalSharedSecretGuard = createInternalSharedSecretGuard(config);
-const proxyAuthGuard = createProxyAuthGuard(config, db);
 
 // ─── Leads-Bot Proxy + Indeed intake (MUST be before express.json()) ───
 // The proxy preserves the raw body for Facebook's X-Hub-Signature-256
@@ -146,8 +134,8 @@ app.use(createSystemRoutes({ authMiddleware }));
 // file and talks to nothing on this server — see server/routes/remoteRoutes.js.
 app.use(createRemoteRoutes());
 
-// ─── Facebook internal endpoints + connect/OAuth flow + leads log ───
-app.use(createFacebookConnectRoutes({ db, internalSharedSecretGuard, proxyAuthGuard }));
+// ─── Facebook internal endpoints + connect/OAuth flow ───
+app.use(createFacebookConnectRoutes({ db, internalSharedSecretGuard }));
 
 // ─── Recruiter self-serve RingCentral login (public: the link is the credential) ───
 app.use(createRingCentralConnectRoutes());
@@ -255,22 +243,6 @@ app.use(createScheduledMessagesRoutes({
   normalizeActiveFilter,
 }));
 app.use(createLeadsRoutes({ db, authMiddleware: legacyAuthMiddleware }));
-app.use(createAiReportsRoutes({
-  db,
-  config,
-  authMiddleware: legacyAuthMiddleware,
-  bot,
-  generateDriverReport,
-  generateCompanyReport,
-  AI_REPORT_GENERATION_FAILED,
-  callGroq,
-  generateInsightReport,
-  ensureAnnotationsForRange,
-  buildTelegramMessageUrl,
-  renderInsightReportForTelegram,
-  sanitizeCompanyReportHtmlForTelegram,
-  sendTelegramHtmlChunks,
-}));
 app.use(createMessageManagerRoutes({ authMiddleware: legacyAuthMiddleware, bot }));
 app.use(createEmployeeBirthdayRoutes({ db, config, authMiddleware: legacyAuthMiddleware, bot }));
 app.use('/api/company-employees', createCompanyEmployeesRouter({ authMiddleware: legacyAuthMiddleware }));

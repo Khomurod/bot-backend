@@ -32,7 +32,9 @@ narrative answer. It was the *only* consumer of `aiAskService.js`.
   by AI insights, annotation, analysis, dispatch parsing, DAT inspector.
 - `services/aiInsightsService.js`, `services/aiAnnotationService.js`,
   `services/aiAnalysisService.js`, `services/insightRenderer.js` — management
-  insights pipeline (active).
+  insights pipeline (active at the time; **all but `aiAnnotationService.js`
+  were removed on 2026-10-30** with AI Reports / Insights —
+  [`retired-ai-reports.md`](retired-ai-reports.md)).
 - The `v_annotated_messages` view and `chat_message_annotations` table — used by
   the insights pipeline.
 
@@ -65,15 +67,24 @@ The `chat_logs` table is **shared** and still required by active features:
 | Consumer | Function | Feature |
 |---|---|---|
 | `services/dispatchPinnedContextService.js` | `db.getChatLogsForGroup` | pinned-context load lookup (`/load`, ETA) — survived the Dispatch Center's removal, then was itself removed on 2026-10-23 (`retired-dispatch-eta.md`) |
-| `server/api.js` AI reports route | `db.getChatLogsForActiveDriverGroups`, `db.getChatLogsForGroup` | AI reports |
-| `services/aiAnnotationService.js`, `services/aiInsightsService.js` | direct `chat_logs` reads | AI management insights |
+| `server/api.js` AI reports route | `db.getChatLogsForActiveDriverGroups`, `db.getChatLogsForGroup` | AI reports — removed 2026-10-30 with both readers ([`retired-ai-reports.md`](retired-ai-reports.md)) |
+| `services/aiAnnotationService.js`, `services/aiInsightsService.js` | direct `chat_logs` reads | AI management insights — `aiInsightsService.js` removed 2026-10-30; the labelling stayed for Driver Retention |
 | `services/schedulerService.js` | `db.deleteOldChatLogs(30)` | 30-day retention (hourly) |
 
-Because `chat_logs` powers pinned-context load lookup + AI Insights, **the table was NOT
-dropped** and its shared read/retention functions were **kept**. Only the
-Chat-Monitor-exclusive read (`getRecentChatLogs`) and the UI/API were removed.
+At the time, `chat_logs` powered pinned-context load lookup and AI Insights, so
+**the table was NOT dropped** and its shared read/retention functions were
+**kept**. Only the Chat-Monitor-exclusive read (`getRecentChatLogs`) and the
+UI/API were removed.
 
-**No new storage growth:** message-level writes to `chat_logs` from the bot were
+**Its consumers today (October 2026)** are both Driver Retention's: since
+2026-10-06 `services/retention/chatCapture.js` writes a person's driver-group
+messages through `db.logChatMessage` (switch: Drivers → Retention), and
+`services/retention/chatAnnotator.js` labels them through
+`annotateChatLogs` for the retention signals
+([`driver-retention.md`](driver-retention.md)). The hourly 30-day pruning still
+bounds the table. Pinned-context lookup and AI Insights are both gone.
+
+**No new storage growth (at the time):** message-level writes to `chat_logs` from the bot were
 **already disabled** before this change (see the comment at `bot/bot.js`:
 *"General message logging is intentionally disabled: we no longer persist every
 group message to chat_logs."*). The unused writer `db.logChatMessage` was left in
@@ -83,8 +94,8 @@ calls it, so Chat Monitor's removal adds **zero** ongoing storage. The existing
 
 **No migration required.** Nothing is dropped, so there is no data-destroying
 migration and no export/backup step is needed. If the owner later wants to reduce
-`chat_logs` further, that is a separate decision that must account for Dispatch
-Center and AI Insights first.
+`chat_logs` further, that is a separate decision that must account for Driver
+Retention first.
 
 **Backend endpoint result:** `GET /api/chat-logs` no longer exists → Express
 returns **404**. No polling timer remains anywhere in the frontend.

@@ -9,9 +9,7 @@
 // the rate-limit and auth predicates, and Groq's prose `retry-after` form.
 //
 // Shared Groq chat-completions client used by:
-//   - aiAnalysisService.js   (legacy company / driver reports)
-//   - aiAnnotationService.js (per-message classifier)
-//   - aiInsightsService.js   (narrative generation)
+//   - aiAnnotationService.js (per-message classifier for Driver Retention)
 //   - datUiInspectorService.js (DAT layout inspector)
 //
 require('dotenv').config();
