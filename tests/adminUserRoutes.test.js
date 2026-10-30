@@ -67,6 +67,15 @@ test('an error nobody raised on purpose gets the generic line, never its own tex
   assert.deepEqual(res.json, { error: 'Could not create user.' });
 });
 
+test('creating an account with no role is refused with the same ROLE_REQUIRED', async () => {
+  let created = false;
+  const res = await send(appWith({ createAdminUser: async () => { created = true; } }),
+    'POST', '/api/admin/users', { username: 'new.one', password: 'long-enough-1', role_ids: [] });
+  assert.equal(res.status, 400);
+  assert.equal(res.json.code, 'ROLE_REQUIRED');
+  assert.equal(created, false);
+});
+
 test('stripping every role is refused — the boot bootstrap must never meet a role-less account', async () => {
   let updated = false;
   const res = await send(appWith({ updateAdminUser: async () => { updated = true; } }),

@@ -31,9 +31,10 @@ function createAdminUserRoutes({db,authMiddleware,requirePermission}){
   router.post('/api/admin/users',authMiddleware,canManageUsers,async(req,res)=>{
     try{
       const{username,password,role_ids:roleIds=[]}=req.body||{};
-      if(!String(username||'').trim()||String(password||'').length<10||!Array.isArray(roleIds)||!roleIds.length){
+      if(!String(username||'').trim()||String(password||'').length<10||!Array.isArray(roleIds)){
         return res.status(400).json({error:'Username, password of at least 10 characters, and roles are required.'});
       }
+      // An empty list reaches the guard, so it answers ROLE_REQUIRED here too.
       guards.assertRoleChangeAllowed({actor:req.admin,selectedRoles:await validateAssignableRoles(roleIds)});
       const user=await db.createAdminUser({username,passwordHash:await bcrypt.hash(password,12),roleIds,actorId:req.admin.id});
       res.status(201).json({user});
