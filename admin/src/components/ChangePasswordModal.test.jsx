@@ -79,6 +79,20 @@ test("focus moves in on open, Tab stays inside, Escape closes, and focus returns
   opener.remove();
 });
 
+test("when the caller names where focus returns (the phone's menu button), it goes there, not to the opener", () => {
+  const opener = document.createElement("button");
+  const menu = document.createElement("button");
+  document.body.append(opener, menu);
+  opener.focus();
+  const { unmount } = render(
+    <ChangePasswordModal onClose={vi.fn()} onSignInAgain={vi.fn()} returnFocusRef={{ current: menu }} />,
+  );
+  unmount();
+  expect(document.activeElement).toBe(menu);
+  opener.remove();
+  menu.remove();
+});
+
 test("while the request is in flight it cannot be dismissed, so its result is always seen", async () => {
   let resolve;
   api.changePassword.mockReturnValue(new Promise((r) => { resolve = r; }));

@@ -15,12 +15,14 @@ const FOCUSABLE = 'button:not([disabled]), input:not([disabled]), [href], [tabin
  * without full access — it is the sidebar's, not a section's.
  *
  * It behaves as a modal for the keyboard too: focus moves in when it opens and
- * back to whatever opened it when it closes, Tab stays inside, Escape closes.
+ * back when it closes — to `returnFocusRef` when the caller names a place (on
+ * a phone, the menu button: the drawer holding Change password has slid away),
+ * otherwise to whatever opened it — Tab stays inside, Escape closes.
  * It CANNOT be dismissed while the request is in flight — a request that
  * succeeds after the dialog was closed would end the session with nobody told
  * — nor after success, when the only way on is to sign in again.
  */
-export default function ChangePasswordModal({ onClose, onSignInAgain }) {
+export default function ChangePasswordModal({ onClose, onSignInAgain, returnFocusRef }) {
   const [current, setCurrent] = React.useState("");
   const [next, setNext] = React.useState("");
   const [confirm, setConfirm] = React.useState("");
@@ -33,7 +35,10 @@ export default function ChangePasswordModal({ onClose, onSignInAgain }) {
   React.useEffect(() => {
     const opener = document.activeElement;
     dialogRef.current?.querySelector(FOCUSABLE)?.focus();
-    return () => { if (opener?.isConnected && typeof opener.focus === "function") opener.focus(); };
+    return () => {
+      const target = returnFocusRef?.current || opener;
+      if (target?.isConnected && typeof target.focus === "function") target.focus();
+    };
   }, []);
 
   // The form gives way to the success message; keep focus inside the dialog.

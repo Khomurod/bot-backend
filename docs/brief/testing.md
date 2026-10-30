@@ -15,13 +15,13 @@ npm run build:schema:check                        # schema.sql is in sync with b
 ```
 
 - **The Node suite passes clean with no secrets and no database.** Verified
-  baseline (2026-10-30, after Admin Accounts, deps installed): the 378
-  non-`*Pg` files with no application env — **3956 tests, 3956 pass, 0 fail,
+  baseline (2026-10-30, after Admin Accounts, deps installed): the 379
+  non-`*Pg` files with no application env — **3959 tests, 3959 pass, 0 fail,
   0 skipped**, exactly what CI's unit job runs — and the 96 `*Pg` files against
   a local PostgreSQL 16 — **756 tests, 756 pass, 0 fail, 0 skipped**. CI runs
   the non-`*Pg` files with no application env at all and the `*Pg` files
-  against a real Postgres; both jobs fail on any skip. The admin suite is **499 pass in 67 files**; the
-  Python leads tests are **81 pass**.
+  against a real Postgres; both jobs fail on any skip. The admin suite is
+  **501 pass in 67 files**; the Python leads tests are **81 pass**.
   **A test that pins `now` must pin every other clock it reads.** One pinned
   `now` to 2026-09-20 while the health code compared it with the REAL process
   boot time; on the day the real clock passed the pinned one the answer flipped,

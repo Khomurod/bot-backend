@@ -230,6 +230,16 @@ describe("account controls", () => {
     expect(screen.getByRole("dialog", { name: "Change password" })).toBeTruthy();
     await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(screen.queryByRole("dialog", { name: "Change password" })).toBeNull();
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Change password" }));
+  });
+
+  test("opened from the phone drawer, closing hands focus to the menu button, not the hidden drawer", async () => {
+    await renderShell();
+    await userEvent.click(screen.getByRole("button", { name: "Open menu" }));
+    await userEvent.click(screen.getByRole("button", { name: "Change password" }));
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog", { name: "Change password" })).toBeNull();
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Open menu" }));
   });
 
   test("#settings/admins opens Admin Accounts", async () => {
