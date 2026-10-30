@@ -78,8 +78,9 @@ and every API client function is exactly what it was.
   stage (HOME/SHOP/VACATION/WORKING). Each difference is asked **one at a time**
   in the Needs-attention group; the owner fixes Bitrix and replies "done", Wenze
   re-reads Bitrix at once and confirms (then asks the next) or says what still
-  differs; "skip" brings it back tomorrow. A letter or two, a space or the word
-  order in a name is the same driver and not asked. Bitrix is only read. Off
+  differs; "skip" brings it back tomorrow. A letter or two (none in a word under
+  four letters, one in a word of four or five), a space or the word order in a
+  name is the same driver and not asked. Bitrix is only read. Off
   until switched on in Settings → Dispatcher Board. See
   [`board-bitrix-check.md`](../architecture/board-bitrix-check.md).
 - **Route Control was removed** (October 2026, the owner's decision): no

@@ -152,7 +152,7 @@ test('reads every page of the active drivers and trucks, the newest closed deals
 
 test('years of closed drivers never stop the check: the closed list is read newest first, only so far', async () => {
   const closed = Array.from({ length: (CLOSED_MAX_PAGES + 3) * 50 }, (_, i) => rawDeal(10_000 - i, { STAGE_ID: 'C3:LOSE', STAGE_SEMANTIC_ID: 'F' }));
-  const out = await readBitrix(bitrixFake({ deals: [rawDeal(1)], closed }).deps);
+  const out = await readBitrix(bitrixFake({ deals: [rawDeal(1)], closed, trucks: [{ id: 3, title: 'Trucks #001', stageId: 'DT1040_17:UC_90RJVZ' }] }).deps);
   assert.equal(out.deals.length, 1 + CLOSED_MAX_PAGES * 50);
 });
 
@@ -163,6 +163,20 @@ test('a failed page, a list too long to finish, or a vanished field fails the wh
   const renamed = rawDeal(1);
   delete renamed.UF_CRM_ASSIGNED_TRUCK;
   await assert.rejects(readBitrix(bitrixFake({ deals: [renamed] }).deps), /no longer returns the deal field UF_CRM_ASSIGNED_TRUCK/);
+});
+
+test('a Trucks list with none of the trucks the active drivers point at is an incomplete read, not "no truck" for everyone', async () => {
+  await assert.rejects(readBitrix(bitrixFake({ deals: [rawDeal(1), rawDeal(2)], trucks: [] }).deps), /none of the 1 truck\(s\)/);
+  await assert.rejects(readBitrix(bitrixFake({ deals: [rawDeal(1)], trucks: [{ id: 999, title: 'Trucks #999', stageId: 'DT1040_17:UC_90RJVZ' }] }).deps), /none of the 1 truck/);
+  // One deleted truck among many found is a real difference, not a failed read.
+  const mixed = await readBitrix(bitrixFake({
+    deals: [rawDeal(1), rawDeal(2, { UF_CRM_ASSIGNED_TRUCK: '77' })],
+    trucks: [{ id: 3, title: 'Trucks #001', stageId: 'DT1040_17:UC_90RJVZ' }],
+  }).deps);
+  assert.equal(mixed.deals.length, 2);
+  // No active driver has a truck at all: nothing to contradict, the comparison says so itself.
+  const none = await readBitrix(bitrixFake({ deals: [rawDeal(1, { UF_CRM_ASSIGNED_TRUCK: null })], trucks: [] }).deps);
+  assert.equal(none.trucks.length, 0);
 });
 
 // ── asking ───────────────────────────────────────────────────────────────────
