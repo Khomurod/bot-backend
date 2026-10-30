@@ -245,36 +245,6 @@ async function markBotSentMessageEdited(telegramChatId, telegramMessageId, newTe
   return res.rows[0] || null;
 }
 
-async function getChatLogsForGroup(groupId, daysBack) {
-  const res = await query(
-    `SELECT c.*,
-            g.group_name,
-            g.telegram_group_id
-     FROM chat_logs c
-     JOIN groups g ON c.group_id = g.id
-     WHERE c.group_id = $1 AND c.created_at >= NOW() - ($2 || ' days')::INTERVAL
-     ORDER BY c.created_at ASC`,
-    [groupId, daysBack]
-  );
-  return res.rows;
-}
-
-async function getChatLogsForActiveDriverGroups(daysBack) {
-  const res = await query(
-    `SELECT c.*,
-            g.group_name,
-            g.telegram_group_id
-     FROM chat_logs c
-     JOIN groups g ON c.group_id = g.id
-     WHERE g.group_type = 'driver'
-       AND g.active = TRUE
-       AND c.created_at >= NOW() - ($1 || ' days')::INTERVAL
-     ORDER BY c.created_at ASC`,
-    [daysBack]
-  );
-  return res.rows;
-}
-
 async function deleteOldChatLogs(daysOld) {
   const res = await query(
     `DELETE FROM chat_logs WHERE created_at < NOW() - ($1 || ' days')::INTERVAL`,
@@ -294,7 +264,5 @@ module.exports = {
   listBotSentMessages,
   getBotSentMessageById,
   markBotSentMessageEdited,
-  getChatLogsForGroup,
-  getChatLogsForActiveDriverGroups,
   deleteOldChatLogs,
 };

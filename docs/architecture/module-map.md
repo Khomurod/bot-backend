@@ -14,7 +14,7 @@
 1. **Reliability over novelty.** The best change is the smallest safe one.
 2. **Structured API data first**, AI/OCR fallback second.
 3. **Untrusted driver text is fenced** before being sent to any model
-   (`services/aiAnalysisService.js`, `services/aiAnnotationService.js`).
+   (`services/aiAnnotationService.js` `sanitizeForPrompt`).
 4. **Idempotency is preserved** for every external send (Telegram, RingCentral,
    Bitrix24, Meta webhook, Datatruck). See the idempotency ledgers below.
 5. **Retries stay safe**, with exponential backoff where already used.
@@ -195,8 +195,8 @@ organization should converge toward.
 | LLM clients | `services/groqClient.js` and `services/geminiClient.js` are **compatibility façades** over `services/ai/router.js` since Stage 5c — they own the vocabulary their ~40 call sites use (model chains from the environment, the rate-limit/auth predicates, Gemini's JSON helpers) and no transport at all. The direct fetch loops were deleted rather than left beside the router: two live paths to one API is how the two stop agreeing, and the unexercised one is the one that rots. The router's transports are `services/ai/adapters/{openaiChat,gemini,anthropic}.js` (one attempt each, no policy); `services/ai/requestShape.js` turns a prompt into each wire format's shape. |
 | Asking the owner when still not sure, and the lessons kept from the answers | `services/ai/learning/hooks.js` (the lessons block per scope, cached; queues a question for an `uncertain` decision that passed `learning`), `askOwner.js` (one question out at a time, through `notify`), `answer.js` (the reply gates, the lesson, "Understood: … Saved"), `accountingReasons.js` (a "Not charging" reason, no driver name), `lib/ai/lessons.js` (pure: scopes, masking, the words, the prompt block), `database/aiLessons.js`, `bot/handlers/lessonReplyHandlers.js`, `server/routes/settings/aiLessonsRoutes.js`, `admin/src/pages/settings/ai/LessonsCard.jsx`. `docs/architecture/ai-learning.md` |
 | Free models first, Claude when they are not sure; which models can see a picture | `services/ai/escalation.js` (the tiers: free → Claude Sonnet/Haiku → other paid; never imports the router, which hands it its one-pass runner), `lib/ai/escalation.js` (pure: which capabilities escalate, the 85% bar, "unclear", confidence parsing, the Claude chain), `lib/ai/vision.js` (pure: vision-capable models, image parts) |
-| AI management insights & rendering | `services/aiInsightsService.js`, `services/insightRenderer.js`, `services/aiAnalysisService.js` (weekly company/driver reports), `services/aiAnnotationService.js` (message classifier), admin `AiFeaturesPage.jsx` |
-| **Prompt-injection protection / untrusted-text fencing** | `services/aiAnalysisService.js` (`<driver_transcript>` fence + `sanitizeTranscriptLine`), `services/aiAnnotationService.js` (`sanitizeForPrompt`) |
+| Message labelling for Driver Retention | `services/aiAnnotationService.js` (`annotateChatLogs`; only a message with a leaving cue reaches a model), called by `services/retention/chatAnnotator.js` (job `chat_annotation`). AI Reports / Insights were removed on 2026-10-30 — `docs/architecture/retired-ai-reports.md` |
+| **Prompt-injection protection / untrusted-text fencing** | `services/aiAnnotationService.js` (`sanitizeForPrompt`) |
 | Live Locations — map of all active units (location + load + ETA) | `services/liveLocationsService.js`, `server/routes/liveLocationsRoutes.js`, admin `LiveLocationsPage.jsx`; reuses `liveLocationResolver`/`samsaraLocationService`/`driveHosEldService`/`datatruckLoadService`/`etaRoutingService`/`geocoder`. See `docs/architecture/live-locations.md`. |
 | Driver safety captions | **External** (`samsara-integration`), not in this repo |
 
@@ -258,9 +258,8 @@ repository exceeds 500 lines (`npm run lint:filesize`, no baseline).
 | `database/ringcentral.js` | `database/ringcentral/{kpiMath,secrets,leaderboardCache,settings,recruiters,recruiterRosters,calls,kpiQueries,connectSessions}.js` — **explicit key list**, so the package's internal helpers (and the leaderboard cache's read-through and invalidation) stay private |
 | `server/routes/settingsRoutes.js` | `server/routes/settings/{eld,ringcentral,messageGroup,samsara,safetyEvent,bitrix,retiredLeftovers}Routes.js` |
 | `server/routes/homeTimeRoutes.js` | `server/routes/homeTime/{rowShaping,tracker,import,settings,groupAccess}Routes.js` — registration ORDER is load-bearing |
-| `server/routes/facebookConnectRoutes.js` | `server/routes/facebookConnect/{connectPages,internal,oauth,inspection}Routes.js` — one guard per file, three different auth models |
+| `server/routes/facebookConnectRoutes.js` | `server/routes/facebookConnect/{connectPages,internal,oauth}Routes.js` — one guard per file, two different auth models |
 | `services/liveLocationsService.js` | `services/liveLocations/*.js` |
-| `services/aiInsightsService.js` | `services/aiInsights/*.js` |
 | `services/mileageBonusService.js` | `services/mileageBonus/*.js` — `runState.js` owns the run lock |
 | `bot/senders.js` | `bot/senders/{messageText,mediaSender,questionSenders,broadcastSenders,confirmationSenders}.js` |
 | `services/operations/healthObservations.js` | `services/operations/observations/{shape,integrations}.js` — the façade keeps the ledger-driven worker half and `gatherAllObservations`; `shape.js` owns the one shape every observation takes, so a component cannot answer two different things in one payload |
@@ -294,7 +293,7 @@ over `admin/src/pages/<area>/` holding data hooks and presentational sections:
 | Area | Risk | Guidance |
 |---|---|---|
 | `bot/bot.js` | Central Telegraf wiring; handler order matters (specific `bot.action` before generic `callback_query`). | Never reorder handlers casually. Add new handlers next to related ones. |
-| `aiAnalysisService.js` / `aiAnnotationService.js` fencing | Removing the fence exposes prompt injection from driver chat. | Keep the `<driver_transcript>` fence + sanitizers. |
+| `aiAnnotationService.js` fencing | Removing the fence exposes prompt injection from driver chat. | Keep `sanitizeForPrompt`. |
 | `index.js` orchestration | Ordering/backoff/circuit-breaker prevent OOM restart loops. | Do not remove the circuit breaker or `--max-old-space-size` caps. |
 | `database/db.js` (~3,500 lines) | Huge shared query surface used everywhere. | Split *by moving functions into existing per-feature `database/*.js` files one at a time*, re-exporting from `db.js` to preserve imports; run tests after each move. |
 | `database/schema.sql` | GENERATED baseline (from `database/baseline/*.sql`), auto-applied on startup (`IF NOT EXISTS`). New changes go in `database/migrations/`, not here. | Never hand-edit `schema.sql` (run `npm run build:schema`). Never add destructive `DROP`/`ALTER ... DROP`. New columns must be nullable or defaulted. Back up before any manual migration. |

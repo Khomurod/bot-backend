@@ -157,6 +157,33 @@ test('GET /api/health, /health, HEAD; the removed dispatch APIs; the race displa
       assert.equal(res.status, 404, `${retiredFinance} is gone`);
     }
 
+    // Routes no screen called, removed after the October 2026 audit: AI
+    // Reports / Insights, the old driver-group writes and lists, the AI
+    // status "run now", the old profile AI parse, one correction's detail,
+    // a knowledge entry's history, the music download, and the root-level
+    // webhook-log duplicates. Same rule: a valid token, so only "gone" is 404.
+    for (const [method, retired] of [
+      ['GET', '/api/ai-reports'], ['POST', '/api/ai-reports/generate'],
+      ['GET', '/api/ai-insights/reports'], ['POST', '/api/ai-insights/annotate'],
+      ['GET', '/api/groups'], ['GET', '/api/groups/driver-list'],
+      ['POST', '/api/groups/status/run-now'], ['PUT', '/api/groups/1/language'],
+      ['PUT', '/api/groups/1/birthday'], ['PUT', '/api/groups/1/status'],
+      ['POST', '/api/driver-profiles/ai-parse'],
+      ['GET', '/api/operations/corrections/1'],
+      ['GET', '/api/recruiting-knowledge/1/history'],
+      ['GET', '/api/settings/safety-events/music/1/download'],
+      ['GET', '/leads-log'], ['GET', '/retry/1'],
+    ]) {
+      const res = await httpJson(server, method, retired, { Authorization: `Bearer ${adminToken}` });
+      assert.equal(res.status, 404, `${method} ${retired} is gone`);
+    }
+    // The control: their live neighbours still answer, so the 404s above are
+    // "removed", not a harness that 404s everything.
+    for (const live of ['/api/groups/manage', '/api/facebook-leads/webhook-log', '/api/recruiting-knowledge']) {
+      const res = await httpJson(server, 'GET', live, { Authorization: `Bearer ${adminToken}` });
+      assert.notEqual(res.status, 404, `${live} is still mounted`);
+    }
+
     await fs.promises.mkdir(adminDir, { recursive: true });
     if (!fs.existsSync(adminIndex)) {
       await fs.promises.writeFile(

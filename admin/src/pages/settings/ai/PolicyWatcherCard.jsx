@@ -1,6 +1,7 @@
 import React from "react";
 
 import * as api from "../../../api";
+import PolicySourceList from "./PolicySourceList";
 
 /**
  * The terms watcher: what the providers' own pages say, and when it changed.
@@ -17,14 +18,9 @@ import * as api from "../../../api";
  * Automatic suspension is a separate switch from the watcher itself, and it
  * ships off. An operator who wants to be told but never overruled is a
  * completely reasonable operator.
+ *
+ * The list of pages (with Watch and Remove) is PolicySourceList.jsx.
  */
-/** Where a page's address came from. A person can tell at a glance what Wenze did for them. */
-const ORIGIN_LABEL = {
-  catalog: "found automatically",
-  rediscovered: "found again",
-  manual: "added by hand",
-};
-
 const SEVERITY_STYLE = {
   info: { color: "var(--text-muted)", mark: "ℹ️" },
   warning: { color: "var(--warning)", mark: "⚠️" },
@@ -251,40 +247,7 @@ export default function PolicyWatcherCard({ providers, flash }) {
             {running ? "Checking…" : "Check now"}
           </button>
         </div>
-        {sources.length === 0 ? (
-          <div style={{ color: "var(--text-muted)", fontSize: 12, marginTop: 6 }}>
-            No pages yet. For a provider Wenze knows, its official pages are added
-            automatically the next time the watcher runs — or press Check now.
-          </div>
-        ) : (
-          <ul style={{ fontSize: 12, paddingLeft: 18, marginTop: 6 }}>
-            {sources.map((s) => (
-              <li key={s.id} style={{ marginBottom: 3, opacity: s.enabled ? 1 : 0.6 }}>
-                <code>{s.providerKey}</code> · {s.kind} ·{" "}
-                <a href={s.url} target="_blank" rel="noreferrer">{s.url}</a>{" "}
-                <span className="badge badge-muted" style={{ fontSize: 10 }}>
-                  {ORIGIN_LABEL[s.sourceOrigin] || s.sourceOrigin}
-                </span>
-                {s.movedFrom && (
-                  <span style={{ color: "var(--text-muted)" }}> — moved from {s.movedFrom}</span>
-                )}
-                {s.lostReportedAt && (
-                  <span style={{ color: "var(--danger)" }}> — could not be found; you have been told</span>
-                )}
-                {s.lastError && !s.lostReportedAt && <span style={{ color: "var(--warning)" }}> — {s.lastError}</span>}
-                <button
-                  type="button" className="btn btn-ghost btn-sm"
-                  onClick={async () => {
-                    await api.deleteAiPolicySource(s.id);
-                    load();
-                  }}
-                >
-                  Remove
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
+        <PolicySourceList sources={sources} load={load} flash={flash} />
 
         <details className="collapse-panel" style={{ marginTop: 8 }}>
           <summary style={{ fontSize: 12 }}>Add a page by hand</summary>

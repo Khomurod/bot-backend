@@ -176,6 +176,13 @@ stay in §4a. The provider terms watcher is
   for tasks a small model answers; a person can still add one by hand. Free status is reported only where it is a
   published fact (OpenRouter pricing, Groq/Cerebras/NVIDIA free tiers, Gemini
   Flash); elsewhere it is `unknown`, said plainly. Migration 0023.
+- **Remove is not "switch off".** Unticking Enabled keeps the stored key;
+  **Remove** on the provider card (`DELETE /api/settings/ai/providers/:key`,
+  asked first) deletes the provider row and its key — the only way to get a
+  rotated or leaked key out of Wenze. Wenze then stops using that provider
+  until it is added again with Add provider; a key in the server environment is
+  not touched. The button was added after the October 2026 audit, when the
+  route existed with no screen.
 - **The chain is kept current, not remembered.** "Refresh models" on the card
   (and, from Phase 3-C, a scheduled job) re-reads the listing through
   `services/ai/discovery/refreshModels.js` and `reconcileChain`: a configured

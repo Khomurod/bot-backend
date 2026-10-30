@@ -6,12 +6,6 @@ import { API_BASE, appendTargetActiveFilter, getHeaders, handleApiError } from '
 
 // ─── Scheduled Messages API ───
 
-export async function getDriverGroups() {
-  const res = await fetch(`${API_BASE}/groups/driver-list`, { headers: getHeaders() });
-  if (!res.ok) { await handleApiError(res); }
-  return res.json();
-}
-
 export async function createScheduledMessage(data) {
   const {
     messageEn,

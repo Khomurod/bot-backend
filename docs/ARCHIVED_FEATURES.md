@@ -10,6 +10,25 @@ git so they can be recovered.
 
 ---
 
+## AI Reports / AI Insights
+
+Removed 2026-10-30 at the owner's decision, after the hidden-functions audit.
+Their admin screen had been gone since before the oldest commit in this
+repository, and a report sent a model the whole driver-chat transcript with
+sender names — against the owner's October 2026 rule that the AI must not read
+every driver message. Gone: `/api/ai-reports/*` and `/api/ai-insights/*` (now
+404), the report and insight generators, the AI capabilities
+`ai_report_generation` and `ai_insights_narration`, and eleven admin client
+calls. Admin routes no screen called went in the same change (the old group
+list and writes, the AI status "run now", the old profile parse, one
+correction's detail, a knowledge entry's history, the music download, and the
+root `/leads-log` / `/retry/:id`). The message labelling Driver Retention uses
+stayed; the `ai_reports`, `ai_insights` and `sender_role_consensus` tables are
+kept. Details in
+[`architecture/retired-ai-reports.md`](architecture/retired-ai-reports.md).
+
+---
+
 ## The Finance Monitor (money codes)
 
 Removed 2026-10-23 at the owner's request. Gone: money-code capture from the

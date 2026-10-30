@@ -137,23 +137,6 @@ function createSafetyEventSettingsRouter({ authMiddleware, telegram = null }) {
     }
   });
 
-  // Authenticated preview/download of the raw music bytes (admin only — the file
-  // is never exposed publicly). Streams from Postgres BYTEA.
-  router.get('/safety-events/music/:id/download', authMiddleware, async (req, res) => {
-    try {
-      const asset = await safetyVideo.getMusicAssetById(Number(req.params.id), { includeData: true });
-      if (!asset || !asset.data) return res.status(404).json({ error: 'Music asset not found' });
-      res.setHeader('Content-Type', asset.mimeType || 'application/octet-stream');
-      res.setHeader('Content-Length', asset.data.length);
-      res.setHeader('Content-Disposition', `inline; filename="music-${asset.id}"`);
-      res.setHeader('Cache-Control', 'private, no-store');
-      res.send(asset.data);
-    } catch (err) {
-      console.error('[SETTINGS API] safety-events download failed:', err.message);
-      res.status(500).json({ error: 'Failed to load music asset' });
-    }
-  });
-
   return router;
 }
 

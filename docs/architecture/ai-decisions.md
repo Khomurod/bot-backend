@@ -109,13 +109,13 @@ on 23 October 2026 ([retired-finance-monitor.md](retired-finance-monitor.md)).
 
 Safety coaching notes to a driver (the fixed sentence is a good sentence, and a
 model reaching for a consequence is refused), the one-line summary on a
-self-healing or learning notice, home-time replies to drivers, insight-card
-narration, the morning summary's "most important today" (`daily_priorities` —
-it chooses among problems the rules ranked and cannot add one)
-(the card and its severity stand without it), drafted reports (a person edits and
-sends), broadcast translation (a person sends), birthday and banter messages.
-Each has a fixed sentence to fall back on, except reports and translation, which
-simply become unavailable.
+self-healing or learning notice, home-time replies to drivers, the morning
+summary's "most important today" (`daily_priorities` — it chooses among
+problems the rules ranked and cannot add one), broadcast translation (a person
+sends), birthday and banter messages. Each has a fixed sentence to fall back
+on, except translation, which simply becomes unavailable. (Insight-card
+narration and drafted reports went with AI Reports / Insights on 2026-10-30 —
+[`retired-ai-reports.md`](retired-ai-reports.md).)
 
 ## What was deliberately NOT given to AI
 

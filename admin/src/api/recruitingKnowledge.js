@@ -45,10 +45,3 @@ export async function retireRecruitingKnowledge(id) {
   if (!res.ok) { await handleApiError(res); }
   return (await res.json()).entry;
 }
-
-/** What a fact used to say, all the way back. */
-export async function getRecruitingKnowledgeHistory(id) {
-  const res = await fetch(`${API_BASE}/recruiting-knowledge/${id}/history`, { headers: getHeaders() });
-  if (!res.ok) { await handleApiError(res); }
-  return (await res.json()).history;
-}

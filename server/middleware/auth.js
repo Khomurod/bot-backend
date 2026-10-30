@@ -71,26 +71,9 @@ function createInternalSharedSecretGuard(config) {
   };
 }
 
-/**
- * Minimal JWT check for routes registered BEFORE express.json() (leads-bot
- * proxy log/retry) — cannot use authMiddleware there because it is defined
- * after the body parsers in the mount order.
- */
-function createProxyAuthGuard(config, dbOverride = null) {
-  const auth = createAuthMiddleware(config, dbOverride);
-  const fullAccess = requirePermission('admin.full_access');
-  return function proxyAuthGuard(req, res, next) {
-    const authHeader = req.headers.authorization || '';
-    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
-    if (!token) return res.status(401).json({ error: 'Unauthorized' });
-    return auth(req, res, (error) => error ? next(error) : fullAccess(req, res, next));
-  };
-}
-
 module.exports = {
   createAuthMiddleware,
   createInternalSharedSecretGuard,
-  createProxyAuthGuard,
   requirePermission,
   requireAllPermissions,
 };

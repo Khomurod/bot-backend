@@ -109,8 +109,9 @@ cannot be read records nothing.
   cue only buys a model call and the model still decides. Every other message
   is recorded as `intent = 'no_signal'` with `model_version =
   'keyword-prefilter-v1'` and everything else NULL, without a call. The gate
-  sits inside `annotateChatLogs`, so an on-demand AI report cannot send them
-  either. Model calls fell from about 90 a day to a handful.
+  sits inside `annotateChatLogs`, so no other caller could send them either
+  (the on-demand AI reports, which sent whole transcripts, were removed on
+  2026-10-30 — `retired-ai-reports.md`). Model calls fell from about 90 a day to a handful.
   **Consequence:** `complaints` and `negative_sentiment` are now scored only
   from the few messages that pass the gate, so in practice they almost never
   fire; `quit_signal` is the chat signal that remains, as the owner asked.

@@ -32,7 +32,9 @@ narrative answer. It was the *only* consumer of `aiAskService.js`.
   by AI insights, annotation, analysis, dispatch parsing, DAT inspector.
 - `services/aiInsightsService.js`, `services/aiAnnotationService.js`,
   `services/aiAnalysisService.js`, `services/insightRenderer.js` — management
-  insights pipeline (active).
+  insights pipeline (active at the time; **all but `aiAnnotationService.js`
+  were removed on 2026-10-30** with AI Reports / Insights —
+  [`retired-ai-reports.md`](retired-ai-reports.md)).
 - The `v_annotated_messages` view and `chat_message_annotations` table — used by
   the insights pipeline.
 
@@ -65,7 +67,7 @@ The `chat_logs` table is **shared** and still required by active features:
 | Consumer | Function | Feature |
 |---|---|---|
 | `services/dispatchPinnedContextService.js` | `db.getChatLogsForGroup` | pinned-context load lookup (`/load`, ETA) — survived the Dispatch Center's removal, then was itself removed on 2026-10-23 (`retired-dispatch-eta.md`) |
-| `server/api.js` AI reports route | `db.getChatLogsForActiveDriverGroups`, `db.getChatLogsForGroup` | AI reports |
+| `server/api.js` AI reports route | `db.getChatLogsForActiveDriverGroups`, `db.getChatLogsForGroup` | AI reports — removed 2026-10-30 with both readers ([`retired-ai-reports.md`](retired-ai-reports.md)) |
 | `services/aiAnnotationService.js`, `services/aiInsightsService.js` | direct `chat_logs` reads | AI management insights |
 | `services/schedulerService.js` | `db.deleteOldChatLogs(30)` | 30-day retention (hourly) |
 

@@ -8,25 +8,25 @@
  *   ./facebookConnect/connectPages.js      PURE HTML for the connect flow
  *   ./facebookConnect/internalRoutes.js    /api/internal/facebook/* (shared secret)
  *   ./facebookConnect/oauthRoutes.js       /facebook/connect + /facebook/oauth/* (public)
- *   ./facebookConnect/inspectionRoutes.js  /leads-log, /retry/:id (admin guard)
  *
- * The three groups have three DIFFERENT authorization models — internal shared
- * secret, session-token-in-URL, and the admin proxy guard — which is the reason
- * they are separate modules rather than one router: each file carries exactly
- * one guard, so a route cannot quietly end up behind the wrong one.
+ * The two groups have two DIFFERENT authorization models — internal shared
+ * secret and session-token-in-URL — which is the reason they are separate
+ * modules rather than one router: each file carries exactly one guard, so a
+ * route cannot quietly end up behind the wrong one. (The admin-guarded
+ * `/leads-log` and `/retry/:id` went on 2026-10-30: they duplicated
+ * `/api/facebook-leads/webhook-log`, which Customer Inquiries → Activity Log
+ * uses, and the retry changed state on a GET.)
  */
 const express = require('express');
 
 const { createFacebookInternalRoutes } = require('./facebookConnect/internalRoutes');
 const { createFacebookOauthRoutes } = require('./facebookConnect/oauthRoutes');
-const { createFacebookInspectionRoutes } = require('./facebookConnect/inspectionRoutes');
 
-function createFacebookConnectRoutes({ db, internalSharedSecretGuard, proxyAuthGuard }) {
+function createFacebookConnectRoutes({ db, internalSharedSecretGuard }) {
   const router = express.Router();
 
   router.use(createFacebookInternalRoutes({ db, internalSharedSecretGuard }));
   router.use(createFacebookOauthRoutes());
-  router.use(createFacebookInspectionRoutes({ proxyAuthGuard }));
 
   return router;
 }

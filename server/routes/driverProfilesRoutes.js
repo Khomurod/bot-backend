@@ -1,6 +1,7 @@
 /**
  * Driver profile admin routes: canonical profile listing, manual edits, and the
- * AI sync/parse actions.
+ * AI sync action. (The older `ai-parse` preview went on 2026-10-30; `ai-sync`
+ * runs the same parser through `services/driverGroupAiSyncService.js`.)
  *
  * Routes use their full paths; the router is mounted at the app root so
  * matching behavior is identical to the previous inline definitions.
@@ -9,7 +10,6 @@ const express = require('express');
 const { listCanonicalDriverGroups } = require('../../services/driverGroupDirectoryService');
 const { withOpenFindings } = require('../../database/driverGroupDirectory');
 const { runUnifiedDriverGroupAiSync } = require('../../services/driverGroupAiSyncService');
-const driverProfileAiParser = require('../../services/driverProfileAiParser');
 
 function mapDriverProfileForApi(profile) {
   if (!profile) return null;
@@ -198,66 +198,6 @@ function createDriverProfilesRoutes({ db, authMiddleware }) {
     } catch (err) {
       console.error('[API] Driver profile AI sync failed:', err.message);
       res.status(500).json({ error: 'AI sync failed', detail: err.message });
-    }
-  });
-
-  // POST /api/driver-profiles/ai-parse — AI reads each driver group name and
-  // derives unit number, first/last name, and driver_type (company_driver if the
-  // name marks it, else owner). With ?apply=true (or body.apply), the proposals are
-  // written to the profiles; otherwise they are returned as a preview.
-  router.post('/api/driver-profiles/ai-parse', authMiddleware, async (req, res) => {
-    try {
-      const apply = req.query.apply === 'true' || req.body?.apply === true;
-      const profiles = await db.listDriverProfiles({ includeInactive: true });
-      const groups = profiles.map((p) => ({ id: p.group_id, group_name: p.group_name }));
-      const parsed = await driverProfileAiParser.parseGroups(groups);
-
-      const profileByGroupId = new Map(profiles.map((p) => [Number(p.group_id), p]));
-      const proposals = [];
-      let updated = 0;
-
-      for (const row of parsed) {
-        const profile = profileByGroupId.get(Number(row.group_id));
-        if (!profile) continue;
-        const proposal = {
-          group_id: row.group_id,
-          profile_id: profile.id,
-          group_name: row.group_name,
-          current: {
-            first_name: profile.first_name || null,
-            last_name: profile.last_name || null,
-            unit_number: profile.unit_number || null,
-            driver_type: profile.driver_type || 'owner',
-          },
-          proposed: {
-            first_name: row.first_name || null,
-            last_name: row.last_name || null,
-            unit_number: row.unit_number || null,
-            driver_type: row.driver_type || 'owner',
-          },
-          source: row.source,
-        };
-        const changed = ['first_name', 'last_name', 'unit_number', 'driver_type']
-          .some((k) => (proposal.current[k] || null) !== (proposal.proposed[k] || null));
-        proposal.changed = changed;
-        proposals.push(proposal);
-
-        if (apply && changed) {
-          await db.updateDriverProfile(profile.id, {
-            first_name: row.first_name,
-            last_name: row.last_name,
-            unit_number: row.unit_number,
-            driver_type: row.driver_type,
-            needs_review: !(row.first_name && row.unit_number),
-          });
-          updated += 1;
-        }
-      }
-
-      res.json({ applied: apply, total: proposals.length, updated, proposals });
-    } catch (err) {
-      console.error('[API] Driver profile AI parse failed:', err.message);
-      res.status(500).json({ error: 'AI parse failed', detail: err.message });
     }
   });
 

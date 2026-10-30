@@ -69,30 +69,6 @@ function createCorrectionsRouter({ authMiddleware, applyMiddleware }) {
   });
 
   /**
-   * One correction, plus every correction event recorded against the same
-   * subject.
-   *
-   * `subjectAudit`, deliberately not `audit`: `admin_audit_log` is keyed by
-   * `(entity_type, entity_id)` and holds no correction id, so for a driver
-   * corrected more than once these rows cover ALL of them. Presenting that as
-   * this correction's own trail would be a lie the reader cannot detect.
-   */
-  router.get('/corrections/:id', authMiddleware, async (req, res) => {
-    const id = positiveIntParam(req.params.id);
-    if (!id) return res.status(400).json({ error: 'Invalid correction id' });
-    try {
-      const correction = await correctionsStore.getCorrectionById(id);
-      if (!correction) return res.status(404).json({ error: 'Correction not found' });
-      const subjectAudit = await correctionsStore.listAuditForSubject({
-        entityType: correction.subjectType, entityId: correction.subjectId,
-      });
-      return res.json({ correction, subjectAudit });
-    } catch (err) {
-      return sendFailure(res, err, { message: 'Failed to load the correction', logPrefix: '[OPERATIONS]' });
-    }
-  });
-
-  /**
    * Apply the change one finding proposes.
    *
    * The payload comes from the finding's own `proposedChange` and nothing here

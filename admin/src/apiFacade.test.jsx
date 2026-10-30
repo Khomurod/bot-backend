@@ -53,6 +53,15 @@ test("no two forwarded modules export the same name", () => {
 });
 
 test("the public surface stays at its known size", () => {
+  // 218 after the October 2026 hidden-functions audit, from a real 236: the
+  // eleven AI Reports / Insights calls, the six old driver-group calls
+  // (`getGroups`, `aiParseDriverProfiles`, `setGroupLanguage`,
+  // `setGroupBirthday`, `setGroupStatus`, `runGroupStatusAi`),
+  // `getDriverGroups`, `getOperationsCorrection` and
+  // `getRecruitingKnowledgeHistory` went — twenty, none with a caller — and
+  // `getGroupMembers` (the Driver Username picker had been calling a function
+  // that did not exist) and `setAiPolicySourceEnabled` came. The floor had
+  // been left at 215 while the surface grew to 236; it is the real size again.
   // 215 with Settings -> AI's lessons (October 2026): `getAiLessons`,
   // `removeAiLesson` and `skipAiLearningQuestion`.
   // 212 after the Finance Monitor (October 2026): Settings -> Finance's four
@@ -72,17 +81,17 @@ test("the public surface stays at its known size", () => {
   // Tracking and QBQ/SOS, and 205 when api.js was first split into domain
   // modules. Growing this is fine — update the number. A DROP that is not a
   // deliberate feature removal means a call site somewhere just broke.
-  expect(Object.keys(api).length).toBeGreaterThanOrEqual(215);
+  expect(Object.keys(api).length).toBeGreaterThanOrEqual(218);
 });
 
 describe("a sample of calls from every domain still resolves", () => {
   // One per module: proves the forward chain works end to end, not just that
   // some names exist.
   const samples = [
-    "login", "getGroups", "getQuestions", "sendBroadcast", "uploadMedia",
+    "login", "getGroupsManage", "getQuestions", "sendBroadcast", "uploadMedia",
     // No dispatch sample: the Send Load functions went with the Dispatch
     // Center, and the four ETA-schedule calls with the ETA feature (Oct 2026).
-    "getScheduledMessages", "getLeads", "getAiReports",
+    "getScheduledMessages", "getLeads", "editTelegramMessage",
     "getEmployeeBirthdays", "getFacebookLeadPages", "getMileageBonusOverview",
     "getHomeTimeOverview", "getGroupAccess",
     "getBotUsers", "getRecruiters",
