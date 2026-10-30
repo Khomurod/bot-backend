@@ -83,28 +83,45 @@ test("seed-admin's explicit grant gives super_admin only to a role-less account"
   assert.deepEqual(await rolesOf(harness), { clerk: 'custom_office_desk', first: 'super_admin' });
 });
 
-test('the database re-checks under lock: a stale route check cannot touch a super administrator', { skip: skipWithoutPg(), timeout: 30000 }, async (t) => {
-  // The route decides on a snapshot read before the update locks the row; if
-  // that snapshot was stale (another administrator changed the account a
-  // moment earlier), the locked re-check in rbac.updateAdminUser still holds.
+test('the database re-checks on locked rows, with the actor read again: a stale snapshot cannot touch a super administrator', { skip: skipWithoutPg(), timeout: 30000 }, async (t) => {
+  // The route decides on snapshots read before the write — the target's, and
+  // the actor's own roles from the start of the request. Either can be stale
+  // by the time of the write; rbac.js locks both rows and reads them again.
   const harness = await createPgHarness(t);
   const rbac = loadRbac(harness);
   const office = await rbac.createRole({ displayName: 'Night Office', permissionKeys: [] });
   const { rows: [superRole] } = await harness.query("SELECT id FROM roles WHERE system_key = 'super_admin'");
-  const { rows: [boss] } = await harness.query("INSERT INTO admins (username, password_hash) VALUES ('boss', 'x') RETURNING id");
-  const { rows: [clerk] } = await harness.query("INSERT INTO admins (username, password_hash) VALUES ('clerk', 'x') RETURNING id");
-  await harness.query('INSERT INTO admin_user_roles (admin_id, role_id) VALUES ($1, $2), ($3, $4)', [boss.id, superRole.id, clerk.id, office.id]);
-  const manager = ['custom_night_office'];
+  const add = async (name, roleId) => {
+    const { rows: [a] } = await harness.query('INSERT INTO admins (username, password_hash) VALUES ($1, $2) RETURNING id', [name, 'x']);
+    await harness.query('INSERT INTO admin_user_roles (admin_id, role_id) VALUES ($1, $2)', [a.id, roleId]);
+    return a.id;
+  };
+  const boss = await add('boss', superRole.id);
+  const chief = await add('chief', superRole.id);
+  const manager = await add('manager', office.id);
+  const clerk = await add('clerk', office.id);
   const superOnly = (e) => e.status === 403 && e.code === 'SUPER_ADMIN_ONLY';
 
-  await assert.rejects(() => rbac.updateAdminUser(boss.id, { passwordHash: 'stolen', actorRoleKeys: manager }), superOnly);
-  await assert.rejects(() => rbac.updateAdminUser(clerk.id, { roleIds: [office.id, superRole.id], actorRoleKeys: manager }), superOnly);
-  await assert.rejects(() => rbac.updateAdminUser(clerk.id, { roleIds: [], actorRoleKeys: ['super_admin'] }), (e) => e.code === 'ROLE_REQUIRED');
-  const { rows: [still] } = await harness.query('SELECT password_hash FROM admins WHERE id = $1', [boss.id]);
-  assert.equal(still.password_hash, 'x', 'nothing was written');
+  // An account manager: no reset of a super administrator, no super_admin grant, no role-less account.
+  await assert.rejects(() => rbac.updateAdminUser(boss, { passwordHash: 'stolen', actorId: manager }), superOnly);
+  await assert.rejects(() => rbac.updateAdminUser(clerk, { roleIds: [office.id, superRole.id], actorId: manager }), superOnly);
+  await assert.rejects(() => rbac.createAdminUser({ username: 'new.super', passwordHash: 'x', roleIds: [superRole.id], actorId: manager }), superOnly);
+  await assert.rejects(() => rbac.updateAdminUser(clerk, { roleIds: [], actorId: chief }), (e) => e.code === 'ROLE_REQUIRED');
 
-  // An ordinary account stays with its manager; a super administrator may do either.
-  assert.ok(await rbac.updateAdminUser(clerk.id, { passwordHash: 'fresh', actorRoleKeys: manager }));
-  assert.ok(await rbac.updateAdminUser(clerk.id, { roleIds: [office.id, superRole.id], actorRoleKeys: ['super_admin'] }));
+  // A super administrator demoted after their request began: the request still
+  // "knows" super_admin, the database does not — refused on update and create.
+  await harness.query('DELETE FROM admin_user_roles WHERE admin_id = $1', [chief]);
+  await harness.query('INSERT INTO admin_user_roles (admin_id, role_id) VALUES ($1, $2)', [chief, office.id]);
+  await assert.rejects(() => rbac.updateAdminUser(boss, { passwordHash: 'stolen', actorId: chief }), superOnly);
+  await assert.rejects(() => rbac.createAdminUser({ username: 'late.super', passwordHash: 'x', roleIds: [superRole.id], actorId: chief }), superOnly);
+  // Disabled after the request began: changes nothing at all.
+  await harness.query('UPDATE admins SET active = FALSE WHERE id = $1', [manager]);
+  await assert.rejects(() => rbac.updateAdminUser(clerk, { passwordHash: 'fresh', actorId: manager }), (e) => e.code === 'ACTOR_DISABLED');
+
+  const { rows } = await harness.query("SELECT username, password_hash FROM admins WHERE username IN ('boss', 'clerk', 'new.super', 'late.super') ORDER BY username");
+  assert.deepEqual(rows, [{ username: 'boss', password_hash: 'x' }, { username: 'clerk', password_hash: 'x' }], 'nothing was written');
+
+  // A current super administrator may; an ordinary account stays with any active account manager.
+  assert.ok(await rbac.updateAdminUser(clerk, { roleIds: [office.id, superRole.id], actorId: boss }));
+  assert.ok(await rbac.updateAdminUser(boss, { passwordHash: 'renewed', actorId: boss }));
 });
-

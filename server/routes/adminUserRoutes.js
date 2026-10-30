@@ -46,7 +46,8 @@ function createAdminUserRoutes({db,authMiddleware,requirePermission}){
       const users=await db.listAdminUsers();
       const target=guards.resolveTargetOr404(users,req.params.id);
       // No role-less account; only a super administrator grants super_admin or
-      // changes a super administrator's account (repeated under lock in rbac.js).
+      // changes a super administrator's account. Repeated in rbac.js on locked
+      // rows, with the actor's roles read again there — this copy is a snapshot.
       if(roleIds!=null&&!Array.isArray(roleIds))return res.status(400).json({error:'role_ids must be a list.'});
       guards.assertAccountChangeAllowed({actor:req.admin,target,roleIdsGiven:Array.isArray(roleIds),
         selectedRoles:Array.isArray(roleIds)?await validateAssignableRoles(roleIds):[]});
@@ -54,7 +55,7 @@ function createAdminUserRoutes({db,authMiddleware,requirePermission}){
       guards.assertSuperAdminFloor(users,target,{nextRoleIds:roleIds,nextActive:body.active});
       const passwordHash=body.password?await bcrypt.hash(String(body.password),12):null;
       if(body.password&&String(body.password).length<10)return res.status(400).json({error:'Password must be at least 10 characters.'});
-      const user=await db.updateAdminUser(req.params.id,{username:body.username,active:body.active,roleIds,passwordHash,actorId:req.admin.id,actorRoleKeys:req.admin.role_keys||[]});
+      const user=await db.updateAdminUser(req.params.id,{username:body.username,active:body.active,roleIds,passwordHash,actorId:req.admin.id});
       res.json({user});
     }catch(e){res.status(status(e)).json(errorBody(e,'Could not update user.'));}
   });

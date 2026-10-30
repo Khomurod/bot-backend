@@ -95,6 +95,7 @@ async function createAdminUser({ username, passwordHash, roleIds, actorId }) {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    await assertMayChangeAccount(client, { targetIsSuper: false, roleIds, actor: await lockAndReadActor(client, actorId) });
     const created = await client.query(
       `INSERT INTO admins (username, password_hash, active, created_by_admin_id, updated_by_admin_id)
        VALUES ($1, $2, TRUE, $3, $3)
@@ -149,15 +150,41 @@ async function countActiveSuperAdmins(client) {
 }
 
 /**
- * Who may make this change, decided on the LOCKED row (October 2026 audit).
- * The route checks the same rule first for a clear answer, but on a snapshot
- * read before this transaction; a concurrent edit (another administrator
- * removing super_admin a moment earlier) could make that snapshot stale, so the
- * authoritative check is here, after `FOR UPDATE`. Only a super administrator
- * may change a super administrator's account at all or grant super_admin, and
- * no account may be left without a role.
+ * The acting account as it is NOW. Locks it together with the rows about to
+ * change — one statement, in id order, so two administrators editing each
+ * other cannot deadlock — then reads its active roles inside the transaction.
+ * The request's own copy was read before the handler started; a demotion or a
+ * disable that commits in between must win. Null when no actor is named.
  */
-async function assertMayChangeAccount(client, { targetIsSuper, roleIds, actorRoleKeys }) {
+async function lockAndReadActor(client, actorId, alsoLock = []) {
+  const ids = [...new Set([actorId, ...alsoLock].filter((id) => id != null).map(Number))];
+  if (ids.length) await client.query('SELECT id FROM admins WHERE id = ANY($1::int[]) ORDER BY id FOR UPDATE', [ids]);
+  if (actorId == null) return null;
+  const res = await client.query(
+    `SELECT a.active,
+            COALESCE(array_agg(r.system_key) FILTER (WHERE r.system_key IS NOT NULL AND r.active), '{}') AS role_keys
+       FROM admins a
+       LEFT JOIN admin_user_roles aur ON aur.admin_id = a.id
+       LEFT JOIN roles r ON r.id = aur.role_id
+      WHERE a.id = $1
+      GROUP BY a.id`,
+    [actorId],
+  );
+  return { active: res.rows[0]?.active === true, roleKeys: res.rows[0]?.role_keys || [] };
+}
+
+/**
+ * Who may make this change, decided on LOCKED rows (October 2026 audit). The
+ * route checks the same rule first for a clear answer, but on snapshots read
+ * before this transaction — the target's and the actor's own — and either can
+ * be stale by the time of the write. Only a super administrator may change a
+ * super administrator's account at all or grant super_admin; no account may be
+ * left without a role; a disabled actor changes nothing.
+ */
+async function assertMayChangeAccount(client, { targetIsSuper, roleIds, actor }) {
+  if (actor && !actor.active) {
+    throw Object.assign(new Error('Your account is disabled.'), { status: 403, code: 'ACTOR_DISABLED' });
+  }
   let grantsSuper = false;
   if (Array.isArray(roleIds)) {
     if (!roleIds.length) {
@@ -169,7 +196,7 @@ async function assertMayChangeAccount(client, { targetIsSuper, roleIds, actorRol
     const selected = await client.query('SELECT system_key FROM roles WHERE id = ANY($1::int[])', [roleIds.map(Number)]);
     grantsSuper = selected.rows.some((r) => r.system_key === 'super_admin');
   }
-  if ((targetIsSuper || grantsSuper) && !(actorRoleKeys || []).includes('super_admin')) {
+  if ((targetIsSuper || grantsSuper) && !(actor?.roleKeys || []).includes('super_admin')) {
     throw Object.assign(
       new Error("Only a super administrator can grant the super administrator role or change a super administrator's account."),
       { status: 403, code: 'SUPER_ADMIN_ONLY' },
@@ -177,10 +204,11 @@ async function assertMayChangeAccount(client, { targetIsSuper, roleIds, actorRol
   }
 }
 
-async function updateAdminUser(adminId, { username, active, roleIds, passwordHash, actorId, actorRoleKeys = [] }) {
+async function updateAdminUser(adminId, { username, active, roleIds, passwordHash, actorId }) {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    const actor = await lockAndReadActor(client, actorId, [adminId]);
     const before = await client.query('SELECT id, username, active FROM admins WHERE id = $1 FOR UPDATE', [adminId]);
     if (!before.rows[0]) { await client.query('ROLLBACK'); return null; }
     const existingRoles = await client.query(
@@ -190,7 +218,7 @@ async function updateAdminUser(adminId, { username, active, roleIds, passwordHas
     await assertMayChangeAccount(client, {
       targetIsSuper: existingRoles.rows.some((r) => r.system_key === 'super_admin'),
       roleIds,
-      actorRoleKeys,
+      actor,
     });
     const removingLastSuper = existingRoles.rows.some((r) => r.system_key === 'super_admin')
       && (active === false || Array.isArray(roleIds));

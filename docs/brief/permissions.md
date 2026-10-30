@@ -83,9 +83,13 @@ prefixed key and may never claim a reserved key or `super_`/`admin_` prefix
   `users.manage` alone could make anyone super administrator, or reset a
   super administrator's password and sign in as them. Ordinary accounts stay
   with `users.manage`. The route answers first
-  (`adminUserGuards.assertAccountChangeAllowed`, on a snapshot), and
-  `rbac.updateAdminUser` repeats the rule on the row it has locked `FOR UPDATE`,
-  so a concurrent edit cannot make a stale snapshot pass.
+  (`adminUserGuards.assertAccountChangeAllowed`, on snapshots), and
+  `rbac.createAdminUser` / `rbac.updateAdminUser` repeat the rule inside their
+  transaction on LOCKED rows — the target's, and the acting account's own,
+  whose roles are read again there (both rows locked in id order, so two
+  administrators editing each other cannot deadlock). A concurrent edit, or the
+  actor being demoted or disabled while their request is in flight, cannot make
+  a stale snapshot pass.
 - **`npm run seed-admin` needs `ADMIN_PASSWORD` of at least 10 characters**
   and refuses before touching the database otherwise; it used to create the
   first admin with an empty password, which sign-in refuses. A new account is

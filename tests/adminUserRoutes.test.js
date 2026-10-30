@@ -119,12 +119,13 @@ test("an account manager cannot reset a super administrator's password or disabl
   assert.equal(written, 1);
 });
 
-test('the actor\'s roles reach the locked re-check in the database', async () => {
+test('the database is told WHO acts, not what roles they had when the request began', async () => {
   let seen = null;
-  const res = await send(appWith({ updateAdminUser: async (id, body) => { seen = body.actorRoleKeys; return { id: Number(id) }; } },
+  const res = await send(appWith({ updateAdminUser: async (id, body) => { seen = body; return { id: Number(id) }; } },
     { id: 1, role_keys: ['super_admin'] }), 'PUT', '/api/admin/users/2', { password: 'a-new-password-1' });
   assert.equal(res.status, 200);
-  assert.deepEqual(seen, ['super_admin']);
+  assert.equal(seen.actorId, 1);
+  assert.equal('actorRoleKeys' in seen, false, 'rbac.js re-reads the actor under lock');
 });
 
 test('a super administrator may grant super_admin', async () => {
