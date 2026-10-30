@@ -162,7 +162,7 @@ export default function HomeTimeSettingsCard({ settings, saving, onSave }) {
             message and a link to it, the detected intention, the dates found so far, the dates
             still missing, and why it was classified that way. One alert per request, never
             repeated. If this is empty the alert is skipped, but the request is still recorded and
-            appears in the list above as <b>Awaiting staff clarification</b>.
+            appears in the Overview driver list as <b>Awaiting staff clarification</b>.
           </p>
         </div>
 

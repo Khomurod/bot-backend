@@ -38,13 +38,13 @@ export const REFRESH_MS = 5 * 60 * 1000;
 export const HISTORY_PAGE_SIZE = 50;
 
 /**
- * `initialTab` is which tab to OPEN ON, and the page validates it against its
- * own TABS before handing it over — the key list lives there with the labels,
- * so this hook does not keep a second copy that could drift from it. Anything
- * falsy opens Needs attention, which is where the page has always opened.
+ * `tab` and `setTab` are the page's — it takes the open tab from the address
+ * (`#operations/history`) and validates it against its own TABS, where the key
+ * list lives with the labels, so this hook does not keep a second copy that
+ * could drift from it. The hook only needs to know which tab is open to load
+ * that tab's data.
  */
-export default function useOperations({ flash, initialTab } = {}) {
-  const [tab, setTab] = useState(() => initialTab || 'findings');
+export default function useOperations({ flash, tab = 'findings', setTab } = {}) {
   const [summary, setSummary] = useState(null);
   const [findings, setFindings] = useState([]);
   const [corrections, setCorrections] = useState([]);

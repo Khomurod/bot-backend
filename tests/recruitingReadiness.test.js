@@ -38,7 +38,9 @@ test('nothing set names every one of them rather than stopping at the first', ()
 
 test('each blocker says where to go, because a warning without an address is a mood', () => {
   for (const b of afterHoursReadiness({}).blockers) {
-    assert.match(b.where, /Settings →/);
+    // A real screen: Settings for switches and credentials, Customer Inquiries
+    // for what Wenze may say and when (the Teach Wenze tab).
+    assert.match(b.where, /^(Settings|Customer Inquiries) → /);
     assert.ok(b.what.endsWith('.'), 'and reads as a sentence');
   }
 });

@@ -1,5 +1,5 @@
 /**
- * Operations → what Wenze has suggested about its own rules.
+ * Needs Attention → Suggestions: what Wenze has suggested about its own rules.
  *
  * WHAT CHANGED HERE, AND WHY IT IS STILL SAFE. Accepting used to write a word
  * in a table and change nothing — the previous comment in this file said so and

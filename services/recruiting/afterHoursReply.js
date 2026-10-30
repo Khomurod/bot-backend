@@ -149,7 +149,7 @@ async function considerReply({
     const out = await sendAcknowledgement(ackArgs, deps);
     await notifyHandoff({
       phone, firstName, conversation, candidate,
-      reason: 'nothing has been approved for Wenze to say — Settings → Recruiting → Teach Wenze',
+      reason: 'nothing has been approved for Wenze to say — Customer Inquiries → Teach Wenze',
     }, deps);
     return skip('no_approved_knowledge', { acknowledged: out.sent });
   }

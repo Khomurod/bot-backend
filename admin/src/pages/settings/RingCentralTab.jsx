@@ -17,7 +17,7 @@ import PageFailure from "../../components/PageFailure";
 //     such on their row rather than looking configured.
 //
 // When the settings or the recruiters cannot be read, the tab says so and
-// offers a retry INSTEAD of the form — as Settings → Live Location does. It
+// offers a retry INSTEAD of the form — as Settings → Location Providers does. It
 // used to render against `settings === null` and throw ("This section has a
 // bug"), and a form drawn from defaults could save them over the stored values.
 

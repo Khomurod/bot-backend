@@ -8,38 +8,38 @@
  * (since removed) silently opened Driver Groups. `pageKeys.test.jsx` now holds the three lists
  * to each other, and `PAGE_KEYS` below is the vocabulary they are held to.
  *
- * A KEY IS NOT A COMPONENT. Several keys deliberately open the same component
- * on a different tab — `settings_board` and `settings_ai` are both the Settings
- * page, `system_health` is the Operations page — because the thing a person
- * looks for in a sidebar ("Dispatcher Board") is not the thing the code happens
- * to have built as a component.
+ * ONE KEY, ONE PAGE; THE TAB IS THE SECOND HALF. `#settings/board` is the
+ * Settings page on its Dispatcher Board section. Until October 2026 several
+ * keys opened one page on different tabs (`settings_board`, `settings_ai`, …),
+ * and the tab never reached the address — switching tabs left the URL and the
+ * sidebar highlight behind. Those keys are now LEGACY_PAGE_KEYS that land on
+ * the exact tab. See docs/redesign/structure.md.
  */
 
-/** Every key the admin shell can render. The sidebar and App.jsx agree with this. */
+/**
+ * Every key the admin shell can render. The sidebar and App.jsx agree with this.
+ * Grouped as the sidebar groups them (docs/redesign/structure.md).
+ */
 export const PAGE_KEYS = Object.freeze([
-  // Operations
-  'operations',
+  // Drivers
+  'groups',
   'live_locations',
   'home_time',
-  'system_health',
-  // Groups
-  'groups',
   'mileage_bonus',
-  // Communications
-  'communications',
-  'company_birthdays',
+  'retention',
   // Recruiting
   'leads',
   'facebook_leads',
   'recruiter_kpis',
-  // Settings
+  // Communications
+  'communications',
+  'company_birthdays',
+  // Monitoring
+  'operations',
+  'system_health',
+  // Administration
   'users',
-  'settings_integrations',
-  'settings_board',
-  'settings_ai',
-  'settings_notifications',
-  'settings_reactions',
-  'settings_access',
+  'settings',
 ]);
 
 /**
@@ -53,69 +53,86 @@ export const PAGE_KEYS = Object.freeze([
 export const DEFAULT_PAGE_KEY = 'groups';
 
 /**
- * Keys that used to name a page of their own and now name a tab of one.
+ * Keys that used to name a page of their own, and where that content is now —
+ * a page, or a page and one of its tabs (`page/tab`).
  *
  * These are NOT dead entries kept for tidiness: a hash link somebody
  * bookmarked or pasted into a chat is an input this application does not
  * control, and the honest answer to `/admin#broadcast` is the screen that
  * content moved to — not a silent fall back to Driver Groups, which looks
- * exactly like the link having been wrong.
+ * exactly like the link having been wrong. Each lands on the TAB its old page
+ * became, not just the page: `#settings_board` opening Settings on Location
+ * Providers would be the same wrong landing with extra steps.
  *
  * Add to this whenever a page key is retired. Removing one breaks a link that
  * may still be in somebody's browser.
  */
 export const LEGACY_PAGE_KEYS = Object.freeze({
-  // Stage C2 — five messaging screens became tabs of Communications.
-  broadcast: 'communications',
-  questions: 'communications',
-  scheduled: 'communications',
-  bot_messages: 'communications',
-  manager: 'communications',
-  // Stage C3 — "Settings" alone no longer says which settings.
-  settings: 'settings_integrations',
-  // Stage C3b — two top-level pages became tabs of Settings. ONE KEY EACH:
-  // pointing both at a single "bot settings" key resolved the link and then
-  // opened the wrong screen, which is worse than not resolving it.
-  auto_reactions: 'settings_reactions',
-  group_access: 'settings_access',
+  // Stage C2 — five messaging screens became tabs of Communications (Messages).
+  broadcast: 'communications/send',
+  questions: 'communications/surveys',
+  scheduled: 'communications/scheduled',
+  bot_messages: 'communications/history',
+  manager: 'communications/edit_by_link',
+  // Stage C3 / C3b — Settings entries that each opened one tab. Since the
+  // October 2026 structure there is one Settings entry and every section has
+  // its own address.
+  settings_integrations: 'settings/location',
+  settings_board: 'settings/board',
+  settings_ai: 'settings/ai',
+  settings_notifications: 'settings/notifications',
+  // ONE KEY EACH: pointing both at a single "bot settings" key resolved the
+  // link and then opened the wrong screen, which is worse than not resolving it.
+  settings_reactions: 'settings/reactions',
+  settings_access: 'settings/access',
+  auto_reactions: 'settings/reactions',
+  group_access: 'settings/access',
 });
 
 const KNOWN = new Set(PAGE_KEYS);
 
+/** Split `page/tab` into its halves; a tab may be absent. */
+function splitRoute(raw) {
+  const [page, tab] = String(raw ?? '').trim().replace(/^#/, '').split('/');
+  return { page: (page || '').trim(), tab: (tab || '').trim() || null };
+}
+
 /**
- * Turn anything into a key the shell can render.
+ * Turn anything into a route the shell can render: `{ page, tab }`.
  *
  * Order matters: a live key wins over a legacy one, so re-using a retired name
- * for a new page can never be shadowed by its own history.
+ * for a new page can never be shadowed by its own history. A tab written on a
+ * live key is kept as given — the PAGE decides whether it names one of its tabs
+ * and opens its first tab otherwise; this module only knows pages. A legacy key
+ * brings the tab its content moved to.
  */
-export function resolvePageKey(raw) {
-  const key = String(raw ?? '').trim();
-  if (KNOWN.has(key)) return key;
-  const moved = LEGACY_PAGE_KEYS[key];
-  if (moved && KNOWN.has(moved)) return moved;
-  return DEFAULT_PAGE_KEY;
-}
-
-/** True when `raw` names a live page — used to tell "unknown" from "moved". */
-export function isLivePageKey(raw) {
-  return KNOWN.has(String(raw ?? '').trim());
+export function resolveRoute(raw) {
+  const { page, tab } = splitRoute(raw);
+  if (KNOWN.has(page)) return { page, tab };
+  const moved = LEGACY_PAGE_KEYS[page];
+  if (moved) {
+    const target = splitRoute(moved);
+    if (KNOWN.has(target.page)) return target;
+  }
+  return { page: DEFAULT_PAGE_KEY, tab: null };
 }
 
 /**
- * `/admin#home_time` → `home_time`.
+ * `/admin#settings/board` → `{ page: 'settings', tab: 'board' }`.
  *
- * Everything after the first `/` is ignored: `#communications/scheduled` is a
- * page key and a hint at a tab within it, and only the page half is this
- * module's business. Anything unrecognised resolves to the default, so a
- * mangled or hand-typed hash opens a working screen rather than a blank one.
+ * No hash at all is no opinion (null): the caller decides, and a path-based
+ * public page must not be overridden by an empty hash. Anything unrecognised
+ * resolves to the default page, so a mangled or hand-typed hash opens a working
+ * screen rather than a blank one. Anything after a second `/` is ignored.
  */
-export function pageKeyFromHash(hash) {
+export function routeFromHash(hash) {
   const raw = String(hash ?? '').replace(/^#/, '');
   if (!raw) return null;
-  return resolvePageKey(raw.split('/')[0]);
+  return resolveRoute(raw);
 }
 
-/** `home_time` → `#home_time`. The inverse of the page half above. */
-export function hashForPageKey(key) {
-  return `#${resolvePageKey(key)}`;
+/** `('settings', 'board')` → `#settings/board`; no tab → `#settings`. */
+export function hashForRoute(page, tab) {
+  const route = resolveRoute(page);
+  return tab ? `#${route.page}/${tab}` : `#${route.page}${route.tab ? `/${route.tab}` : ''}`;
 }

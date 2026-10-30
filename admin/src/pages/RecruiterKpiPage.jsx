@@ -100,6 +100,9 @@ export default function RecruiterKpiPage() {
           Main KPI: <strong style={{ color: "var(--text-primary)" }}>{targets.talkLabel} real call duration</strong> ·
           Secondary KPI: <strong style={{ color: "var(--text-primary)" }}>{targets.outbound} outbound calls</strong>
         </p>
+        <p style={{ textAlign: "center", fontSize: 12, margin: "0 0 10px" }}>
+          <a href="#settings/ringcentral">Change the targets and thresholds</a> in Settings → RingCentral &amp; Bitrix24.
+        </p>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 10, justifyContent: "center" }}>
           <span className="badge badge-inactive">&lt; {shortThreshold}s : does NOT count toward talk time</span>
           <span className="badge badge-muted">&gt; {data?.thresholds?.realConversationMinSeconds ?? 60}s : Real Conversation</span>
@@ -110,7 +113,7 @@ export default function RecruiterKpiPage() {
       {loading ? (
         <div className="loading"><div className="spinner"></div> Loading…</div>
       ) : recruiters.length === 0 ? (
-        <div className="card"><p style={{ color: "var(--text-muted)", margin: 0 }}>No active recruiters. Add recruiters and their RingCentral numbers in <strong>Settings → RingCentral</strong>.</p></div>
+        <div className="card"><p style={{ color: "var(--text-muted)", margin: 0 }}>No active recruiters. Add recruiters and their RingCentral numbers in <a href="#settings/ringcentral">Settings → RingCentral &amp; Bitrix24</a>.</p></div>
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 16 }}>
           {recruiters.map((r) => (

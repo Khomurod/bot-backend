@@ -1,8 +1,8 @@
 /**
- * Settings → Live Location: a settings read that fails is said, with a retry,
- * and the form is NOT drawn. It used to be drawn against no settings and throw
- * ("This section has a bug") — and a form drawn from defaults could save every
- * provider "Enabled" and a blank API base over the stored values.
+ * Settings → Location Providers: a settings read that fails is said, with a
+ * retry, and the form is NOT drawn. It used to be drawn against no settings and
+ * throw ("This section has a bug") — and a form drawn from defaults could save
+ * every provider "Enabled" and a blank API base over the stored values.
  */
 import React from "react";
 import { beforeEach, expect, test, vi } from "vitest";

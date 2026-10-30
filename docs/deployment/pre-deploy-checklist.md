@@ -154,7 +154,7 @@ after deploy on the live service.
 | G4 | Approval result is logged (audit trail). | **[MANUAL]** Check a mileage-bonus Paid/Rejected decision records who decided (`decided_by_username` / `decided_by_user_id`). |
 | G5 | **No duplicate approval messages.** | **[AUTO]** `service_runs` idempotency; **[MANUAL]** re-trigger does not double-send. |
 | G6 | **No unauthorized approval is possible.** | **[AUTO]** accounting-only guard in `mileageBonusHandlers`; **[MANUAL]** non-authorized user is rejected. |
-| G7 | ~~Raise review request and result go to their OWN groups.~~ **REMOVED** with the driver-raise review: Settings → Telegram Groups shows only the mileage and road bonus groups, each its own setting with no fallback. | **[AUTO]** `messageRoutingSettings.test.js`, `messageGroupSettingsPg.test.js`. |
+| G7 | ~~Raise review request and result go to their OWN groups.~~ **REMOVED** with the driver-raise review: Settings → Bonus Groups (named Telegram Groups until October 2026) shows only the mileage and road bonus groups, each its own setting with no fallback. | **[AUTO]** `messageRoutingSettings.test.js`, `messageGroupSettingsPg.test.js`. |
 
 ---
 

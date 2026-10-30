@@ -306,7 +306,7 @@ test('fifty watch drivers produce ONE message naming the worst five', async () =
   assert.match(notice.title, /50 drivers worth a call/);
   assert.equal(notice.lines.length, watch.COHORT_NAMED + 1, 'five named plus the remainder line');
   assert.match(notice.lines[notice.lines.length - 1], /and 45 more/);
-  assert.match(notice.action, /Operations → Retention/);
+  assert.match(notice.action, /Drivers → Retention/);
 });
 
 test('the named ones are the worst ones', async () => {

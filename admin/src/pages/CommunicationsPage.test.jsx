@@ -55,7 +55,7 @@ const TABS = [
 
 test("opens on Send Message", async () => {
   render(<CommunicationsPage />);
-  expect(screen.getByRole("heading", { name: /Communications/i })).toBeTruthy();
+  expect(screen.getByRole("heading", { name: /^Messages$/i })).toBeTruthy();
   await waitFor(() => {
     expect(screen.getByText(TABS[0][1])).toBeTruthy();
   });

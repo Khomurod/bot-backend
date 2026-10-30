@@ -42,7 +42,7 @@ export default function GroupsPage() {
       <div className="page-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
         <div>
           <h2>Driver Groups</h2>
-          <p>Driver Groups is the source of truth for driver identity, status, truck, and team-driver structure across Home Time and Bot Group Access. Click a driver name to edit all details.</p>
+          <p>Driver Groups is the source of truth for driver identity, status, truck, and team-driver structure across Home Time and Group Access. Click a driver name to edit all details.</p>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <button

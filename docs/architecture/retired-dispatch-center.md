@@ -63,8 +63,8 @@ Each ETA row had a **📋 Details** button that fetched pinned-message previews,
 recently ingested loads, coordinates, provider connection status and a live ETA
 — reaching Telegram, Samsara and the ETA router on every click. It was a
 debugging console wearing a settings page's clothes, and the question it
-answered ("is this actually working?") is answered properly by **Operations →
-System & AI Health**, from recorded runs rather than a live fan-out.
+answered ("is this actually working?") is answered properly by **Monitoring →
+System Health** (then Operations → System & AI Health), from recorded runs rather than a live fan-out.
 
 It went with the page. The settings it sat beside did not.
 

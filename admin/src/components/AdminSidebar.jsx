@@ -2,28 +2,22 @@ import React, { useEffect, useState } from "react";
 import Icon from "./ui/Icon";
 import { applyTheme, effectiveTheme, storedTheme, watchSystemTheme } from "./ui/theme";
 
+/**
+ * The sidebar: five groups, business work first, the system after it,
+ * configuration last. One entry per page — a page's tabs are inside the page
+ * and in its address, never extra sidebar entries (six entries used to open
+ * the one Settings page). Why each thing is where it is:
+ * docs/redesign/structure.md.
+ */
 const NAV_SECTIONS = [
   {
-    label: 'Operations',
+    label: 'Drivers',
     items: [
-      { key: 'operations', icon: 'alert', label: 'Needs Attention' },
+      { key: 'groups', icon: 'users', label: 'Driver Groups' },
       { key: 'live_locations', icon: 'pin', label: 'Live Locations' },
-      { key: 'home_time', icon: 'home', label: 'Driver Home Time' },
-      { key: 'system_health', icon: 'activity', label: 'System & AI Health' },
-    ],
-  },
-  {
-    label: 'Groups',
-    items: [
-      { key: 'groups', icon: 'users', label: 'Groups' },
+      { key: 'home_time', icon: 'home', label: 'Home Time' },
       { key: 'mileage_bonus', icon: 'flag', label: 'Mileage Bonuses' },
-    ],
-  },
-  {
-    label: 'Communications',
-    items: [
-      { key: 'communications', icon: 'message', label: 'Communications' },
-      { key: 'company_birthdays', icon: 'cake', label: 'Birthdays' },
+      { key: 'retention', icon: 'lifebuoy', label: 'Retention' },
     ],
   },
   {
@@ -35,15 +29,24 @@ const NAV_SECTIONS = [
     ],
   },
   {
-    label: 'Settings',
+    label: 'Communications',
     items: [
-      { key: 'users', icon: 'user', label: 'Users & Access' },
-      { key: 'settings_integrations', icon: 'plug', label: 'Integrations' },
-      { key: 'settings_board', icon: 'board', label: 'Dispatcher Board' },
-      { key: 'settings_ai', icon: 'bot', label: 'AI & Autonomy' },
-      { key: 'settings_notifications', icon: 'bell', label: 'Notification Routing' },
-      { key: 'settings_reactions', icon: 'smile', label: 'Auto Reactions' },
-      { key: 'settings_access', icon: 'shield', label: 'Bot Group Access' },
+      { key: 'communications', icon: 'message', label: 'Messages' },
+      { key: 'company_birthdays', icon: 'cake', label: 'Birthdays' },
+    ],
+  },
+  {
+    label: 'Monitoring',
+    items: [
+      { key: 'operations', icon: 'alert', label: 'Needs Attention' },
+      { key: 'system_health', icon: 'activity', label: 'System Health' },
+    ],
+  },
+  {
+    label: 'Administration',
+    items: [
+      { key: 'users', icon: 'user', label: 'Telegram Users' },
+      { key: 'settings', icon: 'sliders', label: 'Settings' },
     ],
   },
 ];
@@ -65,14 +68,9 @@ function labelForPage(key) {
  * used to be one exception — the Trailer Department, which trailer-scoped
  * accounts could open without full access. That feature is gone.)
  *
- * FIVE SECTIONS, AND NO "ADMIN" DRAWER. Recruiting is its own section, the
- * operational monitors (Home Time, System health) sit in Operations where
- * somebody looking for "is this working" would look, and Settings is a section
- * rather than a drawer.
- *
- * October 2026 redesign: line icons instead of emoji, the signed-in account
- * and the light/dark switch in the footer. The items, their order and their
- * keys did not change.
+ * FIVE GROUPS, NO DRAWERS: Drivers, Recruiting, Communications, Monitoring,
+ * Administration (NAV_SECTIONS above). Line icons, the signed-in account and
+ * the light/dark switch in the footer.
  *
  * A key here MUST exist in `navigation/pageKeys.js` PAGE_KEYS and in App.jsx's
  * page map. `pageKeys.test.jsx` holds all three lists to each other, because a

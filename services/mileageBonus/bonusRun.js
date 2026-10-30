@@ -50,7 +50,7 @@ async function runMileageBonusCheck({
     const errors = [];
     let qualifyingDrivers = 0;
 
-    // The destination is admin-configured (Settings → Telegram Groups). With no
+    // The destination is admin-configured (Settings → Bonus Groups). With no
     // configured group we do NOT fall back to any old hardcoded default — we
     // skip the send entirely and surface a clear configuration error. Progress
     // is still persisted above, and no notification rows are claimed, so a later

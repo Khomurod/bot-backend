@@ -170,7 +170,8 @@ export default function ResponsibilitiesCard({ flash }) {
                   </label>
                   <div className="muted" style={{ marginTop: 4 }}>
                     {cap.mediumNote || "Anything less than confident goes to Needs Attention instead."}{" "}
-                    The same switch is in Operations → Needs attention → Automation.
+                    The same switch is in{" "}
+                    <a href="#operations/checks">Needs Attention → Automation</a>.
                   </div>
                 </div>
               )}

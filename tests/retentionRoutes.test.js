@@ -1,5 +1,5 @@
 /**
- * Operations → Retention, on what the API deliberately cannot do.
+ * Drivers → Retention, on what the API deliberately cannot do.
  *
  * The list is read-only about the driver. There is no endpoint that records an
  * opinion of one, no note field, and no action that touches their employment —

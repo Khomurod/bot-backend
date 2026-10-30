@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import * as api from "../../api";
 import { Banner } from "./fields";
 
-// ───────────────────────────── Telegram Groups tab ───────────────────────────
+// ────────────── Bonus Groups (Settings → Telegram Bot; was Telegram Groups) ──────
 
 /**
  * The message categories, in display order. `key` is the API/DB category name —

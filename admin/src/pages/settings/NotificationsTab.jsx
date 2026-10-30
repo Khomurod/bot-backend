@@ -25,8 +25,9 @@ import ControlChannelCard from "./control/ControlChannelCard";
  *   category is sent to" undersold what it is. See
  *   `docs/architecture/control-channel.md`.
  *
- * The four routine per-workflow group ids stay on Telegram Groups, which is
- * what that tab is actually about.
+ * The routine per-workflow group ids stay on Bonus Groups (the section was
+ * named Telegram Groups until October 2026), which is what that tab is
+ * actually about.
  */
 export default function NotificationsTab() {
   const [message, setMessage] = useState(null);
@@ -37,8 +38,8 @@ export default function NotificationsTab() {
       <p style={{ color: "var(--text-muted)", marginTop: 0 }}>
         Everything Wenze <strong>notices</strong> — corrections it made, risks it found, problems
         it recovered from — and the one channel it can be <strong>answered</strong> on. The
-        per-workflow message groups (mileage bonus, road bonus) are on the{" "}
-        <strong>Telegram Groups</strong> tab.
+        per-workflow message groups (mileage bonus, road bonus) are under{" "}
+        <a href="#settings/groups">Bonus Groups</a>.
       </p>
       <Banner message={message} />
       <NotificationRoutingCard flash={flash} />

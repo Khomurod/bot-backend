@@ -99,7 +99,8 @@ none.
 
 ## Settings
 
-On the **Home Time** page (`admin/src/pages/homeTime/ViolationAlertsCard.jsx`),
+On the **Home Time** page, **Settings & Alerts** tab (`#home_time/settings`;
+`admin/src/pages/homeTime/ViolationAlertsCard.jsx`),
 stored on `home_time_settings`: `violation_alerts_enabled`,
 `violation_alerts_chat_id` (reachability-checked like the other home-time
 groups; cleared → switched off; listed in `lib/telegram/chatMigration.js`).
@@ -121,7 +122,7 @@ decrypts (the key changed) counts as not set — create a new link.
 
 ## Setting up Bitrix (once, by a Bitrix admin)
 
-1. On the Home Time page, in "Home-time violation alerts", press **Create
+1. On Home Time → Settings & Alerts, in "Home-time violation alerts", press **Create
    webhook link** and copy the link (shown once). Without it every webhook call
    is refused (401) and alerts come only from the 30-minute pass.
 2. In Bitrix24: CRM → Deals → pipeline **6. HOMETIME MONITORING** → **Automation

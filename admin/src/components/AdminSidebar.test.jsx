@@ -1,10 +1,9 @@
 /**
  * The sidebar after the October 2026 redesign.
  *
- * The redesign changed how the sidebar looks, not where anything is: every
- * page key still has exactly one sidebar entry, an account without
- * admin.full_access still sees none, Sign Out still signs out, and the new
- * theme switch only changes the theme.
+ * Every page key has exactly one sidebar entry, in the five groups of
+ * docs/redesign/structure.md; an account without admin.full_access sees none;
+ * Sign Out still signs out; the theme switch only changes the theme.
  */
 import React from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
@@ -30,22 +29,29 @@ function renderSidebar(props = {}) {
 }
 
 describe("AdminSidebar", () => {
-  test("every page key has exactly one entry, in the five sections", () => {
+  test("every page key has exactly one entry, in the five groups", () => {
     const keys = NAV_SECTIONS.flatMap((s) => s.items.map((i) => i.key));
     expect([...keys].sort()).toEqual([...PAGE_KEYS].sort());
-    expect(NAV_SECTIONS.map((s) => s.label)).toEqual(["Operations", "Groups", "Communications", "Recruiting", "Settings"]);
+    expect(NAV_SECTIONS.map((s) => s.label)).toEqual(["Drivers", "Recruiting", "Communications", "Monitoring", "Administration"]);
+    expect(NAV_SECTIONS.map((s) => s.items.map((i) => i.label))).toEqual([
+      ["Driver Groups", "Live Locations", "Home Time", "Mileage Bonuses", "Retention"],
+      ["Leads", "Customer Inquiries", "Recruiter KPIs"],
+      ["Messages", "Birthdays"],
+      ["Needs Attention", "System Health"],
+      ["Telegram Users", "Settings"],
+    ]);
   });
 
   test("an entry opens its page and the open page is marked current", async () => {
     const { onNavigateToPage } = renderSidebar();
-    expect(screen.getByRole("button", { name: "Groups" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("button", { name: "Driver Groups" })).toHaveAttribute("aria-current", "page");
     await userEvent.click(screen.getByRole("button", { name: "Recruiter KPIs" }));
     expect(onNavigateToPage).toHaveBeenCalledWith("recruiter_kpis");
   });
 
   test("an account without admin.full_access sees no sections, but can still sign out", async () => {
     const { onLogout } = renderSidebar({ session: { username: "anna", permissions: [] } });
-    expect(screen.queryByRole("button", { name: "Groups" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Driver Groups" })).toBeNull();
     expect(screen.getByText("Limited access")).toBeTruthy();
     await userEvent.click(screen.getByRole("button", { name: "Sign Out" }));
     expect(onLogout).toHaveBeenCalledTimes(1);
@@ -76,7 +82,8 @@ describe("AdminSidebar", () => {
   });
 
   test("the phone top bar's title is the sidebar label", () => {
-    expect(labelForPage("settings_ai")).toBe("AI & Autonomy");
+    expect(labelForPage("settings")).toBe("Settings");
+    expect(labelForPage("system_health")).toBe("System Health");
     expect(labelForPage("nope")).toBe(null);
   });
 });

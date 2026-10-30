@@ -230,7 +230,7 @@ async function announceCohort(cohort, { nowIso, deps }) {
       ...named.map((d) => `${d.driver}: ${d.topReason}`),
       rest > 0 ? `…and ${rest} more.` : null,
     ].filter(Boolean),
-    action: 'Operations → Retention has the full list, with the reasons and what to do',
+    action: 'Drivers → Retention has the full list, with the reasons and what to do',
     subjectType: 'system',
     subjectId: 'retention_cohort',
     // Once a day at most: the cohort barely changes between passes.

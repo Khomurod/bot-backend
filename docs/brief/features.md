@@ -5,17 +5,26 @@
 
 ### Finding a screen
 
-The admin panel has five nav sections — **Operations · Groups · Communications ·
-Recruiting · Settings** — and no collapsed "Admin" drawer: every section needs
-the same permission, so a section named after the permission said nothing about
-what was in it.
+The admin panel has five sidebar groups — **Drivers · Recruiting ·
+Communications · Monitoring · Administration** — with one entry per page (14),
+and no collapsed "Admin" drawer: every section needs the same permission, so a
+section named after the permission said nothing about what was in it. Settings
+is ONE entry; its 13 sections sit under six groups in the page's own list.
+Where each function lives, and why: `docs/redesign/structure.md`.
 
-**Every admin screen has a URL now.** The page is the hash
-(`/admin#home_time`), so a screen can be bookmarked, pasted into a chat, or
-reached with Back — until Stage C3 `/admin` was the only URL the panel ever
-produced. A hash naming a page that has since become a tab opens where its
-content went (`#broadcast` → Communications); anything unrecognised opens Driver
-Groups. `admin/src/navigation/pageKeys.js`.
+**Every admin page and every page-level tab has a URL.** The page is the hash
+and the tab its second half (`/admin#settings/board`, `#operations/history`),
+so a screen can be bookmarked, pasted into a chat, or reached with Back — until
+Stage C3 `/admin` was the only URL the panel ever produced, and until October
+2026 a tab changed inside a page reached neither the address nor the sidebar
+highlight. A tab change replaces the address (Back leaves the page); a page
+change adds to it. A hash naming a page that has since moved opens the exact
+tab its content went to (`#broadcast` → Messages → Send Message,
+`#settings_board` → Settings → Dispatcher Board) and is rewritten in place to
+the new address; anything unrecognised opens Driver Groups. List filters stay
+out of the address, and so does the one tab bar nested inside a tab (Send
+Message's Announcement / Confirmation), which always opens on Announcement.
+`admin/src/navigation/pageKeys.js`.
 
 ### How the panel looks (October 2026 redesign)
 
@@ -205,7 +214,8 @@ file passed the 500-line limit.
   The same for repeated refusals of Wenze's recruiting drafts: a rising
   `unapproved_figure` count means candidates keep asking about something nobody
   has taught it, which is a gap to fill under Teach Wenze.
-- Operations → **What Wenze learned** shows each proposal with the evidence that
+- Needs Attention → **Suggestions** (the "What Wenze learned" tab until October
+  2026) shows each proposal with the evidence that
   produced it, including the reasons people typed when they reverted. A
   suggestion without its evidence is an opinion.
   `docs/architecture/self-healing-and-learning.md`.
@@ -225,7 +235,7 @@ file passed the 500-line limit.
   SAID — never an assessment of the driver.** No behaviour score, no
   performance measure, no employment decision. `refuseEmploymentLanguage` in
   `services/retention/watch.js` refuses a notice that strays, and the
-  Operations → Retention screen has exactly two endpoints: read the list and
+  Drivers → Retention screen has exactly two endpoints: read the list and
   say "we know". There is deliberately nowhere to record an opinion of a driver.
 - **The decision is arithmetic.** With every AI provider switched off, the same
   drivers are flagged for the same reasons; a model only words one sentence, and
@@ -333,11 +343,12 @@ company's template** to the employee group — their photo, full first name and
 American name — with the owner's **fixed caption** tagging their Telegram
 account. No model writes it (the AI birthday message was removed on
 2026-10-23). The staff list, its American names, Telegram accounts and photos
-are kept in Users → **Company Employees** (formerly the always-empty
-"Dispatchers" filter); names and dates on the Birthdays page. Telegram accounts
-can be *suggested* from the accounts the bot has seen — by display name, never
-by username — and a suggestion never overwrites one a person typed or
-confirmed. Exactly one card per employee per day. See
+are kept in Birthdays → **Employees** (Users → Company Employees until
+October 2026, and before that the always-empty "Dispatchers" filter); names
+and dates on the page's first tab, Birthdays. Telegram accounts can be
+*suggested* from the accounts the bot has seen — by display name, never by
+username — and a suggestion never overwrites one a person typed or confirmed.
+Exactly one card per employee per day. See
 [`docs/architecture/employee-birthday-cards.md`](../architecture/employee-birthday-cards.md).
 
 ### Recruiting and leads

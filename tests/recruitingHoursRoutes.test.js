@@ -1,5 +1,5 @@
 /**
- * Admin → Settings → Recruiting hours, on what it REFUSES.
+ * Admin → Customer Inquiries → Teach Wenze → Working hours, on what it REFUSES.
  *
  * A malformed window is the dangerous save here, and it is dangerous because it
  * is SILENT: `evaluateHours` reads an unreadable window as "not a window", the

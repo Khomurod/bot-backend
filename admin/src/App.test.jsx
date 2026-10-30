@@ -18,7 +18,7 @@
  */
 import React from "react";
 import { describe, expect, test, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 // Every page behind the shell fetches on mount. None of that is what is under
@@ -75,20 +75,36 @@ describe("a hash opens the page it names", () => {
     });
   });
 
-  test("#communications opens Communications on first load", async () => {
+  test("#communications opens Messages on first load", async () => {
     goTo("#communications");
     await renderShell();
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: /Communications/i })).toBeTruthy();
+      expect(screen.getByRole("heading", { name: /^Messages$/i })).toBeTruthy();
     });
   });
 
-  test("#broadcast — retired in the stage before this one — opens Communications too", async () => {
+  test("a hash with a tab opens that tab", async () => {
+    goTo("#communications/scheduled");
+    await renderShell();
+    const scheduled = await screen.findByRole("tab", { name: "Scheduled" });
+    expect(scheduled).toHaveAttribute("aria-selected", "true");
+  });
+
+  test("#broadcast — a retired key — opens its own tab and is rewritten to the new address", async () => {
     goTo("#broadcast");
     await renderShell();
+    const send = await screen.findByRole("tab", { name: "Send Message" });
+    expect(send).toHaveAttribute("aria-selected", "true");
+    await waitFor(() => expect(window.location.hash).toBe("#communications/send"));
+  });
+
+  test("#settings_board — an old Settings entry — opens the Dispatcher Board section", async () => {
+    goTo("#settings_board");
+    await renderShell();
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: /Communications/i })).toBeTruthy();
+      expect(screen.getByRole("heading", { name: /Dispatcher Board/i })).toBeTruthy();
     });
+    await waitFor(() => expect(window.location.hash).toBe("#settings/board"));
   });
 
   test("a hash naming nothing opens Driver Groups rather than a blank shell", async () => {
@@ -116,50 +132,93 @@ describe("the URL follows the navigation", () => {
   });
 });
 
-describe("two nav entries that are the same component", () => {
+describe("tabs and sections have addresses", () => {
   /**
-   * Integrations, Dispatcher Board and AI & Autonomy are ONE SettingsPage on
-   * three tabs; Needs Attention and System & AI Health are one OperationsPage.
-   * React reconciles same-type elements in the same position, so the tab —
-   * read once in a useState initializer — would keep whatever it opened on
-   * while the URL and the highlighted sidebar item both moved. The page would
-   * say "Dispatcher Board" in the nav and show the AI tab.
+   * Until October 2026 six sidebar entries opened one Settings page on six
+   * tabs, and a tab changed inside the page reached neither the address nor
+   * the highlight. Now one entry opens Settings and the section is in the
+   * address; the same for every tabbed page.
    */
-  test("moving between two Settings entries actually changes the tab", async () => {
-    goTo("#settings_board");
+  test("choosing a Settings section changes the section AND the address", async () => {
+    goTo("#settings/board");
     await renderShell();
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: /Dispatcher Board/i })).toBeTruthy();
     });
 
-    await userEvent.click(screen.getByRole("button", { name: /AI & Autonomy/i }));
-    await waitFor(() => expect(window.location.hash).toBe("#settings_ai"));
+    const nav = screen.getByRole("navigation", { name: "Settings sections" });
+    await userEvent.click(within(nav).getByRole("button", { name: "AI & Autonomy" }));
+    await waitFor(() => expect(window.location.hash).toBe("#settings/ai"));
     await waitFor(() => {
-      // The Dispatcher Board card is gone, so the tab really moved.
+      // The Dispatcher Board card is gone, so the section really moved.
       expect(screen.queryByRole("heading", { name: /Dispatcher Board/i })).toBeNull();
     });
+    // And the sidebar still says where you are: one entry for all of Settings.
+    expect(screen.getByRole("button", { name: "Settings" })).toHaveAttribute("aria-current", "page");
   });
 
-  test("moving between the two Operations entries actually changes the tab", async () => {
+  test("a Needs Attention tab writes its address", async () => {
     goTo("#operations");
     await renderShell();
+    // Wait for the page itself — the sidebar renders before the lazy page.
+    const history = await screen.findByRole("tab", { name: "History" });
+    await userEvent.click(history);
+    await waitFor(() => expect(window.location.hash).toBe("#operations/history"));
+    expect(screen.getByRole("tab", { name: "History" })).toHaveAttribute("aria-selected", "true");
+  });
 
-    // WAIT FOR THE PAGE TO BE ON SCREEN BEFORE CLICKING. The sidebar renders
-    // before the lazy page resolves, so clicking as soon as "Sign Out" appears
-    // can change `page` while OperationsPage is still suspended — it then
-    // mounts fresh with initialTab="systems" and the assertion below passes
-    // whether or not the key is there. This test did exactly that and proved
-    // nothing until the wait was added.
-    const needsAttention = await screen.findByRole("tab", { name: /^Needs attention$/i });
-    expect(needsAttention).toHaveAttribute("aria-selected", "true");
+  test("System Health and Retention are pages of their own", async () => {
+    goTo("#operations");
+    await renderShell();
+    await screen.findByRole("tab", { name: /^Needs attention$/i });
 
-    await userEvent.click(screen.getByRole("button", { name: /System & AI Health/i }));
+    await userEvent.click(screen.getByRole("button", { name: "System Health" }));
     await waitFor(() => expect(window.location.hash).toBe("#system_health"));
-    await waitFor(() => {
-      // aria-selected is the Operations tab bar's own "this one is open" mark,
-      // and Needs attention must have given it up.
-      expect(screen.getByRole("tab", { name: /What is running/i })).toHaveAttribute("aria-selected", "true");
-      expect(screen.getByRole("tab", { name: /^Needs attention$/i })).toHaveAttribute("aria-selected", "false");
-    });
+    expect(await screen.findByRole("heading", { name: "System Health" })).toBeTruthy();
+    // Not Needs Attention on another tab: its tab bar is gone.
+    expect(screen.queryByRole("tab", { name: /^Needs attention$/i })).toBeNull();
+
+    await userEvent.click(screen.getByRole("button", { name: "Retention" }));
+    await waitFor(() => expect(window.location.hash).toBe("#retention"));
+    expect(await screen.findByRole("heading", { name: "Driver Retention" })).toBeTruthy();
+  });
+
+  test("an unknown tab opens the first one, and the address is corrected to say so", async () => {
+    goTo("#settings/bogus");
+    await renderShell();
+    await waitFor(() => expect(window.location.hash).toBe("#settings/location"));
+    const nav = await screen.findByRole("navigation", { name: "Settings sections" });
+    expect(within(nav).getByRole("button", { name: "Location Providers" })).toHaveAttribute("aria-current", "page");
+  });
+
+  test("a tab change keeps the query string (?dev=1 is what shows the Activity Log tab)", async () => {
+    window.history.replaceState({}, "", "/admin?dev=1#facebook_leads");
+    await renderShell();
+    await userEvent.click(await screen.findByRole("tab", { name: "Connected Pages" }));
+    await waitFor(() => expect(window.location.hash).toBe("#facebook_leads/pages"));
+    expect(window.location.search).toBe("?dev=1");
+    // Still offered: dropping `?dev=1` is what used to take it away.
+    expect(screen.getByRole("tab", { name: "Activity Log" })).toBeTruthy();
+  });
+
+  test("Home Time's configuration is on its own tab, with its own address", async () => {
+    goTo("#home_time");
+    await renderShell();
+    const settingsTab = await screen.findByRole("tab", { name: "Settings & Alerts" });
+    await userEvent.click(settingsTab);
+    await waitFor(() => expect(window.location.hash).toBe("#home_time/settings"));
+    expect(screen.getByRole("tab", { name: "Settings & Alerts" })).toHaveAttribute("aria-selected", "true");
+  });
+
+  test("Birthdays holds the employees, and Telegram Users points there", async () => {
+    goTo("#users");
+    await renderShell();
+    const link = await screen.findByRole("link", { name: /Birthdays → Employees/i });
+    expect(link).toHaveAttribute("href", "#company_birthdays/employees");
+
+    goTo("#company_birthdays/employees");
+    window.dispatchEvent(new HashChangeEvent("hashchange"));
+    const employees = await screen.findByRole("tab", { name: "Employees" });
+    expect(employees).toHaveAttribute("aria-selected", "true");
   });
 });

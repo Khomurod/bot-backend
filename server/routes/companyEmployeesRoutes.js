@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * Admin → Users → Company Employees: the staff list with what the birthday
+ * Admin → Birthdays → Employees: the staff list with what the birthday
  * card needs. Mounted at /api/company-employees.
  *
  *   GET    /                       every employee (no photo bytes; `has_photo`)
