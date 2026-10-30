@@ -49,7 +49,7 @@ minimum needed to boot:
 | `DATABASE_URL` | PostgreSQL connection string |
 | `JWT_SECRET` | Secret for admin JWTs |
 | `MANAGEMENT_GROUP_ID` | Telegram management group ID |
-| `ADMIN_USERNAME` / `ADMIN_PASSWORD` | Seeded admin panel credentials |
+| `ADMIN_USERNAME` / `ADMIN_PASSWORD` | Seeded admin panel credentials (`seed-admin` refuses a password under 10 characters) |
 
 > `BOT_TOKEN` (Wenze Feedback) and `TELEGRAM_BOT_TOKEN` (WenzeLeadBots) are
 > **different bots** — do not swap them.
@@ -72,7 +72,12 @@ in a forward migration** — `npm run migrate:new -- <name>`. Never hand-edit
 ### 4. Seed the admin user and start
 
 ```bash
+# First admin, given super_admin. Type a password of your own (10+ characters);
+# it is read without echo and cleared afterwards, never written in a command.
+read -rsp 'New admin password (10+ characters): ' ADMIN_PASSWORD; echo
+export ADMIN_PASSWORD
 npm run seed-admin
+unset ADMIN_PASSWORD
 npm start          # bot + API (port 3001) + leads-bot subprocess
 ```
 

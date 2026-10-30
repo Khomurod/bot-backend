@@ -64,7 +64,50 @@ function assertSuperAdminFloor(users, target, { nextRoleIds, nextActive } = {}) 
   }
 }
 
+/**
+ * Who may change which roles (October 2026 audit).
+ *
+ * NO ACCOUNT WITHOUT A ROLE. The database still hands `super_admin` to a
+ * role-less account at boot when there is no active super administrator (the
+ * first-run bootstrap, baseline 022), so a role-less account is a trap: until
+ * October 2026 that grant ran for ANY role-less account, and stripping
+ * someone's roles to lock them out made them super administrator at the next
+ * deploy. To stop someone signing in, disable the account.
+ *
+ * ONLY A SUPER ADMINISTRATOR TOUCHES SUPER ADMINISTRATORS: granting the role,
+ * and changing a super administrator's account in any way — roles, password,
+ * disabling, renaming. Otherwise `users.manage` alone could make anyone super
+ * administrator, or reset a super administrator's password and sign in as
+ * them; a role meant to manage accounts would be every permission in disguise.
+ * Ordinary accounts stay with `users.manage`.
+ *
+ * This is the route's early, clear answer on a snapshot; `database/rbac.js`
+ * repeats the same rule on the locked row inside the update's transaction.
+ *
+ * `selectedRoles` are the catalog rows for the requested role ids;
+ * `roleIdsGiven` is false when the request does not touch roles at all.
+ */
+function assertAccountChangeAllowed({ actor, target = null, selectedRoles = [], roleIdsGiven = true }) {
+  if (roleIdsGiven && !selectedRoles.length) {
+    throw Object.assign(
+      new Error('An account needs at least one role. To stop someone signing in, disable the account.'),
+      { status: 400, code: 'ROLE_REQUIRED' },
+    );
+  }
+  const grantsSuper = roleIdsGiven && selectedRoles.some((r) => r.system_key === 'super_admin');
+  const targetIsSuper = target ? hasRole(target, 'super_admin') : false;
+  if (!grantsSuper && !targetIsSuper) return;
+  const actorIsSuper = (actor?.role_keys || []).includes('super_admin');
+  if (!actorIsSuper) {
+    throw Object.assign(
+      new Error("Only a super administrator can grant the super administrator role or change a super administrator's account."),
+      { status: 403, code: 'SUPER_ADMIN_ONLY' },
+    );
+  }
+}
+
 module.exports = {
+  assertAccountChangeAllowed,
   resolveTargetOr404,
   activeSuperAdmins,
   assertSuperAdminFloor,
