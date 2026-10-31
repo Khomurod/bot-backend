@@ -63,8 +63,8 @@ Only **five** environment variables are required (`config/config.js`
 `requiredEnv`): `DATABASE_URL`, `JWT_SECRET`, `BOT_TOKEN`, `TELEGRAM_BOT_TOKEN`,
 `FACEBOOK_TOKEN_ENCRYPTION_KEY`. **Most other settings carry a hardcoded default
 in `config/config.js`** — a deliberate decision so only true secrets live in the
-Render environment, and new non-secret config belongs there as a default rather
-than as a new required variable.
+deployment's environment (Coolify), and new non-secret config belongs there as a
+default rather than as a new required variable.
 
 **But "has a default" is not universal, and the exceptions are deliberate.** The
 two bonus Telegram group IDs (`mileageBonusGroupId`, `roadBonusGroupId`) resolve
@@ -94,7 +94,7 @@ single home for the Samsara connection (API key, base URL, enabled), the
 safety-event switches and missing-video recovery; the separate
 `samsara-integration` poller reads the same row over the shared database and
 picks up a change within a minute, so replacing the API key or moving the
-recovery delay needs no Render redeploy. Two consequences worth knowing:
+recovery delay needs no redeploy. Two consequences worth knowing:
 
 - The key cannot use `lib/security/facebookCrypto` — the poller holds neither
   `FACEBOOK_TOKEN_ENCRYPTION_KEY` nor `JWT_SECRET`. It uses the same AES-256-GCM

@@ -20,8 +20,8 @@ const resolvedSamsaraApiKeys = Array.from(
 // killing entire unrelated test files (the CI "Node unit tests" failures).
 // NOTE: only true secrets are required here. Non-secret config (group ids,
 // USDOT numbers, base URLs, feature flags, etc.) is hardcoded as defaults
-// below so it does not need to live in the Render environment. PORT is
-// injected automatically by Render.
+// below so it does not need to live in the deployment's environment (Coolify).
+// PORT comes from the Dockerfile (3001) unless the environment overrides it.
 const requiredEnv = [
   'DATABASE_URL',
   'JWT_SECRET',

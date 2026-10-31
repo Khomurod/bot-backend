@@ -39,15 +39,19 @@ replace it, signed in to the admin panel as a full admin, with
 
 ## Environment
 
-Copy every variable from the old Render service (Environment → Export), then:
+Every variable the app reads is in `.env.example`; the required secrets are
+named in `config/config.js`, and startup refuses without them. (The move off
+Render in October 2026 copied them from the old service.) Then:
 
 - **`RENDER_EXTERNAL_URL` must be set by hand** to the public `https://` URL.
   Render set it automatically; Coolify does not. The code keys off it for
   CORS (startup fails in production without an origin), the Facebook and
   RingCentral OAuth redirects, the RingCentral inbound-SMS subscription
   (`/rc-webhook`). (Route screenshot and raise-approval links used it too;
-  both features were removed in October 2026.)
-- Drop `NODE_OPTIONS=--max-old-space-size=256` or raise it.
+  both features were removed in October 2026.) It keeps its Render-era name on
+  purpose: renaming it means changing the code and Coolify in the same deploy.
+- Drop `NODE_OPTIONS=--max-old-space-size=256` if it came across from Render, or
+  raise it: a `NODE_OPTIONS` set here overrides the `Dockerfile`'s 1024.
 
 ## When the public URL changes
 

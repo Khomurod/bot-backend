@@ -1,8 +1,14 @@
 # Render free-tier memory guide (512MB instance)
 
-The main hub runs on a 512MB Render instance with the Node heap capped at
-`--max-old-space-size=256` (see `render.yaml`) and `MALLOC_ARENA_MAX=2` to limit
-native-heap fragmentation. The Python leads-bot child shares the same instance,
+> **History.** Production left Render for a Hostinger VPS under Coolify in
+> October 2026; the heap cap is now `--max-old-space-size=1024`, set by
+> `NODE_OPTIONS` in the `Dockerfile` (a `NODE_OPTIONS` in Coolify's environment
+> overrides it), and `render.yaml` is deleted (it is in git history). The measurements below are still how this process spends
+> memory; the limits they were weighed against are not.
+
+The main hub ran on a 512MB Render instance with the Node heap capped at
+`--max-old-space-size=256` (in the former `render.yaml`) and
+`MALLOC_ARENA_MAX=2` to limit native-heap fragmentation. The Python leads-bot child shares the same instance,
 so the Node process must stay well under the cap.
 
 ## Measured footprint

@@ -88,7 +88,9 @@ Business problems it solves:
 
 Production runs on a Hostinger VPS under Coolify, built from the root
 `Dockerfile` (`docs/deployment/hostinger-coolify.md`); it was on Render until
-October 2026, and `render.yaml` still describes that layout.
+October 2026. The old `render.yaml` was deleted in the hidden-functions audit
+(it is in git history): applied again it would start a second copy of the bot
+and of the leads worker beside Coolify, on the same tokens.
 
 | Service | Repo | What it is |
 |---|---|---|
@@ -111,8 +113,9 @@ The three cooperate in **two different ways** — do not confuse them:
   second channel is a second thing to get out of step.
 - **Node hub ↔ Python leads worker: internal HTTP only.** The worker has **no
   database access whatsoever** — no Postgres driver in
-  `leads-bot/requirements.txt`, no `DATABASE_URL` (and `render.yaml` does not
-  give it one). It calls the hub at `LOCAL_API_BASE_URL` with
+  `leads-bot/requirements.txt`, and its code never reads `DATABASE_URL` (the
+  variable reaches it only because the child inherits the hub's environment).
+  It calls the hub at `LOCAL_API_BASE_URL` with
   `LEADS_INTERNAL_SHARED_SECRET`, and the hub proxies `/webhook` + `/rc-webhook`
   to it. **All lead persistence happens on the Node side.**
 

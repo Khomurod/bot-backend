@@ -66,7 +66,7 @@ organization should converge toward.
 | **Its settings**, and the schema for them | **Here.** `database/samsaraSettings.js`, `server/routes/settings/samsaraRoutes.js`, `admin/src/pages/settings/SamsaraTab.jsx`, migration 0013 |
 | The recovery queue, read-only for diagnostics | `database/samsaraVideoRecovery.js` (never writes — the poller owns the jobs) |
 | The envelope both services open the Samsara API key with | `lib/security/sharedIntegrationCrypto.js` (mirrored in the other repo) |
-| Separation rationale | `samsara-separation.md`, `render.yaml` (note at bottom), `index.js:72-78` |
+| Separation rationale | `samsara-separation.md`, the note in `index.js` where the poller used to be spawned |
 | Settings + recovery contract | `samsara-settings-and-video-recovery.md` |
 
 > **Do NOT re-add** the Samsara safety poller to this repo. It was removed on
@@ -330,7 +330,8 @@ ledger, `schema.sql` table definitions, and the Samsara separation.
 | Task | Command |
 |---|---|
 | Install | `npm install` (root) — `postinstall` also builds the admin panel |
-| Start (prod) | `node --max-old-space-size=256 index.js` |
+| Start (prod) | `node index.js` in the Docker image (`Dockerfile` `CMD`; heap cap from its `NODE_OPTIONS`) |
+| Start (local) | `npm start` (the same `node index.js`) |
 | Dev | `npm run dev` |
 | **Tests** | `npm test` → `npm run lint:undef && npm run lint:imports && node --test --test-concurrency=1 tests/*.test.js && python -m unittest discover -s leads-bot -p "test_*.py"` |
 | Scope gates | `npm run lint:undef` (undefined identifiers — the check a build is not), `npm run lint:imports` (an import naming something its module does not export) |
@@ -338,6 +339,7 @@ ledger, `schema.sql` table definitions, and the Samsara separation.
 | Admin build | `npm run build --prefix admin` |
 | DB init / seed | `npm run init-db`, `npm run seed-admin` |
 
-Deployment target: **Render** (`render.yaml`) — two services here
-(`driver-feedback-bot` Node web + `facebook-leads-engine` Python web); the
-Samsara poller deploys from its own repo.
+Deployment target: **Coolify on the Hostinger VPS**, one container built from
+the root `Dockerfile`; `index.js` spawns the Python leads worker inside it
+(`docs/deployment/hostinger-coolify.md`). The Samsara poller deploys from its
+own repo.

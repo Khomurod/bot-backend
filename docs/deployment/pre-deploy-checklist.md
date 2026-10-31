@@ -41,12 +41,12 @@ after deploy on the live service.
 
 | # | What / Why | How to check |
 |---|---|---|
-| A1 | **App starts successfully** — the whole system boots. | **[AUTO]** `node --test ... tests/*.test.js` passes; **[PROD]** service reaches "started" in Render logs. |
-| A2 | **No crash loop** — it does not restart over and over. | **[PROD]** Render shows one stable instance, not repeated restarts; watch for the circuit-breaker message in logs. |
-| A3 | **No missing environment variables.** | **[MANUAL]** `npm run` `check-prod-env` script (`scripts/check-prod-env.js`); compare Render env against `.env.example` and `render.yaml`. |
+| A1 | **App starts successfully** — the whole system boots. | **[AUTO]** `node --test ... tests/*.test.js` passes; **[PROD]** the container reaches "started" in the Coolify logs. |
+| A2 | **No crash loop** — it does not restart over and over. | **[PROD]** Coolify shows one running, healthy container, not repeated restarts; watch for the circuit-breaker message in logs. |
+| A3 | **No missing environment variables.** | **[MANUAL]** compare the Coolify environment against `.env.example`. **[PROD]** the app checks the required secrets itself (`assertRequiredConfig` in `config/config.js`) and refuses to start, naming what is missing. |
 | A4 | **Database connection works.** | **[AUTO/PROD]** `GET /api/health` returns `{ healthy: true, db: true }`. |
 | A5 | **Telegram bot connects.** | **[PROD]** Logs show the bot launched; send a command in the test group (see B). |
-| A6 | **Admin panel loads.** | **[AUTO]** admin build succeeds (`npm run build --prefix admin`); **[PROD]** `/admin` returns the SPA. The build keeps its own heap limit (`admin/package.json`): Render's `NODE_OPTIONS` cap also applies to builds, and a build that outgrows it fails the deploy while production stays on the previous build. |
+| A6 | **Admin panel loads.** | **[AUTO]** admin build succeeds (`npm run build --prefix admin`); **[PROD]** `/admin` returns the SPA. The build keeps its own heap limit (`admin/package.json`): a platform `NODE_OPTIONS` cap can apply to builds too (Render's did), and a build that outgrows it fails the deploy while production stays on the previous build. |
 | A7 | **Logs show no critical errors.** | **[PROD]** No `[FATAL]`, no `uncaughtException`, no repeated `[LEADS] CIRCUIT BREAKER OPEN`. |
 | A8 | **Scheduled jobs still run.** | **[PROD]** After boot, logs show the schedulers starting (dispatch ETA, birthday, mileage bonus, recruiter sync, etc. — all started from `index.js`). They must run with **no admin panel open**; nothing in `server/routes/**` starts one. |
 | A9 | **No undefined identifier or missing import shipped.** A build is not a scope check: 26 of these once passed `vite build` and broke the admin panel at runtime. | **[AUTO]** `npm run lint:undef` and `npm run lint:imports` (both also run in `npm test` and CI). |
@@ -220,8 +220,8 @@ or lead event.**
    `database/migrations/` (recorded in `schema_migrations`). Take a backup first
    if anything changed. To apply without a full boot: `npm run migrate`
    (`npm run migrate:status` to inspect).
-5. ☐ **[MANUAL]** Confirm environment variables on Render match
-   `render.yaml` / `.env.example`.
+5. ☐ **[MANUAL]** Confirm the environment variables in Coolify match
+   `.env.example`.
 6. ☐ **[MANUAL]** Confirm you are deploying the intended **production branch**.
 7. ☐ **[MANUAL]** Commit with a clear message.
 8. ☐ **[MANUAL]** Push the branch.

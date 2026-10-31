@@ -43,9 +43,9 @@ were written after something went wrong.
 - **An exhausted durable queue is countable.** `/api/health` reports
   `queues.homeTimeInternalAlerts.exhausted` and
   `queues.homeTimeManagerNotices.failed` (5-minute cache). It deliberately
-  does **not** affect `healthy` or the status code: Render and the uptime monitor
-  read those, and an undeliverable alert queue is an operator's problem, not a
-  reason to declare the service down. `tests/healthQueueSignal.test.js`.
+  does **not** affect `healthy` or the status code: the container's health check
+  and the uptime monitor read those, and an undeliverable alert queue is an
+  operator's problem, not a reason to declare the service down. `tests/healthQueueSignal.test.js`.
 - **`/api/health` names the commit it is running** — `commit.sha` / `commit.short`
   from `RENDER_GIT_COMMIT`, `null` when unset. `main` auto-deploys, and before
   this the only evidence a merge was live was an uptime that lined up with the

@@ -268,7 +268,7 @@ app.get(['/admin', '/admin/*', '/recruiters', '/recruiters/*', '/dispatch', '/di
     return res.status(503).type('text/plain').send(
       'Admin UI build is missing (admin/build/index.html). '
       + 'From repo root run: cd admin && npm install && npm run build. '
-      + 'On Render, use the Blueprint buildCommand in render.yaml or equivalent.',
+      + 'In production the Dockerfile builds it (npm run build --prefix admin).',
     );
   }
   res.sendFile(adminSpaIndexPath);

@@ -119,7 +119,9 @@ is a real failure. The `*Pg.test.js` integration tests skip without
 4. After the first deploy to an empty database, run `npm run init-db` and
    `npm run seed-admin` from the container's terminal.
 
-`render.yaml` is kept only as a record of the former Render setup.
+Production ran on Render until October 2026. Its `render.yaml` was deleted in
+the hidden-functions audit (it is in git history): applied again beside
+Coolify it would start a second copy of the bot on the same tokens.
 
 Run through [`docs/deployment/pre-deploy-checklist.md`](docs/deployment/pre-deploy-checklist.md)
 before shipping.
