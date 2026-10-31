@@ -8,10 +8,12 @@
  * correction's detail, a knowledge entry's history, the old survey list. The
  * rest never had one. None changed anything while unused; the risk was a later
  * change wiring one back in beside the path that runs, past the checks that
- * path makes. The two rules that used to be tested THROUGH them are now held on
- * the live path: the group-row cache is forgotten after a profile save
- * (tests/perMessageQueries.test.js), and a status a person set is `manual` and
- * left alone by the AI pass (tests/manualStatusLockPg.test.js).
+ * path makes. What used to be tested THROUGH them is now held on the live path:
+ * the group-row cache is forgotten after a profile save
+ * (tests/perMessageQueries.test.js), a status a person set is `manual` and left
+ * alone by the AI pass (tests/manualStatusLockPg.test.js), and the language and
+ * birthday a profile save writes to the group, clearing included, are what
+ * Postgres stores (tests/profileGroupSyncPg.test.js).
  */
 
 const test = require('node:test');
