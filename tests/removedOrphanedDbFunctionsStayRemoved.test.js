@@ -42,10 +42,18 @@ test('the modules no longer define or export them', () => {
   }
 });
 
+// A deny-list, like scripts/checkFileSize.js: every directory is application
+// code unless it is provably not, so a new one (utils/ was once missed) is
+// covered the moment it exists.
+const NOT_APPLICATION = new Set([
+  'node_modules', '.git', 'build', 'dist', 'coverage', '__pycache__',
+  'tests', 'docs', 'assets', 'leads-bot', 'scratch', 'brain', 'reports', '.cursor',
+]);
+
 function sourceFiles(dir, out = []) {
   for (const entry of fs.readdirSync(path.join(ROOT, dir), { withFileTypes: true })) {
-    if (['node_modules', 'build', 'dist', '__pycache__'].includes(entry.name)) continue;
-    const rel = `${dir}/${entry.name}`;
+    if (NOT_APPLICATION.has(entry.name)) continue;
+    const rel = dir ? `${dir}/${entry.name}` : entry.name;
     if (entry.isDirectory()) sourceFiles(rel, out);
     else if (/\.(js|jsx|mjs|cjs)$/.test(entry.name) && !/\.test\.jsx?$/.test(entry.name)) out.push(rel);
   }
@@ -53,14 +61,13 @@ function sourceFiles(dir, out = []) {
 }
 
 test('no application code calls them', () => {
+  const files = sourceFiles('');
+  assert.ok(files.includes('index.js') && files.includes('utils/audioDuration.js'),
+    'the scan reaches the root and every application directory');
   const offenders = [];
-  for (const dir of ['bot', 'server', 'services', 'database', 'lib', 'scripts', 'config', 'admin/src']) {
-    for (const rel of sourceFiles(dir)) {
-      const src = fs.readFileSync(path.join(ROOT, rel), 'utf8');
-      for (const name of ALL) if (word(name).test(src)) offenders.push(`${rel}: ${name}`);
-    }
+  for (const rel of files) {
+    const src = fs.readFileSync(path.join(ROOT, rel), 'utf8');
+    for (const name of ALL) if (word(name).test(src)) offenders.push(`${rel}: ${name}`);
   }
-  const index = fs.readFileSync(path.join(ROOT, 'index.js'), 'utf8');
-  for (const name of ALL) if (word(name).test(index)) offenders.push(`index.js: ${name}`);
   assert.deepEqual(offenders, []);
 });

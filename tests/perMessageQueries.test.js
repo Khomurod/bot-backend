@@ -39,8 +39,9 @@ function respond(text, values) {
     return { rows: [{ ...GROUP_ROW }], rowCount: 1 };
   }
   if (PROFILE_ROW && /INSERT INTO driver_profiles/.test(text)) {
-    // The upsert returns the row it saved; `language` is its 15th parameter.
-    return { rows: [{ ...PROFILE_ROW, language: values[14] }], rowCount: 1 };
+    // The upsert returns the row it saved: `language` and `date_of_birth` are
+    // its 15th and 16th parameters.
+    return { rows: [{ ...PROFILE_ROW, language: values[14], date_of_birth: values[15] }], rowCount: 1 };
   }
   if (PROFILE_ROW && /FROM driver_profiles dp/.test(text)) {
     return { rows: [{ ...PROFILE_ROW }], rowCount: 1 };
@@ -153,12 +154,21 @@ test('A GROUP CHANGED THROUGH THE APP is read fresh on the next message, not fro
   // Cleared first: the message above wrote `groups` too (its last-seen time).
   sent.length = 0;
   calls.length = 0;
-  PROFILE_ROW = { id: 70, group_id: GROUP_ROW.id, language: 'en', status: 'active' };
+  PROFILE_ROW = {
+    id: 70, group_id: GROUP_ROW.id, language: 'en', date_of_birth: '1990-04-01', status: 'active',
+  };
   const saved = await db.updateDriverProfile(70, { language: 'uz' });
   assert.ok(saved, 'the fake database holds the profile, so the save ran');
-  const sync = calls.find((c) => /UPDATE groups\s+SET language = \$1/.test(c.text));
+  const groupSync = () => calls.find((c) => /UPDATE groups\s+SET language = \$1/.test(c.text));
+  const sync = groupSync();
   assert.ok(sync, 'the save wrote the group\'s own columns');
   assert.equal(sync.params[0], 'uz', 'with the language the administrator chose');
+  // The birthday rides the same write (the birthday cards read the group's
+  // copy), and clearing it on the profile clears the group's too.
+  assert.equal(sync.params[1], '1990-04-01', 'and the birthday the profile holds');
+  calls.length = 0;
+  await db.updateDriverProfile(70, { date_of_birth: null });
+  assert.equal(groupSync()?.params[1], null, 'a cleared birthday is cleared on the group');
   PROFILE_ROW = null; // the next message meets the same database as every other test
   sent.length = 0;
   await deliver(bot, 'hello again', 2);
