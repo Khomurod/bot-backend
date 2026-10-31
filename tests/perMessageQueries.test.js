@@ -30,9 +30,16 @@ const GROUP_ROW = {
   group_type: 'driver', active: true, status_source: 'bot', language: 'en',
 };
 
+// Only the profile-save test sets this, so the message pipeline never sees a
+// driver profile it would not have in the other tests.
+let PROFILE_ROW = null;
+
 function respond(text) {
   if (/INSERT INTO groups|FROM groups WHERE telegram_group_id/.test(text)) {
     return { rows: [{ ...GROUP_ROW }], rowCount: 1 };
+  }
+  if (PROFILE_ROW && /FROM driver_profiles dp|INSERT INTO driver_profiles/.test(text)) {
+    return { rows: [{ ...PROFILE_ROW }], rowCount: 1 };
   }
   return { rows: [], rowCount: 0 };
 }
@@ -56,6 +63,7 @@ const db = require('../database/db');
 const { resetResolverCache } = require('../services/identity/personResolver');
 
 function freshProcess() {
+  PROFILE_ROW = null;
   resetCaptureMemory();
   forgetGroupRows();
   resetResolverCache();
@@ -125,8 +133,13 @@ test('A GROUP CHANGED THROUGH THE APP is read fresh on the next message, not fro
   const bot = fakeBot();
   registerGroupCaptureHandlers(bot);
   await deliver(bot, 'hello', 1);
-  // The step every driver-profile save takes to write the group's own columns.
-  await db.syncGroupFromDriverProfile({ group_id: GROUP_ROW.id, language: 'uz' });
+  // An administrator changes the driver's language on their profile: the save
+  // Settings → Driver Profiles makes, which writes the group's own columns too.
+  PROFILE_ROW = { id: 70, group_id: GROUP_ROW.id, language: 'en', status: 'active' };
+  const saved = await db.updateDriverProfile(70, { language: 'uz' });
+  assert.ok(saved, 'the fake database holds the profile, so the save ran');
+  assert.ok(sent.some((q) => /UPDATE groups/.test(q)), 'and wrote the group');
+  PROFILE_ROW = null; // the next message meets the same database as every other test
   sent.length = 0;
   await deliver(bot, 'hello again', 2);
   assert.ok(sent.some((q) => /INSERT INTO groups/.test(q)), 'the row is fetched again after a write');
