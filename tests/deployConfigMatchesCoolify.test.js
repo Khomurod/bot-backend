@@ -52,9 +52,14 @@ test('every npm script that runs a file names one that exists, and none runs a m
 // The records of removed features describe commands that went with them.
 const HISTORICAL = (rel) => rel === 'docs/ARCHIVED_FEATURES.md' || /(^|\/)retired-[^/]*\.md$/.test(rel);
 
+// Local working folders .gitignore keeps out of the repository: a note there is
+// not documentation, and may well mention a command that is gone.
+const LOCAL_WORKING_DIRS = new Set(['scratch', 'brain', 'reports', '.cursor']);
+
 function markdownFiles(dir, out = []) {
   for (const entry of fs.readdirSync(path.join(ROOT, dir), { withFileTypes: true })) {
     if (['node_modules', '.git', 'build', 'dist'].includes(entry.name)) continue;
+    if (!dir && LOCAL_WORKING_DIRS.has(entry.name)) continue;
     const rel = dir ? `${dir}/${entry.name}` : entry.name;
     if (entry.isDirectory()) markdownFiles(rel, out);
     else if (rel.endsWith('.md') && !HISTORICAL(rel)) out.push(rel);

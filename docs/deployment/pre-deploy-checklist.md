@@ -43,7 +43,7 @@ after deploy on the live service.
 |---|---|---|
 | A1 | **App starts successfully** — the whole system boots. | **[AUTO]** `node --test ... tests/*.test.js` passes; **[PROD]** the container reaches "started" in the Coolify logs. |
 | A2 | **No crash loop** — it does not restart over and over. | **[PROD]** Coolify shows one running, healthy container, not repeated restarts; watch for the circuit-breaker message in logs. |
-| A3 | **No missing environment variables.** | **[MANUAL]** compare the Coolify environment against `.env.example`. **[PROD]** the app checks the required secrets itself (`assertRequiredConfig` in `config/config.js`) and refuses to start, naming what is missing. |
+| A3 | **No missing environment variables.** | **[MANUAL]** the Coolify environment has what `.env.example` lists for this deploy; never rebuild an environment from that file (`hostinger-coolify.md` → Environment). **[PROD]** the app checks the required secrets itself (`assertRequiredConfig` in `config/config.js`) and refuses to start, naming what is missing. |
 | A4 | **Database connection works.** | **[AUTO/PROD]** `GET /api/health` returns `{ healthy: true, db: true }`. |
 | A5 | **Telegram bot connects.** | **[PROD]** Logs show the bot launched; send a command in the test group (see B). |
 | A6 | **Admin panel loads.** | **[AUTO]** admin build succeeds (`npm run build --prefix admin`); **[PROD]** `/admin` returns the SPA. The build keeps its own heap limit (`admin/package.json`): a platform `NODE_OPTIONS` cap can apply to builds too (Render's did), and a build that outgrows it fails the deploy while production stays on the previous build. |
@@ -220,8 +220,8 @@ or lead event.**
    `database/migrations/` (recorded in `schema_migrations`). Take a backup first
    if anything changed. To apply without a full boot: `npm run migrate`
    (`npm run migrate:status` to inspect).
-5. ☐ **[MANUAL]** Confirm the environment variables in Coolify match
-   `.env.example`.
+5. ☐ **[MANUAL]** Confirm the Coolify environment still has every variable
+   `.env.example` lists that this deploy uses.
 6. ☐ **[MANUAL]** Confirm you are deploying the intended **production branch**.
 7. ☐ **[MANUAL]** Commit with a clear message.
 8. ☐ **[MANUAL]** Push the branch.

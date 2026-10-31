@@ -39,9 +39,21 @@ replace it, signed in to the admin panel as a full admin, with
 
 ## Environment
 
-Every variable the app reads is in `.env.example`; the required secrets are
-named in `config/config.js`, and startup refuses without them. (The move off
-Render in October 2026 copied them from the old service.) Then:
+To move or recreate the environment, copy the existing one **whole**, as the
+move off Render in October 2026 did. Do not rebuild it from `.env.example`: that
+file lists what a deployment is expected to set, and the code also reads
+optional variables that are not in it. One of them must not be lost:
+
+- **`INTEGRATION_SECRET_KEY`, if it is set, must stay identical here and on the
+  Samsara poller (`samsara-integration`).** It keys the envelope both services
+  open the saved Samsara API key with (`lib/security/sharedIntegrationCrypto.js`).
+  Unset, the key is derived from the `DATABASE_URL`'s user, password and
+  database name, so new database credentials change it too. A service whose
+  key differs from the one the credential was saved under cannot open it and
+  falls back to its own `SAMSARA_API_KEY`.
+
+The required secrets are named in `config/config.js`; startup refuses without
+them. Then:
 
 - **`RENDER_EXTERNAL_URL` must be set by hand** to the public `https://` URL.
   Render set it automatically; Coolify does not. The code keys off it for
