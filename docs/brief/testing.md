@@ -4,7 +4,8 @@
 # §11. Testing and operational expectations
 
 ```bash
-node --test --test-concurrency=1 tests/*.test.js   # Node suite (bash glob)
+node --test --test-concurrency=1 tests/*.test.js   # Node suite (bash glob); *Pg files skip without TEST_DATABASE_URL
+node --test --test-concurrency=1 $(ls tests/*.test.js | grep -v 'Pg\.test\.js$')   # CI's unit files; node --test passes skips, CI fails on "# skipped" above 0
 npm test                                          # gates + Node suite + Python leads tests
 npm run build --prefix admin                      # admin production build
 npm test --prefix admin                           # admin component tests
@@ -15,9 +16,9 @@ npm run build:schema:check                        # schema.sql is in sync with b
 ```
 
 - **The Node suite passes clean with no secrets and no database.** Verified
-  baseline (2026-10-31, after Render's leftovers were removed, deps
-  installed): the 384 non-`*Pg` files with no application env —
-  **3988 tests, 3988 pass, 0 fail, 0 skipped**, exactly what CI's unit job
+  baseline (2026-10-31, after Render's leftovers and the DAT UI inspector
+  were removed, deps installed): the 385 non-`*Pg` files with no application
+  env — **3991 tests, 3991 pass, 0 fail, 0 skipped**, exactly what CI's unit job
   runs — and the 99 `*Pg` files against a local PostgreSQL 16 — **764 tests,
   764 pass, 0 fail, 0 skipped**. CI runs the non-`*Pg` files with no
   application env at all and the `*Pg` files against a real Postgres; both jobs

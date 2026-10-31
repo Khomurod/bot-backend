@@ -161,9 +161,11 @@ test('GET /api/health, /health, HEAD; the removed dispatch APIs; the race displa
     // Reports / Insights, the old driver-group writes and lists, the AI
     // status "run now", the old profile AI parse, one correction's detail,
     // a knowledge entry's history, the music download, the root-level
-    // webhook-log duplicates, and the duplicate-truck report list / scan /
-    // resolve (those reports now reach Needs Attention through the sweep).
-    // Same rule: a valid token, so only "gone" is 404.
+    // webhook-log duplicates, the duplicate-truck report list / scan /
+    // resolve (those reports now reach Needs Attention through the sweep), and
+    // the DAT UI inspector. Same rule: a valid token, so only "gone" is 404.
+    // The inspector answered only loopback callers, and this request comes
+    // from 127.0.0.1, so before its removal it reached the handler.
     for (const [method, retired] of [
       ['GET', '/api/ai-reports'], ['POST', '/api/ai-reports/generate'],
       ['GET', '/api/ai-insights/reports'], ['POST', '/api/ai-insights/annotate'],
@@ -178,6 +180,7 @@ test('GET /api/health, /health, HEAD; the removed dispatch APIs; the race displa
       ['GET', '/api/live-locations/duplicate-reports'],
       ['POST', '/api/live-locations/duplicate-reports/scan'],
       ['POST', '/api/live-locations/duplicate-reports/1/resolve'],
+      ['POST', '/api/dat-ui/inspect'],
     ]) {
       const res = await httpJson(server, method, retired, { Authorization: `Bearer ${adminToken}` });
       assert.equal(res.status, 404, `${method} ${retired} is gone`);
