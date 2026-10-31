@@ -358,20 +358,6 @@ async function confidenceOutcomes({ sinceDays = 90, limit = 2000 } = {}) {
   }
 }
 
-async function pruneDecisions({ olderThanDays = 90 } = {}) {
-  try {
-    const res = await query(
-      `DELETE FROM operational_decisions
-        WHERE last_decided_at < NOW() - ($1 || ' days')::interval
-          AND (outcome IS NOT NULL OR action_key IS NULL)`,
-      [String(Math.max(1, olderThanDays))]
-    );
-    return res.rowCount;
-  } catch (_) {
-    return 0;
-  }
-}
-
 module.exports = {
   currentHolds,
   VALID_VERDICTS,
@@ -383,5 +369,4 @@ module.exports = {
   summariseDecisions,
   confidenceOutcomes,
   sourceAgreement,
-  pruneDecisions,
 };

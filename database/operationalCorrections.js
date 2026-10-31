@@ -82,17 +82,6 @@ async function listCorrections({
   return res.rows.map(mapCorrection);
 }
 
-async function getCorrectionById(id) {
-  const res = await query(
-    `SELECT c.*, f.title AS finding_title, f.check_key, f.severity AS finding_severity
-       FROM operational_corrections c
-       LEFT JOIN operational_findings f ON f.id = c.finding_id
-      WHERE c.id = $1`,
-    [id]
-  );
-  return mapCorrection(res.rows[0]);
-}
-
 /**
  * Counts for the History tiles, zero-filled.
  *
@@ -123,45 +112,8 @@ async function summariseCorrections({ sinceIso = null } = {}) {
   };
 }
 
-/**
- * Every correction event recorded against ONE SUBJECT — the audit log's first
- * reader since it was created.
- *
- * Named for the subject, not for a correction, and that precision matters. The
- * only keys `admin_audit_log` holds are `(entity_type, entity_id)` and an action
- * string, so a driver corrected three times has three applies and any reverts
- * under the same pair. There is no correction id in that table to filter on.
- *
- * Returning the lot is the honest answer to "what has been done to this
- * driver?", which is one of the two questions this module exists for. Returning
- * the lot while CALLING it one correction's trail would be a lie the reader
- * cannot detect — so the name, the route's field name and this comment all say
- * subject. If a per-correction trail is ever needed, it needs a correlating
- * column, not a cleverer predicate.
- *
- * Scoped to `operational_correction.%` so an unrelated edit to the same driver
- * does not appear here at all.
- */
-async function listAuditForSubject({ entityType, entityId, limit = 50 } = {}) {
-  const res = await query(
-    `SELECT a.id, a.admin_id, a.role_keys, a.action, a.entity_type, a.entity_id,
-            a.old_values, a.new_values, a.reason, a.ip_address, a.created_at,
-            ad.username
-       FROM admin_audit_log a
-       LEFT JOIN admins ad ON ad.id = a.admin_id
-      WHERE a.entity_type = $1 AND a.entity_id = $2
-        AND a.action LIKE 'operational_correction.%'
-      ORDER BY a.created_at DESC, a.id DESC
-      LIMIT $3`,
-    [entityType, String(entityId), limit]
-  );
-  return res.rows;
-}
-
 module.exports = {
   mapCorrection,
   listCorrections,
-  getCorrectionById,
   summariseCorrections,
-  listAuditForSubject,
 };

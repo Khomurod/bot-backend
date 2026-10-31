@@ -74,22 +74,6 @@ async function createQuestion(translations, options, mediaItems, mediaPosition) 
   }
 }
 
-async function getActiveQuestions() {
-  const res = await query(
-    `SELECT q.id, q.created_at, q.active,
-            json_agg(DISTINCT jsonb_build_object(
-              'language', qt.language,
-              'question_text', qt.question_text
-            )) AS translations
-     FROM questions q
-     LEFT JOIN question_translations qt ON qt.question_id = q.id
-     WHERE q.active = TRUE
-     GROUP BY q.id
-     ORDER BY q.id DESC`
-  );
-  return res.rows;
-}
-
 // Each survey with its last send (migration 0089; NULL = never sent from here)
 // and its answer count, so the list says which went out and how many drivers
 // answered without opening every card.
@@ -238,7 +222,6 @@ async function getQuestionResponses(questionId) {
 
 module.exports = {
   createQuestion,
-  getActiveQuestions,
   getAllQuestions,
   getQuestionWithOptions,
   deactivateQuestion,

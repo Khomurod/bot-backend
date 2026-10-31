@@ -5,10 +5,11 @@ import { checkLabel, correctionRows, formatWhen, initiatorLabel } from "./labels
 /**
  * Everything the system has changed, and the button that undoes it.
  *
- * This tab is also the first reader `admin_audit_log` has ever had. It was
- * created write-only and had accumulated rows nobody could see; every applied
- * correction mirrors into it inside the same transaction, so this is where that
- * finally becomes visible.
+ * It reads `operational_corrections`, the trail itself. Every applied
+ * correction also mirrors into `admin_audit_log` in the same transaction, but
+ * no screen shows that log: the per-subject reader that was meant to, and that
+ * no screen ever called, was removed in October 2026. The verification pass
+ * reads it only to see whether a person changed the subject afterwards.
  *
  * A reverted correction is shown, struck through, rather than removed. The
  * trail is append-only on purpose: "this was done, then undone" is the honest

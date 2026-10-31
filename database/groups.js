@@ -67,10 +67,6 @@ async function updateGroupOperationalStatus(groupId, active, source) {
   return res.rows[0];
 }
 
-async function setGroupStatusByAdmin(groupId, active) {
-  return updateGroupOperationalStatus(groupId, active, 'manual');
-}
-
 /** Driver groups eligible for AI status classification (excludes manual locks). */
 async function getDriverGroupsForStatusAi() {
   const res = await query(
@@ -261,24 +257,6 @@ async function getGroupBySamsaraId(samsaraId) {
   return res.rows[0] || null;
 }
 
-async function setGroupLanguage(groupId, language) {
-  const res = await query(
-    'UPDATE groups SET language = $1 WHERE id = $2 RETURNING *',
-    [language, groupId]
-  );
-  forgetGroupRows();
-  return res.rows[0];
-}
-
-async function setGroupBirthday(groupId, birthday) {
-  const res = await query(
-    'UPDATE groups SET driver_birthday = $1 WHERE id = $2 RETURNING *',
-    [birthday || null, groupId]
-  );
-  forgetGroupRows();
-  return res.rows[0];
-}
-
 async function updateGroupSamsaraId(groupId, samsaraId) {
   const normalized = samsaraId ? String(samsaraId).trim() : null;
   const res = await query(
@@ -333,7 +311,6 @@ module.exports = {
   upsertGroup,
   reactivateGroupOnBotJoin,
   updateGroupOperationalStatus,
-  setGroupStatusByAdmin,
   getDriverGroupsForStatusAi,
   getAllGroups,
   getDriverGroupsByActiveFilter,
@@ -348,8 +325,6 @@ module.exports = {
   searchGroupsByName,
   getGroupByIdAnyType,
   getGroupBySamsaraId,
-  setGroupLanguage,
-  setGroupBirthday,
   updateGroupSamsaraId,
   getGroupsWithBirthdayToday,
   getAllDriverGroups,

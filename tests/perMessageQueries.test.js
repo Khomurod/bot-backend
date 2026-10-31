@@ -125,7 +125,8 @@ test('A GROUP CHANGED THROUGH THE APP is read fresh on the next message, not fro
   const bot = fakeBot();
   registerGroupCaptureHandlers(bot);
   await deliver(bot, 'hello', 1);
-  await db.setGroupLanguage(GROUP_ROW.id, 'uz');
+  // The step every driver-profile save takes to write the group's own columns.
+  await db.syncGroupFromDriverProfile({ group_id: GROUP_ROW.id, language: 'uz' });
   sent.length = 0;
   await deliver(bot, 'hello again', 2);
   assert.ok(sent.some((q) => /INSERT INTO groups/.test(q)), 'the row is fetched again after a write');

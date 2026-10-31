@@ -155,20 +155,6 @@ async function getKnowledge(id) {
   return mapRow(res.rows[0]);
 }
 
-/** The history of one fact: what it replaced, all the way back. */
-async function knowledgeHistory(id) {
-  const res = await query(
-    `WITH RECURSIVE chain AS (
-       SELECT * FROM recruiting_knowledge WHERE id = $1
-       UNION ALL
-       SELECT k.* FROM recruiting_knowledge k JOIN chain c ON k.id = c.supersedes_id
-     )
-     SELECT * FROM chain ORDER BY created_at DESC`,
-    [id]
-  );
-  return res.rows.map(mapRow);
-}
-
 /** For /api/health and the admin: how much Wenze knows, and what awaits a person. */
 async function summariseKnowledge() {
   const res = await query(
@@ -192,6 +178,5 @@ module.exports = {
   listActiveKnowledge,
   listKnowledgeForAdmin,
   getKnowledge,
-  knowledgeHistory,
   summariseKnowledge,
 };

@@ -141,19 +141,6 @@ test('the summary reports OCCURRENCES as well as rows', { skip: skipWithoutPg() 
   assert.equal(out.occurrences, 2, 'reached twice');
 });
 
-test('the prune never removes an action still awaiting its outcome',
-  { skip: skipWithoutPg() }, async (t) => {
-    const { h, d } = await setup(t);
-    await d.recordDecision(base({ verdict: 'act', confidence: 90, actionKey: 'close_cycle', subjectId: 'A' }));
-    await d.recordDecision(base({ verdict: 'hold', subjectId: 'B' }));
-    await h.query("UPDATE operational_decisions SET last_decided_at = NOW() - INTERVAL '200 days'");
-    const removed = await d.pruneDecisions({ olderThanDays: 90 });
-    assert.equal(removed, 1, 'the hold went');
-    const left = (await h.query('SELECT subject_id FROM operational_decisions')).rows;
-    assert.deepEqual(left.map((r) => r.subject_id), ['A'],
-      'an action nobody ever graded is the one record worth keeping longest');
-  });
-
 test('shadow records what it WOULD have done, and no action key',
   { skip: skipWithoutPg() }, async (t) => {
     const { d } = await setup(t);

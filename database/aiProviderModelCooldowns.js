@@ -38,12 +38,4 @@ async function clearModelPause(providerKey, model) {
   );
 }
 
-/** An operator putting every model of a provider back in rotation. */
-async function clearAllModelPauses(providerKey) {
-  await query(
-    `UPDATE ai_providers SET model_cooldowns = '{}'::jsonb WHERE provider_key = $1`,
-    [providerKey]
-  );
-}
-
-module.exports = { pauseModel, clearModelPause, clearAllModelPauses };
+module.exports = { pauseModel, clearModelPause };

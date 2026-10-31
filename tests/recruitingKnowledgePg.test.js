@@ -103,24 +103,6 @@ test('retiring takes a fact out of use without deleting it', { skip: skipWithout
   assert.ok(await db.getKnowledge(active.id), 'the row is still there');
 });
 
-test('the history of a fact walks all the way back', { skip: skipWithoutPg() }, async (t) => {
-  const harness = await seed(t);
-  const db = load(harness);
-  const first = await db.confirmKnowledge(
-    (await db.proposeKnowledge({ ...OLD_PAY, statement: 'Pay is 65 CPM.' })).id, {}
-  );
-  const second = await db.confirmKnowledge(
-    (await db.proposeKnowledge({ ...OLD_PAY, supersedesId: first.id })).id, {}
-  );
-  const third = await db.confirmKnowledge(
-    (await db.proposeKnowledge({ ...NEW_PAY, supersedesId: second.id })).id, {}
-  );
-  const history = await db.knowledgeHistory(third.id);
-  assert.equal(history.length, 3);
-  assert.match(history[0].statement, /77 CPM/);
-  assert.match(history[2].statement, /65 CPM/, 'what we were saying two changes ago');
-});
-
 test('boundaries and corrections live beside facts, ordered for a prompt',
   { skip: skipWithoutPg() }, async (t) => {
     const harness = await seed(t);
