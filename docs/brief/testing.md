@@ -5,7 +5,7 @@
 
 ```bash
 node --test --test-concurrency=1 tests/*.test.js   # Node suite (bash glob); *Pg files skip without TEST_DATABASE_URL
-node --test --test-concurrency=1 $(ls tests/*.test.js | grep -v 'Pg\.test\.js$')   # unit files only, as CI's unit job
+node --test --test-concurrency=1 $(ls tests/*.test.js | grep -v 'Pg\.test\.js$')   # CI's unit files; node --test passes skips, CI fails on "# skipped" above 0
 npm test                                          # gates + Node suite + Python leads tests
 npm run build --prefix admin                      # admin production build
 npm test --prefix admin                           # admin component tests
