@@ -82,7 +82,8 @@ Going over restricts the database outright — every feature stops, not just the
 costly ones. The owner chose what keeps running; everything else stands down
 until a date.
 
-- **The switch is `ECONOMY_MODE_UNTIL`** (an ISO date-time, set in Render).
+- **The switch is `ECONOMY_MODE_UNTIL`** (an ISO date-time, set in Coolify's
+  environment).
   Unset, unreadable or past means OFF; more than 45 days after the process
   started is read as a typo and is OFF, loudly, for the life of the process. There is **no default date in the code**, so a test
   run or a fresh deploy can never pause anything by accident. When the date
@@ -222,8 +223,8 @@ memory would forget an arrival.
 
 **The health endpoint's `operations` block** is built at most once every 15
 minutes (it was once a minute), and never for a HEAD request, whose body nobody
-receives. Render's own health check polls `/api/health`, so a one-minute cache
-meant up to 1,440 builds a day of ~46 statements each. The block reads each AI
+receives. The container's own health check (the `Dockerfile` `HEALTHCHECK`, every
+30 s) polls `/api/health`, so a one-minute cache meant up to 1,440 builds a day of ~46 statements each. The block reads each AI
 provider's model-listing SIZE (`summariseProvidersForHealth`), not the listing,
 which was about 43 KB for OpenRouter's (`tests/healthOperationsCost.test.js`).
 

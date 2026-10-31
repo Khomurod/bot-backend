@@ -19,9 +19,9 @@ starting three programs inside that one box:
 | **Samsara poller, spawned as a child of `index.js`** | **~40 MB heap plus process overhead** |
 | Leads bot (Python) | its own chunk |
 
-That combination hit the ceiling and Render OOM-killed the service. `render.yaml`
-still carries the notes from that period — the main app's limit was cut from
-300 MB to 256 MB with memory-saving flags specifically to make room for "the
+That combination hit the ceiling and Render OOM-killed the service. The former
+`render.yaml` (deleted in October 2026; it is in git history) carried the notes
+from that period — the main app's limit was cut from 300 MB to 256 MB with memory-saving flags specifically to make room for "the
 spawned samsara (Node child)".
 
 Removing the child process was the single most effective fix. **Do not

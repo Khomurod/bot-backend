@@ -1,5 +1,5 @@
 /**
- * Lightweight, opt-in memory watchdog for the 512 MB Render free instance.
+ * Lightweight, opt-in memory watchdog, written for the 512 MB Render instance.
  *
  * When enabled it samples process.memoryUsage() on a fixed interval and:
  *   - logs one compact line per sample (rss / heapUsed / heapTotal / external);
@@ -16,8 +16,10 @@
  *   MEMORY_WATCHDOG_INTERVAL_MS   sample cadence (default 900000 = 15 min,
  *                                 clamped to >= 60s so it cannot spin)
  *   MEMORY_WATCHDOG_RSS_WARN_MB   RSS warn threshold (default 450)
- *   MEMORY_WATCHDOG_HEAP_WARN_MB  heapUsed warn threshold (default 200 —
- *                                 the heap cap is --max-old-space-size=256)
+ *   MEMORY_WATCHDOG_HEAP_WARN_MB  heapUsed warn threshold (default 200)
+ *
+ * Both defaults were set for Render's 512 MB instance and 256 MB heap. The
+ * Dockerfile's heap cap is 1024 on a larger VPS, so raise them before enabling.
  */
 
 const MIN_INTERVAL_MS = 60 * 1000;

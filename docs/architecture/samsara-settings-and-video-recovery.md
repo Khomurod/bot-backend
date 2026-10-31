@@ -33,7 +33,7 @@ fallback for the full five minutes.
 **Every value falls back to the environment, per value.** An empty column means
 "inherit the environment variable this service has always read". That is why the
 `SAMSARA_API_KEY` currently deployed keeps working with nothing entered in the
-panel and nothing migrated, and why **no new Render environment variable is
+panel and nothing migrated, and why **no new environment variable is
 required** by any of this.
 
 ## The API key, and why it does not use `facebookCrypto`
@@ -147,6 +147,13 @@ to its own `/api/settings/safety-events*` endpoints and its own tables. Uploaded
 clips, volume, fades, original-audio mixing, the maximum processed length and
 the driver-group-only rule all behave exactly as before — the tab was folded in
 so an administrator sees Samsara as one integration, not rewritten.
+
+A clip can also be loaded without the panel, from a shell that has
+`DATABASE_URL`: `npm run upload-safety-music -- <file> [--name …] [--description …]
+[--inactive]` (`scripts/upload-safety-music.js`; mp3, wav, m4a or aac). It becomes
+the active clip unless `--inactive` is given. The panel's 20 MB limit
+(`MAX_MUSIC_BYTES`) is applied by the upload route, not by the store, so this
+script does not apply it.
 
 ## Tests that guard this
 
