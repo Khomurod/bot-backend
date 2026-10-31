@@ -28,10 +28,6 @@ test('reactivateGroupOnBotJoin sets provisional bot active', () => {
   assert.match(sql, /status_source\s*=\s*'bot'/i);
 });
 
-test('setGroupStatusByAdmin uses manual source', () => {
-  assert.match(dbSrc, /async function setGroupStatusByAdmin[\s\S]*?'manual'/);
-});
-
 test('getDriverGroupsForStatusAi excludes manual locks', () => {
   const fn = dbSrc.match(
     /async function getDriverGroupsForStatusAi[\s\S]*?`([\s\S]*?)`/

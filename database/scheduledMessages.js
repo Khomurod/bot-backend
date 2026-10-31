@@ -165,10 +165,6 @@ async function releaseStaleClaim(id, { nextScheduledAt = null } = {}) {
   return (res.rowCount || 0) > 0;
 }
 
-async function deleteScheduledMessage(id) {
-  await query('DELETE FROM scheduled_messages WHERE id = $1', [id]);
-}
-
 
 module.exports = {
   createScheduledMessage,
@@ -180,5 +176,4 @@ module.exports = {
   claimScheduledMessage,
   listStaleClaims,
   releaseStaleClaim,
-  deleteScheduledMessage,
 };

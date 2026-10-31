@@ -140,30 +140,10 @@ test('the summary is zero-filled and splits system from human', { skip: skipWith
   });
 });
 
-test('the audit log finally has a reader, scoped to corrections', { skip: skipWithoutPg() }, async (t) => {
+// The redactor itself is unit-tested (tests/adminAuditRedact.test.js); this is
+// the proof that a correction's audit row is STORED redacted, not only shown so.
+test('a correction\'s audit row is stored with its secrets redacted', { skip: skipWithoutPg() }, async (t) => {
   const harness = await harnessWith(t);
-  const { operationalCorrections: store } = load(harness);
-  const { insertAdminAudit } = harness.loadDataLayer(['adminAudit']).adminAudit;
-
-  await insertAdminAudit({
-    adminId: 1, roleKeys: ['super_admin'], action: 'operational_correction.home_time.close_cycle',
-    entityType: 'road_history', entityId: 7, oldValues: {}, newValues: {},
-  });
-  // An unrelated edit to the same row must not be told as part of this story.
-  await insertAdminAudit({
-    adminId: 1, roleKeys: [], action: 'driver_profile.update',
-    entityType: 'road_history', entityId: 7, oldValues: {}, newValues: {},
-  });
-
-  const rows = await store.listAuditForSubject({ entityType: 'road_history', entityId: 7 });
-  assert.equal(rows.length, 1);
-  assert.equal(rows[0].action, 'operational_correction.home_time.close_cycle');
-  assert.equal(rows[0].username, 'admin', 'the actor is named, not just numbered');
-});
-
-test('the audit reader inherits the secret redactor', { skip: skipWithoutPg() }, async (t) => {
-  const harness = await harnessWith(t);
-  const { operationalCorrections: store } = load(harness);
   const { insertAdminAudit } = harness.loadDataLayer(['adminAudit']).adminAudit;
 
   await insertAdminAudit({
@@ -173,7 +153,9 @@ test('the audit reader inherits the secret redactor', { skip: skipWithoutPg() },
     newValues: { status: 'active' },
   });
 
-  const [row] = await store.listAuditForSubject({ entityType: 'group', entityId: 5 });
+  const [row] = (await harness.query(
+    "SELECT old_values FROM admin_audit_log WHERE entity_type = 'group' AND entity_id = '5'"
+  )).rows;
   assert.equal(row.old_values.api_key, '[REDACTED]');
   assert.equal(row.old_values.status, 'inactive', 'only the secret is redacted');
 });

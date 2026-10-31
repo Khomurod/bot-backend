@@ -73,11 +73,9 @@ function loadApp({
     exports: {
       mapCorrection: (row) => row,
       async listCorrections() { return []; },
-      async getCorrectionById() { return null; },
       async summariseCorrections() {
         return { total: 0, live: 0, reverted: 0, bySystem: 0, byAdmin: 0 };
       },
-      async listAuditForSubject() { return []; },
     },
   };
   require.cache[path.resolve(__dirname, '../database/controlReplies.js')] = {

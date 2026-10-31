@@ -300,8 +300,12 @@ that graded its own homework would be worth nothing. The vocabulary is closed
 (`confirmed`, `contradicted`, `reverted`, `expired`, `not_checked`) so a summary
 cannot grow a category nobody defined.
 
-The prune keeps an action that was never graded **longer** than anything else:
-it is the one record whose absence would hide a question.
+**Nothing prunes this table.** It keeps one row per check, subject and verdict,
+updated in place, so it grows with new subjects rather than with every pass. A
+`pruneDecisions` that nothing ever called was removed in the October 2026 audit.
+If a retention rule is ever added, it must keep an action that was never graded
+**longer** than anything else: that is the one record whose absence would hide a
+question.
 
 ## What it never stores
 

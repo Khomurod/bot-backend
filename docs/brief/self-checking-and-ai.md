@@ -294,8 +294,11 @@ feature it belongs to.
   - **A failed refresh keeps the last good data and puts a banner over it** —
     never a reassuring empty list, which is the exact failure mode
     `server/middleware/failureResponse.js` exists to remove.
-  - The History tab is the **first reader `admin_audit_log` has ever had**. A
-    reverted correction is shown struck through, not removed.
+  - The History tab reads `operational_corrections`. A reverted correction is
+    shown struck through, not removed. Each correction also mirrors into
+    `admin_audit_log` in the same transaction, but no screen shows that log;
+    the verification pass reads it only to see whether a person changed the
+    subject afterwards (`services/decisions/verifyPass.js`).
   - Guarded by `admin/src/pages/operations/{labels,OperationsPage}.test.jsx`.
 
 ### Answering Wenze in Telegram

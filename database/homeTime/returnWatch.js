@@ -297,12 +297,6 @@ async function getWatch(groupId, client = null) {
   return mapWatch(res.rows[0]);
 }
 
-/** The driver is back on the road (or no longer home): the watch is over. */
-async function clearWatch(groupId, client = null) {
-  const res = await runner(client)('DELETE FROM home_time_return_watch WHERE group_id = $1 RETURNING group_id', [groupId]);
-  return res.rows.length > 0;
-}
-
 /**
  * Drop watches for drivers who are no longer home — the tidy-up half of a
  * tick. Returns HOW MANY: the pass only ever counted the ids it used to read
@@ -333,7 +327,6 @@ module.exports = {
   recordObservation,
   recordVerdict,
   getWatch,
-  clearWatch,
   clearStaleWatches,
   listWatches,
 };

@@ -61,11 +61,12 @@ it (`docs/redesign/structure.md` has the audit). All answer 404.
   past reports, so they are left in place (schema changes here are additive);
   `docs/database/table-metadata.json` marks the three tables `retired`.
   Dropping them is a separate decision, after a backup.
-- **Database functions left without a caller by the route removals**, kept
-  for a later review rather than cleaned up in advance:
-  `database/groups.js` `setGroupStatusByAdmin`, `setGroupLanguage`,
-  `setGroupBirthday`; `database/operationalCorrections.js` `getCorrectionById`,
-  `listAuditForSubject`; `database/recruitingKnowledge.js` `knowledgeHistory`.
+- **Database functions left without a caller by the route removals** were kept
+  for a later review rather than cleaned up in advance. That review (block 4a,
+  October 2026) removed them: `database/groups.js` `setGroupStatusByAdmin`,
+  `setGroupLanguage`, `setGroupBirthday`; `database/operationalCorrections.js`
+  `getCorrectionById`, `listAuditForSubject`; `database/recruitingKnowledge.js`
+  `knowledgeHistory` (`tests/removedOrphanedDbFunctionsStayRemoved.test.js`).
 
 ## Tests that hold this in place
 
