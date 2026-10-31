@@ -1,7 +1,7 @@
 /**
- * Public infrastructure surface: health checks (Render + cron pings), the site
- * root, favicon, the static /presentation page, Meta-compliance pages, and the
- * loopback-only DAT UI inspector.
+ * Public infrastructure surface: health checks (the container's HEALTHCHECK and
+ * cron pings), the site root, favicon, the static /presentation page and the
+ * Meta-compliance pages.
  *
  * Routes use their full paths; the router is mounted at the app root so
  * matching behavior is identical to the previous inline definitions.
@@ -10,23 +10,6 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const { validateMetaAppCredentials } = require('../../services/facebookGraphService');
-const { inspectDatPageLayout } = require('../../services/datUiInspectorService');
-
-function isLoopbackRequest(req) {
-  const candidates = [
-    req.ip,
-    req.socket?.remoteAddress,
-    req.connection?.remoteAddress,
-  ]
-    .map((value) => String(value || '').trim())
-    .filter(Boolean);
-
-  return candidates.some((value) => (
-    value === '::1'
-    || value === '127.0.0.1'
-    || value === '::ffff:127.0.0.1'
-  ));
-}
 
 function renderMetaCompliancePage(title, bodyHtml) {
   return `<!DOCTYPE html>
@@ -271,45 +254,6 @@ function createHealthRoutes({
   router.head('/api/health', healthHandler);
   router.get('/health', healthHandler);
   router.head('/health', healthHandler);
-
-  router.post('/api/dat-ui/inspect', async (req, res) => {
-    try {
-      if (!isLoopbackRequest(req)) {
-        return res.status(403).json({ error: 'DAT UI inspector is only available from localhost' });
-      }
-
-      const estimatedSize = Buffer.byteLength(JSON.stringify(req.body || {}), 'utf8');
-      if (estimatedSize > 50_000) {
-        return res.status(413).json({ error: 'Snapshot too large' });
-      }
-
-      const snapshot = req.body?.snapshot && typeof req.body.snapshot === 'object'
-        ? {
-            ...req.body.snapshot,
-            url: req.body.snapshot.url || req.body?.url || '',
-            signature: req.body.snapshot.signature || req.body?.signature || '',
-            currentConfig: req.body.snapshot.currentConfig || req.body?.currentConfig || null,
-          }
-        : (req.body && typeof req.body === 'object' ? req.body : null);
-
-      if (!snapshot) {
-        return res.status(400).json({ error: 'snapshot object is required' });
-      }
-
-      const inspection = await inspectDatPageLayout(snapshot);
-      return res.json({
-        ok: true,
-        ...inspection,
-      });
-    } catch (err) {
-      console.error('[API] DAT UI inspect failed:', err.message);
-      return res.status(500).json({
-        ok: false,
-        error: 'Failed to inspect DAT UI snapshot',
-        detail: err.message,
-      });
-    }
-  });
 
   // Avoid noisy browser console 404 for default favicon requests.
   router.get('/favicon.ico', (req, res) => {

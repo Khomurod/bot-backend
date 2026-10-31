@@ -10,7 +10,6 @@
 //
 // Shared Groq chat-completions client used by:
 //   - aiAnnotationService.js (per-message classifier for Driver Retention)
-//   - datUiInspectorService.js (DAT layout inspector)
 //
 require('dotenv').config();
 

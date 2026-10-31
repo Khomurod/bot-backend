@@ -10,6 +10,22 @@ git so they can be recovered.
 
 ---
 
+## The DAT UI inspector
+
+Removed 2026-10-31 at the owner's decision, after the hidden-functions audit.
+`POST /api/dat-ui/inspect` (now 404) took a snapshot of a DAT load-board page
+from a Chrome extension that is not in this repository and that the company
+does not use, and sent it to Groq for layout advice. It answered loopback
+callers only and nothing here called it. Gone: the route and its loopback guard
+(`server/routes/healthRoutes.js`), `services/datUiInspectorService.js`, and the
+AI capability `dat_ui_inspection` (Settings → AI → Responsibilities). It had no
+table; an `ai_capabilities` row for it, if one was registered, is left: no
+screen shows it and no call asks for it.
+`tests/removedDatUiInspectorStaysRemoved.test.js` and `tests/api-surface.test.js`
+keep it removed.
+
+---
+
 ## AI Reports / AI Insights
 
 Removed 2026-10-30 at the owner's decision, after the hidden-functions audit.

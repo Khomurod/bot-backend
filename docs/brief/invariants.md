@@ -33,11 +33,11 @@ repository-wide working rules. The highest-consequence items:
 4. **The webhook raw-body proxy must stay mounted before `express.json()`** or
     Meta signature verification breaks.
 5. **Auth hardening stays**: HS256 pin, login rate limit, shared-secret guards,
-    the loopback guard on `/api/dat-ui/inspect`, and the last-super-admin
-    protection (`tests/authMiddleware.test.js`,
-    `tests/adminUserGuards.test.js`). The 404-not-403 rule for out-of-scope
-    accounts went with the Trailer Manager scoping that was its only user —
-    `admin.full_access` is now the single gate (§5).
+    and the last-super-admin protection (`tests/authMiddleware.test.js`,
+    `tests/adminUserGuards.test.js`). The loopback-only guard went with the DAT
+    UI inspector, its only user (October 2026). The 404-not-403 rule for
+    out-of-scope accounts went with the Trailer Manager scoping that was its
+    only user — `admin.full_access` is now the single gate (§5).
 6. **Handler order in `bot/bot.js` is behavior.** Feature-specific
     `bot.action(...)` handlers must stay registered before the survey/broadcast
     `callback_query` catch-all, which must remain last. Middleware `next()`
