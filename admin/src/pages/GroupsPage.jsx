@@ -2,7 +2,6 @@ import React from "react";
 import { useDriverProfiles } from "./groups/useDriverProfiles";
 import { DriverProfilesTable } from "./groups/DriverProfilesTable";
 import { DriverDetailModal } from "./groups/DriverDetailModal";
-import { matchesSearch } from "./groups/driverProfileShaping";
 import TabBar from "../components/ui/TabBar";
 
 /**
@@ -37,23 +36,18 @@ export default function GroupsPage() {
   const {
     loading, message, syncingAi, activeTab, setActiveTab, tabCounts,
   } = profiles;
-  // A search box (November 2026): the main driver list had none, and in
-  // production it is hundreds of chats.
-  const [query, setQuery] = React.useState("");
-  const shown = profiles.displayProfiles.filter((p) => matchesSearch(p, query));
 
   return (
     <div>
       <div className="page-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
         <div>
           <h2>Driver Groups</h2>
-          <p>The source of truth for who each driver is, their status, truck and team. Click a name to edit everything about that driver.</p>
+          <p>Driver Groups is the source of truth for driver identity, status, truck, and team-driver structure across Home Time and Group Access. Click a driver name to edit all details.</p>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          {/* Secondary: an occasional clean-up pass, not this page's main job. */}
           <button
             type="button"
-            className="btn btn-ghost"
+            className="btn btn-primary"
             onClick={profiles.handleAiSync}
             disabled={syncingAi || loading}
             title="One smart AI pass fills names, team fields, unit, type, and status without overwriting manual corrections"
@@ -95,24 +89,7 @@ export default function GroupsPage() {
         </div>
       )}
 
-      <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", marginBottom: 12 }}>
-        <input
-          type="search"
-          className="form-input"
-          style={{ maxWidth: 320 }}
-          placeholder="Search name, unit, group or @username"
-          aria-label="Search driver groups"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
-        {query.trim() && (
-          <span className="muted" style={{ fontSize: 13 }}>
-            {shown.length} of {profiles.displayProfiles.length} in this view
-          </span>
-        )}
-      </div>
-
-      <DriverProfilesTable {...profiles} displayProfiles={shown} query={query} />
+      <DriverProfilesTable {...profiles} />
 
       <DriverDetailModal {...profiles} />
     </div>

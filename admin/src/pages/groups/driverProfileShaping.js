@@ -139,16 +139,3 @@ export function memberOptionLabel(member) {
   const name = member.display_name || `User ${member.telegram_user_id}`;
   return member.username ? `${name} (@${member.username})` : `${name} (no @username)`;
 }
-
-/**
- * The rows a search keeps: driver name, group title, unit or @username, in the
- * browser, within the open view. PURE.
- */
-export function matchesSearch(profile, query) {
-  const q = String(query || "").trim().toLowerCase();
-  if (!q) return true;
-  return [
-    profile.first_name, profile.last_name, profile.secondary_first_name, profile.secondary_last_name,
-    profile.group_name, profile.unit_number, profile.telegram_username,
-  ].some((v) => String(v || "").toLowerCase().includes(q));
-}
