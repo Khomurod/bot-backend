@@ -1,9 +1,18 @@
 import React, { useState } from "react";
 import { Banner } from "./fields";
 import NotificationRoutingCard from "./notifications/NotificationRoutingCard";
+import TelegramGroupsTab from "./TelegramGroupsTab";
 
 /**
- * Settings → Notifications: where Wenze's own notices go.
+ * Settings → Where the Bot Posts (`#settings/notifications`): where Wenze's own
+ * notices go, and where the two bonus cards go.
+ *
+ * ONE SECTION SINCE NOVEMBER 2026. "Notifications" and "Bonus Groups" were two
+ * sections, and Bonus Groups was a whole section for two fields; both answer
+ * "which Telegram group does this go to?". They stay two cards with their own
+ * saves — the routing card saves each field as you leave it, the bonus groups
+ * with their button — and the old `#settings/groups` address lands here
+ * (SETTINGS_SECTION_ALIASES). The per-kind overrides are collapsed.
  *
  * HOW A PERSON ANSWERS THEM MOVED (November 2026). "Answering Wenze in
  * Telegram" (ControlChannelCard) is now under Settings → AI → Wenze's
@@ -30,9 +39,7 @@ import NotificationRoutingCard from "./notifications/NotificationRoutingCard";
  *   category is sent to" undersold what it is. See
  *   `docs/architecture/control-channel.md`.
  *
- * The routine per-workflow group ids stay on Bonus Groups (the section was
- * named Telegram Groups until October 2026), which is what that tab is
- * actually about.
+ * The routine per-workflow group ids (the bonus groups) are the second card.
  */
 export default function NotificationsTab() {
   const [message, setMessage] = useState(null);
@@ -41,13 +48,13 @@ export default function NotificationsTab() {
   return (
     <div>
       <p style={{ color: "var(--text-muted)", marginTop: 0 }}>
-        Where everything Wenze <strong>notices</strong> is sent — corrections it made, risks it
-        found, problems it recovered from. How a person answers Wenze is under{" "}
-        <a href="#settings/ai_questions">Wenze&apos;s Questions</a>; the mileage and road bonus
-        groups are under <a href="#settings/groups">Bonus Groups</a>.
+        The Telegram groups the bot posts to: everything Wenze <strong>notices</strong>, and the
+        bonus cards. How a person answers Wenze is under{" "}
+        <a href="#settings/ai_questions">Wenze&apos;s Questions</a>.
       </p>
       <Banner message={message} />
       <NotificationRoutingCard flash={flash} />
+      <TelegramGroupsTab />
     </div>
   );
 }

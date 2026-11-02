@@ -170,6 +170,9 @@ export default function NotificationRoutingCard({ flash }) {
   const candidates = data?.candidates || [];
   const discarded = data?.discarded || null;
   const defaultConfigured = Boolean(String(form.defaultChatId ?? "").trim());
+  // Counted from what is SAVED, so the summary does not change as a person types.
+  const overrideCount = categories
+    .filter((c) => String(data?.settings?.categoryChatIds?.[c.key] ?? "").trim()).length;
   const overridesConfigured = Object.values(form.categoryChatIds || {})
     .filter((v) => String(v ?? "").trim()).length;
   const reachable = defaultConfigured || overridesConfigured > 0;
@@ -287,7 +290,20 @@ export default function NotificationRoutingCard({ flash }) {
         )}
       </div>
 
-      <h4 style={{ marginTop: 20, marginBottom: 0 }}>Send these somewhere else</h4>
+      {/* Collapsed since November 2026: most deployments send everything to
+          the default group, and eight empty rows were most of this screen.
+          It opens by itself when any override is set, or when the server
+          points at one of these fields to fix. */}
+      <details
+        style={{ marginTop: 20 }}
+        open={overrideCount > 0 || Boolean(fix?.field?.startsWith("categoryChatIds."))}
+      >
+      <summary style={{ cursor: "pointer", fontWeight: 600 }}>
+        Send some kinds of notice to a different group
+        <span className="muted" style={{ fontWeight: 400 }}>
+          {" "}({overrideCount > 0 ? `${overrideCount} of ${categories.length} sent elsewhere` : `${categories.length} kinds, all to the default group`})
+        </span>
+      </summary>
       {categories.map((c) => (
         <Row
           key={c.key}
@@ -306,6 +322,7 @@ export default function NotificationRoutingCard({ flash }) {
           onPreview={preview}
         />
       ))}
+      </details>
 
       {queue && (
         <p className="muted" style={{ marginTop: 14, fontSize: 12 }}>

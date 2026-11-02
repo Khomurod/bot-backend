@@ -26,6 +26,8 @@ vi.mock("../../api", () => ({
   updateNotificationSettings: vi.fn(),
   previewNotification: vi.fn(),
   sendNotificationTest: vi.fn(),
+  getMessageGroupSettings: vi.fn(),
+  updateMessageGroupSettings: vi.fn(),
   getControlSettings: vi.fn(),
   updateControlSettings: vi.fn(),
   addControlOperator: vi.fn(),
@@ -47,6 +49,10 @@ const ROUTING = {
 beforeEach(() => {
   vi.clearAllMocks();
   api.getNotificationSettings.mockResolvedValue(ROUTING);
+  api.getMessageGroupSettings.mockResolvedValue({
+    mileageBonus: { groupId: "-100500", fromEnv: false, configured: true },
+    roadBonus: { groupId: "", fromEnv: false, configured: false },
+  });
 });
 
 test("renders the routing card, and not the control channel that moved on", async () => {
@@ -56,10 +62,20 @@ test("renders the routing card, and not the control channel that moved on", asyn
   expect(api.getControlSettings).not.toHaveBeenCalled();
 });
 
-test("says where the moved cards went, rather than just not having them", async () => {
+test("holds the bonus groups too, and says where the control channel went", async () => {
+  // "Where the Bot Posts" since November 2026: Notifications and Bonus Groups
+  // were two sections answering the same question.
   render(<NotificationsTab />);
-  expect(screen.getByRole("link", { name: /Bonus Groups/i })).toHaveAttribute("href", "#settings/groups");
+  expect(await screen.findByLabelText(/Mileage Bonus Telegram Group ID/)).toHaveValue("-100500");
+  expect(screen.getByRole("button", { name: "Save bonus groups" })).toBeTruthy();
   expect(screen.getByRole("link", { name: /Wenze's Questions/i })).toHaveAttribute("href", "#settings/ai_questions");
+});
+
+test("the per-kind overrides are collapsed while none is set", async () => {
+  render(<NotificationsTab />);
+  const summary = await screen.findByText(/Send some kinds of notice to a different group/);
+  expect(summary.closest("details").open).toBe(false);
+  expect(summary.textContent).toMatch(/1 kinds, all to the default group/);
 });
 
 test("a card's message has somewhere to appear", async () => {
@@ -67,7 +83,9 @@ test("a card's message has somewhere to appear", async () => {
   // the card is swallowed and the save looks like it did nothing.
   api.updateNotificationSettings.mockResolvedValue({ ...ROUTING.settings, defaultChatId: "-100222" });
   render(<NotificationsTab />);
-  const field = await screen.findByPlaceholderText("e.g. -1001234567890");
+  // The routing card's default group: the first such field (the bonus groups,
+  // below it, use the same placeholder).
+  const [field] = await screen.findAllByPlaceholderText("e.g. -1001234567890");
   fireEvent.change(field, { target: { value: "-100222" } });
   fireEvent.blur(field);
   await waitFor(() => expect(api.updateNotificationSettings).toHaveBeenCalledWith({ defaultChatId: "-100222" }));

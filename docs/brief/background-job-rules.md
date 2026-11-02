@@ -77,7 +77,7 @@ So discards are **counted** — `notification_discards` (migration 0041), one ro
 per category, nine rows forever, no bodies and no subjects. "Not configured"
 becomes "1,247 notices thrown away, 900 of them Needs attention", which is a
 sentence somebody acts on. It shows on `/api/health →
-operations.notifications.discarded`, in Settings → Notifications, and as a
+operations.notifications.discarded`, in Settings → Where the Bot Posts, and as a
 `needs_human_attention` row in Monitoring → System Health, plus a banner on
 Needs Attention and System Health themselves.
 
@@ -131,7 +131,7 @@ owner wants it, and the counter is honest from the deploy forward either way:
 DELETE FROM notification_discards;   -- optional; rows regenerate correctly
 ```
 
-Settings → Notifications also **offers the chats this deployment already
+Settings → Where the Bot Posts also **offers the chats this deployment already
 messages** (`lib/notifications/candidates.js`) so that setting a destination
 does not mean going to find a Telegram chat id. Offered, never applied: routing
 safety escalations into the chat that receives survey results is an audience

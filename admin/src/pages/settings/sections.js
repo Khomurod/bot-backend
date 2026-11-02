@@ -37,8 +37,9 @@ export const SETTINGS_GROUPS = Object.freeze([
   {
     label: "Telegram Bot",
     sections: [
-      { key: "notifications", label: "Notifications" },
-      { key: "groups", label: "Bonus Groups" },
+      // "Notifications" and "Bonus Groups" until November 2026: both are
+      // "which group does this go to?". `#settings/groups` lands here.
+      { key: "notifications", label: "Where the Bot Posts" },
       { key: "access", label: "Group Access" },
       { key: "reactions", label: "Auto Reactions" },
     ],
@@ -60,6 +61,15 @@ export const SETTINGS_GROUPS = Object.freeze([
     sections: [{ key: "leftovers", label: "Retired Leftovers" }],
   },
 ]);
+
+/**
+ * Section keys that no longer name a section of their own, and the section
+ * their content is in now. A held link (`#settings/groups`) must open that
+ * content, not the first section — and never be renamed away.
+ */
+export const SETTINGS_SECTION_ALIASES = Object.freeze({
+  groups: "notifications",
+});
 
 /** Every section key, in display order — the first one opens by default. */
 export const SETTINGS_SECTION_KEYS = Object.freeze(

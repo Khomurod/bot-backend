@@ -1,8 +1,8 @@
-import React, { Suspense, lazy } from "react";
+import React, { Suspense, lazy, useEffect } from "react";
 import useTabRoute from "../navigation/useTabRoute";
 import PageErrorBoundary from "../components/PageErrorBoundary";
 import SettingsNav from "./settings/SettingsNav";
-import { SETTINGS_SECTION_KEYS, settingsSectionLabel } from "./settings/sections";
+import { SETTINGS_SECTION_ALIASES, SETTINGS_SECTION_KEYS, settingsSectionLabel } from "./settings/sections";
 
 /**
  * Settings — tab shell. Each tab lives in ./settings/ and is lazy-loaded so
@@ -42,7 +42,6 @@ const LocationProvidersTab = lazy(() => import("./settings/LocationProvidersTab"
 const RecruitersTab = lazy(() => import("./settings/RecruitersTab"));
 const RcConnectionTab = lazy(() => import("./settings/RcConnectionTab"));
 const BitrixTab = lazy(() => import("./settings/BitrixTab"));
-const TelegramGroupsTab = lazy(() => import("./settings/TelegramGroupsTab"));
 const SamsaraTab = lazy(() => import("./settings/SamsaraTab"));
 const SafetyEventsTab = lazy(() => import("./settings/SafetyEventsTab"));
 const DispatcherBoardTab = lazy(() => import("./settings/DispatcherBoardTab"));
@@ -65,7 +64,13 @@ const AdminAccountsTab = lazy(() => import("./settings/admins/AdminAccountsTab")
  * opens. An unrecognised section opens the first one rather than a blank page.
  */
 export default function SettingsPage({ tab: routeTab, onTabChange }) {
-  const [tab, setTab] = useTabRoute(SETTINGS_SECTION_KEYS, { tab: routeTab, onTabChange });
+  // A section merged into another (`#settings/groups`) opens the one its
+  // content is in, and the address is corrected to say so.
+  const aliasedTo = SETTINGS_SECTION_ALIASES[routeTab] || null;
+  useEffect(() => {
+    if (aliasedTo && onTabChange) onTabChange(aliasedTo);
+  }, [aliasedTo]);
+  const [tab, setTab] = useTabRoute(SETTINGS_SECTION_KEYS, { tab: aliasedTo || routeTab, onTabChange });
   return (
     <div>
       <div className="page-header">
@@ -85,7 +90,6 @@ export default function SettingsPage({ tab: routeTab, onTabChange }) {
             {tab === "rc_connection" && <RcConnectionTab />}
             {tab === "bitrix" && <BitrixTab />}
             {tab === "metacrm" && <MetaCrmTab />}
-            {tab === "groups" && <TelegramGroupsTab />}
             {tab === "samsara" && <SamsaraTab />}
             {tab === "samsara_video" && <SafetyEventsTab />}
             {tab === "board" && <DispatcherBoardTab />}

@@ -142,7 +142,7 @@ async function integrationObservations(deps, nowMs) {
         reason: config?.enabled === false
           ? `notifications are switched off${n ? ` — ${n} notices discarded so far` : ''}`
           : 'no Telegram group is configured, so every alert is discarded'
-            + `${n ? ` — ${n} so far` : ''}. Set one in Settings → Notifications.`,
+            + `${n ? ` — ${n} so far` : ''}. Set one in Settings → Where the Bot Posts.`,
       }));
     }
   } catch (_) {
