@@ -109,11 +109,11 @@ Status: ☐ planned · ◐ in review · ☑ merged.
 
 | # | Change | Must not be lost |
 |---|---|---|
-| ☐ C1 | **Driver Groups:** each row leads with the driver and unit, with the group title as a grey subtitle. A search box filters in the browser. Company chats show no driver Type or Unit controls. "AI: enrich" becomes a secondary button. On a phone each row is a card. | The duplicate and review flags, @username, every row editor, the driver modal. |
-| ☐ C2 | **Home Time → Overview:** the changelog intro is replaced by one line. The tiles become one compact row. The screenshot import goes into a closed "Import from a screenshot" section. The driver popup shows each trip once (in the table, not also in the timeline). | The import's review step, the date editor, the evidence, "Still home". |
-| ☐ C3 | **Home Time → Efficiency:** four headline numbers, the rest on one line, and the definitions behind "How is this calculated?". **Settings & Alerts:** three titled groups (Policy · Where notices go · Accounting alerts), one-line hints with "More", and a pointer to the road-bonus group's place. | The rules text, "empty = nothing posted", the Bitrix verdict. |
-| ☐ C4 | **Live Locations:** the counts move onto the filter buttons and the count cards go. Each unit states its status once. On a phone the list comes before the map. | The provider-error banner, the diagnostics, every filter. |
-| ☐ C5 | **Mileage Bonuses:** progress first, with the notification history collapsed as "History (N)". The per-driver switch reads "In bonus program / Excluded", because "Active/Inactive" means a different thing on Driver Groups. A link to where the bonus group is set. | Resend, Disregard, the confirm, Run check. |
+| ◐ C1 | **Driver Groups:** each row leads with the driver and unit, with the group title as a grey subtitle. A search box filters in the browser. Company chats show no driver Type or Unit controls. "AI: enrich" becomes a secondary button. On a phone each row is a card. | The duplicate and review flags, @username, every row editor, the driver modal. |
+| ◐ C2 | **Home Time → Overview:** the changelog intro is replaced by one line. The tiles become one compact row. The screenshot import goes into a closed "Import from a screenshot" section. The driver popup shows each trip once (in the table, not also in the timeline). | The import's review step, the date editor, the evidence, "Still home". |
+| ◐ C3 | **Home Time → Efficiency:** four headline numbers, the rest on one line, and the definitions behind "How is this calculated?". **Settings & Alerts:** three titled groups (Policy · Where notices go · Accounting alerts), one-line hints with "More", and a pointer to the road-bonus group's place. | The rules text, "empty = nothing posted", the Bitrix verdict. |
+| ◐ C4 | **Live Locations:** the counts move onto the filter buttons and the count cards go. Each unit states its status once. On a phone the list comes before the map. | The provider-error banner, the diagnostics, every filter. |
+| ◐ C5 | **Mileage Bonuses:** progress first, with the notification history collapsed as "History (N)". The per-driver switch reads "In bonus program / Excluded", because "Active/Inactive" means a different thing on Driver Groups. A link to where the bonus group is set. | Resend, Disregard, the confirm, Run check. |
 
 ### D — Recruiting
 

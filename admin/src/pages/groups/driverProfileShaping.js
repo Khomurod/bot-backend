@@ -139,3 +139,20 @@ export function memberOptionLabel(member) {
   const name = member.display_name || `User ${member.telegram_user_id}`;
   return member.username ? `${name} (@${member.username})` : `${name} (no @username)`;
 }
+
+/**
+ * The rows a search keeps: driver name, group title, unit or @username, in the
+ * browser, within the open view. PURE.
+ *
+ * It matches what the row shows: the full name as displayed ("Aziz Karimov",
+ * both drivers of a team), and the username with or without its "@", which
+ * the row prints but the stored value omits.
+ */
+export function matchesSearch(profile, query) {
+  const q = String(query || "").trim().toLowerCase();
+  if (!q) return true;
+  const has = (v) => String(v || "").toLowerCase().includes(q);
+  if ([driverLabel(profile), profile.group_name, profile.unit_number, profile.telegram_username].some(has)) return true;
+  const handle = q.startsWith("@") ? q.slice(1) : "";
+  return Boolean(handle) && String(profile.telegram_username || "").toLowerCase().includes(handle);
+}

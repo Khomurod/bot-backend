@@ -17,8 +17,10 @@ export function ScreenshotImportCard({
 }) {
   return (
 
-  <div className="card" style={{ marginBottom: 20 }}>
-    <h3>Import from screenshots</h3>
+  // An occasional job on a daily screen, so it is closed until needed
+  // (November 2026). It opens by itself while a read is waiting for review.
+  <details className="card" style={{ marginBottom: 20 }} open={Boolean(importRows)}>
+    <summary style={{ cursor: "pointer" }}><strong>Import from screenshots</strong></summary>
     <p className="home-time-muted" style={{ marginTop: 0 }}>
       Upload spreadsheet screenshots. The app reads current status, dates, and history, then lets you review the matched rows before applying them.
     </p>
@@ -85,6 +87,6 @@ export function ScreenshotImportCard({
         </button>
       </div>
     )}
-  </div>
+  </details>
   );
 }

@@ -49,9 +49,6 @@ export function DriverListCard(p) {
     <div className="home-time-section-head">
       <div>
         <h3>Driver list</h3>
-        <p>
-          Truck number comes first, every main column sorts, and the detailed editor opens only when you need it.
-        </p>
       </div>
     </div>
 
@@ -112,7 +109,7 @@ export function DriverListCard(p) {
 
     <p className="home-time-muted">
       Showing <strong>{filteredStatuses.length}</strong> driver{filteredStatuses.length === 1 ? "" : "s"}:{" "}
-      {selectedFilterLabel}. Click a row to open the popup.
+      {selectedFilterLabel}.
     </p>
 
     <div className="table-container">
@@ -151,11 +148,13 @@ export function DriverListCard(p) {
                 </td>
                 <td>
                   <div className="home-time-driver-name">{driver.driver_name}</div>
-                  <div className="home-time-subtext">
-                    {driver.duplicate_conflict
-                      ? "Duplicate active groups need review"
-                      : (isSelected ? "Selected" : "Click row to inspect")}
-                  </div>
+                  {/* "Click row to inspect" was on every row; the page header
+                      says it once. A row only says something when it matters. */}
+                  {(driver.duplicate_conflict || isSelected) && (
+                    <div className="home-time-subtext">
+                      {driver.duplicate_conflict ? "Duplicate active groups need review" : "Selected"}
+                    </div>
+                  )}
                 </td>
                 <td>{driverTypeLabel(driver.driver_type)}</td>
                 <td>

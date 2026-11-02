@@ -1,0 +1,56 @@
+/* ── A table that becomes cards on a phone ──────────────────────────────────
+ *
+ * November 2026 (docs/redesign/density.md). A wide table on a 390 px screen
+ * put its editable columns behind a sideways scroll — Driver Groups' Status
+ * and Unit were off screen. With `wz-card-table` on the <table>, each row is a
+ * card below 640 px: the header row hides and every cell shows its own label
+ * from `data-label`. Desktop is untouched.
+ */
+/* A control that lives in the hidden header row (a sort) needs a stand-in
+   above the cards; it shows only where the header does not. */
+button.wz-card-table-phone-control {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  table.wz-card-table thead {
+    display: none;
+  }
+
+  button.wz-card-table-phone-control {
+    display: inline-flex;
+    margin-bottom: 8px;
+  }
+
+  table.wz-card-table,
+  table.wz-card-table tbody,
+  table.wz-card-table tr,
+  table.wz-card-table td {
+    display: block;
+    width: 100%;
+  }
+
+  table.wz-card-table tr {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 8px 12px;
+    margin-bottom: 10px;
+    background: var(--bg-card);
+  }
+
+  table.wz-card-table td {
+    border: none;
+    padding: 4px 0;
+  }
+
+  table.wz-card-table td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 2px;
+  }
+}
