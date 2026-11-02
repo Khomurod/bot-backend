@@ -112,7 +112,9 @@ const CHECK_LABELS = {
   'home_time.exhausted_internal_alerts': 'Home-time alerts to the office that were never delivered',
   'identity.bot_not_member': 'Active group the bot is no longer a member of',
   'identity.unit_title_mismatch': 'Group title names a different unit than the profile',
-  'ops.no_notification_destination': 'Wenze has nowhere to send its notices',
+  // Filed whenever the DEFAULT group is empty — with category overrides set
+  // too, when only the remaining categories are silent (checks/systems.js).
+  'ops.no_notification_destination': "No default group for Wenze's notices",
   // Terms, privacy, pricing or model-policy: any watched page, not only terms.
   'ai.policy_source_lost': "A watched AI provider page can no longer be found",
 };
