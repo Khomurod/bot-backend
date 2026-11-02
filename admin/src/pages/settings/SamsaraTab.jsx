@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import * as api from "../../api";
+import PageFailure from "../../components/PageFailure";
 import { Banner, NumField } from "./fields";
 import { ConnectionCard } from "./samsara/ConnectionCard";
 import { VideoRecoveryCard } from "./samsara/VideoRecoveryCard";
@@ -26,6 +27,7 @@ export default function SamsaraTab() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState(null);
   const [form, setForm] = useState(null);
+  const [loadError, setLoadError] = useState(null);
 
   const applySettings = useCallback((next) => {
     setSettings(next);
@@ -53,7 +55,9 @@ export default function SamsaraTab() {
       const data = await api.getSamsaraSettings();
       applySettings(data.settings);
       setRecovery(data.recovery);
+      setLoadError(null);
     } catch (err) {
+      setLoadError(err);
       setMessage({ type: "error", text: err.message });
     } finally { setLoading(false); }
   }, [applySettings]);
@@ -88,6 +92,11 @@ export default function SamsaraTab() {
     } finally { setSaving(false); }
   };
 
+  // A first read that failed says so and offers Retry: this is the only
+  // screen that edits the Samsara key, so a spinner forever would lock it.
+  if (!form && loadError && !loading) {
+    return <PageFailure variant="inline" error={loadError} where="Samsara settings" onRetry={load} />;
+  }
   if (loading || !form) return <div className="loading"><div className="spinner"></div> Loading…</div>;
 
   return (

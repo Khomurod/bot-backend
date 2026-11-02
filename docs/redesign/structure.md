@@ -133,6 +133,10 @@ opens on Announcement, as Send Message always did.
 
 ## Every inventory row, old → new
 
+The right-hand column is where each function is today: the Settings rows name
+the November 2026 sections ([`density.md`](density.md) A1–A6), not the
+October groups they first moved to.
+
 | Old location | Function | New location |
 |---|---|---|
 | Login, session check, sign out | Sign in / out | Unchanged |
@@ -161,19 +165,19 @@ opens on Announcement, as Send Message always did.
 | Recruiting → Leads | Leads table, source filter, Indeed script | Recruiting → Leads |
 | Recruiting → Customer Inquiries | Auto-reply, pages, Teach Wenze + working hours | Recruiting → Customer Inquiries |
 | Recruiting → Recruiter KPIs | KPIs, date, sync | Recruiting → Recruiter KPIs |
-| Settings → Live Location | ELD provider keys, tests | Settings → Integrations → Location Providers |
-| Settings → RingCentral | Credentials, targets, recruiters, Bitrix24 connection | Settings → Integrations → RingCentral & Bitrix24 |
-| Settings → Facebook ↔ Bitrix | Meta CAPI for CRM | Settings → Integrations → Facebook ↔ Bitrix |
-| Settings → Samsara | Connection, safety events, video recovery, music | Settings → Integrations → Samsara |
-| Settings → Dispatcher Board (also its own sidebar entry) | Feed, Board ↔ Bitrix check | Settings → Integrations → Dispatcher Board |
-| Settings → AI (also "AI & Autonomy" in the sidebar) | Providers, order, health, responsibilities, lessons, terms watcher | Settings → AI → AI & Autonomy |
-| Settings → Notifications (also "Notification Routing") | Routing, control channel | Settings → Telegram Bot → Notifications |
-| Settings → Telegram Groups | Mileage / road bonus group ids | Settings → Telegram Bot → Bonus Groups |
-| Settings → Bot Group Access (also its own sidebar entry) | Super admin, groups table, recheck, request admin, export | Settings → Telegram Bot → Group Access |
-| Settings → Auto Reactions (also its own sidebar entry) | Reaction rules | Settings → Telegram Bot → Auto Reactions |
+| Settings → Live Location | ELD provider keys, tests | Settings → Fleet → Location Providers |
+| Settings → RingCentral | Credentials, targets, recruiters, Bitrix24 connection | Settings → Recruiting → **Recruiters & Numbers** (the recruiters, invite, add), **RingCentral Connection** (the shared credentials and webhook) and **Bitrix24**; the targets are Recruiter KPIs → **Targets** |
+| Settings → Facebook ↔ Bitrix | Meta CAPI for CRM | Settings → Recruiting → Facebook ↔ Bitrix |
+| Settings → Samsara | Connection, safety events, video recovery, music | Settings → Fleet → **Samsara** (connection, safety events, video recovery) and **Samsara Video & Music** |
+| Settings → Dispatcher Board (also its own sidebar entry) | Feed, Board ↔ Bitrix check | Settings → Fleet → Dispatcher Board |
+| Settings → AI (also "AI & Autonomy" in the sidebar) | Providers, order, health, responsibilities, lessons, terms watcher | Settings → AI → **AI Providers** (providers, order, health), **AI Tasks** (responsibilities), **Wenze's Questions** (lessons, control channel) and **Provider Terms** (terms watcher) |
+| Settings → Notifications (also "Notification Routing") | Routing, control channel | Settings → Telegram → **Where the Bot Posts** (routing); the control channel is AI → Wenze's Questions |
+| Settings → Telegram Groups | Mileage / road bonus group ids | Settings → Telegram → Where the Bot Posts (`#settings/groups` opens it) |
+| Settings → Bot Group Access (also its own sidebar entry) | Super admin, groups table, recheck, request admin, export | Settings → Telegram → Group Access |
+| Settings → Auto Reactions (also its own sidebar entry) | Reaction rules | Settings → Telegram → Auto Reactions |
 | Settings → Safety Approvals | Chat, topic, Safety people, hiring stages | Settings → Recruiting → Safety Approvals |
-| Settings → Gross Grand Prix | Celebration video, Windows sound | Settings → Office Screens → Gross Grand Prix |
-| Settings → Retired Leftovers | Purge roles, drop tables | Settings → Maintenance → Retired Leftovers |
+| Settings → Gross Grand Prix | Celebration video, Windows sound | Settings → System → Gross Grand Prix |
+| Settings → Retired Leftovers | Purge roles, drop tables | Settings → System → Retired Leftovers |
 
 ## Old addresses
 

@@ -6,7 +6,7 @@
  */
 import React from "react";
 import { beforeEach, expect, test, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import * as api from "../../api";
 import SamsaraTab from "./SamsaraTab";
 
@@ -39,4 +39,16 @@ test("Samsara has one Save, and points at the music section instead of carrying 
   expect(screen.queryByText("Active music")).toBeNull();
   expect(api.getSafetyEventSettings).not.toHaveBeenCalled();
   expect(screen.getByRole("link", { name: "Samsara Video & Music" })).toHaveAttribute("href", "#settings/samsara_video");
+});
+
+test("a first read that fails offers Retry instead of a spinner that never ends", async () => {
+  const good = await api.getSamsaraSettings();
+  api.getSamsaraSettings.mockReset();
+  api.getSamsaraSettings.mockRejectedValueOnce(new Error("Server unreachable")).mockResolvedValue(good);
+  render(<SamsaraTab />);
+  const retry = await screen.findByRole("button", { name: /Retry|Try again/i });
+  expect(screen.queryByText("Loading…")).toBeNull();
+  fireEvent.click(retry);
+  await waitFor(() => expect(api.getSamsaraSettings).toHaveBeenCalledTimes(2));
+  await waitFor(() => expect(screen.queryByRole("button", { name: /Retry|Try again/i })).toBeNull());
 });

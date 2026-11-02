@@ -99,6 +99,16 @@ test("Wenze's Questions holds both ways Wenze asks, and both report into its ban
   await waitFor(() => expect(api.updateControlSettings).toHaveBeenCalled());
 });
 
+test("the control channel's own save reports into Wenze's Questions' banner", async () => {
+  api.updateControlSettings.mockResolvedValue({ enabled: false });
+  render(<WenzeQuestionsTab />);
+  // Nothing else has saved, so "Saved." can only come from this card.
+  fireEvent.click(await screen.findByRole("checkbox", { name: /Ask questions in Telegram/ }));
+  await waitFor(() => expect(api.updateControlSettings).toHaveBeenCalled());
+  await waitFor(() => expect(screen.getByText(/Saved/)).toBeTruthy());
+  expect(api.updateAiSettings).not.toHaveBeenCalled();
+});
+
 test("Provider Terms reads the provider list it needs by itself", async () => {
   render(<ProviderTermsTab />);
   expect(await screen.findByText(/Provider terms watcher/)).toBeTruthy();

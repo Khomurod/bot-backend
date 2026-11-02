@@ -397,7 +397,8 @@ export default function RecruiterCard({ recruiter, onSaved, onDeleted, onMessage
               Use a custom Client ID / Client Secret for this number
             </label>
             <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
-              Off = this number authenticates with the shared Client ID/Secret from the credentials card above.
+              Off = this number authenticates with the shared Client ID/Secret set in{" "}
+              <a href="#settings/rc_connection">Settings → RingCentral Connection</a>.
             </div>
           </div>
           {useCustom && (
