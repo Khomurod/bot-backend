@@ -101,6 +101,8 @@ export default function RetiredLeftoversTab() {
 
   if (loading && !data) return <div style={{ padding: 20, color: "var(--text-muted)" }}>Loading…</div>;
 
+  const cleanGroups = (data?.groups || []).filter((g) => g.tables_present === 0);
+
   return (
     <div>
       {error && (
@@ -116,13 +118,15 @@ export default function RetiredLeftoversTab() {
         </p>
       </div>
 
-      {(data?.groups || []).map((group) => (
+      {/* Only what still has something to clear is a card. The already-clean
+          features are one line, opened on request (November 2026): four of six
+          cards said "nothing left" and pushed the work below the fold. */}
+      {(data?.groups || []).filter((g) => g.tables_present > 0).map((group) => (
         <div className="card" key={group.key} style={{ marginBottom: 12 }}>
           <label style={{ display: "flex", gap: 10, alignItems: "flex-start", cursor: "pointer" }}>
             <input
               type="checkbox"
               checked={Boolean(selected[group.key])}
-              disabled={group.tables_present === 0}
               onChange={(e) => setSelected((s) => ({ ...s, [group.key]: e.target.checked }))}
               style={{ marginTop: 4 }}
             />
@@ -131,37 +135,48 @@ export default function RetiredLeftoversTab() {
               <span style={{ color: "var(--text-muted)", fontSize: 12 }}>removed {group.removed_at}</span>
               <div style={{ color: "var(--text-muted)", fontSize: 13, margin: "4px 0" }}>{group.note}</div>
               <div style={{ fontSize: 13 }}>
-                {group.tables_present === 0
-                  ? <span style={{ color: "var(--success)" }}>✓ nothing left — already clean</span>
-                  : <>
-                      <strong>{group.tables_present}</strong> table{group.tables_present === 1 ? "" : "s"},{" "}
-                      <strong>{group.total_rows.toLocaleString()}</strong> row{group.total_rows === 1 ? "" : "s"}
-                    </>}
+                <strong>{group.tables_present}</strong> table{group.tables_present === 1 ? "" : "s"},{" "}
+                <strong>{group.total_rows.toLocaleString()}</strong> row{group.total_rows === 1 ? "" : "s"}
               </div>
             </span>
           </label>
-          {group.tables_present > 0 && (
-            <details style={{ marginTop: 8 }}>
-              <summary style={{ cursor: "pointer", fontSize: 13, color: "var(--text-muted)" }}>
-                Show tables
-              </summary>
-              <div className="table-container">
-                <table className="table" style={{ marginTop: 8, fontSize: 13 }}>
-                  <thead><tr><th>Table</th><th style={{ textAlign: "right" }}>Rows</th></tr></thead>
-                  <tbody>
-                    {group.tables.filter((t) => t.present).map((t) => (
-                      <tr key={t.table}>
-                        <td><code>{t.table}</code></td>
-                        <td style={{ textAlign: "right" }}>{t.rows.toLocaleString()}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </details>
-          )}
+          <details style={{ marginTop: 8 }}>
+            <summary style={{ cursor: "pointer", fontSize: 13, color: "var(--text-muted)" }}>
+              Show tables
+            </summary>
+            <div className="table-container">
+              <table className="table" style={{ marginTop: 8, fontSize: 13 }}>
+                <thead><tr><th>Table</th><th style={{ textAlign: "right" }}>Rows</th></tr></thead>
+                <tbody>
+                  {group.tables.filter((t) => t.present).map((t) => (
+                    <tr key={t.table}>
+                      <td><code>{t.table}</code></td>
+                      <td style={{ textAlign: "right" }}>{t.rows.toLocaleString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </details>
         </div>
       ))}
+
+      {cleanGroups.length > 0 && (
+        <details className="card" style={{ marginBottom: 12 }}>
+          <summary style={{ cursor: "pointer" }}>
+            <span style={{ color: "var(--success)" }}>✓ Already clean ({cleanGroups.length})</span>
+            <span style={{ color: "var(--text-muted)", fontSize: 13 }}> — removed features with nothing left in the database</span>
+          </summary>
+          <ul style={{ margin: "10px 0 0", paddingLeft: 18, fontSize: 13 }}>
+            {cleanGroups.map((group) => (
+              <li key={group.key} style={{ marginBottom: 4 }}>
+                <strong>{group.label}</strong>{" "}
+                <span style={{ color: "var(--text-muted)" }}>removed {group.removed_at} — {group.note}</span>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
 
       <div className="card" style={{ marginBottom: 12 }}>
         <h3 style={{ marginTop: 0 }}>Roles, permissions and accounts</h3>

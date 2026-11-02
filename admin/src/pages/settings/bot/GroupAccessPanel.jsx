@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import SuperAdminCard from "./SuperAdminCard";
 import * as api from "../../../api";
 import { csvRows } from "../../../utils/csvSafe.js";
 
@@ -51,6 +52,12 @@ export default function GroupAccessPanel() {
   const [status, setStatus] = useState(null);
   const [superAdminId, setSuperAdminId] = useState("");
   const [superAdminLabel, setSuperAdminLabel] = useState("");
+  // What is SAVED, as opposed to what is being typed: the card is one line
+  // once a super admin is stored.
+  const [saved, setSaved] = useState({ id: "", label: "" });
+  // Problems first (November 2026): a healthy group needs nothing from anyone,
+  // and in production they are most of the list.
+  const [showReadable, setShowReadable] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
   const [requesting, setRequesting] = useState(null);
   const [statusFilter, setStatusFilter] = useState("all"); // all | active | inactive
@@ -68,6 +75,7 @@ export default function GroupAccessPanel() {
       const s = settingsRes.settings || {};
       setSuperAdminId(s.super_admin_telegram_id || "");
       setSuperAdminLabel(s.super_admin_label || "");
+      setSaved({ id: s.super_admin_telegram_id || "", label: s.super_admin_label || "" });
     } catch (err) {
       setStatus({ type: "error", text: err.message });
     } finally {
@@ -88,9 +96,12 @@ export default function GroupAccessPanel() {
       const s = res.settings || {};
       setSuperAdminId(s.super_admin_telegram_id || "");
       setSuperAdminLabel(s.super_admin_label || "");
+      setSaved({ id: s.super_admin_telegram_id || "", label: s.super_admin_label || "" });
       setStatus({ type: "success", text: "Super admin saved." });
+      return true;
     } catch (err) {
       setStatus({ type: "error", text: err.message });
+      return false;
     } finally {
       setSavingSettings(false);
     }
@@ -107,6 +118,10 @@ export default function GroupAccessPanel() {
   // "No access" within the current filter = bot can't read it (not ok). This is
   // what the download exports — e.g. active driver groups where the bot is not admin.
   const noAccessGroups = filteredGroups.filter((g) => g.reading_level !== "ok");
+  // The table shows the problems; the readable groups are one line until asked
+  // for. The counts and the export above still cover the whole filter.
+  const readableCount = filteredGroups.length - noAccessGroups.length;
+  const shownGroups = showReadable ? filteredGroups : noAccessGroups;
 
   const filteredSummary = filteredGroups.reduce((acc, g) => {
     acc[g.reading_level] = (acc[g.reading_level] || 0) + 1;
@@ -195,37 +210,16 @@ export default function GroupAccessPanel() {
         <div className={`alert alert-${status.type}`} style={{ marginBottom: 16 }}>{status.text}</div>
       )}
 
-      <div className="card" style={{ marginBottom: 20 }}>
-        <h3>Super admin</h3>
-        <p style={{ color: "var(--text-muted)", marginTop: 0 }}>
-          Enter the Telegram numeric ID of the super admin. That person must first press <strong>Start</strong> on the Wenze
-          Feedback bot. When you tap "Request admin" on a group below, the bot DMs them a link that adds it to the chosen
-          group as an admin so it can read every message.
-        </p>
-        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
-          <div className="form-group">
-            <label>Super admin Telegram ID</label>
-            <input
-              type="text"
-              value={superAdminId}
-              placeholder="e.g. 123456789"
-              onChange={(e) => setSuperAdminId(e.target.value.trim())}
-            />
-          </div>
-          <div className="form-group">
-            <label>Label (optional)</label>
-            <input
-              type="text"
-              value={superAdminLabel}
-              placeholder="e.g. Tom"
-              onChange={(e) => setSuperAdminLabel(e.target.value)}
-            />
-          </div>
-          <button className="btn btn-primary" onClick={saveSettings} disabled={savingSettings}>
-            {savingSettings ? "Saving…" : "Save"}
-          </button>
-        </div>
-      </div>
+      <SuperAdminCard
+        savedId={saved.id}
+        savedLabel={saved.label}
+        id={superAdminId}
+        label={superAdminLabel}
+        onIdChange={setSuperAdminId}
+        onLabelChange={setSuperAdminLabel}
+        onSave={saveSettings}
+        saving={savingSettings}
+      />
 
       <div className="card" style={{ marginBottom: 20 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
@@ -272,7 +266,7 @@ export default function GroupAccessPanel() {
               <option value="non_driver">Non-driver groups</option>
             </select>
           </div>
-          <span style={{ color: "var(--text-muted)" }}>Showing {filteredGroups.length} of {groups.length}</span>
+          <span style={{ color: "var(--text-muted)" }}>Showing {shownGroups.length} of {groups.length}{showReadable ? "" : " — the ones needing attention"}</span>
         </div>
       </div>
 
@@ -291,7 +285,7 @@ export default function GroupAccessPanel() {
             </tr>
           </thead>
           <tbody>
-            {filteredGroups.map((g) => {
+            {shownGroups.map((g) => {
               const style = LEVEL_STYLE[g.reading_level] || LEVEL_STYLE.unknown;
               const isAdmin = g.bot_member_status === "administrator" || g.bot_member_status === "creator";
               return (
@@ -332,8 +326,22 @@ export default function GroupAccessPanel() {
             {filteredGroups.length === 0 && (
               <tr><td colSpan={8} style={{ textAlign: "center", color: "var(--text-muted)" }}>No groups match these filters.</td></tr>
             )}
+            {filteredGroups.length > 0 && shownGroups.length === 0 && (
+              <tr><td colSpan={8} style={{ textAlign: "center", color: "var(--success)" }}>✓ The bot can read every group here.</td></tr>
+            )}
           </tbody>
         </table>
+        {readableCount > 0 && (
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            style={{ marginTop: 10 }}
+            aria-expanded={showReadable}
+            onClick={() => setShowReadable((v) => !v)}
+          >
+            {showReadable ? `Hide the ${readableCount} groups reading normally` : `🟢 ${readableCount} groups reading normally — show them`}
+          </button>
+        )}
       </div>
     </div>
   );

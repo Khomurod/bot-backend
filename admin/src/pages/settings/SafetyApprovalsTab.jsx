@@ -15,6 +15,11 @@ import HiringStagesCard from "./HiringStagesCard";
  * The switch stays disabled until the group is validated, the topic is named
  * and at least one Safety person is picked — each one missing is a way to post
  * a wrong "APPROVED" (the server refuses it too).
+ *
+ * Once it is on and complete, the four setup steps fold into one line with
+ * "Edit setup", and what happens day to day — the latest Safety replies —
+ * comes first (November 2026, docs/redesign/density.md A5). The switch stays
+ * in view either way.
  */
 export default function SafetyApprovalsTab() {
   const [settings, setSettings] = useState(null);
@@ -26,6 +31,9 @@ export default function SafetyApprovalsTab() {
   const [message, setMessage] = useState(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  // Set up once: when it is on and complete, steps 1–4 are one summary line
+  // with "Edit setup", and the latest replies come first (November 2026).
+  const [editing, setEditing] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -89,6 +97,41 @@ export default function SafetyApprovalsTab() {
   if (loading) return <div className="loading"><div className="spinner"></div> Loading…</div>;
 
   const ready = Boolean(settings?.chatValidatedAt && settings?.topicId && settings?.safetyUserIds?.length);
+  const collapsed = ready && Boolean(settings?.enabled) && !editing;
+  const safetyCount = settings?.safetyUserIds?.length || 0;
+
+  const enableSwitch = (
+    <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+      <input type="checkbox" checked={Boolean(settings?.enabled)} disabled={busy || (!ready && !settings?.enabled)}
+        onChange={(e) => save({ enabled: e.target.checked }, e.target.checked ? "Safety Approvals is on." : "Switched off.")} />
+      <span>Post Safety&apos;s decisions in the topic</span>
+    </label>
+  );
+
+  const hiringStages = (
+    <HiringStagesCard settings={settings} proposals={proposals} busy={busy}
+      onToggle={(on) => save({ stageProposalsEnabled: on }, on ? "Bitrix stage proposals are on." : "Bitrix stage proposals are off.")} />
+  );
+
+  const latestReplies = (
+    <div className="card" style={{ marginTop: 16 }}>
+      <h3 style={{ marginTop: 0 }}>Latest Safety replies</h3>
+      {recent.length === 0 ? <div className="muted">None yet.</div> : (
+        <table className="data-table">
+          <thead><tr><th>When</th><th>Result</th><th>Decisions</th></tr></thead>
+          <tbody>
+            {recent.map((r) => (
+              <tr key={r.id}>
+                <td>{new Date(r.updatedAt).toLocaleString()}</td>
+                <td>{STATUS[r.status] || r.status}{r.lastError ? ` — ${r.lastError}` : ""}</td>
+                <td>{r.decisions.map((d) => `${d.name}: ${d.decision === "approved" ? "approved" : "not approved"}`).join(", ") || "—"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
   const known = new Set(members.map((m) => m.id));
   const people = [
     ...members,
@@ -106,6 +149,31 @@ export default function SafetyApprovalsTab() {
       </p>
       <Banner message={message} />
 
+      {collapsed ? (
+        <>
+          <div className="card">
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+              <div>
+                <strong style={{ color: "var(--success)" }}>✓ On</strong> — decisions in{" "}
+                <strong>{settings.chatTitle || settings.chatId}</strong> are posted in topic #{settings.topicId};{" "}
+                {safetyCount} Safety {safetyCount === 1 ? "person" : "people"}.
+              </div>
+              <button type="button" className="btn btn-ghost btn-sm" aria-expanded={false} onClick={() => setEditing(true)}>
+                Edit setup
+              </button>
+            </div>
+            <div style={{ marginTop: 10 }}>{enableSwitch}</div>
+          </div>
+          {latestReplies}
+          {hiringStages}
+        </>
+      ) : (
+      <>
+      {editing && ready && settings?.enabled && (
+        <div style={{ marginBottom: 12 }}>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditing(false)}>Done — fold the setup</button>
+        </div>
+      )}
       <div className="card">
         <h3 style={{ marginTop: 0 }}>1. The recruiting group</h3>
         <div className="form-group">
@@ -169,11 +237,7 @@ export default function SafetyApprovalsTab() {
 
       <div className="card" style={{ marginTop: 16 }}>
         <h3 style={{ marginTop: 0 }}>4. Switch it on</h3>
-        <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <input type="checkbox" checked={Boolean(settings?.enabled)} disabled={busy || (!ready && !settings?.enabled)}
-            onChange={(e) => save({ enabled: e.target.checked }, e.target.checked ? "Safety Approvals is on." : "Switched off.")} />
-          <span>Post Safety&apos;s decisions in the topic</span>
-        </label>
+        {enableSwitch}
         {!ready && (
           <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 6 }}>
             Save the group, the topic and at least one Safety person first.
@@ -181,26 +245,10 @@ export default function SafetyApprovalsTab() {
         )}
       </div>
 
-      <HiringStagesCard settings={settings} proposals={proposals} busy={busy}
-        onToggle={(on) => save({ stageProposalsEnabled: on }, on ? "Bitrix stage proposals are on." : "Bitrix stage proposals are off.")} />
-
-      <div className="card" style={{ marginTop: 16 }}>
-        <h3 style={{ marginTop: 0 }}>Latest Safety replies</h3>
-        {recent.length === 0 ? <div className="muted">None yet.</div> : (
-          <table className="data-table">
-            <thead><tr><th>When</th><th>Result</th><th>Decisions</th></tr></thead>
-            <tbody>
-              {recent.map((r) => (
-                <tr key={r.id}>
-                  <td>{new Date(r.updatedAt).toLocaleString()}</td>
-                  <td>{STATUS[r.status] || r.status}{r.lastError ? ` — ${r.lastError}` : ""}</td>
-                  <td>{r.decisions.map((d) => `${d.name}: ${d.decision === "approved" ? "approved" : "not approved"}`).join(", ") || "—"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
+      {hiringStages}
+      {latestReplies}
+      </>
+      )}
     </div>
   );
 }

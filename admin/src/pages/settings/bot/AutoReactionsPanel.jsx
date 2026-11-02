@@ -32,6 +32,9 @@ export default function AutoReactionsPanel() {
   const [manualUsername, setManualUsername] = useState("");
   const [emoji, setEmoji] = useState("");
   const [userSearch, setUserSearch] = useState("");
+  // The rules come first; the form (with its 80-emoji grid) opens from a button
+  // (November 2026). It used to be the first thing on the screen.
+  const [adding, setAdding] = useState(false);
 
   const flash = (type, text) => setMessage({ type, text });
 
@@ -98,6 +101,7 @@ export default function AutoReactionsPanel() {
       flash("success", "Reaction rule saved. The bot will react to that user's messages.");
       setSelectedUserId("");
       setManualUsername("");
+      setAdding(false);
       await load();
     } catch (err) {
       flash("error", err.message);
@@ -161,6 +165,71 @@ export default function AutoReactionsPanel() {
         </div>
       )}
 
+      <div className="card" style={{ marginBottom: 20 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <h3 style={{ margin: 0 }}>Active rules</h3>
+          <button
+            type="button"
+            className={`btn btn-sm ${adding ? "btn-ghost" : "btn-primary"}`}
+            aria-expanded={adding}
+            onClick={() => setAdding((v) => !v)}
+          >
+            {adding ? "Cancel" : "Add a rule"}
+          </button>
+        </div>
+        {rules.length === 0 ? (
+          <p className="home-time-muted" style={{ margin: "10px 0 0" }}>No reaction rules yet.</p>
+        ) : (
+          <div className="table-container" style={{ marginTop: 10 }}>
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Target</th>
+                  <th>Reaction</th>
+                  <th>Enabled</th>
+                  <th>Added</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {rules.map((rule) => (
+                  <tr key={rule.id} style={{ opacity: rule.enabled ? 1 : 0.55 }}>
+                    <td>{ruleTarget(rule)}</td>
+                    <td>
+                      <select
+                        className="form-select"
+                        value={rule.emoji}
+                        onChange={(e) => changeEmoji(rule, e.target.value)}
+                        style={{ width: 80, fontSize: 18 }}
+                      >
+                        {allowedEmojis.map((em) => (
+                          <option key={em} value={em}>{em}</option>
+                        ))}
+                      </select>
+                    </td>
+                    <td>
+                      <button
+                        className={`btn btn-sm ${rule.enabled ? "btn-primary" : "btn-ghost"}`}
+                        type="button"
+                        onClick={() => toggleRule(rule)}
+                      >
+                        {rule.enabled ? "On" : "Off"}
+                      </button>
+                    </td>
+                    <td>{rule.created_at ? new Date(rule.created_at).toLocaleDateString() : "—"}</td>
+                    <td>
+                      <button className="btn btn-sm btn-danger" type="button" onClick={() => removeRule(rule)}>
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+      {adding && (
       <div className="card" style={{ marginBottom: 20 }}>
         <h3>Add a reaction rule</h3>
         <form onSubmit={addRule}>
@@ -246,61 +315,7 @@ export default function AutoReactionsPanel() {
           </button>
         </form>
       </div>
-
-      <div className="card">
-        <h3>Active rules</h3>
-        {rules.length === 0 ? (
-          <p className="home-time-muted" style={{ margin: 0 }}>No reaction rules yet.</p>
-        ) : (
-          <div className="table-container">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Target</th>
-                  <th>Reaction</th>
-                  <th>Enabled</th>
-                  <th>Added</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {rules.map((rule) => (
-                  <tr key={rule.id} style={{ opacity: rule.enabled ? 1 : 0.55 }}>
-                    <td>{ruleTarget(rule)}</td>
-                    <td>
-                      <select
-                        className="form-select"
-                        value={rule.emoji}
-                        onChange={(e) => changeEmoji(rule, e.target.value)}
-                        style={{ width: 80, fontSize: 18 }}
-                      >
-                        {allowedEmojis.map((em) => (
-                          <option key={em} value={em}>{em}</option>
-                        ))}
-                      </select>
-                    </td>
-                    <td>
-                      <button
-                        className={`btn btn-sm ${rule.enabled ? "btn-primary" : "btn-ghost"}`}
-                        type="button"
-                        onClick={() => toggleRule(rule)}
-                      >
-                        {rule.enabled ? "On" : "Off"}
-                      </button>
-                    </td>
-                    <td>{rule.created_at ? new Date(rule.created_at).toLocaleDateString() : "—"}</td>
-                    <td>
-                      <button className="btn btn-sm btn-danger" type="button" onClick={() => removeRule(rule)}>
-                        Delete
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+      )}
     </div>
   );
 }
