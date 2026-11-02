@@ -41,8 +41,14 @@ setup guide and script on the Leads page, and the `pdf-parse` library, which
 nothing else used. **Kept:** the `leads` table and every row in it — Indeed
 leads recorded before the removal stay listed on the Leads page with their
 badge and filter — and the lead writers, which Facebook's lead processor
-uses. A Gmail script still installed somewhere now gets 404 and can be deleted
-from script.google.com. `tests/removedBlock6FeaturesStayRemoved.test.js` and
+uses. **A Gmail script still installed somewhere must be switched off**: it
+ignored the server's answer (`muteHttpExceptions`) and marked each Indeed email
+read after posting it, so against the 404 it keeps marking new applications
+read every five minutes while recording nothing. Delete its `pollIndeed`
+time-driven trigger (Triggers ⏰ at script.google.com, in that recruiter's
+Google account) or the whole script project, and mark any Indeed emails it
+already read as unread if they still need a look.
+`tests/removedBlock6FeaturesStayRemoved.test.js` and
 `tests/api-surface.test.js` keep it removed.
 
 The same change removed the hub's short `GET/HEAD /health` alias (now 404).

@@ -16,7 +16,11 @@ vi.mock("../api", () => ({ getLeads: vi.fn().mockResolvedValue([]) }));
 import * as api from "../api";
 import LeadsPage from "./LeadsPage";
 
-afterEach(() => vi.clearAllMocks());
+afterEach(() => {
+  vi.clearAllMocks();
+  // clearAllMocks keeps an implementation; put the empty answer back.
+  api.getLeads.mockResolvedValue([]);
+});
 
 test("the Indeed filter asks for the Indeed leads already recorded", async () => {
   render(<LeadsPage />);
@@ -35,3 +39,21 @@ test("the Gmail script and its setup guide are gone", async () => {
   expect(screen.queryByText(/How to connect Indeed/)).toBeNull();
   expect(screen.queryByRole("button", { name: /Copy script/ })).toBeNull();
 });
+
+test("an Indeed lead recorded before the removal is listed with its badge", async () => {
+  const recorded = {
+    id: 7, source: "indeed", full_name: "Dee Example", email: null, phone: "+15550100002",
+    job_title: "CDL-A Driver", message: null, bitrix_status: "created",
+    created_at: "2026-10-09T12:00:00.000Z",
+  };
+  api.getLeads.mockImplementation(async (source) => (source === "indeed" ? [recorded] : []));
+  render(<LeadsPage />);
+  await userEvent.click(await screen.findByRole("button", { name: "Indeed" }));
+
+  const row = (await screen.findByText("Dee Example")).closest("tr");
+  expect(row.textContent).toContain("Indeed");
+  expect(row.textContent).toContain("CDL-A Driver");
+  expect(row.textContent).toContain("In Bitrix24");
+  expect(screen.queryByText(/No new Indeed leads arrive/)).toBeNull();
+});
+
