@@ -13,6 +13,28 @@
         if (t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t);
       } catch (e) {}
     </script>
+    <script>
+      /* race-boot-watchdog: the office screens recover by themselves.
+         /dispatch and /dispatchteam run unattended (a kiosk window nobody
+         refreshes). If the board's code never starts — a reload that met a
+         deploy half-way and got a page whose script is gone, a server that
+         answered with an error — this reloads the page: after 1 minute, then
+         2, 4, 8, at most every 10. The board clears the count when it starts
+         (pageVersion.js: markBooted). Plain script, no imports: it has to run
+         when nothing else does. */
+      (function () {
+        var path = location.pathname.replace(/\/+$/, "");
+        if (path !== "/dispatch" && path !== "/dispatchteam") return;
+        var tries = 0;
+        try { tries = Number(sessionStorage.getItem("grossRace.bootRetries")) || 0; } catch (e) {}
+        var wait = Math.min(60000 * Math.pow(2, tries), 600000);
+        setTimeout(function () {
+          if (window.__grossRaceStarted) return;
+          try { sessionStorage.setItem("grossRace.bootRetries", String(tries + 1)); } catch (e) {}
+          location.reload();
+        }, wait);
+      })();
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />

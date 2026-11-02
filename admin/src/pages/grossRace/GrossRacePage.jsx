@@ -14,7 +14,7 @@ import { preloadCar } from "./celebration/carScene";
 import CelebrationVideo from "./celebration/CelebrationVideo";
 import useCelebrationVideo from "./celebration/useCelebrationVideo";
 import { catchUpDay, caughtUp, markCaughtUp } from "./celebration/catchUp";
-import { chunkOf, lastReloadAt, markReload, noteServed, shouldReload, tabStorage } from "./pageVersion";
+import { chunkOf, lastReloadAt, markBooted, markReload, noteServed, shouldReload, tabStorage } from "./pageVersion";
 import SoundTestOverlay from "./soundTest/SoundTestOverlay";
 import useSoundTest from "./soundTest/useSoundTest";
 import "./grossRace.css";
@@ -118,6 +118,9 @@ export default function GrossRacePage({ view, pageMs = PAGE_MS, ownChunk = OWN_C
     }
     if (change.banner) setBanner({ current: change.banner, shown: bannerView(change.banner) });
   }, [view, ownChunk]);
+
+  // Mounted: the page's boot watchdog (admin/index.html) stands down.
+  useEffect(() => { markBooted(); }, []);
 
   useEffect(() => {
     document.title = `Gross Grand Prix · ${view === "teams" ? "Teams" : "Dispatchers"}`;

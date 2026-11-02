@@ -444,7 +444,10 @@ replaces or deletes it (pausing stands down the video only, never the car),
 and gives the Windows shortcut command that opens the board full screen with
 sound allowed. A screen reloads itself within about a minute
 of an admin-panel deploy; on the office screens use the browser's own full
-screen (F11, or that shortcut's kiosk mode), because a reload ends the page's. Public, like
+screen (F11, or that shortcut's kiosk mode), because a reload ends the page's.
+A screen whose code never starts (a reload that met a deploy half-way) reloads
+again after 1, 2, 4… at most 10 minutes, so a kiosk does not stay blank; and
+`/dispatchteam/` with a trailing slash is the same board. Public, like
 `/recruiters`. **The server reads Datatruck with the app's own token and holds
 the week in memory; the page never sees a token.** See
 [`docs/architecture/gross-race.md`](../architecture/gross-race.md).
