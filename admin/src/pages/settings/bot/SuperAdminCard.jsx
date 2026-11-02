@@ -51,7 +51,9 @@ export default function SuperAdminCard({
         </button>
         {savedId && (
           <button
-            type="button" className="btn btn-ghost"
+            // Not while saving: the request would still land, and its answer
+            // would make the "cancelled" ID the live one.
+            type="button" className="btn btn-ghost" disabled={saving}
             onClick={() => {
               // The draft lives in the parent; a cancelled edit must not be
               // waiting there for the next Change, or for a later Save.

@@ -98,6 +98,17 @@ test("Group Access: Cancel throws the edited super admin away", async () => {
   expect(screen.getByPlaceholderText("e.g. Tom")).toHaveValue("Owner");
 });
 
+test("Group Access: Cancel cannot be pressed while the super admin is saving", async () => {
+  let finish;
+  api.updateBotAccessSettings.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+  render(<GroupAccessPanel />);
+  fireEvent.click(await screen.findByRole("button", { name: "Change" }));
+  fireEvent.change(screen.getByPlaceholderText("e.g. 123456789"), { target: { value: "999" } });
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled());
+  finish({ settings: { super_admin_telegram_id: "999", super_admin_label: "Owner" } });
+});
+
 test("Group Access: with no super admin saved, the form is open", async () => {
   api.getBotAccessSettings.mockResolvedValueOnce({ settings: null });
   render(<GroupAccessPanel />);
