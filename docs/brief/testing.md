@@ -16,20 +16,23 @@ npm run build:schema:check                        # schema.sql is in sync with b
 ```
 
 - **The Node suite passes clean with no secrets and no database.** Verified
-  baseline (2026-11-02, after the admin density plan's Settings block — the AI,
-  RingCentral and Samsara screens split, the server's hints renamed — deps
-  installed): the 386 non-`*Pg` files
+  baseline (2026-11-02, after the whole admin density plan, blocks 0 and A–E —
+  deps installed): the 386 non-`*Pg` files
   with no application env — **3976 tests, 3976 pass, 0 fail, 0 skipped**, exactly what CI's unit job
   runs — and the 101 `*Pg` files against a local PostgreSQL 16 — **765 tests,
   765 pass, 0 fail, 0 skipped**. CI runs the non-`*Pg` files with no
   application env at all and the `*Pg` files against a real Postgres; both jobs
-  fail on any skip. The admin suite is **578 pass in 80 files**; the Python
+  fail on any skip. The admin suite is **589 pass in 82 files**; the Python
   leads tests are **112 pass**.
   **A test that pins `now` must pin every other clock it reads.** One pinned
   `now` to 2026-09-20 while the health code compared it with the REAL process
   boot time; on the day the real clock passed the pinned one the answer flipped,
   and every CI run after that was red for a reason no diff had touched. A boot
   time later than `now` now grants no grace, and the boot time is injectable.
+  **A test of anything gated by the time of day must pin the clock too.** The
+  Gross Race reload test ran on the real clock, and a reload is held back
+  during the 4 PM minute in Chicago — so a CI run that started at 16:00:05
+  Chicago time went red on a PR that never touched it.
   Without a database the `*Pg` suites skip instead — a skip is not a pass, so
   CI provides a real Postgres and fails on any skip.
   Two suites are END-TO-END SCENARIOS rather than unit tests, and are the

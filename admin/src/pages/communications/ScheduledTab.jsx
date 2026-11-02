@@ -152,7 +152,8 @@ export default function ScheduledTab() {
         </div>
       ) : (
         <div className="table-container">
-          <table>
+          {/* On a phone each scheduled message is a card (wz-card-table). */}
+          <table className="wz-card-table">
             <thead>
               <tr>
                 <th>Message</th>
@@ -166,7 +167,7 @@ export default function ScheduledTab() {
             <tbody>
               {messages.map(msg => (
                 <tr key={msg.id}>
-                  <td style={{ maxWidth: 300 }}>
+                  <td data-label="Message" style={{ maxWidth: 300 }}>
                     <div style={{ fontWeight: 500, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {preview(msg.message_text_en, 80, '(no text)')}
                     </div>
@@ -176,9 +177,9 @@ export default function ScheduledTab() {
                       </span>
                     )}
                   </td>
-                  <td style={{ fontSize: 12 }}>{targetLabel(msg)}</td>
-                  <td style={{ fontSize: 12 }}>{langLabel(msg)}</td>
-                  <td style={{ fontSize: 13 }}>
+                  <td data-label="Recipients" style={{ fontSize: 12 }}>{targetLabel(msg)}</td>
+                  <td data-label="Language" style={{ fontSize: 12 }}>{langLabel(msg)}</td>
+                  <td data-label="Scheduled For" style={{ fontSize: 13 }}>
                     <div style={{ fontFamily: 'monospace' }}>{msg.scheduled_at_chicago}</div>
                     <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
                       {msg.schedule_label || 'One time'}
@@ -189,7 +190,7 @@ export default function ScheduledTab() {
                       </div>
                     )}
                   </td>
-                  <td>
+                  <td data-label="Status">
                     <span className={`status-pill ${statusPillClass(msg.status)}`}>
                       {statusLabel(msg.status)}
                     </span>
@@ -199,7 +200,7 @@ export default function ScheduledTab() {
                       </div>
                     )}
                   </td>
-                  <td>
+                  <td data-label="Actions">
                     {msg.status === 'pending' && (
                       <div style={{ display: 'flex', gap: 6 }}>
                         <button

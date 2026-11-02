@@ -1,9 +1,9 @@
 import React from "react";
 
 import * as api from "../api";
+import { focusFirstIn, useModalFocus } from "./useModalFocus";
 
 const MIN_PASSWORD = 10;
-const FOCUSABLE = 'button:not([disabled]), input:not([disabled]), [href], [tabindex]:not([tabindex="-1"])';
 
 /**
  * Change your own password: the current one, the new one twice.
@@ -32,42 +32,12 @@ export default function ChangePasswordModal({ onClose, onSignInAgain, returnFocu
   const dialogRef = React.useRef(null);
   const dismissable = !saving && !done;
 
-  React.useEffect(() => {
-    const opener = document.activeElement;
-    dialogRef.current?.querySelector(FOCUSABLE)?.focus();
-    return () => {
-      const target = returnFocusRef?.current || opener;
-      if (target?.isConnected && typeof target.focus === "function") target.focus();
-    };
-  }, []);
+  useModalFocus(dialogRef, { onEscape: dismissable ? onClose : null, returnFocusRef });
 
   // The form gives way to the success message; keep focus inside the dialog.
   React.useEffect(() => {
-    if (done) dialogRef.current?.querySelector(FOCUSABLE)?.focus();
+    if (done) focusFirstIn(dialogRef.current);
   }, [done]);
-
-  React.useEffect(() => {
-    const onKeyDown = (event) => {
-      const dialog = dialogRef.current;
-      if (!dialog) return;
-      if (event.key === "Escape") {
-        if (dismissable) onClose();
-        return;
-      }
-      if (event.key !== "Tab") return;
-      const items = [...dialog.querySelectorAll(FOCUSABLE)];
-      if (items.length === 0) return;
-      const first = items[0];
-      const last = items[items.length - 1];
-      const active = document.activeElement;
-      if (!dialog.contains(active) || (event.shiftKey ? active === first : active === last)) {
-        event.preventDefault();
-        (event.shiftKey && dialog.contains(active) ? last : first).focus();
-      }
-    };
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [dismissable, onClose]);
 
   const problem = !current ? "Enter your current password."
     : next.length < MIN_PASSWORD ? `The new password needs at least ${MIN_PASSWORD} characters.`

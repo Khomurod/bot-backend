@@ -1,6 +1,7 @@
 import React from "react";
 import { TelegramPreview, MediaUploader, MediaPositionSelector } from "../../../components/Shared";
 import { PlaceholderChips } from "./PlaceholderChips";
+import { historyFailures } from "./composerHelpers";
 import { relativeTime, truncate } from "../format";
 
 /**
@@ -134,15 +135,6 @@ export function ConfirmationBroadcastTab({
               ➕ Add Button
             </button>
           </div>
-
-          <div style={{ display: 'flex', gap: 12, marginTop: 16, flexWrap: 'wrap' }}>
-            <button className="btn btn-primary" onClick={() => setShowSendConfirm('confirmation')} disabled={confSending || !confMessage.trim() || confMessage.length > 4096 || confirmationUnknownTokens.length > 0}>
-              {confSending ? '⏳ Sending...' : '📤 Send Broadcast'}
-            </button>
-            <button className="btn btn-ghost" onClick={handleConfTest} disabled={confTesting || !confMessage.trim() || confirmationUnknownTokens.length > 0} style={{ border: '1px solid var(--border)' }}>
-              {confTesting ? '⏳ Testing...' : '🧪 Test'}
-            </button>
-          </div>
         </div>
       </div>
 
@@ -158,12 +150,29 @@ export function ConfirmationBroadcastTab({
             mediaItems={confMediaItems} mediaPosition={confMediaPosition} />
         </div>
       </div>
+
+      {/* Send comes after the preview in the page's own order (November 2026):
+          under the editor on a wide screen, with the preview beside both; under
+          the preview in one column. No CSS reordering, so the keyboard and the
+          eye meet them in the same order. */}
+      <div className="broadcast-actions">
+        <button className="btn btn-primary" onClick={() => setShowSendConfirm('confirmation')} disabled={confSending || !confMessage.trim() || confMessage.length > 4096 || confirmationUnknownTokens.length > 0}>
+          {confSending ? '⏳ Sending...' : '📤 Send Broadcast'}
+        </button>
+        <button className="btn btn-ghost" onClick={handleConfTest} disabled={confTesting || !confMessage.trim() || confirmationUnknownTokens.length > 0} style={{ border: '1px solid var(--border)' }}>
+          {confTesting ? '⏳ Testing...' : '🧪 Test'}
+        </button>
+      </div>
     </div>
 
     {/* ─── Confirmation Broadcast History ─── */}
-    <div className="card broadcast-history" style={{ marginTop: 24 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-        <h3 style={{ fontSize: 15, fontWeight: 600 }}>Broadcast History</h3>
+    {/* Collapsed with its count and failures, as on Announcement (November
+        2026); the per-group delivery and click tracking are inside. */}
+    <details className="card broadcast-history" style={{ marginTop: 24 }}>
+      <summary style={{ cursor: 'pointer', fontSize: 15, fontWeight: 600 }}>
+        Broadcast history ({confHistory.length}){historyFailures(confHistory) > 0 && <span style={{ color: 'var(--danger)', fontWeight: 400 }}> · {historyFailures(confHistory)} with failed deliveries</span>}
+      </summary>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', margin: '8px 0 12px' }}>
         <button type="button" className="btn btn-ghost" onClick={loadConfHistory} style={{ fontSize: 12, padding: '4px 12px', border: '1px solid var(--border)' }}>🔄 Refresh</button>
       </div>
       {confHistoryLoading ? <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>Loading...</div>
@@ -237,7 +246,7 @@ export function ConfirmationBroadcastTab({
             )}
           </div>
         ))}
-    </div>
+    </details>
   </div>
   );
 }

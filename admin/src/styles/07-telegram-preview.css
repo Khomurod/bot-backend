@@ -56,11 +56,24 @@
 .broadcast-editor-section {
   display: flex;
   flex-direction: column;
+  grid-column: 1;
+  grid-row: 1;
+}
+
+/* Send and Test: their own grid child, after the preview in the DOM. */
+.broadcast-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  grid-column: 1;
+  grid-row: 2;
 }
 
 .broadcast-preview-section {
   position: sticky;
   top: 32px;
+  grid-column: 2;
+  grid-row: 1 / span 2;
 }
 
 .char-count {
@@ -75,9 +88,23 @@
   font-weight: 600;
 }
 
+/* One column: editor, preview, then Send — the DOM order — so what the
+   message will look like is above the Send button, not under it (November
+   2026). */
 @media (max-width: 1024px) {
   .broadcast-layout {
     grid-template-columns: 1fr;
+  }
+
+  .broadcast-editor-section,
+  .broadcast-preview-section,
+  .broadcast-actions {
+    grid-column: 1;
+    grid-row: auto;
+  }
+
+  .broadcast-preview-section {
+    position: static;
   }
 }
 
@@ -86,6 +113,12 @@
   display: flex;
   flex-direction: column;
   gap: 0;
+}
+
+/* A collapsed history (November 2026) is a <details>: a flex box would break
+   its own open/closed rendering. */
+details.broadcast-history {
+  display: block;
 }
 
 .broadcast-history-item {

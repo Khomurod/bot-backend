@@ -108,6 +108,10 @@ test('the scan finds the checks it is meant to (control)', () => {
   assert.ok(keys.has('home_time.clock_reset_on_group_change'));
   assert.ok(keys.has('identity.telegram_member_unnamed'));
   assert.ok(keys.has('identity.telegram_members_ambiguous'));
+  // vehicleMatch.js files both of these through a lookup table, never as a
+  // `checkKey:` literal; only its CHECK_KEYS list names them.
+  assert.ok(keys.has('samsara.driver_name_mismatch'));
+  assert.ok(keys.has('samsara.ambiguous_unit_match'));
   for (const kind of ['home_while_working', 'quiet_but_active', 'two_open_units']) {
     assert.ok(keys.has(`context.${kind}`), `context.${kind}`);
   }

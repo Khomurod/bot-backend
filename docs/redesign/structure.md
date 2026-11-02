@@ -48,7 +48,7 @@ configuration last.
 | **Recruiting** | Leads | `#leads` | Every incoming lead |
 | | Customer Inquiries | `#facebook_leads` (`/auto`, `/pages`, `/teach`) | What new leads receive, and what Wenze may tell a candidate |
 | | Recruiter KPIs | `#recruiter_kpis` (`/overview`, `/targets`) | Daily call performance, and the targets it is scored against (a tab since November 2026) |
-| **Communications** | Messages | `#communications` (`/send`, `/surveys`, `/scheduled`, `/history`, `/edit_by_link`) | What the bot says to driver groups |
+| **Communications** | Messages | `#communications` (`/send`, `/surveys`, `/scheduled`, `/history`; `/edit_by_link` opens History, whose "Have a message link?" section it became in November 2026) | What the bot says to driver groups |
 | | Birthdays | `#company_birthdays` (`/birthdays`, `/employees`) | Employees, their birthday cards and wishes |
 | **Monitoring** | Needs Attention | `#operations` (`/findings`, `/history`, `/checks`, `/identity`, `/learning`) | Where records disagree, what was corrected, what may be corrected automatically, driver identity, Wenze's suggestions |
 | | System Health | `#system_health` | Whether every background job is actually running — what needs a look first, each group one line below (November 2026) |
@@ -158,7 +158,7 @@ October groups they first moved to.
 | Operations → Driver Home Time | Overview (driver list, import, unlinked activity, driver modal), efficiency, settings, violation alerts | Drivers → Home Time: Overview · Efficiency · **Settings & Alerts** (settings and violation alerts) |
 | Groups → Groups | Five views, row editors, driver modal, AI enrich | Drivers → Driver Groups |
 | Groups → Mileage Bonuses | Run check, refresh, resend / disregard | Drivers → Mileage Bonuses |
-| Communications → Communications | Send Message (Announcement / Confirmation), Surveys, Scheduled, History, Edit by Link | Communications → Messages (same five tabs) |
+| Communications → Communications | Send Message (Announcement / Confirmation), Surveys, Scheduled, History, Edit by Link | Communications → Messages (the same tabs; Edit by Link became a section of History in November 2026) |
 | Communications → Birthdays | Birthdays list, add / edit / delete, settings, send, request, custom message | Communications → Birthdays → Birthdays |
 | Settings → Users & Access → Company Employees | American name, Telegram account, photo, card, suggest / confirm | **Communications → Birthdays → Employees** |
 | Settings → Users & Access (other filters) | Telegram users seen, filters, search, refresh | Administration → Telegram Users |
@@ -194,7 +194,7 @@ October groups they first moved to.
 | `#questions` | `#communications/surveys` |
 | `#scheduled` | `#communications/scheduled` |
 | `#bot_messages` | `#communications/history` (the bot-message log) |
-| `#manager` | `#communications/edit_by_link` (the old page predates the repository's kept history; its name and the tab that edits any sent message by its link are the closest match) |
+| `#manager` | `#communications/edit_by_link`, which opens History with its "Have a message link?" section open (the old page predates the repository's kept history; its name and the tab that edits any sent message by its link are the closest match) |
 | `#operations`, `#system_health`, and every other old page key | The same page as before |
 | Anything unrecognised | Driver Groups, as always |
 

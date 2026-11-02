@@ -1,8 +1,25 @@
-import React, { useState, useRef } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import * as api from "../../api";
+import ConfirmDialog from "../../components/ConfirmDialog";
 import { useFormattingToolbar } from "../../components/Shared";
 
-export default function EditByLinkTab() {
+/**
+ * Edit or delete a message the bot sent, by its Telegram link — including one
+ * that is not in the History log.
+ *
+ * A SECTION OF HISTORY SINCE NOVEMBER 2026: it was its own tab, "Edit by
+ * Link", beside History, and both tabs did the same job — change or remove a
+ * sent message. History shows it at the top as a closed "Have a message
+ * link?" section. An old `#communications/edit_by_link` link lands there and
+ * opens it (`openRequest` counts those arrivals). The delete still asks first.
+ */
+export default function EditByLinkSection({ openRequest = 0 }) {
+  const sectionRef = useRef(null);
+  useEffect(() => {
+    if (!openRequest || !sectionRef.current) return;
+    sectionRef.current.open = true;
+    sectionRef.current.scrollIntoView?.({ block: "start" });
+  }, [openRequest]);
   const [url, setUrl] = useState('');
   const [newText, setNewText] = useState('');
   const [status, setStatus] = useState(null);
@@ -44,8 +61,11 @@ export default function EditByLinkTab() {
   };
 
   return (
-    <div>
-      <p style={{ color: "var(--text-secondary)", fontSize: 14, marginBottom: 20 }}>Edit or delete a message the bot previously sent in Telegram.</p>
+    <details ref={sectionRef} className="card" style={{ marginBottom: 16 }}>
+      <summary style={{ cursor: "pointer", fontWeight: 600 }}>
+        Have a message link?{" "}
+        <span style={{ fontWeight: 400, color: "var(--text-muted)" }}>Edit or delete a message the bot sent — even one not in the list below.</span>
+      </summary>
 
       {status && (
         <div className={`alert alert-${status.type}`}>
@@ -53,7 +73,7 @@ export default function EditByLinkTab() {
         </div>
       )}
 
-      <div className="card">
+      <div style={{ marginTop: 12 }}>
         <div className="form-group">
           <label>Message Link</label>
           <input
@@ -97,18 +117,17 @@ export default function EditByLinkTab() {
       </div>
 
       {showDeleteConfirm && (
-        <div className="confirm-overlay" onClick={() => setShowDeleteConfirm(false)}>
-          <div className="confirm-dialog" onClick={(e) => e.stopPropagation()}>
-            <h3>Delete this message?</h3>
-            <p>This will permanently remove the message from Telegram. This action cannot be undone.</p>
-            <div className="confirm-actions">
-              <button className="btn btn-ghost" onClick={() => setShowDeleteConfirm(false)}>Cancel</button>
-              <button className="btn btn-danger" onClick={handleDelete}>Yes, Delete</button>
-            </div>
-          </div>
-        </div>
+        <ConfirmDialog
+          title="Delete this message?"
+          confirmLabel="Yes, Delete"
+          danger
+          onCancel={() => setShowDeleteConfirm(false)}
+          onConfirm={handleDelete}
+        >
+          This will permanently remove the message from Telegram. This action cannot be undone.
+        </ConfirmDialog>
       )}
-    </div>
+    </details>
   );
 }
 

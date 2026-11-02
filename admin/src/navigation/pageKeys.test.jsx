@@ -22,11 +22,14 @@ import {
 } from "./pageKeys";
 import { NAV_SECTIONS } from "../components/AdminSidebar";
 import { PAGE_COMPONENTS } from "../App";
-import { COMMUNICATIONS_TAB_KEYS } from "../pages/CommunicationsPage";
+import { COMMUNICATIONS_TAB_ALIASES, COMMUNICATIONS_TAB_KEYS } from "../pages/CommunicationsPage";
 import { SETTINGS_SECTION_KEYS } from "../pages/settings/sections";
 
 /** The tab keys of each page a legacy key may land inside. */
 const TABS_OF = { communications: COMMUNICATIONS_TAB_KEYS, settings: SETTINGS_SECTION_KEYS };
+// A tab that became part of another is still a live address: the page opens
+// the tab it is in and corrects the address.
+const ALIASES_OF = { communications: COMMUNICATIONS_TAB_ALIASES };
 
 describe("the three lists agree", () => {
   test("every sidebar item names a live page key", () => {
@@ -93,7 +96,8 @@ describe("resolveRoute", () => {
       const route = resolveRoute(old);
       expect(PAGE_KEYS, `${old} -> ${moved}`).toContain(route.page);
       if (route.tab) {
-        expect(TABS_OF[route.page], `${old} -> ${moved}`).toContain(route.tab);
+        const lands = ALIASES_OF[route.page]?.[route.tab] || route.tab;
+        expect(TABS_OF[route.page], `${old} -> ${moved}`).toContain(lands);
       }
     }
   });
@@ -103,6 +107,7 @@ describe("resolveRoute", () => {
     expect(resolveRoute("questions")).toEqual({ page: "communications", tab: "surveys" });
     expect(resolveRoute("scheduled")).toEqual({ page: "communications", tab: "scheduled" });
     expect(resolveRoute("bot_messages")).toEqual({ page: "communications", tab: "history" });
+    // Through the Edit by Link alias, so the section opens (CommunicationsPage).
     expect(resolveRoute("manager")).toEqual({ page: "communications", tab: "edit_by_link" });
   });
 

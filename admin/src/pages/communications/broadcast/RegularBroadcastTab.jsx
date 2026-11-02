@@ -1,7 +1,7 @@
 import React from "react";
 import { TelegramPreview, MediaUploader, MediaPositionSelector } from "../../../components/Shared";
 import { PlaceholderChips } from "./PlaceholderChips";
-import { WEEKLY_DAY_OPTIONS } from "./composerHelpers";
+import { WEEKLY_DAY_OPTIONS, historyFailures } from "./composerHelpers";
 import { relativeTime, truncate } from "../format";
 
 /**
@@ -101,10 +101,15 @@ export function RegularBroadcastTab({
             </div>
           </details>
 
-          <div className="card" style={{ marginTop: 20, background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}>
+          {/* Collapsed like Translations and Media (November 2026), with its own
+              Schedule button inside: most messages are sent now, and an
+              always-open card pushed Send down and wrapped Schedule onto a
+              row of its own. */}
+          <details className="collapse-panel" style={{ marginTop: 16 }}>
+            <summary>⏰ Schedule for later</summary>
+            <div style={{ marginTop: 12 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
               <div>
-                <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 4 }}>⏰ Schedule for Later</h3>
                 <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: 0 }}>
                   Schedule this message to be sent at a specific time (Central Time).
                 </p>
@@ -158,19 +163,11 @@ export function RegularBroadcastTab({
                 </div>
               </div>
             )}
-          </div>
-
-          <div style={{ display: 'flex', gap: 12, marginTop: 24, flexWrap: 'wrap' }}>
-            <button className="btn btn-primary" onClick={() => setShowSendConfirm('regular')} disabled={sending || (!message.trim() && broadcastMediaItems.length === 0) || message.length > 4096 || regularUnknownTokens.length > 0}>
-              {sending ? '⏳ Sending...' : targetType === 'all' ? '📤 Send to All Groups' : '📤 Send to Selected'}
-            </button>
-            <button className="btn btn-ghost" onClick={handleTest} disabled={testing || (!message.trim() && broadcastMediaItems.length === 0) || regularUnknownTokens.length > 0} style={{ border: '1px solid var(--border)' }}>
-              {testing ? '⏳ Testing...' : '🧪 Test (Management Group)'}
-            </button>
-            <button className="btn btn-ghost" onClick={handleSchedule} disabled={scheduling || (!message.trim() && broadcastMediaItems.length === 0) || message.length > 4096 || regularUnknownTokens.length > 0} style={{ border: '1px solid var(--border)' }}>
+            <button className="btn btn-ghost" onClick={handleSchedule} disabled={scheduling || (!message.trim() && broadcastMediaItems.length === 0) || message.length > 4096 || regularUnknownTokens.length > 0} style={{ border: '1px solid var(--border)', marginTop: 12 }}>
               {scheduling ? 'Scheduling...' : '⏰ Schedule'}
             </button>
-          </div>
+            </div>
+          </details>
         </div>
       </div>
 
@@ -186,12 +183,29 @@ export function RegularBroadcastTab({
             mediaItems={broadcastMediaItems} mediaPosition={broadcastMediaPosition} />
         </div>
       </div>
+
+      {/* Send comes after the preview in the page's own order (November 2026):
+          under the editor on a wide screen, with the preview beside both; under
+          the preview in one column. No CSS reordering, so the keyboard and the
+          eye meet them in the same order. */}
+      <div className="broadcast-actions">
+        <button className="btn btn-primary" onClick={() => setShowSendConfirm('regular')} disabled={sending || (!message.trim() && broadcastMediaItems.length === 0) || message.length > 4096 || regularUnknownTokens.length > 0}>
+          {sending ? '⏳ Sending...' : targetType === 'all' ? '📤 Send to All Groups' : '📤 Send to Selected'}
+        </button>
+        <button className="btn btn-ghost" onClick={handleTest} disabled={testing || (!message.trim() && broadcastMediaItems.length === 0) || regularUnknownTokens.length > 0} style={{ border: '1px solid var(--border)' }}>
+          {testing ? '⏳ Testing...' : '🧪 Test (Management Group)'}
+        </button>
+      </div>
     </div>
 
     {/* ─── Regular Broadcast History ─── */}
-    <div className="card broadcast-history" style={{ marginTop: 24 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-        <h3 style={{ fontSize: 15, fontWeight: 600 }}>Broadcast History</h3>
+    {/* Collapsed, its title carrying the count and the failures (November
+        2026): up to 50 sends sat on the same scroll as the composer. */}
+    <details className="card broadcast-history" style={{ marginTop: 24 }}>
+      <summary style={{ cursor: 'pointer', fontSize: 15, fontWeight: 600 }}>
+        Broadcast history ({regularHistory.length}){historyFailures(regularHistory) > 0 && <span style={{ color: 'var(--danger)', fontWeight: 400 }}> · {historyFailures(regularHistory)} with failed deliveries</span>}
+      </summary>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', margin: '8px 0 12px' }}>
         <button type="button" className="btn btn-ghost" onClick={loadRegularHistory} style={{ fontSize: 12, padding: '4px 12px', border: '1px solid var(--border)' }}>🔄 Refresh</button>
       </div>
       {regularHistoryLoading ? <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>Loading...</div>
@@ -223,7 +237,7 @@ export function RegularBroadcastTab({
             )}
           </div>
         ))}
-    </div>
+    </details>
   </div>
   );
 }
