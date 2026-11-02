@@ -151,6 +151,21 @@ class ExpandedFiltersTests(unittest.TestCase):
         self.assertTrue(patched(client, lambda: rcin.register_sms_webhook(CALLBACK, ["101", "102"])))
         self.assertEqual(client.posts, [])
 
+    def test_unknown_ids_keep_an_active_subscription_rather_than_shed(self):
+        # The identity read fails: an expanded filter cannot be compared, so the
+        # Active subscription may already cover everyone. Keep it; no ladder.
+        class Blind(FakeClient):
+            async def get(self, url, headers=None):
+                if url == rcin.RC_OWN_EXTENSION_URL:
+                    return response(503, text="unavailable")
+                return self._get_response
+
+        client = Blind([response(400, text="CMN-101"), response(200, {"id": "sub-narrow"})],
+                       get_response=listing(self.expanded("sub-old", ("101", "102"))))
+        self.assertFalse(patched(client, lambda: rcin.register_sms_webhook(CALLBACK, ["101", "102"])))
+        self.assertEqual(len(client.posts), 1)
+        self.assertEqual(client.deletes, [])
+
     def test_an_expanded_covering_subscription_survives_a_refused_fresh_registration(self):
         client = self.client([response(400, text="CMN-101"), response(200, {"id": "sub-narrow"})],
                              self.expanded("sub-old", ("101", "102")))

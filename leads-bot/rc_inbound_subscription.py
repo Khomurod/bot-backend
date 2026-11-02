@@ -361,6 +361,17 @@ async def register_sms_webhook(
                     covering.get("id"),
                 )
                 return False
+            if (account_id is None or own_extension is None) and any(_is_active(sub) for sub in ours):
+                # Without our own ids a listed filter written with numbers
+                # cannot be compared, so an Active subscription may already
+                # cover everyone. The ladder would delete it on a narrower
+                # success; keep it and ask again next pass.
+                logger.warning(
+                    "Could not read which RingCentral extension the JWT is, so the Active "
+                    "subscription(s) at %s cannot be compared; keeping them, trying again next pass.",
+                    callback_url,
+                )
+                return False
 
             attempts: list[tuple[str, list[str]]] = []
             # 1. Leave ONE extension out at a time, so the unwatchable one is
