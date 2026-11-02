@@ -20,93 +20,62 @@ import { checkLabel } from "./labels";
 function CheckRow({ check, busy, onSave }) {
   const [cap, setCap] = React.useState(check.maxAutoPerRun);
 
+  // A wrapping row rather than a table row (November 2026): on a phone the
+  // switch and the cap used to be cut off to the right; now they drop under
+  // the label. The internal keys and who changed it last are under Details.
   return (
-    <tr style={{ borderTop: "1px solid var(--border)" }}>
-      <td style={{ padding: "10px 8px" }}>
+    <div style={{ borderTop: "1px solid var(--border)", padding: "10px 4px", display: "flex", flexWrap: "wrap", gap: "8px 16px", alignItems: "center" }}>
+      <div style={{ flex: "1 1 260px", minWidth: 0 }}>
         <div>{checkLabel(check.checkKey)}</div>
-        <div style={{ color: "var(--text-muted)", fontSize: 11 }}>
-          <code>{check.checkKey}</code> → <code>{check.actionKey}</code>
-        </div>
-        {check.updatedBy && (
-          <div style={{ color: "var(--text-muted)", fontSize: 11 }}>
-            last changed by {check.updatedBy}
-          </div>
-        )}
-      </td>
-      <td style={{ padding: "10px 8px", width: 140 }}>
-        <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 12 }}>
-          <input
-            type="checkbox"
-            checked={check.autoApplyEnabled}
-            disabled={busy}
-            onChange={(e) => onSave(check.checkKey, {
-              autoApplyEnabled: e.target.checked, maxAutoPerRun: Number(cap) || null,
-            })}
-          />
-          Auto-apply
-        </label>
-      </td>
-      <td style={{ padding: "10px 8px", width: 190 }}>
-        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-          <input
-            className="form-input"
-            type="number"
-            min={1}
-            max={500}
-            value={cap}
-            style={{ width: 80 }}
-            onChange={(e) => setCap(e.target.value)}
-          />
-          <button
-            type="button"
-            className="btn btn-ghost btn-sm"
-            disabled={busy || Number(cap) === check.maxAutoPerRun}
-            onClick={() => onSave(check.checkKey, {
-              autoApplyEnabled: check.autoApplyEnabled, maxAutoPerRun: Number(cap) || null,
-            })}
-          >
-            Save cap
-          </button>
-        </div>
-      </td>
-    </tr>
+        <details style={{ fontSize: 11, color: "var(--text-muted)" }}>
+          <summary style={{ cursor: "pointer" }}>Details</summary>
+          <div><code>{check.checkKey}</code> → <code>{check.actionKey}</code></div>
+          {check.updatedBy && <div>last changed by {check.updatedBy}</div>}
+        </details>
+      </div>
+      <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 12 }}>
+        <input
+          type="checkbox"
+          checked={check.autoApplyEnabled}
+          disabled={busy}
+          onChange={(e) => onSave(check.checkKey, {
+            autoApplyEnabled: e.target.checked, maxAutoPerRun: Number(cap) || null,
+          })}
+        />
+        Auto-apply
+      </label>
+      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+        <input
+          className="form-input"
+          type="number"
+          min={1}
+          max={500}
+          value={cap}
+          aria-label={`Most changes per run: ${checkLabel(check.checkKey)}`}
+          style={{ width: 80 }}
+          onChange={(e) => setCap(e.target.value)}
+        />
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm"
+          disabled={busy || Number(cap) === check.maxAutoPerRun}
+          onClick={() => onSave(check.checkKey, {
+            autoApplyEnabled: check.autoApplyEnabled, maxAutoPerRun: Number(cap) || null,
+          })}
+        >
+          Save cap
+        </button>
+      </div>
+    </div>
   );
 }
 
 export default function ChecksTab({ checks, busy, setCheckEnabled, preview, loadPreview }) {
   return (
     <>
+      {/* First, as the page's own rule asks: read what enabling would do
+          before enabling anything (November 2026; it was at the bottom). */}
       <div className="card" style={{ marginBottom: 16 }}>
-        <strong>What the system may correct by itself</strong>
-        <div style={{ color: "var(--text-muted)", fontSize: 12, marginTop: 4 }}>
-          Only checks whose corrected value is <em>already recorded elsewhere in our
-          own data</em> can appear here at all — nothing is inferred, averaged or
-          guessed. Everything else stays a finding a person reads.
-        </div>
-
-        {checks.length === 0 ? (
-          <div className="loading" style={{ marginTop: 12 }}>
-            <div className="spinner" /> Loading checks…
-          </div>
-        ) : (
-          <div className="table-container" style={{ marginTop: 12 }}>
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
-              <tbody>
-                {checks.map((check) => (
-                  <CheckRow
-                    key={check.checkKey}
-                    check={check}
-                    busy={busy}
-                    onSave={setCheckEnabled}
-                  />
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
-      <div className="card">
         <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
           <div>
             <strong>Dry run</strong>
@@ -140,6 +109,32 @@ export default function ChecksTab({ checks, busy, setCheckEnabled, preview, load
           </div>
         )}
       </div>
+      <div className="card">
+        <strong>What the system may correct by itself</strong>
+        <div style={{ color: "var(--text-muted)", fontSize: 12, marginTop: 4 }}>
+          Only checks whose corrected value is <em>already recorded elsewhere in our
+          own data</em> can appear here at all — nothing is inferred, averaged or
+          guessed. Everything else stays a finding a person reads.
+        </div>
+
+        {checks.length === 0 ? (
+          <div className="loading" style={{ marginTop: 12 }}>
+            <div className="spinner" /> Loading checks…
+          </div>
+        ) : (
+          <div style={{ marginTop: 12 }}>
+            {checks.map((check) => (
+              <CheckRow
+                key={check.checkKey}
+                check={check}
+                busy={busy}
+                onSave={setCheckEnabled}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+
     </>
   );
 }
