@@ -177,7 +177,7 @@ opens on Announcement, as Send Message always did.
 | `#questions` | `#communications/surveys` |
 | `#scheduled` | `#communications/scheduled` |
 | `#bot_messages` | `#communications/history` (the bot-message log) |
-| `#manager` | `#communications/history`, the "Have a message link?" section (the old page predates the repository's kept history; its name and the tab that edits any sent message by its link are the closest match) |
+| `#manager` | `#communications/edit_by_link`, which opens History with its "Have a message link?" section open (the old page predates the repository's kept history; its name and the tab that edits any sent message by its link are the closest match) |
 | `#operations`, `#system_health`, and every other old page key | The same page as before |
 | Anything unrecognised | Driver Groups, as always |
 

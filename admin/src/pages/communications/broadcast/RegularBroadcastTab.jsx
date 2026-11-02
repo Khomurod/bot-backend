@@ -168,15 +168,6 @@ export function RegularBroadcastTab({
             </button>
             </div>
           </details>
-
-          <div style={{ display: 'flex', gap: 12, marginTop: 24, flexWrap: 'wrap' }}>
-            <button className="btn btn-primary" onClick={() => setShowSendConfirm('regular')} disabled={sending || (!message.trim() && broadcastMediaItems.length === 0) || message.length > 4096 || regularUnknownTokens.length > 0}>
-              {sending ? '⏳ Sending...' : targetType === 'all' ? '📤 Send to All Groups' : '📤 Send to Selected'}
-            </button>
-            <button className="btn btn-ghost" onClick={handleTest} disabled={testing || (!message.trim() && broadcastMediaItems.length === 0) || regularUnknownTokens.length > 0} style={{ border: '1px solid var(--border)' }}>
-              {testing ? '⏳ Testing...' : '🧪 Test (Management Group)'}
-            </button>
-          </div>
         </div>
       </div>
 
@@ -191,6 +182,19 @@ export function RegularBroadcastTab({
             }}
             mediaItems={broadcastMediaItems} mediaPosition={broadcastMediaPosition} />
         </div>
+      </div>
+
+      {/* Send comes after the preview in the page's own order (November 2026):
+          under the editor on a wide screen, with the preview beside both; under
+          the preview in one column. No CSS reordering, so the keyboard and the
+          eye meet them in the same order. */}
+      <div className="broadcast-actions">
+        <button className="btn btn-primary" onClick={() => setShowSendConfirm('regular')} disabled={sending || (!message.trim() && broadcastMediaItems.length === 0) || message.length > 4096 || regularUnknownTokens.length > 0}>
+          {sending ? '⏳ Sending...' : targetType === 'all' ? '📤 Send to All Groups' : '📤 Send to Selected'}
+        </button>
+        <button className="btn btn-ghost" onClick={handleTest} disabled={testing || (!message.trim() && broadcastMediaItems.length === 0) || regularUnknownTokens.length > 0} style={{ border: '1px solid var(--border)' }}>
+          {testing ? '⏳ Testing...' : '🧪 Test (Management Group)'}
+        </button>
       </div>
     </div>
 

@@ -135,15 +135,6 @@ export function ConfirmationBroadcastTab({
               ➕ Add Button
             </button>
           </div>
-
-          <div style={{ display: 'flex', gap: 12, marginTop: 16, flexWrap: 'wrap' }}>
-            <button className="btn btn-primary" onClick={() => setShowSendConfirm('confirmation')} disabled={confSending || !confMessage.trim() || confMessage.length > 4096 || confirmationUnknownTokens.length > 0}>
-              {confSending ? '⏳ Sending...' : '📤 Send Broadcast'}
-            </button>
-            <button className="btn btn-ghost" onClick={handleConfTest} disabled={confTesting || !confMessage.trim() || confirmationUnknownTokens.length > 0} style={{ border: '1px solid var(--border)' }}>
-              {confTesting ? '⏳ Testing...' : '🧪 Test'}
-            </button>
-          </div>
         </div>
       </div>
 
@@ -158,6 +149,19 @@ export function ConfirmationBroadcastTab({
             }}
             mediaItems={confMediaItems} mediaPosition={confMediaPosition} />
         </div>
+      </div>
+
+      {/* Send comes after the preview in the page's own order (November 2026):
+          under the editor on a wide screen, with the preview beside both; under
+          the preview in one column. No CSS reordering, so the keyboard and the
+          eye meet them in the same order. */}
+      <div className="broadcast-actions">
+        <button className="btn btn-primary" onClick={() => setShowSendConfirm('confirmation')} disabled={confSending || !confMessage.trim() || confMessage.length > 4096 || confirmationUnknownTokens.length > 0}>
+          {confSending ? '⏳ Sending...' : '📤 Send Broadcast'}
+        </button>
+        <button className="btn btn-ghost" onClick={handleConfTest} disabled={confTesting || !confMessage.trim() || confirmationUnknownTokens.length > 0} style={{ border: '1px solid var(--border)' }}>
+          {confTesting ? '⏳ Testing...' : '🧪 Test'}
+        </button>
       </div>
     </div>
 

@@ -20,7 +20,10 @@ export default function CompanyBirthdaysPage() {
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState(null);
-  const [requesting, setRequesting] = useState(false);
+  // Which send is running (null when none): every send is disabled while one
+  // runs, and only the one running says so on its button.
+  const [running, setRunning] = useState(null);
+  const requesting = running !== null;
   const [settings, setSettings] = useState(null);
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [customOpen, setCustomOpen] = useState(false);
@@ -69,15 +72,15 @@ export default function CompanyBirthdaysPage() {
   };
 
   // One send at a time: the toolbar is disabled while any of them runs.
-  const send = async (request, onSuccess) => {
-    setRequesting(true);
+  const send = async (type, request, onSuccess) => {
+    setRunning(type);
     setStatus(null);
     try {
       onSuccess(await request());
     } catch (err) {
       fail(err.message);
     } finally {
-      setRequesting(false);
+      setRunning(null);
     }
   };
 
@@ -101,16 +104,16 @@ export default function CompanyBirthdaysPage() {
   const runConfirmed = async (action) => {
     setConfirmAction(null);
     if (action.type === "delete") await handleDelete(action.id);
-    else if (action.type === "sendToday") await send(() => api.sendEmployeeBirthdayWishesNow(), wishResult);
-    else if (action.type === "congratulate") await send(() => api.congratulateEmployees(action.ids), wishResult);
+    else if (action.type === "sendToday") await send("sendToday", () => api.sendEmployeeBirthdayWishesNow(), wishResult);
+    else if (action.type === "congratulate") await send("congratulate", () => api.congratulateEmployees(action.ids), wishResult);
     else if (action.type === "custom") {
-      await send(() => api.sendEmployeeGroupCustomMessage(customMessage.trim()), () => {
+      await send("custom", () => api.sendEmployeeGroupCustomMessage(customMessage.trim()), () => {
         setCustomMessage("");
         setCustomOpen(false);
         setStatus({ type: "success", text: "Custom message sent to employee group." });
       });
     } else if (action.type === "request") {
-      await send(() => api.sendEmployeeBirthdayRequest(), () => {
+      await send("request", () => api.sendEmployeeBirthdayRequest(), () => {
         setStatus({ type: "success", text: "Request message sent to Employee Group!" });
       });
     }
@@ -140,20 +143,20 @@ export default function CompanyBirthdaysPage() {
 
       <div role="toolbar" aria-label="Birthday actions" style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
         <button className="btn btn-primary" type="button" onClick={() => setConfirmAction({ type: "sendToday" })} disabled={requesting}>
-          Send today&apos;s wishes now
+          {running === "sendToday" ? "⏳ Sending..." : "Send today's wishes now"}
         </button>
         <button
           className="btn btn-ghost" type="button" disabled={requesting || selectedIds.size === 0}
           onClick={() => setConfirmAction({ type: "congratulate", ids: Array.from(selectedIds) })}
         >
-          Congratulate selected ({selectedIds.size})
+          {running === "congratulate" ? "⏳ Sending..." : `Congratulate selected (${selectedIds.size})`}
         </button>
         <button className="btn btn-ghost" type="button" aria-expanded={customOpen} onClick={() => setCustomOpen((v) => !v)}>
           Custom message…
         </button>
         {/* Posts to the whole employee group, so it asks first like every other send here. */}
         <button className="btn btn-ghost" type="button" onClick={() => setConfirmAction({ type: "request" })} disabled={requesting}>
-          {requesting ? "⏳ Requesting..." : "💬 Send Telegram Request"}
+          {running === "request" ? "⏳ Requesting..." : "💬 Send Telegram Request"}
         </button>
         <span style={{ flex: 1 }} />
         <button className="btn btn-ghost" type="button" aria-expanded={addOpen} onClick={() => setAddOpen((v) => !v)}>
@@ -171,7 +174,7 @@ export default function CompanyBirthdaysPage() {
             />
           </div>
           <button className="btn btn-primary" type="button" onClick={() => setConfirmAction({ type: "custom" })} disabled={requesting || !customMessage.trim()}>
-            Send custom
+            {running === "custom" ? "⏳ Sending..." : "Send custom"}
           </button>
         </div>
       )}

@@ -111,3 +111,20 @@ test("Delete asks, and Remove deletes that one employee", async () => {
   await userEvent.click(within(dialog).getByRole("button", { name: "Remove" }));
   await waitFor(() => expect(api.deleteEmployeeBirthday).toHaveBeenCalledWith(1));
 });
+
+test("while one send runs, only its own button says so; the others are just disabled", async () => {
+  await setup();
+  let finish;
+  api.congratulateEmployees.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+  await userEvent.click(screen.getByRole("checkbox", { name: "Select Aziz Karimov" }));
+  await userEvent.click(screen.getByRole("button", { name: "Congratulate selected (1)" }));
+  await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Send" }));
+
+  const toolbar = screen.getByRole("toolbar", { name: "Birthday actions" });
+  expect(await within(toolbar).findByRole("button", { name: "⏳ Sending..." })).toBeDisabled();
+  const request = within(toolbar).getByRole("button", { name: /Send Telegram Request/ });
+  expect(request).toBeDisabled();
+  expect(within(toolbar).queryByText(/Requesting/)).toBeNull();
+  finish({ sent: true, names: "Aziz Karimov" });
+  await waitFor(() => expect(request).not.toBeDisabled());
+});

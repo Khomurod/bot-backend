@@ -45,6 +45,18 @@ test("what waits for a decision is first; the decided history is folded with a c
   expect(history.querySelectorAll("button").length).toBeGreaterThan(0);
 });
 
+test("each card offers exactly the actions its status allows", async () => {
+  render(<MileageBonusPage />);
+  await screen.findByText("Waiting for a decision (1)");
+  // The bonus card's row (its amount), not the driver's progress row.
+  const card = (name) => screen.getAllByText(name).map((el) => el.closest("tr"))
+    .find((tr) => tr && /\$200/.test(tr.textContent));
+  const actions = (name) => [...card(name).querySelectorAll("button")].map((b) => b.textContent.trim());
+  expect(actions("John Carter")).toEqual(["Resend", "Disregard"]); // waiting
+  expect(actions("Maria Lopez")).toEqual([]); // paid
+  expect(actions("Aziz Karimov")).toEqual(["Resend"]); // disregarded
+});
+
 test("the per-driver switch says in or out of the bonus program", async () => {
   render(<MileageBonusPage />);
   const select = await screen.findByRole("combobox", { name: "Mileage status for John Carter" });

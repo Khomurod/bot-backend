@@ -60,6 +60,17 @@ test("opens on Send Message", async () => {
   });
 });
 
+test("Send Message: the preview comes before Send in the page's order, so one column needs no CSS reordering", async () => {
+  render(<CommunicationsPage />);
+  for (const kind of ["Announcement", "Confirmation"]) {
+    if (kind === "Confirmation") fireEvent.click(await screen.findByRole("tab", { name: /^Confirmation$/ }));
+    const preview = (await screen.findByText("Live Preview")).closest(".broadcast-preview-section");
+    const send = screen.getByRole("button", { name: /📤 Send/ });
+    expect(preview.compareDocumentPosition(send) & Node.DOCUMENT_POSITION_FOLLOWING, kind).toBeTruthy();
+    expect(send.closest(".broadcast-actions"), kind).toBeTruthy();
+  }
+});
+
 for (const [label, intro] of TABS) {
   test(`the ${label} tab resolves, mounts, and brings no second header`, async () => {
     render(<CommunicationsPage />);
