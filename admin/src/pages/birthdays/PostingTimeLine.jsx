@@ -48,7 +48,7 @@ export default function PostingTimeLine({ settings, onSaved, onError }) {
             ? <>Birthday cards are posted every day at <strong>{formatSchedule(settings)}</strong>.</>
             : "Loading the posting time…"}
         </span>
-        {settings && <button type="button" className="btn btn-ghost btn-sm" onClick={open}>Change</button>}
+        {settings && <button type="button" className="btn btn-ghost btn-sm" aria-expanded={false} onClick={open}>Change</button>}
       </p>
     );
   }

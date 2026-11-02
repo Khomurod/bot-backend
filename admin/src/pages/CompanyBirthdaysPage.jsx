@@ -122,7 +122,7 @@ export default function CompanyBirthdaysPage() {
     <div>
       <div className="page-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
         <p style={{ margin: 0 }}>
-          Office staff birthdays, soonest first. American names, Telegram accounts and photos are on the Employees tab.
+          Soonest first. American names, Telegram accounts and photos are on the Employees tab.
         </p>
         <button className="btn btn-ghost" onClick={() => { loadData(); loadSettings(); }}>🔄 Refresh</button>
       </div>
