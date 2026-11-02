@@ -8,7 +8,7 @@ import {
 } from "./labels";
 
 /**
- * The per-driver popup: current state, the request timeline, completed trips,
+ * The per-driver popup: current state, the requests, the trips table,
  * and the forms that edit them.
  *
  * Changing the STATE and changing the START DATE are separate saves, because
@@ -36,6 +36,7 @@ export function DriverDetailModal(p) {
   // production rows. Counted rather than just relabelled, because the tile above
   // the table was telling the same untruth the table itself used to.
   const completedTripCount = selectedHistory.filter((t) => t.return_to_road_at).length;
+  const requestTimeline = selectedTimeline.filter((item) => item.kind === "request");
   const openTripCount = selectedHistory.length - completedTripCount;
 
   return (
@@ -223,14 +224,17 @@ export function DriverDetailModal(p) {
           <div className="home-time-section">
             <div className="home-time-section-head">
               <div>
-                <h4>Driver activity</h4>
-                <p>Requests and completed trips are merged into one timeline so the full home-time story stays in one place.</p>
+                <h4>Home-time requests</h4>
+                <p>Every request, newest first. The trips are in the table below, where their dates are edited.</p>
               </div>
             </div>
-            {selectedTimeline.length > 0 ? (
+            {/* Requests only (November 2026): every trip used to appear twice
+                in this popup — here, and in the Trips table below, which is
+                the one that edits it and shows every field this did. */}
+            {requestTimeline.length > 0 ? (
               <div className="home-time-activity-list">
-                {selectedTimeline.map((item) => {
-                  const requestMeta = item.kind === "request" ? requestStatusMeta(item.status, item.clarification_channel) : null;
+                {requestTimeline.map((item) => {
+                  const requestMeta = requestStatusMeta(item.status, item.clarification_channel);
                   return (
                     <div key={item.id} className="home-time-activity-item">
                       <div className="home-time-activity-top">
@@ -238,56 +242,41 @@ export function DriverDetailModal(p) {
                           <strong>{activityTitle(item)}</strong>
                           <div className="home-time-subtext">{fmtDate(item.timestamp)}</div>
                         </div>
-                        {item.kind === "request" ? (
-                          <span
-                            className="home-time-status-pill"
-                            style={{
-                              color: requestMeta.color,
-                              background: requestMeta.background,
-                            }}
-                          >
-                            {requestMeta.label}
-                          </span>
-                        ) : (
-                          <span className="home-time-status-pill">Trip</span>
-                        )}
+                        <span
+                          className="home-time-status-pill"
+                          style={{
+                            color: requestMeta.color,
+                            background: requestMeta.background,
+                          }}
+                        >
+                          {requestMeta.label}
+                        </span>
                       </div>
 
-                      {item.kind === "request" ? (
-                        <div className="home-time-activity-meta">
-                          <span>Window: {fmtDate(item.home_from)} to {fmtDate(item.home_to)}</span>
-                          <span>Back on the road: {fmtDate(item.return_to_road_date)}</span>
-                          <span>{policyLabel(selectedStatus.driver_type, item.policy_met)}</span>
-                          <span>Days out: {item.days_on_road != null ? `${item.days_on_road}d` : "--"}</span>
-                          <span>Source: {item.source || "--"}</span>
-                          <span>Decided by: {item.decided_by_username ? `@${item.decided_by_username}` : "--"}</span>
-                          {item.decided_at ? <span>Decided: {fmtDate(item.decided_at)}</span> : null}
-                          {item.note ? <span>Notes: {item.note}</span> : null}
-                          <HomeTimeRequestDatesEditor
-                            requestId={item.request_id}
-                            homeFrom={item.home_from}
-                            returnToRoad={item.return_to_road_date}
-                            flash={flash}
-                            onSaved={load}
-                          />
-                          <RetiredApprovalNote request={item} />
-                        </div>
-                      ) : (
-                        <div className="home-time-activity-meta">
-                          <span>Road: {fmtDate(item.road_started_at)} to {fmtDate(item.home_arrived_at)}</span>
-                          <span>Days out: {item.days_on_road != null ? `${item.days_on_road}d` : "--"}</span>
-                          <span>Extra weeks: {item.exceeded_weeks ?? 0}</span>
-                          <span>
-                            Bonus: {isCompanyDriver(item.driver_type) ? money(item.bonus_usd) : "Owner operator - no company bonus"}
-                          </span>
-                        </div>
-                      )}
+                      <div className="home-time-activity-meta">
+                        <span>Window: {fmtDate(item.home_from)} to {fmtDate(item.home_to)}</span>
+                        <span>Back on the road: {fmtDate(item.return_to_road_date)}</span>
+                        <span>{policyLabel(selectedStatus.driver_type, item.policy_met)}</span>
+                        <span>Days out: {item.days_on_road != null ? `${item.days_on_road}d` : "--"}</span>
+                        <span>Source: {item.source || "--"}</span>
+                        <span>Decided by: {item.decided_by_username ? `@${item.decided_by_username}` : "--"}</span>
+                        {item.decided_at ? <span>Decided: {fmtDate(item.decided_at)}</span> : null}
+                        {item.note ? <span>Notes: {item.note}</span> : null}
+                        <HomeTimeRequestDatesEditor
+                          requestId={item.request_id}
+                          homeFrom={item.home_from}
+                          returnToRoad={item.return_to_road_date}
+                          flash={flash}
+                          onSaved={load}
+                        />
+                        <RetiredApprovalNote request={item} />
+                      </div>
                     </div>
                   );
                 })}
               </div>
             ) : (
-              <div className="home-time-empty-box">No requests or completed trips for this driver yet.</div>
+              <div className="home-time-empty-box">No home-time requests for this driver yet.</div>
             )}
           </div>
 

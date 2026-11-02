@@ -51,7 +51,7 @@ configuration last.
 | **Communications** | Messages | `#communications` (`/send`, `/surveys`, `/scheduled`, `/history`, `/edit_by_link`) | What the bot says to driver groups |
 | | Birthdays | `#company_birthdays` (`/birthdays`, `/employees`) | Employees, their birthday cards and wishes |
 | **Monitoring** | Needs Attention | `#operations` (`/findings`, `/history`, `/checks`, `/identity`, `/learning`) | Where records disagree, what was corrected, what may be corrected automatically, driver identity, Wenze's suggestions |
-| | System Health | `#system_health` | Whether every background job is actually running |
+| | System Health | `#system_health` | Whether every background job is actually running — what needs a look first, each group one line below (November 2026) |
 | **Administration** | Telegram Users | `#users` | Everyone the bot has seen in Telegram |
 | | Settings | `#settings/<section>` | All configuration, grouped |
 

@@ -1,43 +1,9 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import * as api from "../api";
 import useVisibleInterval from "../utils/useVisibleInterval";
+import { fmtAmount, fmtDate, fmtMiles, StatusBadge } from "./mileageBonus/format";
+import BonusNotificationsTable from "./mileageBonus/BonusNotificationsTable";
 
-const STATUS_BADGE = {
-  pending: { label: "Pending", bg: "var(--warning-soft)", color: "var(--warning)" },
-  paid: { label: "Paid", bg: "var(--success-soft)", color: "var(--success)" },
-  rejected: { label: "Rejected", bg: "var(--danger-soft)", color: "var(--danger)" },
-  disregarded: { label: "Disregarded", bg: "var(--neutral-soft)", color: "var(--text-muted)" },
-};
-
-function fmtMiles(value) {
-  return Math.round(Number(value) || 0).toLocaleString("en-US");
-}
-
-function fmtAmount(value) {
-  return `$${(Math.round(Number(value) || 0)).toLocaleString("en-US")}`;
-}
-
-function fmtDate(value) {
-  if (!value) return "—";
-  return String(value).slice(0, 10);
-}
-
-function StatusBadge({ status }) {
-  const cfg = STATUS_BADGE[status] || { label: status || "—", bg: "var(--neutral-soft)", color: "var(--text-muted)" };
-  return (
-    <span style={{
-      display: "inline-block",
-      padding: "2px 10px",
-      borderRadius: 999,
-      fontSize: 12,
-      fontWeight: 600,
-      background: cfg.bg,
-      color: cfg.color,
-    }}>
-      {cfg.label}
-    </span>
-  );
-}
 
 function ProgressBar({ current, target }) {
   const pct = target ? Math.min(100, Math.round((current / target) * 100)) : 100;
@@ -120,8 +86,10 @@ export default function MileageBonusPage() {
   };
 
   const handleDriverStatus = async (driver, nextStatus) => {
+    // The bonus program's words, as on the select: this never changes whether
+    // the driver works here (Driver Groups' Active/Inactive).
     if (nextStatus === "inactive" && !window.confirm(
-      `Make ${driver.driver_name} inactive? Mileage calculation and new bonus messages will stop, and open Telegram bonus cards will be disregarded.`
+      `Exclude ${driver.driver_name} from the bonus program? Mileage calculation and new bonus messages will stop, and open Telegram bonus cards will be disregarded.`
     )) return;
     setStatus(null);
     try {
@@ -133,7 +101,9 @@ export default function MileageBonusPage() {
         .filter(Boolean);
       setStatus({
         type: cleanupErrors.length ? "error" : "success",
-        text: `${driver.driver_name} is now ${nextStatus}.`
+        text: (nextStatus === "inactive"
+          ? `${driver.driver_name} is now excluded from the bonus program.`
+          : `${driver.driver_name} is back in the bonus program.`)
           + (cleanupErrors.length ? ` Telegram cleanup warning: ${cleanupErrors.join(" | ")}` : ""),
       });
       await load();
@@ -192,6 +162,9 @@ export default function MileageBonusPage() {
     return <div className="loading"><div className="spinner"></div> Loading…</div>;
   }
 
+  const pendingNotifications = notifications.filter((n) => n.status === "pending");
+  const decidedNotifications = notifications.filter((n) => n.status !== "pending");
+
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12, marginBottom: 16 }}>
@@ -199,7 +172,8 @@ export default function MileageBonusPage() {
           <h2 style={{ margin: 0 }}>Mileage Bonuses</h2>
           <p style={{ color: "var(--text-muted)", margin: "4px 0 0" }}>
             Company drivers only · counting from {overview?.programStart || "2026-04-17"} → pay period{" "}
-            {overview?.lastRun?.periodEnd ? `ending ${overview.lastRun.periodEnd}` : "(2 weeks behind)"}
+            {overview?.lastRun?.periodEnd ? `ending ${overview.lastRun.periodEnd}` : "(2 weeks behind)"} · cards go
+            to the group set in <a href="#settings/groups">Settings → Bonus groups</a>
           </p>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
@@ -281,8 +255,11 @@ export default function MileageBonusPage() {
                         style={{ fontSize: 12, padding: "3px 6px" }}
                         aria-label={`Mileage status for ${d.driver_name}`}
                       >
-                        <option value="active">Active</option>
-                        <option value="inactive">Inactive</option>
+                        {/* Not "Active/Inactive": that is Driver Groups' word for
+                            whether someone still works here. This only says whether
+                            they count for the mileage bonus. */}
+                        <option value="active">In bonus program</option>
+                        <option value="inactive">Excluded</option>
                       </select>
                     </div>
                     <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
@@ -320,65 +297,21 @@ export default function MileageBonusPage() {
         </div>
       )}
 
-      <h3 style={{ marginTop: 24 }}>Bonus notifications</h3>
+      {/* What still needs a decision first; the decided ones (paid, rejected,
+          disregarded) are history, collapsed with a count (November 2026). A
+          long paid history used to sit between the page and the cards that
+          still need someone. */}
+      <h3 style={{ marginTop: 24 }}>Waiting for a decision{pendingNotifications.length ? ` (${pendingNotifications.length})` : ""}</h3>
       {notifications.length === 0 ? (
         <div className="card" style={{ color: "var(--text-muted)" }}>No bonus notifications sent yet.</div>
-      ) : (
-        <div className="card" style={{ overflowX: "auto" }}>
-          <table className="data-table" style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr>
-                <th style={{ textAlign: "left" }}>Driver</th>
-                <th style={{ textAlign: "right" }}>Milestone</th>
-                <th style={{ textAlign: "right" }}>Bonus</th>
-                <th style={{ textAlign: "right" }}>Miles at notify</th>
-                <th style={{ textAlign: "left" }}>Status</th>
-                <th style={{ textAlign: "left" }}>Decided by</th>
-                <th style={{ textAlign: "left" }}>Sent</th>
-                <th style={{ textAlign: "left" }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {notifications.map((n) => (
-                <tr key={n.id}>
-                  <td style={{ fontWeight: 600 }}>{n.driver_name}</td>
-                  <td style={{ textAlign: "right" }}>{fmtMiles(n.threshold_miles)} mi</td>
-                  <td style={{ textAlign: "right" }}>{fmtAmount(n.bonus_amount)}</td>
-                  <td style={{ textAlign: "right" }}>{fmtMiles(n.miles_at_notification)}</td>
-                  <td><StatusBadge status={n.status} /></td>
-                  <td>{n.decided_by_username ? `@${n.decided_by_username}` : "—"}</td>
-                  <td style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                    {n.created_at ? new Date(n.created_at).toLocaleString() : "—"}
-                  </td>
-                  <td>
-                    {n.status !== "paid" && (
-                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                        <button
-                          className="btn btn-ghost"
-                          style={{ padding: "4px 8px", fontSize: 12 }}
-                          disabled={Boolean(rowBusy[`notification:${n.id}`])}
-                          onClick={() => handleResend(n)}
-                        >
-                          Resend
-                        </button>
-                        {n.status !== "disregarded" && (
-                          <button
-                            className="btn btn-ghost"
-                            style={{ padding: "4px 8px", fontSize: 12, color: "var(--danger)" }}
-                            disabled={Boolean(rowBusy[`notification:${n.id}`])}
-                            onClick={() => handleDisregard(n)}
-                          >
-                            Disregard
-                          </button>
-                        )}
-                      </div>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      ) : pendingNotifications.length === 0 ? (
+        <div className="card" style={{ color: "var(--text-muted)" }}>Nothing is waiting — every card sent has been decided.</div>
+      ) : <BonusNotificationsTable rows={pendingNotifications} rowBusy={rowBusy} onResend={handleResend} onDisregard={handleDisregard} />}
+      {decidedNotifications.length > 0 && (
+        <details style={{ marginTop: 12 }}>
+          <summary style={{ cursor: "pointer", fontWeight: 600 }}>History ({decidedNotifications.length})</summary>
+          <div style={{ marginTop: 8 }}>{<BonusNotificationsTable rows={decidedNotifications} rowBusy={rowBusy} onResend={handleResend} onDisregard={handleDisregard} />}</div>
+        </details>
       )}
     </div>
   );

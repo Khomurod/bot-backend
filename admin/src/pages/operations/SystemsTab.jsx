@@ -22,6 +22,14 @@ import useVisibleInterval from "../../utils/useVisibleInterval";
  * the row.
  *
  * There is no restart button and no retry, deliberately. See `api/systems.js`.
+ *
+ * WHAT NEEDS A LOOK COMES FIRST (November 2026). The rows used to be sorted
+ * only within each of the four groups, so a stopped job in Routine work sat
+ * below thirty-odd working rows (3,400 px on a desktop, 5,600 on a phone). Now
+ * every row that needs a look — a person, stopped, failing, blipped — is one
+ * section at the top, whatever its group, and each group below is one line
+ * ("Operational engines — 21 working, 2 not reported") that opens into its
+ * rows. "Not reported" is counted on its own and never folded into "working".
  */
 const STATE = {
   needs_human_attention: { label: "Needs a person", colour: "var(--danger)", rank: 0 },
@@ -32,6 +40,11 @@ const STATE = {
   recovered_automatically: { label: "Recovered by itself", colour: "var(--info)", rank: 5 },
   healthy: { label: "Working", colour: "var(--success)", rank: 6 },
 };
+
+// The states a person should look at today. "Not reported" is not one of
+// them — it is normal for half an hour after a deploy — but it is never
+// counted as working either: each group's summary names it.
+const NEEDS_A_LOOK = new Set(["needs_human_attention", "stale_stopped", "repeatedly_failing", "degraded"]);
 
 const GROUP_LABEL = {
   integration: "Integrations",
@@ -140,6 +153,26 @@ export default function SystemsTab({ flash }) {
 
   if (loading && !data) return <div className="muted">Loading…</div>;
 
+  const failureBox = failure && (
+    <div style={{
+      border: "1px solid var(--danger-solid)", borderRadius: 8, padding: "8px 12px", marginBottom: 12,
+    }}>{failure}</div>
+  );
+
+  // Nothing was ever read: no tiles of zeroes and no "nothing needs a look",
+  // which would present an unread state as a healthy one.
+  if (!data) {
+    return (
+      <div>
+        {failureBox}
+        <h4 style={{ margin: "16px 0 8px" }}>Current state unavailable</h4>
+        <p className="muted" style={{ margin: 0, fontSize: 13 }}>
+          The page could not read what the jobs last reported. It tries again every two minutes.
+        </p>
+      </div>
+    );
+  }
+
   const components = data?.components || [];
   const sorted = [...components].sort((a, b) => {
     const ra = (STATE[a.state] || STATE.cannot_determine).rank;
@@ -148,14 +181,14 @@ export default function SystemsTab({ flash }) {
     return (a.label || "").localeCompare(b.label || "");
   });
   const groups = ["integration", "queue", "engine", "routine"];
+  const attention = sorted.filter((c) => NEEDS_A_LOOK.has(c.state));
+  // The one row that means nothing else here reaches a person: said once, as
+  // the loudest line of the section, not again as an ordinary row.
+  const deliveryDown = attention.find((c) => c.component === "notification_destination") || null;
 
   return (
     <div>
-      {failure && (
-        <div style={{
-          border: "1px solid var(--danger-solid)", borderRadius: 8, padding: "8px 12px", marginBottom: 12,
-        }}>{failure}</div>
-      )}
+      {failureBox}
 
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
         <Tile label="Need a person" value={data?.needingAttention} colour="var(--danger)" />
@@ -171,14 +204,38 @@ export default function SystemsTab({ flash }) {
         never the same as “working”.
       </p>
 
+      <section style={{ marginBottom: 18 }} aria-label="Needs a look">
+        <h4 style={{ margin: "16px 0 8px" }}>
+          {attention.length ? `Needs a look (${attention.length})` : "Nothing needs a look"}
+        </h4>
+        {deliveryDown && (
+          <div className="alert alert-error" style={{ marginBottom: 8 }}>
+            <strong>Wenze cannot tell anybody what it finds.</strong> {deliveryDown.reason}
+          </div>
+        )}
+        {attention.filter((row) => row !== deliveryDown).map((row) => <Row key={row.component} row={row} />)}
+        {!attention.length && (
+          <p className="muted" style={{ margin: 0, fontSize: 13 }}>Every job that reported is working.</p>
+        )}
+      </section>
+
       {groups.map((g) => {
-        const rows = sorted.filter((c) => c.group === g);
+        const rows = sorted.filter((c) => c.group === g && !NEEDS_A_LOOK.has(c.state));
         if (!rows.length) return null;
+        const working = rows.filter((c) => c.state === "healthy" || c.state === "recovered_automatically").length;
+        const notReported = rows.filter((c) => c.state === "cannot_determine").length;
         return (
-          <section key={g} style={{ marginBottom: 18 }}>
-            <h4 style={{ margin: "0 0 8px" }}>{GROUP_LABEL[g] || g}</h4>
-            {rows.map((row) => <Row key={row.component} row={row} />)}
-          </section>
+          <details key={g} style={{ marginBottom: 10 }}>
+            <summary style={{ cursor: "pointer", padding: "6px 0" }}>
+              <strong>{GROUP_LABEL[g] || g}</strong>
+              <span className="muted" style={{ fontSize: 13 }}>
+                {" "}— {working} working{notReported ? `, ${notReported} not reported` : ""}
+              </span>
+            </summary>
+            <div style={{ marginTop: 6 }}>
+              {rows.map((row) => <Row key={row.component} row={row} />)}
+            </div>
+          </details>
         );
       })}
     </div>

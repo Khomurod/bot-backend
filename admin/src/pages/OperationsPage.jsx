@@ -61,18 +61,25 @@ export default function OperationsPage({ tab: routeTab, onTabChange }) {
     <div>
       <div className="page-header">
         <h2>Needs Attention</h2>
-        <p>
-          Every fifteen minutes the system compares its own records and files a
-          finding wherever two of them disagree. Nothing here is a guess: each one
-          carries the exact values it was built from, and a correction may only be
-          applied when the corrected value is already recorded somewhere else.
-        </p>
+        <p>Where Wenze's own records disagree, checked every fifteen minutes.</p>
+        {/* The rest of the old three-sentence intro, one click away
+            (November 2026): it was read once and scrolled past on every tab. */}
+        <details style={{ fontSize: 13, color: "var(--text-muted)" }}>
+          <summary style={{ cursor: "pointer" }}>How this works</summary>
+          <p style={{ margin: "6px 0 0" }}>
+            Every fifteen minutes the system compares its own records and files a
+            finding wherever two of them disagree. Nothing here is a guess: each one
+            carries the exact values it was built from, and a correction may only be
+            applied when the corrected value is already recorded somewhere else.
+          </p>
+        </details>
       </div>
 
       {/* Above everything, because a feature that finds things and cannot say
           so is worse than one that is switched off: it looks like it is
-          working. Renders nothing once a destination is set. */}
-      <ConfigurationBanner />
+          working. Renders nothing once a destination is set. In full on the
+          findings tab; one line with a link on the others. */}
+      <ConfigurationBanner compact={tab !== "findings"} />
 
       {/* Kept beside the last good data rather than replacing it — a failed
           refresh must never render as a reassuring empty page. */}

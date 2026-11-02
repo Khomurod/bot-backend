@@ -12,6 +12,11 @@ function money(value) {
  * The notification group is the Telegram chat that receives COMPLETED home-time
  * request cards. Completed cards are never posted to the driver's own group —
  * only the date-clarification asks and the under-allowance policy reminder are.
+ *
+ * TWO TITLED GROUPS, ONE-LINE HINTS (November 2026). It was one block with 414
+ * words of explanation under three chat-id fields. Policy and Where notices go
+ * are now headed sections; each field keeps a one-line hint, and the full
+ * explanation is behind "More". Nothing it said is gone.
  */
 export default function HomeTimeSettingsCard({ settings, saving, onSave }) {
   const [notifyGroup, setNotifyGroup] = useState(settings?.completed_notify_group_id || "");
@@ -46,7 +51,7 @@ export default function HomeTimeSettingsCard({ settings, saving, onSave }) {
 
   return (
     <div className="card" style={{ marginTop: 20, marginBottom: 20 }}>
-      <h3>Settings</h3>
+      <h3 style={{ marginTop: 0 }}>Policy</h3>
       <div style={{ display: "grid", gap: 12, maxWidth: 560 }}>
         <label>
           <input
@@ -93,6 +98,20 @@ export default function HomeTimeSettingsCard({ settings, saving, onSave }) {
           </div>
         </div>
 
+        <p className="home-time-muted" style={{ margin: 0 }}>
+          Company-driver policy: at least {settings.road_allowance_weeks} weeks on the road, then{" "}
+          {settings.home_allowance_days} days home. Each full extra road week earns{" "}
+          {money(settings.bonus_per_week)} for company drivers only. Owner operators stay visible for tracking but
+          do not accrue the company bonus.
+        </p>
+      </div>
+
+      <h3 style={{ margin: "20px 0 4px" }}>Where notices go</h3>
+      <p className="home-time-muted" style={{ marginTop: 0 }}>
+        The road-bonus summary has its own group, under{" "}
+        <a href="#settings/groups">Settings → Bonus groups</a>.
+      </p>
+      <div style={{ display: "grid", gap: 12, maxWidth: 560 }}>
         <div className="form-group" style={{ marginBottom: 0 }}>
           <label>Completed-request notification group (Telegram chat ID)</label>
           <input
@@ -105,6 +124,11 @@ export default function HomeTimeSettingsCard({ settings, saving, onSave }) {
             onBlur={saveNotifyGroup}
           />
           <p className="home-time-muted" style={{ margin: "6px 0 0" }}>
+            Requests, arrivals home and returns to the road — reported, with no Approve buttons.
+            Empty: nothing is posted.
+          </p>
+          <details className="home-time-muted" style={{ fontSize: 13, marginTop: 4 }}>
+            <summary style={{ cursor: "pointer" }}>More</summary>
             Home-time event notices — a driver asking for home time, arriving home, and
             going back on the road — are posted to this group only, never to the driver's
             own group, and each one tags the three managers. There are no Approve / Do Not
@@ -112,7 +136,7 @@ export default function HomeTimeSettingsCard({ settings, saving, onSave }) {
             nothing is posted anywhere (the request still appears here in the admin panel).
             Date-clarification questions and the under-{settings.road_allowance_weeks}-week reminder
             still go to the driver's group as before.
-          </p>
+          </details>
         </div>
 
         <hr style={{ border: 0, borderTop: "1px solid var(--border)", margin: "4px 0" }} />
@@ -126,7 +150,10 @@ export default function HomeTimeSettingsCard({ settings, saving, onSave }) {
           />{" "}
           Send clarification messages to driver groups
         </label>
-        <p className="home-time-muted" style={{ margin: "-4px 0 0 24px" }}>
+        <details className="home-time-muted" style={{ margin: "-4px 0 0 24px", fontSize: 13 }}>
+          <summary style={{ cursor: "pointer" }}>
+            {driverMessaging ? "On — the bot asks drivers for missing dates and sends the reminders." : "Off — the bot is silent in driver groups."}
+          </summary>
           {driverMessaging ? (
             <>
               On — the bot asks drivers directly for missing home-time dates, sends the two
@@ -143,7 +170,7 @@ export default function HomeTimeSettingsCard({ settings, saving, onSave }) {
               notified in the group below instead.
             </>
           )}
-        </p>
+        </details>
 
         <div className="form-group" style={{ marginBottom: 0 }}>
           <label>Internal clarification notification group (Telegram chat ID)</label>
@@ -157,21 +184,19 @@ export default function HomeTimeSettingsCard({ settings, saving, onSave }) {
             onBlur={saveInternalGroup}
           />
           <p className="home-time-muted" style={{ margin: "6px 0 0" }}>
+            With driver messaging off, one alert per new request. Empty: the alert is skipped.
+          </p>
+          <details className="home-time-muted" style={{ fontSize: 13, marginTop: 4 }}>
+            <summary style={{ cursor: "pointer" }}>More</summary>
             While driver messaging is off, each new home-time request raises one alert here —
             tagging the approvers — with the driver and unit, the source group, the original
             message and a link to it, the detected intention, the dates found so far, the dates
             still missing, and why it was classified that way. One alert per request, never
             repeated. If this is empty the alert is skipped, but the request is still recorded and
             appears in the Overview driver list as <b>Awaiting staff clarification</b>.
-          </p>
+          </details>
         </div>
 
-        <p className="home-time-muted" style={{ margin: 0 }}>
-          Company-driver policy: at least {settings.road_allowance_weeks} weeks on the road, then{" "}
-          {settings.home_allowance_days} days home. Each full extra road week earns{" "}
-          {money(settings.bonus_per_week)} for company drivers only. Owner operators stay visible for tracking but
-          do not accrue the company bonus.
-        </p>
       </div>
     </div>
   );

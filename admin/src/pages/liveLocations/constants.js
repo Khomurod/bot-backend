@@ -39,6 +39,23 @@ export const FILTERS = [
   { key: "leader", label: "Leader ELD" },
 ];
 
+/**
+ * Does unit `u` belong under filter `key`? PURE — the list, the map and the
+ * counts on the filter buttons all ask this one function, so a count can never
+ * disagree with what its button shows.
+ */
+export function unitMatchesFilter(u, key) {
+  switch (key) {
+    case "active_load": return !!u.load;
+    case "no_load": return !u.load;
+    case "stale": return !!(u.location && u.location.isStale);
+    case "samsara": return u.provider === "samsara";
+    case "factor": return u.provider === "factor";
+    case "leader": return u.provider === "leader";
+    default: return true;
+  }
+}
+
 export const PROVIDER_LABEL = {
   samsara: "Samsara", factor: "Factor ELD", leader: "Leader ELD",
   datatruck: "Datatruck (loads)", snapshot: "Snapshot",

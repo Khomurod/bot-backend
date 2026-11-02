@@ -1,34 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import * as api from "../api";
 import { driverTypeLabel } from "./homeTimeViewModel";
-
-// Category palette — colorblind-safe and NOT relied on alone (every chart segment
-// and table badge also carries a text label + count + %). Matches the request
-// status colors used elsewhere on the page for consistency.
-const CATEGORY_META = {
-  compliant: { label: "Policy compliant", color: "var(--success)" },
-  approved_exception: { label: "Approved exception", color: "var(--info)" },
-  non_compliant: { label: "Policy not followed", color: "var(--danger)" },
-  incomplete: { label: "Incomplete data", color: "var(--text-muted)" },
-  not_applicable: { label: "Policy not applicable", color: "var(--accent-text)" },
-};
-
-// Company-commitment verdicts: did what actually happened match the approved
-// (registered) home dates? Kept text-labelled (never color-only).
-const COMMITMENT_META = {
-  met: { label: "Commitment met", color: "var(--success)" },
-  broken: { label: "Commitment broken", color: "var(--danger)" },
-  incomplete: { label: "Awaiting return", color: "var(--text-muted)" },
-  none: { label: "No approved dates", color: "var(--text-muted)" },
-  not_applicable: { label: "N/A", color: "var(--accent-text)" },
-};
-
-const RANGES = [
-  { value: "30", label: "Last 30 days" },
-  { value: "90", label: "Last 90 days" },
-  { value: "180", label: "Last 180 days" },
-  { value: "all", label: "All time" },
-];
+import { CATEGORY_META, COMMITMENT_META, pctLabel } from "./homeTime/efficiencyShared";
+import CompanyEfficiencyCard from "./homeTime/CompanyEfficiencyCard";
 
 const DRIVER_TYPE_FILTERS = [
   { value: "all", label: "All driver types" },
@@ -65,56 +39,10 @@ function fmtDate(iso) {
   }
 }
 
-function pctLabel(value) {
-  return value == null ? "--" : `${value}%`;
-}
-
 function unitSort(value) {
   if (value == null) return Number.POSITIVE_INFINITY;
   const digits = String(value).match(/\d+/);
   return digits ? Number.parseInt(digits[0], 10) : Number.POSITIVE_INFINITY;
-}
-
-/** Accessible donut: labelled arcs (never color-only). Falls back to an empty ring. */
-function Donut({ segments, size = 168, stroke = 26 }) {
-  const radius = (size - stroke) / 2;
-  const circumference = 2 * Math.PI * radius;
-  const total = segments.reduce((sum, s) => sum + s.value, 0);
-  let offset = 0;
-  return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} role="img" aria-label="Cycle compliance breakdown">
-      <g transform={`rotate(-90 ${size / 2} ${size / 2})`}>
-        <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="var(--neutral-soft)" strokeWidth={stroke} />
-        {total > 0 && segments.filter((s) => s.value > 0).map((s) => {
-          const len = (s.value / total) * circumference;
-          const dash = `${len} ${circumference - len}`;
-          const el = (
-            <circle
-              key={s.key}
-              cx={size / 2}
-              cy={size / 2}
-              r={radius}
-              fill="none"
-              stroke={s.color}
-              strokeWidth={stroke}
-              strokeDasharray={dash}
-              strokeDashoffset={-offset}
-            >
-              <title>{`${s.label}: ${s.value} (${total ? Math.round((s.value / total) * 100) : 0}%)`}</title>
-            </circle>
-          );
-          offset += len;
-          return el;
-        })}
-      </g>
-      <text x="50%" y="47%" textAnchor="middle" fontSize="26" fontWeight="700" fill="currentColor">
-        {total}
-      </text>
-      <text x="50%" y="61%" textAnchor="middle" fontSize="11" fill="currentColor" opacity="0.7">
-        cycles
-      </text>
-    </svg>
-  );
 }
 
 export default function HomeTimeEfficiencyTab({ flash }) {
@@ -195,116 +123,7 @@ export default function HomeTimeEfficiencyTab({ flash }) {
 
   return (
     <div>
-      <div className="card" style={{ marginBottom: 20 }}>
-        <div className="home-time-section-head">
-          <div>
-            <h3>Company home-time efficiency</h3>
-            <p>
-              How well drivers follow the policy of at least <strong>{company.road_allowance_days} days</strong> on the
-              road and no more than <strong>{company.home_allowance_days} days</strong> at home, from actual completed
-              cycles. Owner operators are not counted (policy not applicable).
-            </p>
-          </div>
-          <div className="form-group" style={{ marginBottom: 0, minWidth: 180 }}>
-            <label>Date range</label>
-            <select className="form-select" value={range} onChange={(e) => setRange(e.target.value)}>
-              {RANGES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
-            </select>
-          </div>
-        </div>
-
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 24, alignItems: "center", marginTop: 12 }}>
-          <div style={{ display: "flex", gap: 20, alignItems: "center" }}>
-            <Donut segments={donutSegments} />
-            <div>
-              {donutSegments.map((s) => {
-                const total = company.total_completed_cycles + company.incomplete || 0;
-                const share = total ? Math.round((s.value / total) * 100) : 0;
-                return (
-                  <div key={s.key} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                    <span style={{ width: 12, height: 12, borderRadius: 3, background: s.color, display: "inline-block" }} />
-                    <span style={{ minWidth: 150 }}>{s.label}</span>
-                    <strong>{s.value}</strong>
-                    <span style={{ opacity: 0.6 }}>({share}%)</span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="home-time-summary-strip" style={{ flex: 1, minWidth: 260 }}>
-            <div className="home-time-summary-chip">
-              <strong>{pctLabel(company.strict_efficiency_pct)}</strong>
-              <span>Strict efficiency</span>
-            </div>
-            <div className="home-time-summary-chip">
-              <strong>{pctLabel(company.operational_efficiency_pct)}</strong>
-              <span>Incl. approved exceptions</span>
-            </div>
-            <div className="home-time-summary-chip">
-              <strong>{company.total_completed_cycles}</strong>
-              <span>Cycles analyzed</span>
-            </div>
-            <div className="home-time-summary-chip">
-              <strong>{company.total_eligible_drivers}</strong>
-              <span>Eligible drivers</span>
-            </div>
-            <div className="home-time-summary-chip">
-              <strong>{company.approved_exception}</strong>
-              <span>Approved exceptions</span>
-            </div>
-          </div>
-        </div>
-        <p className="home-time-muted" style={{ marginTop: 10 }}>
-          Strict efficiency = compliant cycles ÷ all policy-eligible completed cycles. Operational efficiency also credits
-          approved exceptions. Incomplete cycles (home stay not yet closed) are excluded from both.
-        </p>
-
-        <div style={{ borderTop: "1px solid var(--border)", marginTop: 16, paddingTop: 16 }}>
-          <h4 style={{ margin: "0 0 4px" }}>Company home-time commitment</h4>
-          <p className="home-time-muted" style={{ marginTop: 0 }}>
-            Of the home windows the company <strong>approved</strong>, how often did what actually happened match the
-            registered dates — the driver got home by the promised day and was back on the road by the promised return
-            (±{company.commitment_grace_days ?? 1}d). Cycles with no approved dates, or whose home stay is still open,
-            are shown separately and never counted as met or broken.
-          </p>
-          <div className="home-time-summary-strip">
-            <div className="home-time-summary-chip">
-              <strong>{pctLabel(company.commitment_pct)}</strong>
-              <span>Commitments met</span>
-            </div>
-            <div className="home-time-summary-chip">
-              <strong>{company.commitment_evaluated || 0}</strong>
-              <span>Approved windows evaluated</span>
-            </div>
-            <div className="home-time-summary-chip" style={{ color: COMMITMENT_META.met.color }}>
-              <strong>{company.commitment_met || 0}</strong>
-              <span>Met</span>
-            </div>
-            <div
-              className="home-time-summary-chip"
-              style={(company.commitment_broken || 0) ? { color: COMMITMENT_META.broken.color } : undefined}
-            >
-              <strong>{company.commitment_broken || 0}</strong>
-              <span>Broken</span>
-            </div>
-            <div className="home-time-summary-chip">
-              <strong>{company.commitment_incomplete || 0}</strong>
-              <span>Awaiting return</span>
-            </div>
-            <div className="home-time-summary-chip">
-              <strong>{company.commitment_none || 0}</strong>
-              <span>No approved dates</span>
-            </div>
-          </div>
-          {(company.commitment_evaluated || 0) === 0 && (
-            <p className="home-time-muted" style={{ marginTop: 10 }}>
-              No approved home windows with registered dates have completed in this range yet, so there is not enough
-              data to score company commitment.
-            </p>
-          )}
-        </div>
-      </div>
+      <CompanyEfficiencyCard company={company} range={range} setRange={setRange} donutSegments={donutSegments} />
 
       <div className="card">
         <div className="home-time-section-head">
