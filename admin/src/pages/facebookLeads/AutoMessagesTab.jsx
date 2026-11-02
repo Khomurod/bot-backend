@@ -265,7 +265,7 @@ export function AutoMessagesTab({
         subtitle={nowSubtitle}
         preview={nowPreview}
       />
-      <div className="card" style={{ marginTop: 12, padding: 16 }}>
+      <div style={{ marginTop: 12 }}>
         <details className="collapse-panel">
           <summary>Customize test lead data</summary>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 8, marginTop: 12, marginBottom: 16 }}>
