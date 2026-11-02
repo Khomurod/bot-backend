@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import * as api from "../../api";
-import EditByLinkTab from "./EditByLinkTab";
+import EditByLinkSection from "./EditByLinkSection";
 import { absoluteTime, preview } from "./format";
 
 const PAGE_SIZE = 50;
@@ -10,7 +10,7 @@ function chatLabel(row) {
   return `chat ${row.telegram_chat_id}`;
 }
 
-export default function HistoryTab() {
+export default function HistoryTab({ linkRequest = 0 }) {
   const [rows, setRows] = useState([]);
   const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
@@ -128,7 +128,7 @@ export default function HistoryTab() {
 
       {/* Was its own tab, "Edit by Link" (November 2026): the same job as this
           list, for a message found by its Telegram link instead. */}
-      <EditByLinkTab embedded />
+      <EditByLinkSection openRequest={linkRequest} />
 
       {message && (
         <div className={`alert alert-${message.type}`}>

@@ -120,8 +120,9 @@ const PAGE_COMPONENTS = {
   leads: () => <LeadsPage />,
   facebook_leads: (route) => <FacebookLeadsPage {...route} />,
   recruiter_kpis: () => <RecruiterKpiPage />,
-  // Communications. Send Message, Surveys, Scheduled and History (with Edit by Link inside since November 2026)
-  // are five tabs of ONE page; their old keys live in LEGACY_PAGE_KEYS, so a
+  // Communications. Send Message, Surveys, Scheduled and History (Edit by Link
+  // is a section of History since November 2026) are tabs of ONE page; their
+  // old keys live in LEGACY_PAGE_KEYS, so a
   // bookmarked `#broadcast` opens that tab instead of Driver Groups.
   communications: (route) => <CommunicationsPage {...route} />,
   company_birthdays: (route) => <BirthdaysPage {...route} />,

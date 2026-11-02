@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useEffect } from "react";
+import React, { Suspense, lazy, useEffect, useState } from "react";
 import PageErrorBoundary from "../components/PageErrorBoundary";
 import TabBar, { tabPanelProps } from "../components/ui/TabBar";
 import useTabRoute from "../navigation/useTabRoute";
@@ -57,8 +57,12 @@ export const COMMUNICATIONS_TAB_ALIASES = Object.freeze({ edit_by_link: "history
 
 export default function CommunicationsPage({ tab: routeTab, onTabChange }) {
   const aliasedTo = COMMUNICATIONS_TAB_ALIASES[routeTab] || null;
+  // Each arrival by an old Edit by Link address opens that section of History.
+  const [linkRequest, setLinkRequest] = useState(0);
   useEffect(() => {
-    if (aliasedTo && onTabChange) onTabChange(aliasedTo);
+    if (!aliasedTo) return;
+    if (routeTab === "edit_by_link") setLinkRequest((n) => n + 1);
+    if (onTabChange) onTabChange(aliasedTo);
   }, [aliasedTo]);
   const [tab, setTab] = useTabRoute(COMMUNICATIONS_TAB_KEYS, { tab: aliasedTo || routeTab, onTabChange });
   const active = TABS.find((t) => t.key === tab) || TABS[0];
@@ -80,7 +84,7 @@ export default function CommunicationsPage({ tab: routeTab, onTabChange }) {
       <div {...tabPanelProps("communications", tab)}>
       <PageErrorBoundary resetKey={active.key}>
         <Suspense fallback={<div className="loading"><div className="spinner"></div> Loading…</div>}>
-          <Active />
+          <Active {...(active.key === "history" ? { linkRequest } : {})} />
         </Suspense>
       </PageErrorBoundary>
       </div>

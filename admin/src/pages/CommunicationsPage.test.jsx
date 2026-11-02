@@ -129,5 +129,8 @@ describe("Edit by Link is a section of History (November 2026)", () => {
     render(<CommunicationsPage tab="edit_by_link" onTabChange={onTabChange} />);
     await waitFor(() => expect(onTabChange).toHaveBeenCalledWith("history"));
     expect(await screen.findByText(TABS[3][1])).toBeTruthy();
+    // It lands on the section it came for, open, not on a closed line.
+    const section = (await screen.findByText(/Have a message link\?/)).closest("details");
+    await waitFor(() => expect(section.open).toBe(true));
   });
 });
