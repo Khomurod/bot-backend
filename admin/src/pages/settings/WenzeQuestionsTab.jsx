@@ -22,7 +22,7 @@ import useAiSettings, { AiLoading, AiStatus } from "./ai/useAiSettings";
  * report into this section's banner, so "Saved." appears next to them.
  */
 export default function WenzeQuestionsTab() {
-  const { data, status, flash, saveSettings } = useAiSettings();
+  const { data, status, flash, saveSettings, loadFailed, retry } = useAiSettings();
   return (
     <div>
       <p style={{ color: "var(--text-muted)", marginTop: 0 }}>
@@ -36,7 +36,7 @@ export default function WenzeQuestionsTab() {
           onToggle={(on) => saveSettings({ learningEnabled: on })}
           flash={flash}
         />
-      ) : <AiLoading />}
+      ) : <AiLoading failed={loadFailed} onRetry={retry} />}
       <ControlChannelCard flash={flash} />
     </div>
   );

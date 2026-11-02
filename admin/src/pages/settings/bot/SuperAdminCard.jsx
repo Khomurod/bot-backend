@@ -50,7 +50,16 @@ export default function SuperAdminCard({
           {saving ? "Saving…" : "Save"}
         </button>
         {savedId && (
-          <button type="button" className="btn btn-ghost" onClick={() => setEditing(false)}>Cancel</button>
+          <button
+            type="button" className="btn btn-ghost"
+            onClick={() => {
+              // The draft lives in the parent; a cancelled edit must not be
+              // waiting there for the next Change, or for a later Save.
+              onIdChange(savedId);
+              onLabelChange(savedLabel || "");
+              setEditing(false);
+            }}
+          >Cancel</button>
         )}
       </div>
     </div>

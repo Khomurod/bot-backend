@@ -119,9 +119,12 @@ export default function GroupAccessPanel() {
   // what the download exports — e.g. active driver groups where the bot is not admin.
   const noAccessGroups = filteredGroups.filter((g) => g.reading_level !== "ok");
   // The table shows the problems; the readable groups are one line until asked
-  // for. The counts and the export above still cover the whole filter.
-  const readableCount = filteredGroups.length - noAccessGroups.length;
-  const shownGroups = showReadable ? filteredGroups : noAccessGroups;
+  // for. The counts and the export above still cover the whole filter. A
+  // duplicate conflict is a problem whatever the reading level: a group the
+  // bot reads perfectly can still claim another group's unit.
+  const needsAttention = (g) => g.reading_level !== "ok" || Boolean(g.duplicate_conflict);
+  const readableCount = filteredGroups.filter((g) => !needsAttention(g)).length;
+  const shownGroups = showReadable ? filteredGroups : filteredGroups.filter(needsAttention);
 
   const filteredSummary = filteredGroups.reduce((acc, g) => {
     acc[g.reading_level] = (acc[g.reading_level] || 0) + 1;

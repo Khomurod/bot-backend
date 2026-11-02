@@ -104,3 +104,17 @@ test("Provider Terms reads the provider list it needs by itself", async () => {
   expect(await screen.findByText(/Provider terms watcher/)).toBeTruthy();
   expect(api.getAiSettings).toHaveBeenCalled();
 });
+
+test("a section whose first read fails offers Retry instead of spinning, and Retry loads it", async () => {
+  api.getAiSettings.mockRejectedValueOnce(new Error("Server unreachable"));
+  render(<ProviderTermsTab />);
+  const retry = await screen.findByRole("button", { name: "Retry" });
+  expect(screen.getByText("Server unreachable")).toBeTruthy();
+  expect(screen.queryByText(/Loading AI settings/)).toBeNull();
+
+  fireEvent.click(retry);
+  await waitFor(() => expect(api.getAiPolicyWatcher).toHaveBeenCalled());
+  expect(api.getAiSettings).toHaveBeenCalledTimes(2);
+  expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+  expect(screen.queryByText("Server unreachable")).toBeNull();
+});

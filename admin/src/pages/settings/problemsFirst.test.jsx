@@ -76,6 +76,28 @@ test("Group Access: a saved super admin is one line, and Change opens the form",
   expect(screen.getByPlaceholderText("e.g. 123456789")).toHaveValue("2117");
 });
 
+test("Group Access: a readable group with a duplicate unit is still in the problem list", async () => {
+  api.getGroupAccess.mockResolvedValueOnce({
+    groups: [group(1, "Alex Turner", "ok"), { ...group(2, "Bekzod Rahimov", "ok"), duplicate_conflict: { other: "x" } }],
+    summary: {}, lastChecked: null,
+  });
+  render(<GroupAccessPanel />);
+  expect(await screen.findByText("Bekzod Rahimov")).toBeTruthy();
+  expect(screen.queryByText("Alex Turner")).toBeNull();
+  expect(screen.getByRole("button", { name: /1 groups reading normally — show them/ })).toBeTruthy();
+});
+
+test("Group Access: Cancel throws the edited super admin away", async () => {
+  render(<GroupAccessPanel />);
+  fireEvent.click(await screen.findByRole("button", { name: "Change" }));
+  fireEvent.change(screen.getByPlaceholderText("e.g. 123456789"), { target: { value: "999" } });
+  fireEvent.change(screen.getByPlaceholderText("e.g. Tom"), { target: { value: "Someone else" } });
+  fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+  fireEvent.click(screen.getByRole("button", { name: "Change" }));
+  expect(screen.getByPlaceholderText("e.g. 123456789")).toHaveValue("2117");
+  expect(screen.getByPlaceholderText("e.g. Tom")).toHaveValue("Owner");
+});
+
 test("Group Access: with no super admin saved, the form is open", async () => {
   api.getBotAccessSettings.mockResolvedValueOnce({ settings: null });
   render(<GroupAccessPanel />);
@@ -128,4 +150,23 @@ test("Retired Leftovers: only what has something left is a card; the clean ones 
   expect(clean.open).toBe(false);
   expect(clean.textContent).toMatch(/Fuel/);
   expect(clean.textContent).toMatch(/QBQ/);
+});
+
+test("Retired Leftovers: a group the drop cleaned leaves the selection with its checkbox", async () => {
+  const route = { key: "route", label: "Route Control", removed_at: "2026-10", note: "Routes.", tables_present: 1, total_rows: 0, tables: [{ table: "routes", present: true, rows: 0 }] };
+  const fuel = { key: "fuel", label: "Fuel", removed_at: "2026-10", note: "Fuel.", tables_present: 1, total_rows: 0, tables: [{ table: "fuel", present: true, rows: 0 }] };
+  api.getRetiredLeftovers
+    .mockResolvedValueOnce({ groups: [route, fuel], confirmation_phrase: "DROP", rbac: { roles: [], permissions: [], accounts: [] } })
+    .mockResolvedValueOnce({ groups: [{ ...route, tables_present: 0, tables: [] }, fuel], confirmation_phrase: "DROP", rbac: { roles: [], permissions: [], accounts: [] } });
+  api.dropRetiredTables.mockResolvedValue({ dropped: ["routes"], already_absent: [], blocked: [] });
+  render(<RetiredLeftoversTab />);
+  await screen.findByText("Route Control");
+  // Fuel unticked by hand; only Route Control goes.
+  fireEvent.click(screen.getByText("Fuel").closest("label").querySelector("input[type=checkbox]"));
+  fireEvent.change(screen.getByPlaceholderText("DROP"), { target: { value: "DROP" } });
+  fireEvent.click(screen.getByRole("button", { name: "Delete the stored data permanently" }));
+  await waitFor(() => expect(api.dropRetiredTables).toHaveBeenCalledWith({ groups: ["route"], confirm: "DROP" }));
+  // Route Control is clean now: no card, and nothing is left selected.
+  await waitFor(() => expect(screen.getByText(/Already clean \(1\)/)).toBeTruthy());
+  expect(screen.getByText("Select at least one group above.")).toBeTruthy();
 });

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import * as api from "../../api";
 import PageFailure from "../../components/PageFailure";
 
@@ -32,6 +32,7 @@ export default function RetiredLeftoversTab() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [selected, setSelected] = useState({});
+  const seededRef = useRef(false);
   const [confirm, setConfirm] = useState("");
   const [busy, setBusy] = useState("");
   const [result, setResult] = useState(null);
@@ -42,14 +43,22 @@ export default function RetiredLeftoversTab() {
       const next = await api.getRetiredLeftovers();
       setData(next);
       setError(null);
-      // Pre-select the groups whose feature this release removed. "Earlier
-      // retired features" is never pre-selected — it predates this work and
-      // deserves its own decision.
+      // On the first load, pre-select the groups whose feature this release
+      // removed. "Earlier retired features" is never pre-selected — it
+      // predates this work and deserves its own decision.
+      // On every later load, a group with no tables left drops out of the list
+      // (into "Already clean"), so it drops out of the selection too: a tick
+      // nobody can see must not be counted, or sent with the next drop.
+      const withTables = new Set((next.groups || []).filter((g) => g.tables_present > 0).map((g) => g.key));
+      const firstLoad = !seededRef.current;
+      seededRef.current = true;
       setSelected((current) => {
-        if (Object.keys(current).length) return current;
+        if (!firstLoad) {
+          return Object.fromEntries(Object.entries(current).filter(([key]) => withTables.has(key)));
+        }
         const seed = {};
-        for (const group of next.groups || []) {
-          if (group.key !== "earlier" && group.tables_present > 0) seed[group.key] = true;
+        for (const key of withTables) {
+          if (key !== "earlier") seed[key] = true;
         }
         return seed;
       });

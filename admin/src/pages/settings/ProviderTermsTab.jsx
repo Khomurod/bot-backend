@@ -12,11 +12,11 @@ import useAiSettings, { AiLoading, AiStatus } from "./ai/useAiSettings";
  * page is added by hand, so it reads the AI settings itself.
  */
 export default function ProviderTermsTab() {
-  const { data, status, flash } = useAiSettings();
+  const { data, status, flash, loadFailed, retry } = useAiSettings();
   return (
     <div>
       <AiStatus status={status} />
-      {data ? <PolicyWatcherCard providers={data.providers} flash={flash} /> : <AiLoading />}
+      {data ? <PolicyWatcherCard providers={data.providers} flash={flash} /> : <AiLoading failed={loadFailed} onRetry={retry} />}
     </div>
   );
 }

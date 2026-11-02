@@ -78,6 +78,24 @@ test("the per-kind overrides are collapsed while none is set", async () => {
   expect(summary.textContent).toMatch(/1 kinds, all to the default group/);
 });
 
+test("clearing the last override does not fold the section away while it is being edited", async () => {
+  api.getNotificationSettings.mockResolvedValue({
+    ...ROUTING, settings: { ...ROUTING.settings, categoryChatIds: { fuel: "-100222" } },
+  });
+  api.updateNotificationSettings.mockResolvedValue({ ...ROUTING.settings, categoryChatIds: {} });
+  render(<NotificationsTab />);
+  const summary = await screen.findByText(/Send some kinds of notice to a different group/);
+  const details = summary.closest("details");
+  await waitFor(() => expect(details.open).toBe(true));
+
+  const field = screen.getByPlaceholderText("Same as the default group");
+  fireEvent.change(field, { target: { value: "" } });
+  fireEvent.blur(field);
+  await waitFor(() => expect(api.updateNotificationSettings).toHaveBeenCalled());
+  await waitFor(() => expect(summary.textContent).toMatch(/all to the default group/));
+  expect(details.open).toBe(true);
+});
+
 test("a card's message has somewhere to appear", async () => {
   // The host owns the banner. Without one, every "Saved." and every error from
   // the card is swallowed and the save looks like it did nothing.

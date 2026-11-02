@@ -80,6 +80,16 @@ export default function NotificationRoutingCard({ flash }) {
   // for a category override would have rerouted every defaulted category while
   // leaving the broken override exactly as it was.
   const [fix, setFix] = React.useState(null);
+  // The overrides open by themselves when one is saved or the server points
+  // at one to fix. They never close by themselves: clearing the last override
+  // and moving to another field saves it, and the section must not fold away
+  // under the person still editing it.
+  const [overridesOpen, setOverridesOpen] = React.useState(false);
+  React.useEffect(() => {
+    const saved = (data?.categories || [])
+      .some((c) => String(data?.settings?.categoryChatIds?.[c.key] ?? "").trim());
+    if (saved || fix?.field?.startsWith("categoryChatIds.")) setOverridesOpen(true);
+  }, [data, fix]);
 
   const apply = React.useCallback((payload) => {
     setData(payload);
@@ -292,11 +302,11 @@ export default function NotificationRoutingCard({ flash }) {
 
       {/* Collapsed since November 2026: most deployments send everything to
           the default group, and eight empty rows were most of this screen.
-          It opens by itself when any override is set, or when the server
-          points at one of these fields to fix. */}
+          See overridesOpen for when it opens by itself. */}
       <details
         style={{ marginTop: 20 }}
-        open={overrideCount > 0 || Boolean(fix?.field?.startsWith("categoryChatIds."))}
+        open={overridesOpen}
+        onToggle={(e) => setOverridesOpen(e.currentTarget.open)}
       >
       <summary style={{ cursor: "pointer", fontWeight: 600 }}>
         Send some kinds of notice to a different group

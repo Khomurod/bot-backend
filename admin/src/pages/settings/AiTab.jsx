@@ -56,10 +56,10 @@ function HealthRow({ row }) {
 }
 
 export default function AiTab() {
-  const { data, status, flash, load, saveSettings } = useAiSettings();
+  const { data, status, flash, load, saveSettings, loadFailed, retry } = useAiSettings();
   const [adding, setAdding] = React.useState(false);
 
-  if (!data) return <><AiStatus status={status} /><AiLoading /></>;
+  if (!data) return <><AiStatus status={status} /><AiLoading failed={loadFailed} onRetry={retry} /></>;
   const {
     settings, providers, health, recentFailures, modelEvents = [],
   } = data;
