@@ -50,7 +50,9 @@ are in `docs/redesign/verification.md`.
 
 All five admin screens below live on ONE page — **Communications**
 (`admin/src/pages/CommunicationsPage.jsx`), with tabs Send Message · Surveys ·
-Scheduled · History · Edit by Link. They used to be five sidebar entries split
+Scheduled · History. Edit by Link is the "Have a message link?" section at the
+top of History (its own tab until November 2026; `#communications/edit_by_link`
+still opens History). They used to be five sidebar entries split
 across two parts of the nav (two under Communications, three inside the
 collapsible admin block). **Nothing on the server moved with them**: every route
 and every API client function is exactly what it was.

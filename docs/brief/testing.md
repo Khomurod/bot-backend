@@ -29,6 +29,10 @@ npm run build:schema:check                        # schema.sql is in sync with b
   boot time; on the day the real clock passed the pinned one the answer flipped,
   and every CI run after that was red for a reason no diff had touched. A boot
   time later than `now` now grants no grace, and the boot time is injectable.
+  **A test of anything gated by the time of day must pin the clock too.** The
+  Gross Race reload test ran on the real clock, and a reload is held back
+  during the 4 PM minute in Chicago — so a CI run that started at 16:00:05
+  Chicago time went red on a PR that never touched it.
   Without a database the `*Pg` suites skip instead — a skip is not a pass, so
   CI provides a real Postgres and fails on any skip.
   Two suites are END-TO-END SCENARIOS rather than unit tests, and are the
