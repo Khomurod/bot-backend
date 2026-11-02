@@ -58,6 +58,7 @@ afterEach(() => {
   delete document.exitFullscreen;
   delete document.fullscreenElement;
   window.sessionStorage.clear();
+  vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
@@ -259,6 +260,10 @@ describe("GrossRacePage", () => {
   };
 
   test("a screen running an older build of the page reloads itself, once", async () => {
+    // 10 AM in the race's zone (America/Chicago). During the 4 PM minute a
+    // reload is held back on purpose (shouldReload), so on the real clock this
+    // test failed on a CI run that started at 16:00:05 Chicago time.
+    vi.useFakeTimers({ toFake: ["Date"], shouldAdvanceTime: true, now: new Date("2026-10-14T15:00:00Z") });
     respond({ ...live, page: "GrossRacePage-new2.js" });
     const reload = vi.fn();
     render(<GrossRacePage view="teams" ownChunk="GrossRacePage-old1.js" reload={reload} />);
