@@ -103,6 +103,12 @@ const CHECK_LABELS = {
   'board.truck_disagrees_with_profile': 'Dispatcher board and profile name different trucks',
   'context.board_home_while_road': 'Board says home, Wenze says on the road',
   'context.wenze_home_while_board_working': 'Wenze says home, board says working',
+  'home_time.board_disagrees_with_state': 'Dispatcher board and Wenze disagree on whether a driver is home',
+  'home_time.exhausted_internal_alerts': 'Home-time alerts to the office that were never delivered',
+  'identity.bot_not_member': 'Active group the bot is no longer a member of',
+  'identity.unit_title_mismatch': 'Group title names a different unit than the profile',
+  'ops.no_notification_destination': 'Wenze has nowhere to send its notices',
+  'ai.policy_source_lost': "An AI provider's terms page can no longer be found",
 };
 
 export function checkLabel(checkKey) {

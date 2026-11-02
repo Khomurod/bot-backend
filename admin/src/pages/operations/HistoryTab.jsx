@@ -114,8 +114,9 @@ export default function HistoryTab({
           <div className="icon">📋</div>
           <h3>Nothing has been corrected yet</h3>
           <p>
-            Every check ships disabled, so the system changes nothing until
-            somebody grants it a specific permission on the Automation tab.
+            A correction is recorded here when a check that is allowed to
+            change something does so, or when a person applies one. Which
+            checks may change things on their own is set on the Automation tab.
           </p>
         </div>
       ) : (

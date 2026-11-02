@@ -68,8 +68,8 @@ export default function PersonIdentityPanel({ personId }) {
       <div>
         <label style={labelStyle}>Permanent identity</label>
         <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
-          Not placed yet — the next message in this group, or the identity backfill under
-          Needs Attention → Identity, gives this driver a permanent record.
+          Not placed yet — the next message in this group, or the identity backfill under{" "}
+          <a href="#operations/identity">Needs Attention → Driver Identity</a>, gives this driver a permanent record.
         </div>
       </div>
     );

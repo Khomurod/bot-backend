@@ -39,7 +39,7 @@ export default function FacebookLeadsPage({ tab: routeTab, onTabChange }) {
   const auto = useAutoMessages(setStatus);
   const infra = useLeadsInfrastructure(tab, setStatus);
 
-  const { pages, activePages, recentEvents, webhookLog, logLoading } = infra;
+  const { pages, webhookLog, logLoading } = infra;
   const { nowPreview, previewTarget, rules, timezone, loading, recruiterMessages } = auto;
 
   const nowSubtitle = nowPreview?.evaluated_at_iso
@@ -69,26 +69,6 @@ export default function FacebookLeadsPage({ tab: routeTab, onTabChange }) {
       <div className="page-header">
         <h2>Customer Inquiries</h2>
         <p>Manage automated responses for new customer inquiries from Facebook ads.</p>
-      </div>
-
-      {/* ─── Summary Cards ─── */}
-      <div className="summary-cards">
-        <div className="summary-card">
-          <div className="summary-card-value">{pages.length}</div>
-          <div className="summary-card-label">Connected Pages</div>
-        </div>
-        <div className="summary-card">
-          <div className="summary-card-value">{activePages.length}</div>
-          <div className="summary-card-label">Active Pages</div>
-        </div>
-        <div className="summary-card">
-          <div className="summary-card-value">{rules.length}</div>
-          <div className="summary-card-label">Time Rules</div>
-        </div>
-        <div className="summary-card">
-          <div className="summary-card-value">{recentEvents.length}</div>
-          <div className="summary-card-label">Events (7 days)</div>
-        </div>
       </div>
 
       {status && (
