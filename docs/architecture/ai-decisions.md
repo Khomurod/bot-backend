@@ -38,7 +38,7 @@ listed separately at the end because it needs far less care.
    should build, however many confirmations sit in front of it.
    `tests/learningActions.test.js` asserts the registry's shape.
 6. **Every responsibility can be switched off**, per capability, in
-   Settings → AI → AI Responsibilities. The switch is honoured in
+   Settings → AI → AI Tasks. The switch is honoured in
    `services/ai/router.js`: a refused capability raises the same error as a
    provider outage, which is the path every consumer already falls back through.
 7. **An unsure answer is checked by a stronger model, and if it is still unsure

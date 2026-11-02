@@ -147,7 +147,7 @@ describe("tabs and sections have addresses", () => {
     });
 
     const nav = screen.getByRole("navigation", { name: "Settings sections" });
-    await userEvent.click(within(nav).getByRole("button", { name: "AI & Autonomy" }));
+    await userEvent.click(within(nav).getByRole("button", { name: "AI Providers" }));
     await waitFor(() => expect(window.location.hash).toBe("#settings/ai"));
     await waitFor(() => {
       // The Dispatcher Board card is gone, so the section really moved.

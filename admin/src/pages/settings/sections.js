@@ -19,7 +19,14 @@ export const SETTINGS_GROUPS = Object.freeze([
   },
   {
     label: "AI",
-    sections: [{ key: "ai", label: "AI & Autonomy" }],
+    // One screen ("AI & Autonomy") until November 2026; split because it was
+    // 6.6 screens of six unrelated jobs. `ai` stays the providers' address.
+    sections: [
+      { key: "ai", label: "AI Providers" },
+      { key: "ai_tasks", label: "AI Tasks" },
+      { key: "ai_questions", label: "Wenze's Questions" },
+      { key: "ai_terms", label: "Provider Terms" },
+    ],
   },
   {
     label: "Telegram Bot",

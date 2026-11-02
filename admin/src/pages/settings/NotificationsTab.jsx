@@ -1,11 +1,16 @@
 import React, { useState } from "react";
 import { Banner } from "./fields";
 import NotificationRoutingCard from "./notifications/NotificationRoutingCard";
-import ControlChannelCard from "./control/ControlChannelCard";
 
 /**
- * Settings → Notifications: where Wenze's own notices go, and how a person
- * answers them.
+ * Settings → Notifications: where Wenze's own notices go.
+ *
+ * HOW A PERSON ANSWERS THEM MOVED (November 2026). "Answering Wenze in
+ * Telegram" (ControlChannelCard) is now under Settings → AI → Wenze's
+ * Questions, beside "What Wenze learned from you": both are Wenze asking in the
+ * notifications group and a person replying. The history below explains why it
+ * left Telegram Groups first; that reasoning — it is a two-way channel, not a
+ * destination — is also why it no longer sits among the destinations here.
  *
  * WHY THESE LEFT TELEGRAM GROUPS. That tab's own note argued they belonged
  * together — "both are destinations, so they belong on one screen rather than
@@ -36,14 +41,13 @@ export default function NotificationsTab() {
   return (
     <div>
       <p style={{ color: "var(--text-muted)", marginTop: 0 }}>
-        Everything Wenze <strong>notices</strong> — corrections it made, risks it found, problems
-        it recovered from — and the one channel it can be <strong>answered</strong> on. The
-        per-workflow message groups (mileage bonus, road bonus) are under{" "}
-        <a href="#settings/groups">Bonus Groups</a>.
+        Where everything Wenze <strong>notices</strong> is sent — corrections it made, risks it
+        found, problems it recovered from. How a person answers Wenze is under{" "}
+        <a href="#settings/ai_questions">Wenze&apos;s Questions</a>; the mileage and road bonus
+        groups are under <a href="#settings/groups">Bonus Groups</a>.
       </p>
       <Banner message={message} />
       <NotificationRoutingCard flash={flash} />
-      <ControlChannelCard flash={flash} />
     </div>
   );
 }

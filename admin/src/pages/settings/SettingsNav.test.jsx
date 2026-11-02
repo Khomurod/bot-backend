@@ -1,5 +1,5 @@
 /**
- * Settings' own navigation: fourteen sections under seven groups, every one of
+ * Settings' own navigation: seventeen sections under seven groups, every one of
  * them reachable, and the choice is the PAGE's (and so the address's) — the
  * navigation only reports it.
  */
@@ -11,13 +11,13 @@ import SettingsNav from "./SettingsNav";
 import { SETTINGS_GROUPS, SETTINGS_SECTION_KEYS, settingsSectionLabel } from "./sections";
 
 describe("Settings sections", () => {
-  test("seven groups, fourteen sections, each key once, in this order", () => {
+  test("seven groups, seventeen sections, each key once, in this order", () => {
     expect(SETTINGS_GROUPS.map((g) => g.label)).toEqual([
       "Integrations", "AI", "Telegram Bot", "Recruiting", "Office Screens", "Administration", "Maintenance",
     ]);
     expect(SETTINGS_SECTION_KEYS).toEqual([
       "location", "samsara", "board", "ringcentral", "metacrm",
-      "ai",
+      "ai", "ai_tasks", "ai_questions", "ai_terms",
       "notifications", "groups", "access", "reactions",
       "safety",
       "grossrace",
@@ -50,7 +50,7 @@ describe("SettingsNav", () => {
       }
     }
     expect(within(nav).getByRole("button", { name: "Dispatcher Board" })).toHaveAttribute("aria-current", "page");
-    await userEvent.click(within(nav).getByRole("button", { name: "AI & Autonomy" }));
+    await userEvent.click(within(nav).getByRole("button", { name: "AI Providers" }));
     expect(onChange).toHaveBeenCalledWith("ai");
   });
 

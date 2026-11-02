@@ -43,6 +43,9 @@ const TelegramGroupsTab = lazy(() => import("./settings/TelegramGroupsTab"));
 const SamsaraTab = lazy(() => import("./settings/SamsaraTab"));
 const DispatcherBoardTab = lazy(() => import("./settings/DispatcherBoardTab"));
 const AiTab = lazy(() => import("./settings/AiTab"));
+const AiTasksTab = lazy(() => import("./settings/AiTasksTab"));
+const WenzeQuestionsTab = lazy(() => import("./settings/WenzeQuestionsTab"));
+const ProviderTermsTab = lazy(() => import("./settings/ProviderTermsTab"));
 const NotificationsTab = lazy(() => import("./settings/NotificationsTab"));
 const SafetyApprovalsTab = lazy(() => import("./settings/SafetyApprovalsTab"));
 const AutoReactionsPanel = lazy(() => import("./settings/bot/AutoReactionsPanel"));
@@ -81,6 +84,9 @@ export default function SettingsPage({ tab: routeTab, onTabChange }) {
             {tab === "board" && <DispatcherBoardTab />}
             {tab === "safety" && <SafetyApprovalsTab />}
             {tab === "ai" && <AiTab />}
+            {tab === "ai_tasks" && <AiTasksTab />}
+            {tab === "ai_questions" && <WenzeQuestionsTab />}
+            {tab === "ai_terms" && <ProviderTermsTab />}
             {tab === "notifications" && <NotificationsTab />}
             {tab === "reactions" && <AutoReactionsPanel />}
             {tab === "access" && <GroupAccessPanel />}

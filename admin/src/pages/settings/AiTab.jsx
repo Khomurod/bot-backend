@@ -1,12 +1,9 @@
 import React from "react";
 
-import * as api from "../../api";
 import ProviderCard from "./ai/ProviderCard";
 import ProviderOrderCard from "./ai/ProviderOrderCard";
 import AddProviderPanel from "./ai/AddProviderPanel";
-import PolicyWatcherCard from "./ai/PolicyWatcherCard";
-import ResponsibilitiesCard from "./ai/ResponsibilitiesCard";
-import LessonsCard from "./ai/LessonsCard";
+import useAiSettings, { AiLoading, AiStatus } from "./ai/useAiSettings";
 
 /**
  * A capability key as a person would say it. The keys are code identifiers, and
@@ -22,7 +19,15 @@ function capabilityLabel(key) {
 
 
 /**
- * Admin → Settings → AI.
+ * Admin → Settings → AI → AI Providers (`#settings/ai`).
+ *
+ * The master switches, the providers in the order they are asked, each
+ * provider's models and key, and how the calls went in the last 24 hours.
+ * Until November 2026 this screen also carried the AI responsibilities, what
+ * Wenze learned and the terms watcher — 6.6 screens of scrolling. Those are
+ * now sections of their own: AiTasksTab, WenzeQuestionsTab, ProviderTermsTab.
+ * This one keeps the `ai` address, because providers are what a link to
+ * "AI settings" has always been for.
  *
  * The tab is arranged around one idea an operator has to be able to trust:
  * **AI is an accelerator here, never a dependency.** Turning the master switch
@@ -51,44 +56,17 @@ function HealthRow({ row }) {
 }
 
 export default function AiTab() {
-  const [data, setData] = React.useState(null);
-  const [status, setStatus] = React.useState(null);
+  const { data, status, flash, load, saveSettings } = useAiSettings();
   const [adding, setAdding] = React.useState(false);
 
-  const flash = React.useCallback((type, text) => setStatus({ type, text }), []);
-
-  const load = React.useCallback(async () => {
-    try {
-      setData(await api.getAiSettings());
-    } catch (err) {
-      flash("error", err?.detail || err?.message || "Could not load AI settings.");
-    }
-  }, [flash]);
-
-  React.useEffect(() => { load(); }, [load]);
-
-  const saveSettings = async (patch) => {
-    try {
-      await api.updateAiSettings(patch);
-      flash("success", "Saved.");
-      load();
-    } catch (err) {
-      flash("error", err?.detail || err?.message || "Could not save.");
-    }
-  };
-
-  if (!data) {
-    return <div className="loading"><div className="spinner" /> Loading AI settings…</div>;
-  }
+  if (!data) return <><AiStatus status={status} /><AiLoading /></>;
   const {
     settings, providers, health, recentFailures, modelEvents = [],
   } = data;
 
   return (
     <div>
-      {status && (
-        <div className={`alert alert-${status.type}`} style={{ marginBottom: 12 }}>{status.text}</div>
-      )}
+      <AiStatus status={status} />
 
       <div className="card" style={{ marginBottom: 16 }}>
         <strong>🤖 How AI is used</strong>
@@ -233,16 +211,6 @@ export default function AiTab() {
           </ul>
         </details>
       )}
-
-      <ResponsibilitiesCard flash={flash} />
-
-      <LessonsCard
-        learningEnabled={settings.learningEnabled}
-        onToggle={(on) => saveSettings({ learningEnabled: on })}
-        flash={flash}
-      />
-
-      <PolicyWatcherCard providers={providers} flash={flash} />
 
     </div>
   );

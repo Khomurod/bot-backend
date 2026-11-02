@@ -61,8 +61,8 @@ desktop, a single picker on a phone. Every section has its own address.
 | Settings group | Sections (address) |
 |---|---|
 | Integrations | Location Providers (`location`) · Samsara (`samsara`) · Dispatcher Board (`board`) · RingCentral & Bitrix24 (`ringcentral`) · Facebook ↔ Bitrix (`metacrm`) |
-| AI | AI & Autonomy (`ai`) |
-| Telegram Bot | Notifications (`notifications`) · Bonus Groups (`groups`) · Group Access (`access`) · Auto Reactions (`reactions`) |
+| AI | AI Providers (`ai`) · AI Tasks (`ai_tasks`) · Wenze's Questions (`ai_questions`) · Provider Terms (`ai_terms`) — one "AI & Autonomy" screen until November 2026 ([`density.md`](density.md) A1) |
+| Telegram Bot | Notifications (`notifications`; "Answering Wenze in Telegram" moved to Wenze's Questions in November 2026) · Bonus Groups (`groups`) · Group Access (`access`) · Auto Reactions (`reactions`) |
 | Recruiting | Safety Approvals (`safety`) |
 | Office Screens | Gross Grand Prix (`grossrace`) |
 | Administration | Admin Accounts (`admins`) — added after the October 2026 audit |

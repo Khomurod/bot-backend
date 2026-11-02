@@ -13,7 +13,7 @@ limit: the watcher is a self-contained feature with its own tables, its own
 schedule and its own hard rule — only a deterministic trigger may pause a
 provider, never a model's opinion.
 
-### AI provider terms watcher (Admin → Settings → AI)
+### AI provider terms watcher (Admin → Settings → AI → Provider Terms)
 
 - **Why**: Wenze sends operational data to free AI tiers, and the terms of those
   tiers are a deal that can change without anyone noticing. Nobody reads six

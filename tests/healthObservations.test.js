@@ -294,7 +294,7 @@ test('EACH MISSING PIECE IS NAMED, with where to fix it', async () => {
   assert.match(r.reason, /Nothing has been approved/);
   assert.match(r.reason, /Teach Wenze/);
   assert.match(r.reason, /capability is switched off/);
-  assert.match(r.reason, /Responsibilities/,
+  assert.match(r.reason, /Settings → AI → AI Tasks/,
     'a count on its own sends somebody hunting through six settings screens');
 });
 
