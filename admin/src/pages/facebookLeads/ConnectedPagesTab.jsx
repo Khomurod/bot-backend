@@ -15,6 +15,16 @@ export function ConnectedPagesTab({ pages }) {
 
   <div className="card" style={{ padding: 16 }}>
     <h3 style={{ marginTop: 0 }}>Connected Facebook Pages</h3>
+    {/*
+      The counts live here, beside the list they count. They used to be tiles
+      above every tab, where they read 0 until this tab had loaded the list
+      (it is fetched only when opened, because it asks Meta).
+    */}
+    {pages.length > 0 && (
+      <p style={{ color: "var(--text-muted)", marginTop: 0 }}>
+        {pages.length} connected · {pages.filter((p) => p.is_active).length} active
+      </p>
+    )}
     {pages.length === 0 ? (
       <p>No pages connected. Use /connect in a Telegram leads group.</p>
     ) : (

@@ -56,15 +56,8 @@ export function useLeadsInfrastructure(tab, setStatus) {
     }
   };
 
-  const activePages = pages.filter((p) => p.is_active);
-  const recentEvents = webhookLog.filter((e) => {
-    if (!e.created_at) return false;
-    const diff = Date.now() - new Date(e.created_at).getTime();
-    return diff < 7 * 24 * 60 * 60 * 1000;
-  });
-
   return {
-    pages, activePages, webhookLog, recentEvents, logLoading,
+    pages, webhookLog, logLoading,
     loadPages, loadWebhookLog, handleRetry,
   };
 }

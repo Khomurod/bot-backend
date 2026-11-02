@@ -129,19 +129,23 @@ export default function AdminSidebar({
         ))}
       </nav>
       <div className="sidebar-footer">
-        {username && (
+        {/*
+          The theme switch sits on the user row as an icon. As a full-width row
+          of its own, the footer was tall enough to push the last navigation
+          entry under it on a 900 px-high laptop screen (November 2026 audit).
+        */}
+        {username ? (
           <div className="sidebar-user">
             <span className="sidebar-user-avatar" aria-hidden="true">{username.slice(0, 2)}</span>
-            <div style={{ minWidth: 0 }}>
+            <div style={{ minWidth: 0, flex: 1 }}>
               <div className="sidebar-user-name">{username}</div>
               <div className="sidebar-user-role">{isFullAdmin ? 'Administrator' : 'Limited access'}</div>
             </div>
+            <ThemeButton theme={theme} onToggle={toggleTheme} compact />
           </div>
+        ) : (
+          <ThemeButton theme={theme} onToggle={toggleTheme} />
         )}
-        <button type="button" className="logout-btn" onClick={toggleTheme}>
-          <span className="nav-icon"><Icon name={theme === 'dark' ? 'sun' : 'moon'} /></span>
-          {theme === 'dark' ? 'Light mode' : 'Dark mode'}
-        </button>
         {onChangePassword && (
           <button type="button" className="logout-btn" onClick={onChangePassword}>
             <span className="nav-icon"><Icon name="key" /></span>
@@ -154,6 +158,24 @@ export default function AdminSidebar({
         </button>
       </div>
     </aside>
+  );
+}
+
+function ThemeButton({ theme, onToggle, compact = false }) {
+  const label = theme === 'dark' ? 'Light mode' : 'Dark mode';
+  const icon = <span className="nav-icon"><Icon name={theme === 'dark' ? 'sun' : 'moon'} /></span>;
+  if (compact) {
+    return (
+      <button type="button" className="sidebar-icon-btn" onClick={onToggle} aria-label={label} title={label}>
+        {icon}
+      </button>
+    );
+  }
+  return (
+    <button type="button" className="logout-btn" onClick={onToggle}>
+      {icon}
+      {label}
+    </button>
   );
 }
 

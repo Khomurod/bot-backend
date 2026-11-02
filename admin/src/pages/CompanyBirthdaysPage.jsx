@@ -251,7 +251,8 @@ export default function CompanyBirthdaysPage() {
         </div>
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
           <button className="btn btn-ghost" onClick={() => { loadData(); loadSettings(); }}>🔄 Refresh</button>
-          <button className="btn btn-primary" onClick={handleSendRequest} disabled={requesting}>
+          {/* Posts to the whole employee group, so it asks first like every other send here. */}
+          <button className="btn btn-ghost" onClick={() => setConfirmAction({ type: 'request' })} disabled={requesting}>
             {requesting ? "⏳ Requesting..." : "💬 Send Telegram Request"}
           </button>
         </div>

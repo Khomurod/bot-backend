@@ -1,5 +1,8 @@
 # Admin panel structure (October 2026)
 
+What is ON each screen, and the November 2026 plan to thin the
+overloaded ones, is in [`density.md`](density.md).
+
 How the panel is organised, why, and where every function from
 [`functional-inventory.md`](functional-inventory.md) lives now. This is a change
 to navigation and grouping only: no route on the server, request, permission or
