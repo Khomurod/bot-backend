@@ -112,10 +112,12 @@ model reaching for a consequence is refused), the one-line summary on a
 self-healing or learning notice, home-time replies to drivers, the morning
 summary's "most important today" (`daily_priorities` — it chooses among
 problems the rules ranked and cannot add one), broadcast translation (a person
-sends), birthday and banter messages. Each has a fixed sentence to fall back
+sends) and birthday messages. Each has a fixed sentence to fall back
 on, except translation, which simply becomes unavailable. (Insight-card
 narration and drafted reports went with AI Reports / Insights on 2026-10-30 —
-[`retired-ai-reports.md`](retired-ai-reports.md).)
+[`retired-ai-reports.md`](retired-ai-reports.md); the Datatruck banter line
+went with the Datatruck peer reactions in November 2026 —
+[`../ARCHIVED_FEATURES.md`](../ARCHIVED_FEATURES.md).)
 
 ## What was deliberately NOT given to AI
 

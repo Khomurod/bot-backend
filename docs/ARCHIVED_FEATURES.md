@@ -10,6 +10,47 @@ git so they can be recovered.
 
 ---
 
+## The Datatruck peer reactions
+
+Removed 2026-11-02 at the owner's decision, after the hidden-functions audit
+(block 6). When `@datatruck_driver_bot` posted in a driver group, Wenze put 👍/🔥
+on its load posts and answered its error messages with a model-written joke.
+It depended on Telegram's Bot-to-Bot Communication Mode being on in BotFather,
+and nobody relied on it. Gone: `bot/datatruckPeerHandlers.js`,
+`services/datatruckPeerBotService.js`, `services/datatruckPeerPatterns.js`
+(with the load-message matcher it had taken over from `loadTextPatterns.js`),
+`services/datatruckBanterMessage.js`, the `DATATRUCK_PEER_*`,
+`DATATRUCK_LOAD_FLAME_CHANCE` and `DATATRUCK_BANTER_*` settings, and the AI
+capability `datatruck_banter` (Settings → AI → Responsibilities). It had no
+table; an `ai_capabilities` row for it, if one was registered, is left: no
+screen shows it and no call asks for it. A deployment that still sets the
+variables is unaffected. `tests/removedBlock6FeaturesStayRemoved.test.js`
+keeps it removed.
+
+---
+
+## The Indeed lead intake
+
+Removed 2026-11-02 at the owner's decision, after the hidden-functions audit
+(block 6). A Google Apps Script on a recruiter's Gmail sent new Indeed
+application emails to `POST /api/internal/indeed/lead` (now 404), which read a
+phone from the attached résumé PDF, recorded the lead and created a Bitrix24
+record. Gone: the route (from `server/routes/leadsProxyRoutes.js`),
+`services/indeedLeadService.js`, `docs/gmail-indeed-apps-script.gs`, the
+setup guide and script on the Leads page, and the `pdf-parse` library, which
+nothing else used. **Kept:** the `leads` table and every row in it — Indeed
+leads recorded before the removal stay listed on the Leads page with their
+badge and filter — and the lead writers, which Facebook's lead processor
+uses. A Gmail script still installed somewhere now gets 404 and can be deleted
+from script.google.com. `tests/removedBlock6FeaturesStayRemoved.test.js` and
+`tests/api-surface.test.js` keep it removed.
+
+The same change removed the hub's short `GET/HEAD /health` alias (now 404).
+It existed for an external cron pinger that kept the old Render instance
+awake; the Coolify container does not sleep, and its HEALTHCHECK uses
+`/api/health`, which stays. (The Samsara poller is different: it is still on
+Render's free plan and still needs its own ping — `APP_BRIEF.md` §2.)
+
 ## The DAT UI inspector
 
 Removed 2026-10-31 at the owner's decision, after the hidden-functions audit.

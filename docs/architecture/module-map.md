@@ -62,7 +62,7 @@ organization should converge toward.
 
 | Concern | Current location |
 |---|---|
-| Samsara safety events, alerts, videos, safety captions, safety idempotency, missing-video recovery | **External repo** `samsara-integration` (own Render service). See its `docs/architecture/module-map.md`. |
+| Samsara safety events, alerts, videos, safety captions, safety idempotency, missing-video recovery | **External repo** `samsara-integration` (own Render service, free plan: it sleeps without an external ping to its `/health`). See its `docs/architecture/module-map.md`. |
 | **Its settings**, and the schema for them | **Here.** `database/samsaraSettings.js`, `server/routes/settings/samsaraRoutes.js`, `admin/src/pages/settings/SamsaraTab.jsx`, migration 0013 |
 | The recovery queue, read-only for diagnostics | `database/samsaraVideoRecovery.js` (never writes — the poller owns the jobs) |
 | The envelope both services open the Samsara API key with | `lib/security/sharedIntegrationCrypto.js` (mirrored in the other repo) |
@@ -92,10 +92,10 @@ organization should converge toward.
 | Datatruck active-load lookups | `services/datatruckLoadService.js`, `services/datatruckApiService.js`, `services/loadWindowParse.js` |
 | Geocoding | `services/geocoder.js` |
 | Dispatch Telegram command `/location` | `bot/handlers/dispatchCommandHandlers.js` (over `services/liveLocationResolver.js`) |
-| Datatruck peer-bot reactions/banter | `bot/datatruckPeerHandlers.js`, `services/datatruckPeerBotService.js`, `services/datatruckPeerPatterns.js`, `services/datatruckBanterMessage.js` |
 | Gross Grand Prix displays (`/dispatch`, `/dispatchteam`) | pure: `services/grossRace/{week,standings}.js`; the held week and the Datatruck reads: `services/grossRace/feed.js` (`fetchOrdersByPickupDate` in `services/datatruckApiService.js`); `server/routes/grossRaceRoutes.js` (public `GET /api/gross-race`); `admin/src/pages/grossRace/`. `docs/architecture/gross-race.md` |
 | **Retired** | The Dispatch Center at `/dispatch` — Send Load, its rate-confirmation parser, and the per-group diagnostics expander. `docs/architecture/retired-dispatch-center.md` |
 | **Retired** | The dispatcher ETA updates, `/update`, `/status`, `/load`, the pinned-load reading and the stored recent loads (October 2026). `docs/architecture/retired-dispatch-eta.md` |
+| **Retired** | The Datatruck peer reactions: 👍/🔥 and a model-written joke on `@datatruck_driver_bot`'s posts in driver groups (November 2026). `docs/ARCHIVED_FEATURES.md` |
 
 ### 3. Recruiting / Lead Pipeline Module
 
@@ -119,7 +119,7 @@ organization should converge toward.
 | **Reporting a lead's hiring stage back to Meta** (Bitrix pipeline 0 → Conversions API for CRM) | `services/metaCrm/stageEvents.js` (pure: the stage → event mapping, the seven-day window), `services/metaCrm/capiClient.js` (the one Graph call; the token travels in the body), `services/metaCrm/stageSync.js` (the 15-minute pass, key `meta_crm_stage_sync`), `database/metaCrmEvents.js`, migrations 0085 and 0087 (the dataset each sent event went to) |
 | **The Dispatcher Board ↔ Bitrix24 check** (the Board is the truth; differences asked one at a time) | pure: `lib/boardBitrix/{vocabulary,names,trucks,compare,wording,replyIntent}.js`; Bitrix reads: `services/boardBitrix/bitrixRead.js`; the pass and its timer: `services/boardBitrix/{pass,timer}.js` (key `board_bitrix_check`); asking and the reply: `services/boardBitrix/{ask,reply}.js`, `bot/handlers/boardBitrixReplyHandlers.js`; the queue and switch: `database/boardBitrix.js`, migration 0088; settings: `services/boardBitrix/admin.js`, `server/routes/settings/boardBitrixRoutes.js`, `admin/src/pages/settings/dispatcherBoard/BoardBitrixCard.jsx`; `docs/architecture/board-bitrix-check.md` |
 | **The Facebook ↔ Bitrix settings page** (Meta CRM credentials: enter, test, save, ON/OFF) | `database/metaCrmSettings.js` (one row, DB over env, token encrypted, the cache), `services/metaCrm/settingsRules.js` (pure), `services/metaCrm/settingsTest.js` (checks a–d), `services/metaCrm/settingsService.js`, `server/routes/settings/metaCrmRoutes.js`, `server/middleware/rateLimit.js`, `lib/security/redactSecret.js`, `admin/src/pages/settings/MetaCrmTab.jsx` + `settings/metaCrm/`, migration 0086; `docs/architecture/meta-crm-settings.md` |
-| Indeed lead intake | `services/indeedLeadService.js`, `docs/gmail-indeed-apps-script.gs` |
+| **Retired** | The Indeed lead intake from a Gmail Apps Script (November 2026). `docs/ARCHIVED_FEATURES.md` |
 | Recruiter call KPI leaderboard | `services/recruiterCallSyncService.js`, `services/ringCentralCallService.js`, `server/routes/recruiterRoutes.js`, `server/routes/recruiter/diagnosticsRoutes.js`, `database/ringcentral.js`, `admin/src/pages/RecruiterKpiPage.jsx`, `RecruitersPublicPage.jsx`, `admin/src/pages/settings/ringcentral/RecruiterCard.jsx` |
 | Leads admin UI/API | `server/routes/facebookLeadsRoutes.js`, `admin/src/pages/FacebookLeadsPage.jsx`, `LeadsPage.jsx` |
 

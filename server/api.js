@@ -81,11 +81,10 @@ const authMiddleware = createAuthMiddleware(config, db);
 const legacyAuthMiddleware = [authMiddleware, requirePermission('admin.full_access')];
 const internalSharedSecretGuard = createInternalSharedSecretGuard(config);
 
-// ─── Leads-Bot Proxy + Indeed intake (MUST be before express.json()) ───
+// ─── Leads-Bot Proxy (MUST be before express.json()) ───
 // The proxy preserves the raw body for Facebook's X-Hub-Signature-256
-// verification; the Indeed route carries a base64 résumé PDF with its own
-// larger JSON parser.
-app.use(createLeadsProxyRoutes({ internalSharedSecretGuard }));
+// verification.
+app.use(createLeadsProxyRoutes());
 
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: false }));
@@ -121,8 +120,9 @@ app.use(createHealthRoutes({
   // coverage, home-stay integrity, model-listing freshness.
   getOperationsHealth: require('../services/operations/healthSummary').getOperationsHealth,
   // While economy mode is on the operations block is not built at all — it is
-  // the most expensive read in the application and the cron pinger asks for it
-  // around 150 times a day (services/operations/economy.js).
+  // the most expensive read in the application. The container's HEALTHCHECK
+  // asks every 30 seconds; the block is cached for 15 minutes, so it is built
+  // up to ~96 times a day (services/operations/economy.js).
   getEconomyState: require('../services/operations/economy').currentEconomy,
 }));
 app.use(createSystemRoutes({ authMiddleware }));

@@ -1,5 +1,6 @@
 /**
- * Leads listing (Facebook + Indeed) for the admin "Leads" tab.
+ * Leads listing for the admin "Leads" tab (Facebook, and the Indeed leads
+ * recorded before that intake was removed in November 2026).
  *
  * The page polls every 45 seconds, and nearly every poll finds the list it
  * already has. So the route reads the list's fingerprint first (one md5,

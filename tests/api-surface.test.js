@@ -1,5 +1,5 @@
 /**
- * HTTP smoke tests for public routes: health (cron/Render), the removed
+ * HTTP smoke tests for public routes: health (the container's HEALTHCHECK), the removed
  * dispatch APIs, the retired Dispatch Center page, admin SPA fallback.
  */
 const test = require('node:test');
@@ -84,7 +84,7 @@ async function httpJson(server, method, pathname, headers = {}) {
   return { status: res.status, json };
 }
 
-test('GET /api/health, /health, HEAD; the removed dispatch APIs; the race displays; the retired /dispatch/* pages; admin SPA', async () => {
+test('GET /api/health, HEAD; the removed dispatch APIs; the race displays; the retired /dispatch/* pages; admin SPA', async () => {
   const shared = { dbOk: true };
   const dbMock = {
     async ping() {
@@ -113,9 +113,9 @@ test('GET /api/health, /health, HEAD; the removed dispatch APIs; the race displa
 
   try {
     shared.dbOk = true;
-    for (const p of ['/api/health', '/health']) {
-      const { status, json } = await httpJson(server, 'GET', p);
-      assert.equal(status, 200, p);
+    {
+      const { status, json } = await httpJson(server, 'GET', '/api/health');
+      assert.equal(status, 200);
       assert.equal(json.healthy, true);
       assert.equal(json.db, true);
       assert.equal(json.status, 'ok');
@@ -128,7 +128,7 @@ test('GET /api/health, /health, HEAD; the removed dispatch APIs; the race displa
     assert.equal(head.text, '');
 
     shared.dbOk = false;
-    const degraded = await httpJson(server, 'GET', '/health');
+    const degraded = await httpJson(server, 'GET', '/api/health');
     assert.equal(degraded.status, 503);
     assert.equal(degraded.json.healthy, false);
     assert.equal(degraded.json.db, false);
@@ -183,6 +183,12 @@ test('GET /api/health, /health, HEAD; the removed dispatch APIs; the race displa
       ['POST', '/api/dat-ui/inspect'],
       // Only the Python /retry called it; the admin's Webhook log has its own.
       ['POST', '/api/internal/facebook/retry-leadgen'],
+      // Block 6 of the audit (November 2026): the Indeed Gmail intake, and the
+      // short health alias an external cron pinger used on Render. Neither had
+      // a token check that would 404 on its own: the intake answered 401/403
+      // without its shared secret, and /health answered 200 to anybody.
+      ['POST', '/api/internal/indeed/lead'],
+      ['GET', '/health'], ['HEAD', '/health'],
     ]) {
       const res = await httpJson(server, method, retired, { Authorization: `Bearer ${adminToken}` });
       assert.equal(res.status, 404, `${method} ${retired} is gone`);

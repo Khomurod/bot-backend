@@ -69,10 +69,8 @@ them. Then:
 
 Update, in this order: `RENDER_EXTERNAL_URL` (redeploy), the Meta app's
 webhook callback (`/webhook`) and OAuth redirect (`/facebook/oauth/callback`),
-the RingCentral app's redirect URI (`/ringcentral/oauth/callback`), the Indeed
-Gmail Apps Script `ENDPOINT` (`/api/internal/indeed/lead`; Leads page shows
-the script with the current address), and any screen showing `/dispatch` or
-`/dispatchteam`.
+the RingCentral app's redirect URI (`/ringcentral/oauth/callback`), and any
+screen showing `/dispatch` or `/dispatchteam`.
 
 ## One poller per bot
 

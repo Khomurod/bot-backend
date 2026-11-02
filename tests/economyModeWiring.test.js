@@ -106,7 +106,7 @@ async function health({ economyState, operations }) {
   }));
   const server = app.listen(0);
   try {
-    const res = await fetch(`http://127.0.0.1:${server.address().port}/health`);
+    const res = await fetch(`http://127.0.0.1:${server.address().port}/api/health`);
     return { status: res.status, json: await res.json(), built };
   } finally {
     await new Promise((r) => server.close(r));

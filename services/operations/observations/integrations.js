@@ -265,10 +265,12 @@ async function integrationObservations(deps, nowMs) {
     out.push(integration('recruiting_after_hours', { ok: true, state: RUN_STATES.UNKNOWN, reason: 'could not read' }));
   }
 
-  // THE SAMSARA POLLER, which is a SEPARATE RENDER SERVICE and shares only this
-  // database. It writes its own heartbeat into the same ledger, so a poller
-  // that stopped is visible from here — and until this existed, the only
-  // evidence was an empty safety table, which a quiet fleet also produces.
+  // THE SAMSARA POLLER, which is a SEPARATE RENDER SERVICE (free plan) and
+  // shares only this database. It writes its own heartbeat into the same
+  // ledger, so a poller that stopped is visible from here — and until this
+  // existed, the only evidence was an empty safety table, which a quiet fleet
+  // also produces. A free Render service also stops when it falls asleep for
+  // want of a request; that reads here exactly like a crash.
   try {
     const row = await deps.runs.getRun('samsara_safety_pipeline');
     const entry = getServiceEntry('samsara_safety_pipeline');

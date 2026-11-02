@@ -1,5 +1,5 @@
 /**
- * What the router is TOLD, at the three call sites Stage 5c rewrote.
+ * What the router is TOLD, at the call sites Stage 5c rewrote that are left.
  *
  * Deleting the hand-coded "try Groq, then Gemini" second legs was right — the
  * router owns cross-provider fallback now. But those legs also fired on a case
@@ -36,8 +36,7 @@ require.cache[require.resolve('../services/groqClient')] = {
   },
 };
 
-const { generateDatatruckBanterMessage, parseBanterResponse } = require('../services/datatruckBanterMessage');
-const { classifyDriverGroups } = require('../services/groupStatusAiClassifier');
+const { classifyDriverGroups, parseClassificationResponse } = require('../services/groupStatusAiClassifier');
 
 /** Run one generation and hand back the options the module passed the router. */
 async function optsFrom(run) {
@@ -47,24 +46,31 @@ async function optsFrom(run) {
   return groqCalls[0].opts;
 }
 
-test('banter gives the router a validator, and it rejects what parseBanterResponse rejects', async () => {
-  const opts = await optsFrom(() => generateDatatruckBanterMessage({ failureSnippet: 'Unknown command.' }));
+test('group status gives the router a validator, and it rejects what its parser rejects', async () => {
+  // The Datatruck banter consumer carried this check until it was removed
+  // (November 2026); the group-status classifier is the one left that hands
+  // the router its parser as the validator.
+  const group = { id: 1, group_name: 'WENZE UNIT # 01 JANE DOE' };
+  const opts = await optsFrom(() => classifyDriverGroups([group]));
   assert.equal(typeof opts.validateResult, 'function',
-    'without this, an empty 200 goes straight to the canned line instead of the next provider');
+    'without this, an empty 200 goes straight to the heuristic instead of the next provider');
 
-  // Exactly the bodies parseBanterResponse refuses: nothing, and under its
-  // eight-character floor. The validator has to refuse them at the same points.
-  assert.equal(parseBanterResponse(''), null);
-  assert.equal(parseBanterResponse('Nope'), null);
-  assert.notEqual(opts.validateResult(''), true);
-  assert.notEqual(opts.validateResult('Nope'), true);
-  assert.equal(opts.validateResult('You still cannot do this — step it up, bot.'), true);
+  // Exactly the bodies the parser refuses: nothing, prose, and a row for a
+  // group that was not in the batch. The validator has to refuse them too.
+  for (const body of ['', 'I could not decide.', '[{"id": 99, "active": false}]']) {
+    assert.deepEqual(parseClassificationResponse(body, [group]), []);
+    assert.notEqual(opts.validateResult(body), true, `accepted ${JSON.stringify(body)}`);
+  }
+  const usable = '[{"id": 1, "active": true, "reason": "unit and name in the title"}]';
+  assert.equal(parseClassificationResponse(usable, [group]).length, 1);
+  assert.equal(opts.validateResult(usable), true);
 });
 
 test('the group-status model override still reaches the router', async () => {
-  // GROUP_STATUS_AI_GROQ_MODEL is the feature's own model preference, and its
-  // sibling DATATRUCK_BANTER_GROQ_MODEL survived the rewrite (the third,
-  // EMPLOYEE_BIRTHDAY_GROQ_MODEL, went with the AI birthday message). A deployment that sets this one and is silently
+  // GROUP_STATUS_AI_GROQ_MODEL is the feature's own model preference. Its
+  // siblings went with their features: EMPLOYEE_BIRTHDAY_GROQ_MODEL with the AI
+  // birthday message, DATATRUCK_BANTER_GROQ_MODEL with the Datatruck peer
+  // reactions (November 2026). A deployment that sets this one and is silently
   // ignored has no way to discover that from the outside.
   const before = process.env.GROUP_STATUS_AI_GROQ_MODEL;
   process.env.GROUP_STATUS_AI_GROQ_MODEL = 'a-deliberately-chosen-model';

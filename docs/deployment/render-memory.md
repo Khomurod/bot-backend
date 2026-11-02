@@ -24,12 +24,10 @@ all background services loaded, before network/DB connect):
 | + Express API (express, multer) | ~88 MB |
 | **Boot total** | **~88–94 MB** |
 
-Heavy libraries are lazy-loaded and cost nothing until first use:
-
-- `pdf-parse` (~20 MB RSS) — loads on first PDF text extraction (the Indeed
-  lead import is its one caller since the Finance Monitor was removed).
-  (`nodemailer` was listed here for the email one-time codes; it went with
-  them.)
+Heavy libraries were lazy-loaded so they cost nothing until first use. None
+is left: `pdf-parse` (~20 MB RSS, PDF text extraction) went with its last
+caller, the Indeed lead import, in November 2026, and `nodemailer` went with
+the email one-time codes.
 
 Runtime memory pressure therefore comes from *work*, not boot: PDF jobs,
 multer uploads held in memory, AI document batches, and Telegram media buffers.
@@ -69,8 +67,7 @@ sets them automatically):
    - RSS steadily **below 350–400 MB** → healthy headroom on the 512 MB
      instance; the app is fine.
    - RSS **repeatedly above 450 MB** → investigate, in this order: an upload
-     burst (multer buffers), PDF jobs (`pdf-parse` loads ~20 MB+ on
-     first use), safety-event video handling, then the Python leads-bot
+     burst (multer buffers), safety-event video handling, then the Python leads-bot
      child's share of the instance (`ps`/Render metrics — it lives outside the
      Node heap cap).
    - `heapUsed` near **200 MB** → the Node heap cap
