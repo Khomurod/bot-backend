@@ -221,11 +221,22 @@ test('GET /api/health, HEAD; the removed dispatch APIs; the race displays; the r
     assert.match(admin.text, /fixture|html/i);
 
     // `/dispatch` and `/dispatchteam` are the Gross Grand Prix displays, public
-    // pages of the shell like `/recruiters`.
-    for (const racePath of ['/dispatch', '/dispatchteam']) {
+    // pages of the shell like `/recruiters`. `/dispatchteam/` is the same page
+    // (the shell reads the path without its trailing slash).
+    for (const racePath of ['/dispatch', '/dispatchteam', '/dispatchteam/']) {
       const racePage = await httpText(server, 'GET', racePath);
       assert.equal(racePage.status, 200, racePath);
       assert.match(racePage.text, /fixture|html/i, racePath);
+    }
+
+    // A BUILD FILE THAT IS NOT THERE IS A 404, NOT THE SHELL. A page from an
+    // older build asks for a script a deploy removed; answered with
+    // index.html, the browser refused it as a module and the kiosk race
+    // screen stayed blank with nobody to refresh it.
+    for (const missing of ['/admin/assets/index-goneAfterDeploy.js', '/admin/assets/GrossRacePage-old.css']) {
+      const res = await httpText(server, 'GET', missing);
+      assert.equal(res.status, 404, missing);
+      assert.doesNotMatch(res.text, /fixture|<html/i, `${missing} must not be the shell`);
     }
 
     // THE RETIRED PAGE ANSWERS 410, NOT THE SHELL. A deep link into the old

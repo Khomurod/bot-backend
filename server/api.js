@@ -91,6 +91,11 @@ app.use(express.urlencoded({ extended: false }));
 
 // Serve admin panel static files (production build)
 app.use('/admin', express.static(adminBuildDir));
+// A build file that is not there is a 404, never the admin page. A page from an
+// older build asks for scripts a deploy removed; answered with index.html (the
+// `/admin/*` catch-all below), the browser refused it as a module and the race
+// screen stayed blank, a kiosk with nobody to press F5 (November 2026).
+app.get('/admin/assets/*', (req, res) => res.status(404).type('text/plain').send('Not found'));
 
 // ─── FleetView removed ───
 // The Fleet Operations Platform (/api/v1/* API + /update/* SPA + its background

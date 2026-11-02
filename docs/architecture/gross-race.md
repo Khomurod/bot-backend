@@ -206,6 +206,26 @@ pick it up without anyone reloading them.
   screen** button only from a person's click, so after an update a screen in
   that mode drops out of it. For screens that should stay full screen, use the
   browser's own full screen (F11, or a kiosk mode), which survives a reload.
+- **A screen whose code never starts reloads itself** (the owner, 2 November
+  2026: after an update `/dispatchteam` stayed black while `/dispatch` kept
+  working). While a deploy switches over, the old and the new server both
+  answer, so a reload can get the page from one and its script from the
+  other, which no longer has it. The server answered a missing build file
+  with the admin page, the browser refused that as a module, nothing ran — and
+  in a kiosk window, with Windows in dark mode, the screen showed the panel's
+  near-black background until somebody walked over. Reproduced with two real
+  builds. Now:
+  - a missing file under `/admin/assets/` is a **404**, never the admin page
+    (`server/api.js`; `tests/api-surface.test.js`);
+  - an inline script in `admin/index.html` — plain, no imports, so it runs
+    when nothing else does — reloads `/dispatch` and `/dispatchteam` if the
+    board has not started a minute after the page opened, then after 2, 4 and
+    8 minutes, at most every 10. The board stands it down when it mounts and
+    clears the count (`pageVersion.js` `markBooted`; the flag and the
+    `sessionStorage` key are spelled the same in both, and
+    `tests/raceBootWatchdog.test.js` runs the script itself). A board that
+    starts and then cannot reach the server is not reloaded: it says so on
+    screen and keeps polling, as before.
 
 ## `/dispatch` is a new page, not the Dispatch Center
 
@@ -214,7 +234,9 @@ pick it up without anyone reloading them.
 the bare path serves the shell and the dispatchers' race; **`/dispatch/*` still
 answers 410**, so a held deep link into the old page never reaches the shell.
 `admin/src/App.jsx` maps both paths from `window.location.pathname` before any
-sign-in check, the way it maps `/recruiters`.
+sign-in check, the way it maps `/recruiters`. A trailing slash is ignored
+there: `/dispatchteam/` is the teams' board (it used to open the admin shell —
+the owner, 2 November 2026), while `/dispatch/` still meets the server's 410.
 
 ## Files
 

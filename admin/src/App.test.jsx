@@ -248,3 +248,23 @@ describe("account controls", () => {
     await waitFor(() => expect(screen.getByRole("region", { name: "Admin Accounts" })).toBeTruthy());
   });
 });
+
+describe("the race displays have no shell", () => {
+  // `/dispatchteam/` with a trailing slash opened the admin shell instead of
+  // the teams' board (the owner, 2 November 2026).
+  test.each([
+    ["/dispatchteam", "Teams"],
+    ["/dispatchteam/", "Teams"],
+    ["/dispatch", "Dispatchers"],
+  ])("%s opens the race board", async (path, view) => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("offline in the test")));
+    try {
+      window.history.replaceState({}, "", path);
+      render(<App />);
+      await waitFor(() => expect(document.title).toBe(`Gross Grand Prix · ${view}`));
+      expect(screen.queryByText("Sign Out")).toBeNull();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});

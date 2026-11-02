@@ -81,8 +81,12 @@ function LazyPage({ pageKey, children }) {
  * rendering Driver Groups. See server/routes/retiredRoutes.js.
  */
 function routeFromLocation(pathname, hash) {
-  if (pathname === "/dispatch") return { page: "gross_race_dispatchers", tab: null };
-  if (pathname === "/dispatchteam") return { page: "gross_race_teams", tab: null };
+  // `/dispatchteam/` is the same screen as `/dispatchteam`: a trailing slash
+  // typed or bookmarked by hand opened the admin shell instead (the owner,
+  // 2 November 2026). `/dispatch/` never gets here — the server answers it 410.
+  const path = pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
+  if (path === "/dispatch") return { page: "gross_race_dispatchers", tab: null };
+  if (path === "/dispatchteam") return { page: "gross_race_teams", tab: null };
   if (pathname === "/recruiters" || pathname.startsWith("/recruiters/")) {
     return { page: "recruiters_public", tab: null };
   }

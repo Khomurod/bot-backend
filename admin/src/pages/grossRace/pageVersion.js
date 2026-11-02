@@ -75,3 +75,21 @@ export function markReload(storage, at) {
     // Private mode or storage disabled: nothing to remember it in.
   }
 }
+
+/**
+ * The board started: tell the page's boot watchdog (the inline script in
+ * admin/index.html) not to reload, and forget the reloads it already made.
+ * The flag and the key are spelled the same there; tests/raceBootWatchdog.test.js
+ * holds the two together.
+ */
+export const BOOT_FLAG = "__grossRaceStarted";
+export const BOOT_RETRIES = "grossRace.bootRetries";
+
+export function markBooted(win = window, storage = tabStorage()) {
+  win[BOOT_FLAG] = true;
+  try {
+    storage.removeItem(BOOT_RETRIES);
+  } catch {
+    // No storage: the watchdog simply starts its count from nothing next time.
+  }
+}
