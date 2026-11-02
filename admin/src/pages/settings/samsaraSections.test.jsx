@@ -51,4 +51,6 @@ test("a first read that fails offers Retry instead of a spinner that never ends"
   fireEvent.click(retry);
   await waitFor(() => expect(api.getSamsaraSettings).toHaveBeenCalledTimes(2));
   await waitFor(() => expect(screen.queryByRole("button", { name: /Retry|Try again/i })).toBeNull());
+  // The form is back, without the old error above it.
+  expect(screen.queryByText("Server unreachable")).toBeNull();
 });

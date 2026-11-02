@@ -55,7 +55,10 @@ export default function SamsaraTab() {
       const data = await api.getSamsaraSettings();
       applySettings(data.settings);
       setRecovery(data.recovery);
+      // A read that succeeds (on open, or a Retry after a failed one) leaves
+      // no stale "could not load" above the form. Save does not reload.
       setLoadError(null);
+      setMessage(null);
     } catch (err) {
       setLoadError(err);
       setMessage({ type: "error", text: err.message });
