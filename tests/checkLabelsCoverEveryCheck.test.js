@@ -45,7 +45,10 @@ const quotedKeys = (fragment) => [...fragment.matchAll(QUOTED_KEY)].map((m) => m
  *   - a check module's `CHECK_KEYS = [ … ]` list (RETIRED_CHECK_KEYS is not
  *     matched: those no longer file anything);
  *   - a `CHECKS = { NAME: 'a.b', … }` table, the form lib/identity's
- *     resolvers use (`CHECKS.UNNAMED` in a CHECK_KEYS list is its key).
+ *     resolvers use (`CHECKS.UNNAMED` in a CHECK_KEYS list is its key);
+ *   - the contradiction pass's keys, which it derives as `context.<kind>`
+ *     from its SEVERITY table (contradictionPass.js, checkKeyFor) — read from
+ *     that table, so a kind added there needs a name here.
  */
 function filedCheckKeys() {
   const keys = new Set();
@@ -60,6 +63,13 @@ function filedCheckKeys() {
       quotedKeys(m[1]).forEach((k) => keys.add(k));
     }
   }
+  // contradictionPass.js: `const SEVERITY = Object.freeze({ kind: 'warning', … })`
+  // and `checkKeyFor(kind) → 'context.' + kind`.
+  const pass = code(read('services/operations/contradictionPass.js'));
+  const severity = pass.match(/\bSEVERITY\s*=\s*Object\.freeze\(\{([\s\S]*?)\}\)/);
+  assert.ok(severity, 'contradictionPass.js no longer declares SEVERITY as the scan expects');
+  assert.match(pass, /return `context\.\$\{kind\}`/, 'checkKeyFor no longer prefixes context.');
+  for (const m of severity[1].matchAll(/^\s*([a-z_]+)\s*:/gm)) keys.add(`context.${m[1]}`);
   return keys;
 }
 
@@ -73,7 +83,8 @@ function labelledKeys() {
 test('the scan finds the checks it is meant to (control)', () => {
   const keys = filedCheckKeys();
   // A literal, a constant, both branches of a ternary, a key declared only in
-  // a CHECK_KEYS list, and two from a CHECKS table — every form the scan reads.
+  // a CHECK_KEYS list, two from a CHECKS table and the three contradiction
+  // kinds — every form the scan reads.
   assert.ok(keys.has('identity.duplicate_unit'));
   assert.ok(keys.has('home_time.board_disagrees_with_state'));
   assert.ok(keys.has('identity.status_disagreement'));
@@ -81,6 +92,9 @@ test('the scan finds the checks it is meant to (control)', () => {
   assert.ok(keys.has('home_time.clock_reset_on_group_change'));
   assert.ok(keys.has('identity.telegram_member_unnamed'));
   assert.ok(keys.has('identity.telegram_members_ambiguous'));
+  for (const kind of ['home_while_working', 'quiet_but_active', 'two_open_units']) {
+    assert.ok(keys.has(`context.${kind}`), `context.${kind}`);
+  }
   assert.ok(!keys.has('route_control.assignment_on_inactive_group'), 'a retired key is not a filed one');
   assert.ok(keys.size >= 25, `only ${keys.size} keys found — the scan is broken`);
 });

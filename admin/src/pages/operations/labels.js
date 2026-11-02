@@ -103,6 +103,11 @@ const CHECK_LABELS = {
   'board.truck_disagrees_with_profile': 'Dispatcher board and profile name different trucks',
   'context.board_home_while_road': 'Board says home, Wenze says on the road',
   'context.wenze_home_while_board_working': 'Wenze says home, board says working',
+  // The contradiction pass (services/operations/contradictionPass.js) files
+  // `context.<kind>` for each kind in its SEVERITY table.
+  'context.home_while_working': 'Home Time says home, but a load has them moving',
+  'context.quiet_but_active': 'Marked as gone quiet, but still active in the fleet',
+  'context.two_open_units': 'One driver on two trucks at once',
   'home_time.board_disagrees_with_state': 'Dispatcher board and Wenze disagree on whether a driver is home',
   'home_time.exhausted_internal_alerts': 'Home-time alerts to the office that were never delivered',
   'identity.bot_not_member': 'Active group the bot is no longer a member of',
