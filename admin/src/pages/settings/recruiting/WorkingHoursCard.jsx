@@ -140,7 +140,41 @@ export default function WorkingHoursCard({ flash }) {
         <div className="muted" style={{ marginTop: 4, fontSize: 12 }}>{summary}</div>
       </div>
 
-      <label style={{ display: "block", marginBottom: 10 }}>
+      {/* The live control first (November 2026): "Stop Wenze here" was the last
+          thing on the tab, under every setting. */}
+      <h4 style={{ margin: "0 0 4px" }}>Conversations Wenze is carrying</h4>
+      {conversations.length === 0 && <p className="muted">None yet.</p>}
+      {conversations.map((c) => (
+        <div key={c.driverPhone} style={{
+          display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap",
+          padding: "6px 0", borderBottom: "1px solid var(--border)",
+        }}>
+          <div>
+            <strong>{c.leadName || c.driverPhone}</strong>
+            <div className="muted" style={{ fontSize: 12 }}>
+              {STATUS_LABEL[c.status] || c.status} · {c.repliesSent} reply/replies
+              {c.refusals > 0 && ` · ${c.refusals} draft(s) refused`}
+              {c.lastRefusalReason && ` · last refusal: ${c.lastRefusalReason}`}
+              {c.stopReason && ` · ${c.stopReason}`}
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 6 }}>
+            {c.status === "active" ? (
+              <button type="button" className="btn btn-sm" disabled={busy}
+                onClick={() => setStatus(c.driverPhone, "stopped")}>
+                Stop Wenze here
+              </button>
+            ) : (
+              <button type="button" className="btn btn-sm" disabled={busy}
+                onClick={() => setStatus(c.driverPhone, "active")}>
+                Let Wenze resume
+              </button>
+            )}
+          </div>
+        </div>
+      ))}
+
+      <label style={{ display: "block", margin: "16px 0 10px" }}>
         Time zone{" "}
         <input
           type="text" defaultValue={settings.timezone} disabled={busy}
@@ -152,6 +186,8 @@ export default function WorkingHoursCard({ flash }) {
       <h4 style={{ marginBottom: 4 }}>Working hours</h4>
       <p className="muted" style={{ marginTop: 0, fontSize: 12 }}>
         With no windows at all, Wenze treats the office as always open and never answers anybody.
+        Separate on purpose from the Auto-Reply greeting schedule, which only picks a new lead&apos;s
+        first text.
       </p>
       {/*
         Keyed by position. Safe here because WindowRow holds no state of its own
@@ -219,37 +255,6 @@ export default function WorkingHoursCard({ flash }) {
         </label>
       </div>
 
-      <h4 style={{ marginBottom: 4 }}>Conversations Wenze is carrying</h4>
-      {conversations.length === 0 && <p className="muted">None yet.</p>}
-      {conversations.map((c) => (
-        <div key={c.driverPhone} style={{
-          display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap",
-          padding: "6px 0", borderBottom: "1px solid var(--border)",
-        }}>
-          <div>
-            <strong>{c.leadName || c.driverPhone}</strong>
-            <div className="muted" style={{ fontSize: 12 }}>
-              {STATUS_LABEL[c.status] || c.status} · {c.repliesSent} reply/replies
-              {c.refusals > 0 && ` · ${c.refusals} draft(s) refused`}
-              {c.lastRefusalReason && ` · last refusal: ${c.lastRefusalReason}`}
-              {c.stopReason && ` · ${c.stopReason}`}
-            </div>
-          </div>
-          <div style={{ display: "flex", gap: 6 }}>
-            {c.status === "active" ? (
-              <button type="button" className="btn btn-sm" disabled={busy}
-                onClick={() => setStatus(c.driverPhone, "stopped")}>
-                Stop Wenze here
-              </button>
-            ) : (
-              <button type="button" className="btn btn-sm" disabled={busy}
-                onClick={() => setStatus(c.driverPhone, "active")}>
-                Let Wenze resume
-              </button>
-            )}
-          </div>
-        </div>
-      ))}
     </div>
   );
 }
