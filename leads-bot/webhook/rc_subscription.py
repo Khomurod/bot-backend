@@ -13,8 +13,14 @@ re-registers ONLY when the set has actually changed — or when RingCentral has
 stopped delivering the subscription — so the steady state costs one internal
 request and one RingCentral status read.
 
-Three rules that matter more than they look:
+Four rules that matter more than they look:
 
+  * until a process is armed it registers AFRESH (and only then removes what
+    was there): only a subscription it created is known to carry the
+    verification token, and until one does, /rc-webhook cannot refuse a
+    notification that lacks it (rc_webhook_auth.py). Never from a roster it
+    could not read: that would replace every recruiter's filter with the
+    shared number's alone.
   * a FAILED read is not an empty list. After the first pass, a failure skips
     the tick and leaves the working subscription alone — re-registering with []
     because the hub was briefly unreachable would silently drop every
@@ -31,6 +37,7 @@ Split out of leads-bot/webhook_server.py.
 import asyncio
 import logging
 
+import rc_webhook_auth
 from rc_inbound_subscription import register_sms_webhook, subscription_active
 
 from .hub_client import _fetch_ringcentral_sms_extensions
@@ -48,9 +55,10 @@ _registered: frozenset[str] | None = None
 
 
 def _reset_state_for_tests() -> None:
-    """Forget what is registered. Tests only."""
+    """Forget what is registered, and disarm: a new loop registers afresh."""
     global _registered
     _registered = None
+    rc_webhook_auth._reset_for_tests()
 
 
 async def reconcile_rc_subscription(callback_url: str) -> bool:
@@ -62,6 +70,7 @@ async def reconcile_rc_subscription(callback_url: str) -> bool:
     """
     global _registered
     first_pass = _registered is None
+    roster_known = True
 
     try:
         extensions = await _fetch_ringcentral_sms_extensions()
@@ -72,9 +81,14 @@ async def reconcile_rc_subscription(callback_url: str) -> bool:
             return False
         logger.warning("Could not read recruiter RingCentral extensions: %s", exc)
         extensions = []
+        roster_known = False
 
     wanted = frozenset(extensions)
-    if not first_pass and wanted == _registered:
+    # AFRESH until armed — but only from a roster actually read. A fresh
+    # registration replaces what is there; from an unknown roster it would
+    # swap a subscription covering every recruiter for the shared number alone.
+    fresh = roster_known and not rc_webhook_auth.is_armed()
+    if not first_pass and wanted == _registered and not fresh:
         if await subscription_active(callback_url) is not False:
             return False
         logger.warning(
@@ -88,8 +102,18 @@ async def reconcile_rc_subscription(callback_url: str) -> bool:
         callback_url,
         len(wanted),
     )
-    if await register_sms_webhook(callback_url, sorted(wanted)):
+    # AFRESH: whatever was registered before may not carry this process's
+    # verification token, and only a subscription that does lets /rc-webhook
+    # refuse everything without it (rc_webhook_auth.py).
+    registered = (
+        await register_sms_webhook(callback_url, sorted(wanted), fresh=True)
+        if fresh
+        else await register_sms_webhook(callback_url, sorted(wanted))
+    )
+    if registered:
         _registered = wanted
+        if fresh:
+            rc_webhook_auth.arm()
         return True
 
     # Leave _registered as it was so the next tick retries rather than

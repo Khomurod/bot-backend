@@ -22,6 +22,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import PlainTextResponse, Response
 
 from config import META_APP_SECRET, WEBHOOK_VERIFY_TOKEN
+import rc_webhook_auth
 
 import httpx  # noqa: F401  (tests patch webhook_server.httpx)
 
@@ -107,6 +108,24 @@ async def rc_webhook(request: Request):
         return Response(
             status_code=200,
             headers={"Validation-Token": validation_token},
+        )
+
+    # ── Is it from OUR subscription? (rc_webhook_auth.py) ──
+    outcome = rc_webhook_auth.verdict(
+        request.headers.get("Verification-Token"),
+        expected=rc_webhook_auth.verification_token(),
+        armed=rc_webhook_auth.is_armed(),
+    )
+    if outcome == rc_webhook_auth.REJECT:
+        logger.warning(
+            "RingCentral webhook refused: %s Verification-Token.",
+            "a wrong" if request.headers.get("Verification-Token") else "no",
+        )
+        return Response(status_code=403)
+    if outcome == rc_webhook_auth.ACCEPT_UNVERIFIED:
+        logger.warning(
+            "RingCentral webhook accepted WITHOUT verification (no token-bearing "
+            "subscription registered yet, or no secret to check against)."
         )
 
     # ── Process incoming event ──

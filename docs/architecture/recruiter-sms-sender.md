@@ -344,7 +344,8 @@ from "everyone" to "nobody": one unusable extension id produced
 **An existing subscription is kept only while it is `Active`.** RingCentral
 suspends or blacklists a webhook whose address stopped answering, so a
 subscription with the right filters can still deliver nothing. When the filters
-match and the status is `Active`, it is left alone, and any other subscription
+match (compared after RingCentral's numeric account and extension ids are read
+back as `~`) and the status is `Active`, it is left alone, and any other subscription
 at the same address is deleted (two would deliver every message twice).
 Otherwise a new one is registered, and **only once it exists** is the old one
 deleted. Deleting first left nothing watching whenever RingCentral then refused
@@ -377,6 +378,21 @@ than they look:
   enough — and the roster says nothing about it. Each such tick reads the status
   (`subscription_active()`) and re-registers only on a definite "not
   delivering"; an unreadable status is evidence of nothing and changes nothing.
+
+**Only our subscription's notifications are acted on** (`leads-bot/rc_webhook_auth.py`,
+November 2026). `/rc-webhook` is public, and it used to forward any POST that
+looked like an inbound SMS — into the leads group and on to the after-hours
+reply. Every subscription now carries `deliveryMode.verificationToken`, an
+HMAC of `LEADS_INTERNAL_SHARED_SECRET` (no new variable), which RingCentral
+returns as `Verification-Token` on each notification. Once this process has
+registered a subscription carrying the token (*armed*), anything without the
+right token gets 403. Before that it is accepted and logged: the live
+subscription may predate tokens, or carry the token of a secret since changed,
+and refusing it would drop real replies. So each process registers **afresh**
+(successor first, then the old one is deleted) as soon as it has read the
+roster, never from a roster it could not read, which would swap every
+recruiter's filter for the shared number's. With no secret at all it fails
+closed: nothing is registered and everything is refused.
 
 ## Operational prerequisites (not code)
 
@@ -476,3 +492,4 @@ about the sending half.
 | Answers reaching the CRM, and the inert-assignee warning | `tests/bitrix24LeadMapper.test.js` |
 | Inbound recipient extraction, per-extension filters, a picture arriving as an SMS with an `MmsAttachment` (Python) | `leads-bot/test_rc_forward.py` |
 | The subscription keeping up with the roster, and re-registered when RingCentral stops delivering it (Python) | `leads-bot/test_rc_subscription.py` |
+| The verification token on every subscription, the fresh first pass, and `/rc-webhook` refusing what lacks it (Python) | `leads-bot/test_rc_webhook_auth.py` |

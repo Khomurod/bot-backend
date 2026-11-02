@@ -127,7 +127,7 @@ editing roles and their permissions (`POST`/`PUT /api/admin/roles`).
 | `/employee-birthday-form`, `POST /api/submit-employee-birthday` | Public form |
 | `/facebook/connect/:sessionToken`, `/facebook/oauth/*` | Session token |
 | `/ringcentral/connect/:sessionToken`, `/ringcentral/oauth/*` | Session token — single-use, 30-minute `ringcentral_connect_sessions` row; `oauth_state` binds the redirect to the callback. Public because a recruiter has no admin session |
-| `ALL /webhook`, `ALL /rc-webhook` | Raw-body proxied to the Python worker; signature verified there |
+| `ALL /webhook`, `ALL /rc-webhook` | Raw-body proxied to the Python worker; `/webhook` checks Meta's signature there, `/rc-webhook` RingCentral's `Verification-Token` (`leads-bot/rc_webhook_auth.py`) |
 | `/api/internal/*` | `internalSharedSecretGuard` (`LEADS_INTERNAL_SHARED_SECRET`) |
 | `POST`/`GET /api/integrations/bitrix/home-time-violation` | `?token=` compared in constant time with the secret created on the Home Time page (stored encrypted; `HOME_TIME_VIOLATION_WEBHOOK_SECRET` is the fallback); unset → refused. Takes only a deal id, re-reads the card from Bitrix, answers 202 (`docs/architecture/home-time-violation-alerts.md`) |
 | `/`, `/api/health`, Meta compliance pages (`/privacy-policy.html`, `/terms-of-use`, `/user-data-deletion`) | Public |

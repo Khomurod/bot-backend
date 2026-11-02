@@ -53,6 +53,9 @@ class FakeClient:
         return False
 
     async def get(self, url, headers=None):
+        if url == rcin.RC_OWN_EXTENSION_URL:
+            # Who the JWT is. Listings here use `~`, so the ids only need to exist.
+            return response(200, {"id": 1, "account": {"id": 2}})
         return self._get_response
 
     async def post(self, url, json=None, headers=None):

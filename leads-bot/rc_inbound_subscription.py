@@ -14,11 +14,14 @@ import re
 import httpx
 
 from config import RC_CLIENT_ID, RC_CLIENT_SECRET, RC_JWT_TOKEN
+from rc_webhook_auth import verification_token
 from sms import _get_access_token
 
 logger = logging.getLogger(__name__)
 
 RC_SUBSCRIPTION_URL = "https://platform.ringcentral.com/restapi/v1.0/subscription"
+# Who the subscribing JWT is: `~` in a filter means this account and extension.
+RC_OWN_EXTENSION_URL = "https://platform.ringcentral.com/restapi/v1.0/account/~/extension/~"
 
 # The one event filter RingCentral has for inbound texts, on the shared number.
 # Picture messages come through it too: RingCentral sends an MMS as
@@ -74,6 +77,37 @@ def valid_extension_ids(
 def extension_filter(extension_id: str) -> str:
     """The inbound-text filter for one extension (pictures included, as above)."""
     return f"/restapi/v1.0/account/~/extension/{extension_id}/message-store/instant?type=SMS"
+
+
+def normalized_filter(event_filter: str, account_id: str | None, extension_id: str | None) -> str:
+    """A listed filter written back in the `~` form we ask with. Pure.
+
+    RingCentral may answer with `~` expanded to the numeric account and
+    extension ids. Compared as strings, a subscription that covers every
+    recruiter then never matched the filters asked for, so it was neither
+    kept nor protected. Unknown ids leave the filter as it is.
+    """
+    text = str(event_filter)
+    if account_id:
+        text = text.replace(f"/account/{account_id}/", "/account/~/")
+    if extension_id:
+        text = text.replace(f"/extension/{extension_id}/", "/extension/~/")
+    return text
+
+
+async def _own_identity(client, headers: dict) -> tuple[str | None, str | None]:
+    """(account id, extension id) of the subscribing JWT; (None, None) if unknown. Never raises."""
+    try:
+        resp = await client.get(RC_OWN_EXTENSION_URL, headers=headers)
+        if not resp.is_success:
+            return None, None
+        body = resp.json() or {}
+    except Exception as exc:
+        logger.info("Could not read the RingCentral extension behind the JWT: %s", exc)
+        return None, None
+    account = (body.get("account") or {}).get("id")
+    extension = body.get("id")
+    return (str(account) if account else None, str(extension) if extension else None)
 
 
 def _extensions_in(filters: list[str] | tuple[str, ...]) -> set[str]:
@@ -210,17 +244,37 @@ async def subscription_active(callback_url: str) -> bool | None:
 async def register_sms_webhook(
     callback_url: str,
     extension_ids: list[str] | tuple[str, ...] | None = None,
+    *,
+    fresh: bool = False,
 ) -> bool:
     """Register a RingCentral webhook subscription for incoming SMS.
 
     Creates a subscription so RingCentral POSTs to callback_url whenever an SMS
     — or a picture message, which arrives the same way — reaches the shared
     company number or any recruiter extension in `extension_ids`. An active
-    subscription that already covers them is kept. Returns True on success,
-    False on failure. Never raises.
+    subscription that already covers them is kept, unless `fresh`. Returns
+    True on success, False on failure. Never raises.
+
+    Every subscription it creates carries the verification token
+    (rc_webhook_auth.py), which RingCentral sends back on each notification.
+    `fresh` is how the token gets onto a subscription that already exists:
+    whether one carries it cannot be read back with certainty, so the first
+    pass of a process registers anew and then removes the old one —
+    successor first, as always.
     """
     if not all([RC_CLIENT_ID, RC_CLIENT_SECRET, RC_JWT_TOKEN]):
         logger.info("RingCentral not configured — skipping webhook registration.")
+        return False
+
+    verification = verification_token()
+    if not verification:
+        # /rc-webhook refuses everything without a token to check against
+        # (rc_webhook_auth.py), so a subscription now would deliver nothing
+        # but refusals. Fail closed, loudly.
+        logger.error(
+            "No LEADS_INTERNAL_SHARED_SECRET (or JWT_SECRET) to derive the RingCentral "
+            "verification token from: the inbound-SMS subscription is NOT registered."
+        )
         return False
 
     try:
@@ -239,10 +293,14 @@ async def register_sms_webhook(
         desired = set(wanted_filters)
         async with httpx.AsyncClient(timeout=15) as client:
             ours = await _subscriptions_at(client, headers, callback_url) or []
-            keep = next(
-                (sub for sub in ours if desired.issubset(set(sub.get("eventFilters") or [])) and _is_active(sub)),
-                None,
-            )
+            account_id, own_extension = await _own_identity(client, headers) if ours else (None, None)
+
+            def covers(sub: dict) -> bool:
+                listed = {normalized_filter(f, account_id, own_extension) for f in sub.get("eventFilters") or []}
+                return desired.issubset(listed) and _is_active(sub)
+
+            covering = next((sub for sub in ours if covers(sub)), None)
+            keep = None if fresh else covering
             if keep is not None:
                 logger.info("RingCentral webhook already registered at %s (ID: %s).", callback_url, keep.get("id"))
                 await _delete_subscriptions(client, headers, [sub for sub in ours if sub is not keep])
@@ -257,6 +315,7 @@ async def register_sms_webhook(
                 "deliveryMode": {
                     "transportType": "WebHook",
                     "address": callback_url,
+                    "verificationToken": verification,
                 },
                 "expiresIn": 630720000,  # ~20 years (max allowed will be applied by RC)
             }
@@ -289,6 +348,29 @@ async def register_sms_webhook(
             )
             if _is_transient(resp):
                 logger.warning(_UNAVAILABLE, resp.status_code)
+                return False
+            if covering is not None:
+                # A FRESH registration only replaces what is there. The ladder
+                # below sheds a recruiter to get something registered, and on
+                # success deletes the old one, which here already covers every
+                # recruiter: that trade loses a recruiter for nothing. Keep it,
+                # stay unarmed, and the next pass asks again.
+                logger.warning(
+                    "Keeping RingCentral subscription %s, which already covers every extension; "
+                    "the fresh registration is tried again next pass.",
+                    covering.get("id"),
+                )
+                return False
+            if (account_id is None or own_extension is None) and any(_is_active(sub) for sub in ours):
+                # Without our own ids a listed filter written with numbers
+                # cannot be compared, so an Active subscription may already
+                # cover everyone. The ladder would delete it on a narrower
+                # success; keep it and ask again next pass.
+                logger.warning(
+                    "Could not read which RingCentral extension the JWT is, so the Active "
+                    "subscription(s) at %s cannot be compared; keeping them, trying again next pass.",
+                    callback_url,
+                )
                 return False
 
             attempts: list[tuple[str, list[str]]] = []
