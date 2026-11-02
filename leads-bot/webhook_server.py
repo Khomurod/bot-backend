@@ -1,10 +1,10 @@
 """
 FastAPI webhook server for the Facebook leads engine.
 - GET  /webhook          → Facebook verification challenge
-- POST /webhook          → Receive lead notifications + Messenger messages
+- POST /webhook          → verify the signature, hand the payload to the Node
+                           queue (leads and Messenger are handled there)
 - POST /rc-webhook       → RingCentral incoming SMS notifications
-- GET  /health           → Render health check
-- GET  /retry/{lead_id}  → Re-fetch and resend a failed lead
+- GET  /health           → health check
 
 APP ASSEMBLY AND ROUTES ONLY. The work each route delegates to lives in
 ./webhook/ (see webhook/__init__.py for the map). This module is what uvicorn
@@ -35,7 +35,6 @@ from webhook.rc_subscription import (
     start_rc_subscription_refresher,
     stop_rc_subscription_refresher,
 )
-from webhook.lead_processing import _process_lead
 from webhook.meta_signature import _verify_signature
 from webhook.ringcentral import (
     RC_INBOUND_TYPES,
@@ -44,7 +43,6 @@ from webhook.ringcentral import (
     _forward_ringcentral_inbound_to_telegram,
     _ringcentral_media_attachments,
 )
-from webhook.state import _log_lead, _read_leads_log
 from webhook.telegram_client import _telegram_upload_method
 
 logging.basicConfig(level=logging.INFO)
@@ -187,27 +185,3 @@ async def receive_webhook(request: Request):
     result = await _forward_verified_facebook_payload(data)
     logger.info("Forwarded verified Facebook payload to Node app: %s", result)
     return {"status": "ok", **result}
-
-
-
-# ── Legacy in-process Facebook lead handling (pre-Node queue) ──
-# Live Meta webhooks are forwarded to Node above. _process_lead
-# (./webhook/lead_processing.py) remains only for the internal
-# GET /retry/{leadgen_id} helper on the leads-bot port.
-@app.get("/retry/{leadgen_id}")
-async def retry_lead(leadgen_id: str):
-    """Manually retry fetching and sending a lead that previously failed."""
-    logger.info("Manual retry requested for lead ID: %s", leadgen_id)
-    _log_lead(leadgen_id, "retry_requested")
-    result = await _process_lead(leadgen_id)
-    _log_lead(leadgen_id, result)
-    return {"status": "ok", "lead_id": leadgen_id, "result": result}
-
-
-
-
-@app.get("/leads-log")
-async def get_leads_log():
-    """Return the leads log for debugging/auditing."""
-    entries = _read_leads_log()
-    return {"count": len(entries), "entries": entries[-50:]}  # Last 50

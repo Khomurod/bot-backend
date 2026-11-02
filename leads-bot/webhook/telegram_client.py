@@ -116,55 +116,12 @@ async def _send_telegram_to_chat(
     return None
 
 
-async def _send_telegram(text: str) -> int | None:
-    """Send a message to Telegram via Bot API.
-    
-    Retries once on failure. If Markdown parse fails, retries without
-    parse_mode so the message is always delivered.
-    Returns the message_id on success, None on failure.
-    """
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    payload = {
-        "chat_id": TELEGRAM_CHAT_ID,
-        "text": text,
-        "parse_mode": "Markdown",
-    }
-
-    for attempt in range(2):  # Try up to 2 times
-        try:
-            async with httpx.AsyncClient(timeout=15) as client:
-                resp = await client.post(url, json=payload)
-                if not resp.is_success:
-                    logger.warning("Telegram Markdown send failed (attempt %d), retrying without parse_mode: %s", attempt + 1, resp.text)
-                    payload.pop("parse_mode", None)
-                    resp2 = await client.post(url, json=payload)
-                    if not resp2.is_success:
-                        if attempt == 0:
-                            logger.warning("Telegram send failed (attempt 1), retrying in 2s...")
-                            await asyncio.sleep(2)
-                            payload["parse_mode"] = "Markdown"  # Reset for retry
-                            continue
-                        logger.error("Telegram send failed completely: %s", resp2.text)
-                        return None
-                    else:
-                        logger.info("Telegram message sent (plain text fallback).")
-                        return resp2.json().get("result", {}).get("message_id")
-                else:
-                    logger.info("Telegram message sent successfully.")
-                    return resp.json().get("result", {}).get("message_id")
-        except Exception as exc:
-            if attempt == 0:
-                logger.warning("Telegram send exception (attempt 1): %s, retrying in 2s...", exc)
-                await asyncio.sleep(2)
-                continue
-            logger.error("Telegram send failed after retry: %s", exc)
-            return None
-
-    return None
-
-
 async def _send_telegram_html(text: str) -> int | None:
-    """Like _send_telegram but parse_mode HTML (for RingCentral forwards with <pre> monospace)."""
+    """Send to the leads-hub chat with parse_mode HTML (RingCentral forwards use <pre>).
+
+    Retries once; if HTML parsing fails, resends without parse_mode so the
+    message is always delivered. Returns the message_id, or None.
+    """
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     payload = {
         "chat_id": TELEGRAM_CHAT_ID,
@@ -205,34 +162,6 @@ async def _send_telegram_html(text: str) -> int | None:
             return None
 
     return None
-
-
-async def _edit_telegram(message_id: int, new_text: str) -> None:
-    """Edit an existing Telegram message (to append SMS status).
-    
-    Silently fails if edit doesn't work — the original message is still there.
-    """
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/editMessageText"
-    payload = {
-        "chat_id": TELEGRAM_CHAT_ID,
-        "message_id": message_id,
-        "text": new_text,
-        "parse_mode": "Markdown",
-    }
-    try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.post(url, json=payload)
-            if not resp.is_success:
-                payload.pop("parse_mode", None)
-                resp2 = await client.post(url, json=payload)
-                if resp2.is_success:
-                    logger.info("Telegram message edited (plain text).")
-                else:
-                    logger.warning("Telegram edit failed: %s", resp2.text)
-            else:
-                logger.info("Telegram message edited with SMS status.")
-    except Exception as exc:
-        logger.warning("Telegram edit error (non-critical): %s", exc)
 
 
 def _telegram_upload_method(content_type: str) -> tuple[str, str]:
