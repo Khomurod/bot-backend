@@ -14,6 +14,7 @@ import re
 import httpx
 
 from config import RC_CLIENT_ID, RC_CLIENT_SECRET, RC_JWT_TOKEN
+from rc_webhook_auth import verification_token
 from sms import _get_access_token
 
 logger = logging.getLogger(__name__)
@@ -210,14 +211,23 @@ async def subscription_active(callback_url: str) -> bool | None:
 async def register_sms_webhook(
     callback_url: str,
     extension_ids: list[str] | tuple[str, ...] | None = None,
+    *,
+    fresh: bool = False,
 ) -> bool:
     """Register a RingCentral webhook subscription for incoming SMS.
 
     Creates a subscription so RingCentral POSTs to callback_url whenever an SMS
     — or a picture message, which arrives the same way — reaches the shared
     company number or any recruiter extension in `extension_ids`. An active
-    subscription that already covers them is kept. Returns True on success,
-    False on failure. Never raises.
+    subscription that already covers them is kept, unless `fresh`. Returns
+    True on success, False on failure. Never raises.
+
+    Every subscription it creates carries the verification token
+    (rc_webhook_auth.py), which RingCentral sends back on each notification.
+    `fresh` is how the token gets onto a subscription that already exists:
+    whether one carries it cannot be read back with certainty, so the first
+    pass of a process registers anew and then removes the old one —
+    successor first, as always.
     """
     if not all([RC_CLIENT_ID, RC_CLIENT_SECRET, RC_JWT_TOKEN]):
         logger.info("RingCentral not configured — skipping webhook registration.")
@@ -239,7 +249,7 @@ async def register_sms_webhook(
         desired = set(wanted_filters)
         async with httpx.AsyncClient(timeout=15) as client:
             ours = await _subscriptions_at(client, headers, callback_url) or []
-            keep = next(
+            keep = None if fresh else next(
                 (sub for sub in ours if desired.issubset(set(sub.get("eventFilters") or [])) and _is_active(sub)),
                 None,
             )
@@ -252,12 +262,18 @@ async def register_sms_webhook(
             # and deleting it first left nothing watching whenever RingCentral
             # then refused or failed the new request.
 
+            delivery = {"transportType": "WebHook", "address": callback_url}
+            token = verification_token()
+            if token:
+                delivery["verificationToken"] = token
+            else:
+                logger.warning(
+                    "No LEADS_INTERNAL_SHARED_SECRET to derive the RingCentral verification "
+                    "token from: /rc-webhook cannot tell RingCentral from anybody else."
+                )
             payload = {
                 "eventFilters": wanted_filters,
-                "deliveryMode": {
-                    "transportType": "WebHook",
-                    "address": callback_url,
-                },
+                "deliveryMode": delivery,
                 "expiresIn": 630720000,  # ~20 years (max allowed will be applied by RC)
             }
             resp = await client.post(RC_SUBSCRIPTION_URL, json=payload, headers=headers)

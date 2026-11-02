@@ -186,6 +186,18 @@ repository-wide working rules. The highest-consequence items:
     was removed on 2026-10-23. The number is kept so later references still
     line up; see `docs/architecture/retired-finance-monitor.md`.
 
+19. **`/rc-webhook` acts only on notifications from our RingCentral
+    subscription.** Every subscription carries `deliveryMode.verificationToken`
+    (an HMAC of `LEADS_INTERNAL_SHARED_SECRET`), RingCentral returns it as
+    `Verification-Token`, and a wrong token is refused. A missing token is
+    refused once this process has registered a subscription that carries it,
+    so the first pass of every process registers afresh, successor first.
+    Before that a token-less notification is still accepted, so nothing real
+    is lost while an older subscription is live. A forged "inbound SMS" used to
+    reach the leads group and the after-hours reply.
+    `leads-bot/test_rc_webhook_auth.py`;
+    `docs/architecture/recruiter-sms-sender.md`.
+
 - **A truck number alone is not globally unique, and nobody is merged on one.**
   Three fleets number their trucks independently: Company 001, Owner-Operator
   001 and Lease 001 are three trucks driven by three people, and production

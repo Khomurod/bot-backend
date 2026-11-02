@@ -378,6 +378,18 @@ than they look:
   (`subscription_active()`) and re-registers only on a definite "not
   delivering"; an unreadable status is evidence of nothing and changes nothing.
 
+**Only our subscription's notifications are acted on** (`leads-bot/rc_webhook_auth.py`,
+November 2026). `/rc-webhook` is public, and it used to forward any POST that
+looked like an inbound SMS — into the leads group and on to the after-hours
+reply. Every subscription now carries `deliveryMode.verificationToken`, an
+HMAC of `LEADS_INTERNAL_SHARED_SECRET` (no new variable), which RingCentral
+returns as `Verification-Token` on each notification. A wrong token gets 403
+always. A missing one is refused once this process has registered a
+subscription carrying the token. Until then it is accepted and logged, so
+nothing real is lost while an older subscription is still the live one. That
+is why the first pass of every process registers **afresh** (successor first,
+then the old one is deleted).
+
 ## Operational prerequisites (not code)
 
 These are done in the RingCentral and Bitrix consoles. Until they are, the
@@ -476,3 +488,4 @@ about the sending half.
 | Answers reaching the CRM, and the inert-assignee warning | `tests/bitrix24LeadMapper.test.js` |
 | Inbound recipient extraction, per-extension filters, a picture arriving as an SMS with an `MmsAttachment` (Python) | `leads-bot/test_rc_forward.py` |
 | The subscription keeping up with the roster, and re-registered when RingCentral stops delivering it (Python) | `leads-bot/test_rc_subscription.py` |
+| The verification token on every subscription, the fresh first pass, and `/rc-webhook` refusing what lacks it (Python) | `leads-bot/test_rc_webhook_auth.py` |

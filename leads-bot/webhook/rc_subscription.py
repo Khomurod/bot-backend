@@ -13,8 +13,12 @@ re-registers ONLY when the set has actually changed — or when RingCentral has
 stopped delivering the subscription — so the steady state costs one internal
 request and one RingCentral status read.
 
-Three rules that matter more than they look:
+Four rules that matter more than they look:
 
+  * the first pass of a process registers AFRESH (and only then removes what
+    was there): only a subscription it created is known to carry the
+    verification token, and until one does, /rc-webhook cannot refuse a
+    notification that lacks it (rc_webhook_auth.py).
   * a FAILED read is not an empty list. After the first pass, a failure skips
     the tick and leaves the working subscription alone — re-registering with []
     because the hub was briefly unreachable would silently drop every
@@ -31,6 +35,7 @@ Split out of leads-bot/webhook_server.py.
 import asyncio
 import logging
 
+import rc_webhook_auth
 from rc_inbound_subscription import register_sms_webhook, subscription_active
 
 from .hub_client import _fetch_ringcentral_sms_extensions
@@ -88,8 +93,18 @@ async def reconcile_rc_subscription(callback_url: str) -> bool:
         callback_url,
         len(wanted),
     )
-    if await register_sms_webhook(callback_url, sorted(wanted)):
+    # The first pass registers AFRESH: whatever was registered before may not
+    # carry this process's verification token, and only a subscription that
+    # does lets /rc-webhook refuse everything without it (rc_webhook_auth.py).
+    registered = (
+        await register_sms_webhook(callback_url, sorted(wanted), fresh=True)
+        if first_pass
+        else await register_sms_webhook(callback_url, sorted(wanted))
+    )
+    if registered:
         _registered = wanted
+        if rc_webhook_auth.verification_token():
+            rc_webhook_auth.arm()
         return True
 
     # Leave _registered as it was so the next tick retries rather than
