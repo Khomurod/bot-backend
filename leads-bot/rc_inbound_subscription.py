@@ -260,10 +260,11 @@ async def register_sms_webhook(
         desired = set(wanted_filters)
         async with httpx.AsyncClient(timeout=15) as client:
             ours = await _subscriptions_at(client, headers, callback_url) or []
-            keep = None if fresh else next(
+            covering = next(
                 (sub for sub in ours if desired.issubset(set(sub.get("eventFilters") or [])) and _is_active(sub)),
                 None,
             )
+            keep = None if fresh else covering
             if keep is not None:
                 logger.info("RingCentral webhook already registered at %s (ID: %s).", callback_url, keep.get("id"))
                 await _delete_subscriptions(client, headers, [sub for sub in ours if sub is not keep])
@@ -311,6 +312,18 @@ async def register_sms_webhook(
             )
             if _is_transient(resp):
                 logger.warning(_UNAVAILABLE, resp.status_code)
+                return False
+            if covering is not None:
+                # A FRESH registration only replaces what is there. The ladder
+                # below sheds a recruiter to get something registered, and on
+                # success deletes the old one, which here already covers every
+                # recruiter: that trade loses a recruiter for nothing. Keep it,
+                # stay unarmed, and the next pass asks again.
+                logger.warning(
+                    "Keeping RingCentral subscription %s, which already covers every extension; "
+                    "the fresh registration is tried again next pass.",
+                    covering.get("id"),
+                )
                 return False
 
             attempts: list[tuple[str, list[str]]] = []

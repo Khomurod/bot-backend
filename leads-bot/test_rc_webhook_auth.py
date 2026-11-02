@@ -89,6 +89,23 @@ class RegistrationCarriesTheTokenTests(unittest.TestCase):
         self.assertEqual(client.calls, ["post", "delete"])
         self.assertTrue(client.deletes[0].endswith("/sub-old"))
 
+    def test_a_refused_fresh_registration_keeps_what_already_covers_everyone(self):
+        # The full roster is refused; shedding a recruiter and then deleting a
+        # subscription that covers them all would lose that recruiter for nothing.
+        client = FakeClient(
+            [response(400, text="CMN-101"), response(200, {"id": "sub-narrow"})],
+            get_response=listing(ours("sub-old", extensions=("101", "102"))),
+        )
+        self.assertFalse(patched(client, lambda: rcin.register_sms_webhook(CALLBACK, ["101", "102"], fresh=True)))
+        self.assertEqual(len(client.posts), 1)
+        self.assertEqual(client.deletes, [])
+
+    def test_a_refused_fresh_registration_with_nothing_covering_still_sheds(self):
+        # Nothing to keep: the ladder still saves what it can, as before.
+        client = FakeClient([response(400, text="CMN-101"), response(200, {"id": "sub-narrow"})])
+        self.assertTrue(patched(client, lambda: rcin.register_sms_webhook(CALLBACK, ["101", "102"], fresh=True)))
+        self.assertEqual(len(client.posts), 2)
+
     def test_without_a_secret_nothing_is_registered(self):
         client = FakeClient([response(200, {"id": "sub-new"})])
         with patch.object(rcin, "verification_token", return_value=None):
