@@ -118,6 +118,46 @@ class RegistrationCarriesTheTokenTests(unittest.TestCase):
         self.assertEqual(client.posts, [])
 
 
+class ExpandedFiltersTests(unittest.TestCase):
+    """RingCentral may list a subscription with `~` expanded to numeric ids."""
+
+    ACCOUNT, OWN = "37439510", "62345"
+
+    def expanded(self, sub_id, extensions):
+        filters = [
+            f.replace("/account/~/", f"/account/{self.ACCOUNT}/").replace("/extension/~/", f"/extension/{self.OWN}/")
+            for f in rcin.inbound_sms_filters(list(extensions))
+        ]
+        return {"id": sub_id, "status": "Active", "deliveryMode": {"address": CALLBACK}, "eventFilters": filters}
+
+    def client(self, posts, listed):
+        test = self
+
+        class RoutedClient(FakeClient):
+            async def get(self, url, headers=None):
+                if url == rcin.RC_OWN_EXTENSION_URL:
+                    return response(200, {"id": int(test.OWN), "account": {"id": int(test.ACCOUNT)}})
+                return listing(listed)
+
+        return RoutedClient(posts)
+
+    def test_a_listed_filter_is_written_back_in_the_form_we_ask_with(self):
+        expanded = f"/restapi/v1.0/account/{self.ACCOUNT}/extension/{self.OWN}/message-store/instant?type=SMS"
+        self.assertEqual(rcin.normalized_filter(expanded, self.ACCOUNT, self.OWN), rcin.RC_INBOUND_SMS_FILTER)
+        self.assertEqual(rcin.normalized_filter(expanded, None, None), expanded)
+
+    def test_an_expanded_subscription_covering_everyone_is_kept(self):
+        client = self.client([], self.expanded("sub-old", ("101", "102")))
+        self.assertTrue(patched(client, lambda: rcin.register_sms_webhook(CALLBACK, ["101", "102"])))
+        self.assertEqual(client.posts, [])
+
+    def test_an_expanded_covering_subscription_survives_a_refused_fresh_registration(self):
+        client = self.client([response(400, text="CMN-101"), response(200, {"id": "sub-narrow"})],
+                             self.expanded("sub-old", ("101", "102")))
+        self.assertFalse(patched(client, lambda: rcin.register_sms_webhook(CALLBACK, ["101", "102"], fresh=True)))
+        self.assertEqual(client.deletes, [])
+
+
 class ArmingTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         rcs._reset_state_for_tests()

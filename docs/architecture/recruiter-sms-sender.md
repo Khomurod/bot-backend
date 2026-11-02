@@ -344,7 +344,8 @@ from "everyone" to "nobody": one unusable extension id produced
 **An existing subscription is kept only while it is `Active`.** RingCentral
 suspends or blacklists a webhook whose address stopped answering, so a
 subscription with the right filters can still deliver nothing. When the filters
-match and the status is `Active`, it is left alone, and any other subscription
+match (compared after RingCentral's numeric account and extension ids are read
+back as `~`) and the status is `Active`, it is left alone, and any other subscription
 at the same address is deleted (two would deliver every message twice).
 Otherwise a new one is registered, and **only once it exists** is the old one
 deleted. Deleting first left nothing watching whenever RingCentral then refused
