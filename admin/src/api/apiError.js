@@ -44,8 +44,3 @@ export class ApiError extends Error {
     this.suggestion = suggestion;
   }
 }
-
-/** Is this error one of ours, carrying a classified HTTP failure? */
-export function isApiError(error) {
-  return Boolean(error) && (error instanceof ApiError || error.name === 'ApiError');
-}

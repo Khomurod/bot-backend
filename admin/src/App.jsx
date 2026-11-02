@@ -2,7 +2,6 @@ import React, { Suspense, lazy, useEffect, useRef, useState } from "react";
 import * as api from "./api";
 // LoginPage stays eager: it is the auth gate and must render instantly.
 import LoginPage from "./pages/LoginPage";
-import { AuthProvider } from "./context/AuthContext";
 import AdminSidebar, { labelForPage } from "./components/AdminSidebar";
 import Icon from "./components/ui/Icon";
 import PageErrorBoundary from "./components/PageErrorBoundary";
@@ -275,7 +274,6 @@ export default function App() {
   const isFullAdmin = session?.permissions?.includes("admin.full_access");
 
   return (
-    <AuthProvider session={session}>
     <div className="app-layout">
       <AdminSidebar
         session={session}
@@ -341,6 +339,5 @@ export default function App() {
         </div>
       </main>
     </div>
-    </AuthProvider>
   );
 }

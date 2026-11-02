@@ -78,11 +78,6 @@ export async function testBroadcast(data) {
   return res.json();
 }
 
-// Positional version for compatibility
-export async function sendBroadcastTest(messageText, parseMode, mediaItems, mediaPosition) {
-    return testBroadcast({ messageEn: messageText, mediaItems, mediaPosition });
-}
-
 
 // ─── Confirmation Broadcast API ───
 

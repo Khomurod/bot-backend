@@ -70,6 +70,9 @@ home-out (and since 29 October 2026 by the Board ↔ Bitrix check,
   `GMAIL_FROM` are no longer read (`config/config.js` and `.env.example` dropped
   them). A deployment that still sets them is unaffected; they can be deleted
   from the host's environment.
+- **The mail library.** `nodemailer`, which sent the Gmail one-time code, stayed
+  in `package.json` with nothing requiring it until the hidden-functions audit
+  removed it (block 4b).
 - **History.** `raise_round_picks` and `raise_round_submissions` are the only
   record of past reviews; they were snapshots and nothing rewrote them.
 
