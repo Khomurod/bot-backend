@@ -48,7 +48,9 @@ test('the admin panel carries none of them', () => {
 
 test('the bot\'s own test broadcast is still what the route sends through', () => {
   assert.match(read('bot/senders/broadcastSenders.js'), /async function sendBroadcastTest\(/);
-  assert.match(read('server/routes/broadcastRoutes.js'), /await sendBroadcastTest\(/);
+  // Inside THAT route's handler: no other `router.` declaration in between.
+  assert.match(read('server/routes/broadcastRoutes.js'),
+    /router\.post\('\/api\/broadcast\/test',(?:(?!router\.)[\s\S])*?await sendBroadcastTest\(/);
 });
 
 test('nodemailer is not a dependency, and nothing requires it', () => {
