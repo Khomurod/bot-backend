@@ -70,7 +70,23 @@ function filedCheckKeys() {
   assert.ok(severity, 'contradictionPass.js no longer declares SEVERITY as the scan expects');
   assert.match(pass, /return `context\.\$\{kind\}`/, 'checkKeyFor no longer prefixes context.');
   for (const m of severity[1].matchAll(/^\s*([a-z_]+)\s*:/gm)) keys.add(`context.${m[1]}`);
+  // …and every kind lib/drivers/context.js can actually emit, in case one is
+  // added there and not to SEVERITY (it would still be filed, as context.<kind>).
+  for (const kind of emittedContradictionKinds()) keys.add(`context.${kind}`);
   return keys;
+}
+
+/** The `kind:` values findContradictions (lib/drivers/context.js) returns. */
+function emittedContradictionKinds() {
+  const text = code(read('lib/drivers/context.js'));
+  return [...new Set([...text.matchAll(/\bkind:\s*'([a-z_]+)'/g)].map((m) => m[1]))];
+}
+
+/** The kinds contradictionPass.js gives a severity. */
+function severityKinds() {
+  const pass = code(read('services/operations/contradictionPass.js'));
+  const severity = pass.match(/\bSEVERITY\s*=\s*Object\.freeze\(\{([\s\S]*?)\}\)/);
+  return new Set([...severity[1].matchAll(/^\s*([a-z_]+)\s*:/gm)].map((m) => m[1]));
 }
 
 function labelledKeys() {
@@ -103,4 +119,13 @@ test('every check the backend files has a plain name', () => {
   const labelled = labelledKeys();
   const missing = [...filedCheckKeys()].filter((k) => !labelled.has(k)).sort();
   assert.deepEqual(missing, [], 'add these to CHECK_LABELS in admin/src/pages/operations/labels.js');
+});
+
+test('every contradiction kind the context reader emits has a severity of its own', () => {
+  // Without one, contradictionPass files it at the default severity, and
+  // nothing says a new kind was never weighed.
+  const emitted = emittedContradictionKinds();
+  assert.ok(emitted.length >= 3, `only ${emitted.length} kinds found — the scan is broken`);
+  const weighed = severityKinds();
+  assert.deepEqual(emitted.filter((k) => !weighed.has(k)), []);
 });
