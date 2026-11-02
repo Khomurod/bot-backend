@@ -81,6 +81,9 @@ long explanations share one scroll.
 
 Status: ☐ planned · ◐ in review · ☑ merged.
 
+Every row is merged (2 November 2026): 0 in Khomurod/bot-backend#339, A in
+#340, B in #341, C in #342, D in #343 (D3 with A), E in #344.
+
 ### 0 — Errors found by the audit (not layout)
 
 | # | Change | Must not be lost |
@@ -127,9 +130,9 @@ Status: ☐ planned · ◐ in review · ☑ merged.
 
 | # | Change | Must not be lost |
 |---|---|---|
-| ◐ E1 | **Send Message:** Broadcast History collapsed, its title showing the count and the failures. "Schedule for later" collapsed like Translations and Media, with its own button inside. The chosen audience is shown on the closed "Target groups" line. On a phone the preview sits above Send. **New survey:** Russian and Uzbek collapsed, opening by themselves after Translate, and from the hint beside a Save that is still waiting for them. | Per-group delivery, Confirmation click tracking, the three-language rule. |
-| ◐ E2 | **Messages:** Edit by Link becomes a "Have a message link?" section at the top of History (five tabs become four; `#communications/edit_by_link` lands there). On a phone, Scheduled is shown as cards. | Editing a message that is not in the log, the delete confirm. |
-| ◐ E3 | **Birthdays:** the employee table first. "Add employee" opens the form. The send actions sit in a toolbar above the table. The posting time becomes one line with Change. | Every confirm, every send action, the settings. |
+| ☑ E1 | **Send Message:** Broadcast History collapsed, its title showing the count and the failures. "Schedule for later" collapsed like Translations and Media, with its own button inside. The chosen audience is shown on the closed "Target groups" line. On a phone the preview sits above Send. **New survey:** Russian and Uzbek collapsed, opening by themselves after Translate, and from the hint beside a Save that is still waiting for them. | Per-group delivery, Confirmation click tracking, the three-language rule. |
+| ☑ E2 | **Messages:** Edit by Link becomes a "Have a message link?" section at the top of History (five tabs become four; `#communications/edit_by_link` lands there). On a phone, Scheduled is shown as cards. | Editing a message that is not in the log, the delete confirm. |
+| ☑ E3 | **Birthdays:** the employee table first. "Add employee" opens the form. The send actions sit in a toolbar above the table. The posting time becomes one line with Change. | Every confirm, every send action, the settings. |
 
 ## Not in this plan
 
