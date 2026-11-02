@@ -6,9 +6,10 @@ import BitrixSettingsForm from "./BitrixSettingsForm";
 /**
  * Bitrix24 — the half of the lead-SMS chain that lives outside this app.
  *
- * It sits on the RingCentral tab on purpose: the Bitrix ASSIGNEE is what
- * decides which recruiter's number texts a driver, so the mapping on the rows
- * below is only half the wiring. Bitrix used to be configured entirely by
+ * Settings → Bitrix24 since November 2026 (a card on the RingCentral screen
+ * before). The Bitrix ASSIGNEE is what decides which recruiter's number texts
+ * a driver, so the mapping on the recruiter rows (Recruiters & Numbers) is
+ * only half the wiring. Bitrix used to be configured entirely by
  * environment variables and visible only in server logs, which meant a portal
  * that never assigns a lead looked exactly like a portal that works — while
  * every lead quietly went out from the shared company number.
@@ -17,19 +18,11 @@ import BitrixSettingsForm from "./BitrixSettingsForm";
  * form (the webhook and behaviour, entered here rather than on the host — the
  * DB row wins over env once saved), **Diagnose** (read-only), and the mapping
  * panel (previews first; writes `bitrix_user_id` only when applied).
+ *
+ * The read-only list of the saved values that used to sit under the form
+ * (portal, creates, source, assignee, deal category and stage) is gone: the
+ * form shows every one of them, the ignored-assignee warning included.
  */
-function Row({ label, value, warn = false }) {
-  if (value === null || value === undefined || value === "") return null;
-  return (
-    <div style={{ display: "flex", gap: 8, fontSize: 13, padding: "3px 0" }}>
-      <span style={{ color: "var(--text-muted)", minWidth: 190 }}>{label}</span>
-      <span style={{ color: warn ? "var(--danger)" : "var(--text-secondary)", fontFamily: warn ? "inherit" : "ui-monospace, monospace" }}>
-        {value}
-      </span>
-    </div>
-  );
-}
-
 export default function BitrixCard({ onMessage, onMapped }) {
   const [settings, setSettings] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -75,28 +68,10 @@ export default function BitrixCard({ onMessage, onMapped }) {
         A Facebook lead is texted from the number of whoever Bitrix assigned it to. Bitrix assigns
         <strong> after </strong> the lead is created, so the app re-reads the owner for up to{" "}
         <strong>{Math.round((settings?.assigneeWaitMs ?? 0) / 1000)}s</strong> and matches it to the
-        <strong> Bitrix24 user ID</strong> on a recruiter row below. No match means the shared number.
+        <strong> Bitrix24 user ID</strong> on the recruiter's row. No match means the shared number.
       </p>
 
       <BitrixSettingsForm settings={settings} onSaved={setSettings} onMessage={onMessage} />
-
-      <Row label="Portal" value={settings?.webhookHost} />
-      <Row label="Creates" value={settings?.entity} />
-      <Row label="Source ID" value={settings?.sourceId} />
-      <Row label="Assignee at creation" value={settings?.assignedById ? `Bitrix user ${settings.assignedById}` : "not set — the webhook owner, then a Bitrix rule"} />
-      {settings?.assignedByIdIgnored && (
-        <Row
-          warn
-          label="⚠️ BITRIX24_ASSIGNED_BY_ID"
-          value={`"${settings.assignedByIdRaw}" is not a numeric Bitrix user id, so it is ignored`}
-        />
-      )}
-      {settings?.entity === "deal" && (
-        <>
-          <Row label="Deal category" value={settings?.dealCategoryId} />
-          <Row label="Deal stage" value={settings?.dealStageId} />
-        </>
-      )}
 
       <BitrixAutomapPanel onMapped={onMapped} />
 

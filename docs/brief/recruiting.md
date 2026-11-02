@@ -89,7 +89,7 @@ the same treatment home time got, and for the same reason.
   separate call from applying. Details and the refusal rules:
   `docs/architecture/recruiter-sms-bitrix.md`.
 - **Recruiters attach their own number themselves.** An admin mints a link
-  (Settings → RingCentral, or `POST /api/recruiters/connect-link`); the
+  (Settings → Recruiters & Numbers → Invite a recruiter, or `POST /api/recruiters/connect-link`); the
   recruiter opens `/ringcentral/connect/:token`, signs in to RingCentral, and
   the app stores an OAuth refresh token plus the extension identity it read
   back. No secret changes hands, and the sending number cannot be typed wrong.

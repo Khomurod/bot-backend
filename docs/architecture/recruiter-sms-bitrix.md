@@ -12,7 +12,7 @@ means no match, which means the shared number.
 
 ## Where Bitrix is configured
 
-In the app. Settings → RingCentral → Bitrix24 → **Bitrix24 connection** writes
+In the app. Settings → Bitrix24 → **Bitrix24 connection** writes
 `bitrix_settings` (`database/bitrix.js`, migration 0009): enabled, the inbound
 webhook (encrypted at rest), entity, the assignee at creation, source id and
 description, deal pipeline, and the assignee wait. **A saved value wins over

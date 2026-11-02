@@ -125,7 +125,7 @@ message text or a phone number.
 ## Bitrix
 
 `services/bitrix24DealStages.js` uses the same inbound webhook as the lead
-push (Settings → RingCentral → Bitrix24, which must be **enabled**). The
+push (Settings → Bitrix24, which must be **enabled**). The
 webhook needs the `crm` scope with write access. Calls: `crm.duplicate.findbycomm`,
 `crm.contact.list`, `crm.deal.list`, `crm.deal.get`, `crm.status.list`, and
 the one write, `crm.deal.update`. Each is bounded at 15 seconds. With no deal

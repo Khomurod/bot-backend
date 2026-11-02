@@ -38,7 +38,9 @@ import { SETTINGS_SECTION_KEYS, settingsSectionLabel } from "./settings/sections
  */
 
 const LocationProvidersTab = lazy(() => import("./settings/LocationProvidersTab"));
-const RingCentralTab = lazy(() => import("./settings/RingCentralTab"));
+const RecruitersTab = lazy(() => import("./settings/RecruitersTab"));
+const RcConnectionTab = lazy(() => import("./settings/RcConnectionTab"));
+const BitrixTab = lazy(() => import("./settings/BitrixTab"));
 const TelegramGroupsTab = lazy(() => import("./settings/TelegramGroupsTab"));
 const SamsaraTab = lazy(() => import("./settings/SamsaraTab"));
 const DispatcherBoardTab = lazy(() => import("./settings/DispatcherBoardTab"));
@@ -77,7 +79,9 @@ export default function SettingsPage({ tab: routeTab, onTabChange }) {
           <PageErrorBoundary resetKey={tab}>
           <Suspense fallback={<div className="loading"><div className="spinner"></div> Loading…</div>}>
             {tab === "location" && <LocationProvidersTab />}
-            {tab === "ringcentral" && <RingCentralTab />}
+            {tab === "ringcentral" && <RecruitersTab />}
+            {tab === "rc_connection" && <RcConnectionTab />}
+            {tab === "bitrix" && <BitrixTab />}
             {tab === "metacrm" && <MetaCrmTab />}
             {tab === "groups" && <TelegramGroupsTab />}
             {tab === "samsara" && <SamsaraTab />}

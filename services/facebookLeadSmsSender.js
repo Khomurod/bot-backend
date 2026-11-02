@@ -67,7 +67,7 @@ const FALLBACK_NOTES = {
   recruiter_send_failed: 'could not send from their number (RingCentral refused it) — sent from the shared number.',
   // The two states that used to hide inside recruiter_send_failed as an opaque
   // MSG-245. They need different fixes, so they say different things.
-  recruiter_number_not_on_extension: 'has a number RingCentral does not list on their extension (check the number in Settings → RingCentral) — sent from the shared number.',
+  recruiter_number_not_on_extension: 'has a number RingCentral does not list on their extension (check the number in Settings → Recruiters & Numbers) — sent from the shared number.',
   recruiter_number_not_sms_capable: 'has a number that cannot send SMS (it needs A2P/10DLC registration in RingCentral) — sent from the shared number.',
   crm_lookup_failed: 'Could not read the Bitrix assignee — sent from the shared number.',
   sender_lookup_failed: 'Could not look up the assigned recruiter — sent from the shared number.',

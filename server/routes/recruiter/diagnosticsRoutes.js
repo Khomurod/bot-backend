@@ -126,7 +126,7 @@ function registerRecruiterDiagnosticRoutes(router, { authMiddleware }) {
         Boolean(auth.clientId && auth.clientSecret),
         auth.clientId && auth.clientSecret
           ? 'Resolved.'
-          : 'Missing — set the shared pair in Settings → RingCentral or a custom pair on this number.'
+          : 'Missing — set the shared pair in Settings → RingCentral Connection or a custom pair on this number.'
       );
       if (!credsOk || !clientOk) return res.json({ ok: false, steps });
 

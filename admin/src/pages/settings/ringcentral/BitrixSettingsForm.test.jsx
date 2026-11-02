@@ -1,5 +1,5 @@
 /**
- * Settings → RingCentral → Bitrix24: the connection form.
+ * Settings → Bitrix24: the connection form.
  *
  * Bitrix used to be configured on the host; this is where it is entered now.
  * What the form must get right:

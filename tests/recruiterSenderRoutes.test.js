@@ -249,7 +249,7 @@ test('a link cannot be minted before the shared app credentials exist', async ()
     pool: makePool({ recruiters: [JANE] }),
     connectService: {
       createRecruiterConnectLink: async () => {
-        throw new Error('Set the shared RingCentral Client ID and Secret in Settings → RingCentral before inviting a recruiter.');
+        throw new Error('Set the shared RingCentral Client ID and Secret in Settings → RingCentral Connection before inviting a recruiter.');
       },
     },
   });

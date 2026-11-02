@@ -1,5 +1,5 @@
 /**
- * Settings → RingCentral → a recruiter row: "Pick from Bitrix".
+ * Settings → Recruiters & Numbers → a recruiter row: "Pick from Bitrix".
  *
  * The Bitrix user id used to be a bare number field, so setting it meant
  * opening the Bitrix profile and reading the id out of the URL. The picker

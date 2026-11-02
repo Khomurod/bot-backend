@@ -76,7 +76,7 @@ async function checkConfiguration(steps) {
     configured,
     configured
       ? `Inbound webhook at ${await webhookHost()} (secret not shown).`
-      : 'Turn Bitrix24 on and enter the inbound webhook URL in Settings → RingCentral → Bitrix24. Leads are still posted to Telegram and still texted from the shared number.',
+      : 'Turn Bitrix24 on and enter the inbound webhook URL in Settings → Bitrix24. Leads are still posted to Telegram and still texted from the shared number.',
   );
   if (!configured) return false;
 
@@ -90,7 +90,7 @@ async function checkConfiguration(steps) {
       ok,
       ok
         ? `Category ${mapper.dealCategoryId}, stage ${mapper.dealStageId}.`
-        : 'A deal category and a deal stage are both required when the entity is deal — set them in Settings → RingCentral → Bitrix24. Every lead is rejected until both are set.',
+        : 'A deal category and a deal stage are both required when the entity is deal — set them in Settings → Bitrix24. Every lead is rejected until both are set.',
     );
   }
 
@@ -112,7 +112,7 @@ async function checkConfiguration(steps) {
       'Assignee at creation',
       false,
       `The assignee at creation is "${raw}", which is not a numeric Bitrix user id, so it is IGNORED and leads go to the webhook owner. `
-      + 'In Settings → RingCentral → Bitrix24 enter the id from the Bitrix profile URL (/company/personal/user/<id>/), or leave it blank if a distribution rule assigns leads.',
+      + 'In Settings → Bitrix24 enter the id from the Bitrix profile URL (/company/personal/user/<id>/), or leave it blank if a distribution rule assigns leads.',
     );
   }
   return true;
@@ -276,7 +276,7 @@ async function checkAssigneeReadback(steps, { db, fetchImpl }) {
       steps,
       'Assignee readback (crm.lead.get)',
       false,
-      `Lead ${lead.bitrix_id} has no responsible person. Leads must be assigned — by a Bitrix distribution rule, or by the "assignee at creation" in Settings → RingCentral → Bitrix24 — or the sender has nobody to match.`,
+      `Lead ${lead.bitrix_id} has no responsible person. Leads must be assigned — by a Bitrix distribution rule, or by the "assignee at creation" in Settings → Bitrix24 — or the sender has nobody to match.`,
     );
     return;
   }
@@ -295,7 +295,7 @@ async function checkAssigneeReadback(steps, { db, fetchImpl }) {
       'Assignee readback (crm.lead.get)',
       false,
       `Lead ${lead.bitrix_id} belongs to Bitrix user ${outcome.assignedById} (via ${via}), who is not mapped to any recruiter. `
-      + 'Use "Match recruiters to Bitrix users" above, or enter that id on their row in Settings → RingCentral — otherwise their leads keep going out from the shared number.',
+      + 'Use "Match recruiters to Bitrix users" above, or enter that id on their row in Settings → Recruiters & Numbers — otherwise their leads keep going out from the shared number.',
     );
     return;
   }

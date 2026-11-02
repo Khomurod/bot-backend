@@ -13,7 +13,11 @@ export const SETTINGS_GROUPS = Object.freeze([
       { key: "location", label: "Location Providers" },
       { key: "samsara", label: "Samsara" },
       { key: "board", label: "Dispatcher Board" },
-      { key: "ringcentral", label: "RingCentral & Bitrix24" },
+      // One "RingCentral & Bitrix24" screen of six cards until November 2026.
+      // `ringcentral` stays the recruiters' address, which old links meant.
+      { key: "ringcentral", label: "Recruiters & Numbers" },
+      { key: "rc_connection", label: "RingCentral Connection" },
+      { key: "bitrix", label: "Bitrix24" },
       { key: "metacrm", label: "Facebook ↔ Bitrix" },
     ],
   },

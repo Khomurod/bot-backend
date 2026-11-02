@@ -38,7 +38,7 @@ async function webhookBase() {
   const cfg = await getBitrixConfig();
   const base = normalizeWebhookBase(cfg.webhookUrl);
   if (!cfg.enabled || !/^https?:\/\//i.test(base)) {
-    throw new BitrixError('Bitrix24 is not connected (Settings → RingCentral → Bitrix24)', { reason: 'not_configured' });
+    throw new BitrixError('Bitrix24 is not connected (Settings → Bitrix24)', { reason: 'not_configured' });
   }
   return base;
 }

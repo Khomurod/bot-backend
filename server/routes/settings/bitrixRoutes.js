@@ -4,7 +4,7 @@
  * Bitrix24 settings, status and diagnosis — admin API.
  *
  *   GET  /bitrix           → the configuration, with no secret in it
- *   PUT  /bitrix           → save it (Settings → RingCentral → Bitrix24)
+ *   PUT  /bitrix           → save it (Settings → Bitrix24)
  *   POST /bitrix/diagnose  → the stepwise chain check
  *
  * Bitrix used to be configured only by environment variables on the host, so a

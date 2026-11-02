@@ -242,7 +242,7 @@ prove it was sent" must not become "do not send".
 | Mode | Where it comes from | Notes |
 |---|---|---|
 | `oauth` | The recruiter opens `/ringcentral/connect/:token` and signs in. Preferred: no secret changes hands and the number is read from RingCentral, not typed. | **The refresh token expires in 7 days and rotates on every use.** `ringCentralTokenRefreshService` renews every stored login daily so a recruiter who goes a week without a lead does not expire from disuse. A dead grant sets `rc_auth_error`, which the admin panel shows as *Needs RingCentral sign-in*. |
-| `jwt` | An admin pastes that recruiter's JWT in Settings → RingCentral. The original path, still supported. | Does not expire, so nothing to renew. |
+| `jwt` | An admin pastes that recruiter's JWT in Settings → Recruiters & Numbers (Add manually). The original path, still supported. | Does not expire, so nothing to renew. |
 | `none` | — | Their leads are covered by the shared number. |
 
 `services/ringCentralOAuthService.js` is the only place either shape becomes a
@@ -408,8 +408,8 @@ feature degrades to the old behaviour rather than breaking.
    `https://<RENDER_EXTERNAL_URL>/ringcentral/oauth/callback`. It must match
    byte-for-byte, which is why it is derived from `config.publicBaseUrl` in one
    place (`buildRedirectUri`). The app needs `SMS` and `ReadAccounts`.
-3. **Map each recruiter to their Bitrix24 user.** Settings → RingCentral →
-   Bitrix24 card → **Match recruiters to Bitrix users** reads the portal's user
+3. **Map each recruiter to their Bitrix24 user.** Settings → Bitrix24 →
+   **Match recruiters to Bitrix users** reads the portal's user
    directory and proposes the mapping; the row's **Pick from Bitrix** dropdown
    and the plain number field are both still there for anything it could not
    decide. No id means no match, which means the shared number. See
@@ -418,7 +418,7 @@ feature degrades to the old behaviour rather than breaking.
    webhook, which a CRM-only webhook does not have.
 4. **Confirm the Bitrix rule actually assigns new leads**, and roughly how
    fast. If assignment regularly takes longer than the *wait for a distribution
-   rule* setting (Settings → RingCentral → Bitrix24; env fallback
+   rule* setting (Settings → Bitrix24; env fallback
    `BITRIX24_ASSIGNEE_WAIT_MS`), raise it — or move to a Bitrix outgoing webhook
    (`ONCRMLEADUPDATE`) instead of polling. Polling was chosen because it needs
    no new public endpoint and no Bitrix-side configuration.
@@ -433,7 +433,7 @@ about the sending half.
 
 ## Verifying it without a real lead
 
-- **Settings → RingCentral → Bitrix24 card → Diagnose** — the CRM half of the
+- **Settings → Bitrix24 → Diagnose** — the CRM half of the
   chain, in the order the lead flow depends on it: configuration → portal
   reachable and `crm`-scoped → the configured status exists → the form's
   questions can be stored → **every** active recruiter is mapped and able to
@@ -453,7 +453,7 @@ about the sending half.
   - **every** active recruiter, not merely one. An active recruiter can be
     assigned a lead, so one who cannot text it is a real gap. A recruiter who
     should not receive leads belongs deactivated.
-- **Settings → RingCentral → a recruiter's row → Diagnose** — credentials →
+- **Settings → Recruiters & Numbers → a recruiter's row → Diagnose** — credentials →
   auth → number match → **SMS capability** → call-log read. The SMS-capability
   step is the one that predicts a rejected send.
 - **Send test SMS** on the same row sends a real text from that recruiter's

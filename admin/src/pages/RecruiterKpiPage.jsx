@@ -1,5 +1,8 @@
 import React, { useCallback, useEffect, useState } from "react";
 import * as api from "../api";
+import TabBar, { tabPanelProps } from "../components/ui/TabBar";
+import useTabRoute from "../navigation/useTabRoute";
+import RecruiterTargetsTab from "./recruiting/RecruiterTargetsTab";
 
 /**
  * Recruiter KPI dashboard — per-recruiter daily call performance vs targets.
@@ -8,7 +11,16 @@ import * as api from "../api";
  * threshold do not count toward it). Secondary KPI: 150 outbound calls/day.
  * The score is 70% talk-time progress + 30% outbound progress. All numbers
  * are derived from the RingCentral call log.
+ *
+ * Two tabs since November 2026: the day's numbers, and the Targets they are
+ * scored against (`#recruiter_kpis/targets`), which used to be a card on the
+ * RingCentral settings screen. The targets summary above the cards is one
+ * line with a link to that tab, not a centred card.
  */
+const KPI_TABS = [
+  { key: "overview", label: "Today" },
+  { key: "targets", label: "Targets" },
+];
 
 function todayIso() {
   const d = new Date();
@@ -48,7 +60,8 @@ function KpiRow({ label, value, target, unit, color, pct, met }) {
 
 const COLORS = { talk: "var(--accent-text)", outbound: "var(--info)", real: "var(--success)", strong: "var(--warning)" };
 
-export default function RecruiterKpiPage() {
+export default function RecruiterKpiPage({ tab: routeTab, onTabChange }) {
+  const [tab, setTab] = useTabRoute(KPI_TABS.map((t) => t.key), { tab: routeTab, onTabChange });
   const [date, setDate] = useState(todayIso());
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -67,7 +80,7 @@ export default function RecruiterKpiPage() {
     setSyncing(true); setMessage(null);
     try {
       const res = await api.syncRecruiterCalls(false);
-      if (res.skipped) setMessage({ type: "error", text: `Sync skipped: ${res.skipped === "disabled" ? "monitoring is disabled in Settings" : "RingCentral credentials not configured"}.` });
+      if (res.skipped) setMessage({ type: "error", text: `Sync skipped: ${res.skipped === "disabled" ? "monitoring is switched off in Settings → RingCentral Connection" : "RingCentral credentials are not set in Settings → RingCentral Connection"}.` });
       else setMessage({ type: "success", text: `Synced ${res.synced} call(s), ${res.attributed} attributed to recruiters.` });
       await load(date);
     } catch (err) { setMessage({ type: "error", text: err.message }); }
@@ -85,35 +98,36 @@ export default function RecruiterKpiPage() {
           <h2>Recruiter Call KPIs</h2>
           <p>Daily call performance vs targets, from the RingCentral call log.</p>
         </div>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <input className="form-input" type="date" value={date} max={todayIso()} onChange={(e) => setDate(e.target.value)} style={{ maxWidth: 170 }} />
-          <button className="btn btn-ghost btn-sm" onClick={sync} disabled={syncing}>{syncing ? "Syncing…" : "Sync now"}</button>
-        </div>
+        {tab === "overview" && (
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <input className="form-input" type="date" value={date} max={todayIso()} onChange={(e) => setDate(e.target.value)} style={{ maxWidth: 170 }} />
+            <button className="btn btn-ghost btn-sm" style={{ whiteSpace: "nowrap" }} onClick={sync} disabled={syncing}>{syncing ? "Syncing…" : "Sync now"}</button>
+          </div>
+        )}
       </div>
 
+      <TabBar tabs={KPI_TABS} value={tab} onChange={setTab} ariaLabel="Recruiter KPI views" idPrefix="recruiter-kpis" />
+
+      <div {...tabPanelProps("recruiter-kpis", tab)}>
+      {tab === "targets" && <RecruiterTargetsTab onSaved={() => load(date)} />}
+
+      {tab === "overview" && (<>
       {message && <div className={`alert alert-${message.type === "error" ? "error" : "success"}`}>{message.text}</div>}
 
-      {/* KPI rules reference */}
-      <div className="card" style={{ marginBottom: 16 }}>
-        <h3 style={{ marginTop: 0, textAlign: "center", letterSpacing: 1 }}>DAILY RECRUITER TARGETS</h3>
-        <p style={{ textAlign: "center", color: "var(--text-muted)", marginTop: -6 }}>
-          Main KPI: <strong style={{ color: "var(--text-primary)" }}>{targets.talkLabel} real call duration</strong> ·
-          Secondary KPI: <strong style={{ color: "var(--text-primary)" }}>{targets.outbound} outbound calls</strong>
-        </p>
-        <p style={{ textAlign: "center", fontSize: 12, margin: "0 0 10px" }}>
-          <a href="#settings/ringcentral">Change the targets and thresholds</a> in Settings → RingCentral &amp; Bitrix24.
-        </p>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, justifyContent: "center" }}>
-          <span className="badge badge-inactive">&lt; {shortThreshold}s : does NOT count toward talk time</span>
-          <span className="badge badge-muted">&gt; {data?.thresholds?.realConversationMinSeconds ?? 60}s : Real Conversation</span>
-          <span className="badge" style={{ background: "var(--accent-soft)", color: "var(--accent-text)" }}>&gt; {data?.thresholds?.strongConversationMinSeconds ?? 180}s : Strong Conv.</span>
-        </div>
-      </div>
+      {/* What the day is scored against, in one line. The numbers are edited
+          on the Targets tab. */}
+      <p style={{ color: "var(--text-muted)", fontSize: 13, margin: "0 0 12px" }}>
+        Targets: <strong style={{ color: "var(--text-primary)" }}>{targets.talkLabel} real call time</strong>
+        {" · "}<strong style={{ color: "var(--text-primary)" }}>{targets.outbound} outbound calls</strong>
+        {" · "}calls under {shortThreshold}s do not count, over {data?.thresholds?.realConversationMinSeconds ?? 60}s is a real
+        conversation, over {data?.thresholds?.strongConversationMinSeconds ?? 180}s a strong one.{" "}
+        <a href="#recruiter_kpis/targets" onClick={(e) => { e.preventDefault(); setTab("targets"); }}>Change targets</a>
+      </p>
 
       {loading ? (
         <div className="loading"><div className="spinner"></div> Loading…</div>
       ) : recruiters.length === 0 ? (
-        <div className="card"><p style={{ color: "var(--text-muted)", margin: 0 }}>No active recruiters. Add recruiters and their RingCentral numbers in <a href="#settings/ringcentral">Settings → RingCentral &amp; Bitrix24</a>.</p></div>
+        <div className="card"><p style={{ color: "var(--text-muted)", margin: 0 }}>No active recruiters. Add recruiters and their RingCentral numbers in <a href="#settings/ringcentral">Settings → Recruiters &amp; Numbers</a>.</p></div>
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 16 }}>
           {recruiters.map((r) => (
@@ -146,6 +160,8 @@ export default function RecruiterKpiPage() {
           ))}
         </div>
       )}
+      </>)}
+      </div>
     </div>
   );
 }

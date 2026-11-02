@@ -95,7 +95,7 @@ async function runCheckPass({ deps = defaultDeps(), confirmId = null, ask = true
   try {
     bitrix = await deps.readBitrix();
   } catch (err) {
-    if (err?.reason === 'not_configured') return { blocked: 'Bitrix24 is not connected (Settings → RingCentral → Bitrix24)' };
+    if (err?.reason === 'not_configured') return { blocked: 'Bitrix24 is not connected (Settings → Bitrix24)' };
     return { error: `Bitrix could not be read: ${String(err.message).slice(0, 200)}` };
   }
 

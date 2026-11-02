@@ -47,7 +47,7 @@ configuration last.
 | | Retention | `#retention` | Who the company may lose, and what to do today |
 | **Recruiting** | Leads | `#leads` | Every incoming lead |
 | | Customer Inquiries | `#facebook_leads` (`/auto`, `/pages`, `/teach`) | What new leads receive, and what Wenze may tell a candidate |
-| | Recruiter KPIs | `#recruiter_kpis` | Daily call performance (links to where the targets are set) |
+| | Recruiter KPIs | `#recruiter_kpis` (`/overview`, `/targets`) | Daily call performance, and the targets it is scored against (a tab since November 2026) |
 | **Communications** | Messages | `#communications` (`/send`, `/surveys`, `/scheduled`, `/history`, `/edit_by_link`) | What the bot says to driver groups |
 | | Birthdays | `#company_birthdays` (`/birthdays`, `/employees`) | Employees, their birthday cards and wishes |
 | **Monitoring** | Needs Attention | `#operations` (`/findings`, `/history`, `/checks`, `/identity`, `/learning`) | Where records disagree, what was corrected, what may be corrected automatically, driver identity, Wenze's suggestions |
@@ -60,7 +60,7 @@ desktop, a single picker on a phone. Every section has its own address.
 
 | Settings group | Sections (address) |
 |---|---|
-| Integrations | Location Providers (`location`) · Samsara (`samsara`) · Dispatcher Board (`board`) · RingCentral & Bitrix24 (`ringcentral`) · Facebook ↔ Bitrix (`metacrm`) |
+| Integrations | Location Providers (`location`) · Samsara (`samsara`) · Dispatcher Board (`board`) · Recruiters & Numbers (`ringcentral`) · RingCentral Connection (`rc_connection`) · Bitrix24 (`bitrix`) — one "RingCentral & Bitrix24" screen until November 2026 ([`density.md`](density.md) A2) · Facebook ↔ Bitrix (`metacrm`) |
 | AI | AI Providers (`ai`) · AI Tasks (`ai_tasks`) · Wenze's Questions (`ai_questions`) · Provider Terms (`ai_terms`) — one "AI & Autonomy" screen until November 2026 ([`density.md`](density.md) A1) |
 | Telegram Bot | Notifications (`notifications`; "Answering Wenze in Telegram" moved to Wenze's Questions in November 2026) · Bonus Groups (`groups`) · Group Access (`access`) · Auto Reactions (`reactions`) |
 | Recruiting | Safety Approvals (`safety`) |
@@ -104,7 +104,10 @@ opens on Announcement, as Send Message always did.
   number texts a lead, so it sits beside the recruiter rows), and four features
   read it. The section is "RingCentral & Bitrix24" so a person looking for
   Bitrix finds it without knowing that history; "Facebook ↔ Bitrix" is the
-  Meta Conversions API and keeps the name the owner gave it.
+  Meta Conversions API and keeps the name the owner gave it. *Superseded in
+  November 2026* ([`density.md`](density.md) A2): that screen had grown to six
+  cards, so Bitrix24 is its own section, linked both ways with Recruiters &
+  Numbers where each recruiter's Bitrix user is set.
 - **Home Time's configuration has its own tab.** The policy, the notice groups
   and accounting's violation alerts were two screenfuls below the driver table
   people use daily.

@@ -16,7 +16,7 @@ import { cleanBitrixUserId } from "./bitrixUserId";
  * broken login is shown as a red badge rather than being left to be discovered
  * from drivers replying to the wrong phone.
  *
- * Split out of RingCentralTab.jsx.
+ * Split out of RingCentralTab.jsx (now Settings → Recruiters & Numbers, RecruitersTab.jsx).
  */
 
 /** Sender state as one badge: the single thing an operator scans this row for. */
