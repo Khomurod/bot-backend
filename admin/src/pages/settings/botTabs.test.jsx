@@ -21,7 +21,6 @@ import SettingsPage from "../SettingsPage";
 import { LEGACY_PAGE_KEYS, resolveRoute } from "../../navigation/pageKeys";
 import { SETTINGS_SECTION_KEYS } from "./sections";
 import * as api from "../../api";
-import * as reactionsApi from "../../autoReactionsApi";
 
 vi.mock("../../api", async (importOriginal) => {
   const actual = await importOriginal();
@@ -33,13 +32,6 @@ vi.mock("../../api", async (importOriginal) => {
   }
   return stubbed;
 });
-
-vi.mock("../../autoReactionsApi", () => ({
-  getAutoReactions: vi.fn().mockResolvedValue([]),
-  createAutoReaction: vi.fn(),
-  updateAutoReaction: vi.fn(),
-  deleteAutoReaction: vi.fn(),
-}));
 
 beforeEach(() => vi.clearAllMocks());
 
@@ -61,7 +53,7 @@ test("each legacy hash lands on the screen it named, not on its neighbour", () =
 test("Settings opened on `reactions` shows Auto Reactions and does NOT load Group Access", async () => {
   render(<SettingsPage tab="reactions" />);
   expect(await screen.findByText(/adds that reaction to every message/i)).toBeTruthy();
-  expect(reactionsApi.getAutoReactions).toHaveBeenCalled();
+  expect(api.getAutoReactions).toHaveBeenCalled();
   expect(api.getGroupAccess).not.toHaveBeenCalled();
 });
 
@@ -69,7 +61,7 @@ test("Settings opened on `access` shows Group Access and does NOT load Auto Reac
   render(<SettingsPage tab="access" />);
   expect(await screen.findByText(/which driver groups the bot can actually read/i)).toBeTruthy();
   expect(api.getGroupAccess).toHaveBeenCalled();
-  expect(reactionsApi.getAutoReactions).not.toHaveBeenCalled();
+  expect(api.getAutoReactions).not.toHaveBeenCalled();
 });
 
 test("neither panel brings its own page header — Settings owns the one header", async () => {
