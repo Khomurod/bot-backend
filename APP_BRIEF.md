@@ -80,7 +80,7 @@ Business problems it solves:
   `docs/architecture/retired-bol-pod.md`, `docs/architecture/retired-fuel.md`,
   `docs/architecture/retired-dispatch-eta.md`,
   `docs/architecture/retired-finance-monitor.md`.)
-- Capture and convert recruiting leads (Facebook/Meta, Indeed) and measure
+- Capture and convert recruiting leads (Facebook/Meta) and measure
   recruiter performance.
 
 ---
@@ -96,7 +96,7 @@ and of the leads worker beside Coolify, on the same tokens.
 |---|---|---|
 | `driver-feedback-bot` | this repo | `index.js` — the whole Node app: Telegram bot + Express API + admin SPA + all background jobs |
 | `facebook-leads-engine` | this repo (`leads-bot/`) | Python FastAPI lead worker. In the main deployment `index.js` **spawns it as a child process**; it can also run standalone |
-| Samsara safety poller | **separate repo** `Khomurod/samsara-integration` | Polls Samsara safety events → dashcam alerts to Telegram |
+| Samsara safety poller | **separate repo** `Khomurod/samsara-integration`, deployed on **Render's free plan** (`samsara-integration.onrender.com`) | Polls Samsara safety events → dashcam alerts to Telegram. **A free Render web service sleeps after 15 minutes without a request, and asleep it polls nothing**: it needs an external ping to its own `/health` every ~10 minutes (its README), or a host that does not sleep. On 2 November 2026 it was found asleep, which is what the hub's `samsara_safety_pipeline` line reads as down |
 | Dispatcher Board | **not a service of ours** — an external Google Apps Script web app over the dispatchers' spreadsheet | Read-only, polled. **Read for Home Time's home-in / home-out** (a dispatcher's `HOME` opens a home stay, the truck back in the pool closes it) **and, since 29 October 2026, as the source of truth the Board ↔ Bitrix check compares Bitrix24 with** (`docs/architecture/board-bitrix-check.md`); Wenze stays the authority on who a person is and whether they are home. Off until a URL and token are saved in Settings |
 
 The three cooperate in **two different ways** — do not confuse them:
@@ -147,7 +147,7 @@ Hard constraints of this deployment:
 | Bot | Token env | Role | Owner |
 |---|---|---|---|
 | Wenze Support / feedback bot | `BOT_TOKEN` | Main bot: feedback, broadcasts, dispatch commands, home time, bonuses, creator panel | this repo, `bot/` |
-| Wenze lead bot | `TELEGRAM_BOT_TOKEN` | Facebook/Indeed leads, auto-SMS, RingCentral replies | `leads-bot/` + `services/leadsTelegramClient.js` |
+| Wenze lead bot | `TELEGRAM_BOT_TOKEN` | Facebook leads, auto-SMS, RingCentral replies | `leads-bot/` + `services/leadsTelegramClient.js` |
 | Samsara notification bot | `SAMSARA_BOT_TOKEN` (in the other repo) | Dashcam safety alerts | `samsara-integration` |
 
 - **Only long-polling must be exclusive** — a token may be *sent* on from
@@ -159,8 +159,6 @@ Hard constraints of this deployment:
   *sends* on it (`services/leadsTelegramClient.js`), and the **Samsara service
   sends** on the hub's `BOT_TOKEN` (to post into driver groups) while only the
   hub polls it. Both are safe; adding a second poller anywhere is not.
-- `@datatruck_driver_bot` is a **third-party** bot ours only reacts to
-  (`bot/datatruckPeerHandlers.js`).
 
 ---
 ## 3. Main users

@@ -38,7 +38,7 @@ load.
 | `services/dispatchPinnedContextService.js`, `services/pinnedContext/*` | the pinned-load reading: fallbacks, trust rules, pinned file download, the model reads |
 | `server/services/dispatchParserService.js` | `extractRateConRawTextFromFile`, the last piece of the Dispatch Center's parser; `server/services/` is now empty and gone |
 | `services/recentLoadSelection.js`, `services/driverStatusLookupService.js` | stored-load choice; the test group's driver-name search |
-| `services/loadTextPatterns.js` | folded into `services/datatruckPeerPatterns.js`, its last reader (the Datatruck peer bot's reactions); `extractLoadIdentifier`, which nothing called, went |
+| `services/loadTextPatterns.js` | folded into `services/datatruckPeerPatterns.js`, its last reader (the Datatruck peer bot's reactions), which went with those reactions in November 2026 ([`ARCHIVED_FEATURES.md`](../ARCHIVED_FEATURES.md)); `extractLoadIdentifier`, which nothing called, went |
 | `bot/dispatchStatusLookupHandlers.js`, `bot/dispatchStatusLookupSession.js` | the test group's interactive `/status` lookup |
 | `/load`, `/update`, `/status` in `bot/handlers/dispatchCommandHandlers.js` | the file now registers `/location` only; `registerStatusCommand` is gone from `bot/bot.js` |
 | The pinned-message capture in `bot/handlers/groupCaptureHandlers.js` | a pin is no longer recorded; `upsertGroupPinnedMessageSnapshot` / `getGroupPinnedMessageSnapshot` left `database/chatLogs.js` with the four `group_recent_loads` functions |
@@ -70,8 +70,9 @@ load.
   did `tesseract.js` ([`retired-finance-monitor.md`](retired-finance-monitor.md)).
 - **`lib/telegram/fileDescriptor.js`** — the Finance Monitor's capture read
   attachments with it; it went with the Finance Monitor too.
-- **The Datatruck peer bot's load-message matcher** — now inside
-  `services/datatruckPeerPatterns.js`.
+- **The Datatruck peer bot's load-message matcher** — moved inside
+  `services/datatruckPeerPatterns.js`; it went with the Datatruck peer
+  reactions in November 2026 ([`ARCHIVED_FEATURES.md`](../ARCHIVED_FEATURES.md)).
 - **The tables** `dispatch_eta_updates`, `dispatch_eta_global_settings`,
   `group_recent_loads` and `group_pinned_messages` are read and written by
   nothing. They stay on a deployed database until an administrator drops them
@@ -96,6 +97,5 @@ node --test tests/removedFeaturesStayRemoved.test.js  # modules, /update /status
 node --test tests/api-surface.test.js                # /api/dispatch/testing-feature/groups → 404 WITH a valid token
 node --test tests/retiredLeftovers.test.js           # dispatch_eta is droppable and not recreated on boot
 TEST_DATABASE_URL=… node --test tests/retiredLeftoversPg.test.js  # dropped on a deployed database, stays dropped
-node --test tests/datatruckPeerPatterns.test.js      # the moved load-like matcher
 npm test --prefix admin -- --run apiFacade DispatcherBoardTab
 ```

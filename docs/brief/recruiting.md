@@ -153,8 +153,11 @@ the same treatment home time got, and for the same reason.
 - **Self-serve Page connect**: `/connect` in a leads group starts a
   session-token-gated OAuth flow; Page tokens are encrypted
   (`lib/security/facebookCrypto.js`).
-- **Indeed leads** arrive from a Gmail Apps Script
-  (`docs/gmail-indeed-apps-script.gs`) to `/api/internal/indeed/lead`.
+- **Indeed leads no longer arrive.** The Gmail Apps Script intake
+  (`POST /api/internal/indeed/lead`) was removed in November 2026 at the
+  owner's decision; leads it recorded before then stay in `leads` with source
+  `indeed`, and the Leads page still labels and filters them
+  (`docs/ARCHIVED_FEATURES.md`).
 - **Recruiter KPIs**: RingCentral call logs sync into `ringcentral_calls`. The
   targets are configurable defaults (`ringcentral_settings`): 2h30m of real talk
   time per day, 150 outbound calls/day, and calls shorter than 30s do not count

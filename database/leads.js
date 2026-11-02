@@ -1,10 +1,12 @@
 /**
- * Leads (Facebook + Indeed): the writers, and the admin Leads tab's list and
- * its fingerprint. Extracted from database/db.js, which re-exports these.
+ * Leads: the writers (Facebook's lead processor), and the admin Leads tab's
+ * list and its fingerprint. Rows with source `indeed` are the ones the removed
+ * Gmail intake recorded before November 2026; they are listed, never written.
+ * Extracted from database/db.js, which re-exports these.
  */
 const { query } = require('./pool');
 
-// ─── Leads (Facebook + Indeed) ───
+// ─── Leads ───
 
 /**
  * Insert a lead, deduping on (source, external_id). Returns the new row, or

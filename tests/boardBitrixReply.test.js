@@ -136,8 +136,8 @@ test('registered right after the learning questions\' handler and before the dri
   const source = fs.readFileSync(path.join(__dirname, '..', 'bot', 'bot.js'), 'utf8');
   const lesson = source.indexOf('registerLessonReplyHandlers(bot);');
   const ours = source.indexOf('registerBoardBitrixReplyHandlers(bot);');
-  const datatruck = source.indexOf('registerDatatruckPeerHandlers(bot);');
-  assert.ok(lesson > 0 && ours > lesson && ours < datatruck);
+  const next = source.indexOf('registerCreatorMessageManager(bot);');
+  assert.ok(lesson > 0 && ours > lesson && ours < next);
 });
 
 test('the handler lets every message that is not one of our answers through', async () => {

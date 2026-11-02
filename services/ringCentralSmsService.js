@@ -8,8 +8,8 @@
  *
  *   sendSms(to, text)                     the SHARED company number
  *                                         (RC_FROM_NUMBER, env JWT). Used by
- *                                         OTP, the Indeed path, and as the
- *                                         fallback whenever no recruiter can be
+ *                                         OTP and as the fallback whenever
+ *                                         no recruiter can be
  *                                         resolved for a lead.
  *   sendSmsAsRecruiter(rec, to, text)     that recruiter's own number, with
  *                                         their own OAuth/JWT credential

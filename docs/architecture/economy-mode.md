@@ -98,8 +98,10 @@ driver-raise review, which refused a Board older than six hours; that review
 was removed in October 2026.)
 
 **The health endpoint** skips its `operations` block and reports
-`economy: { active, until }` instead. That block is dozens of reads per build,
-and the cron pinger asks for it about 150 times a day.
+`economy: { active, until }` instead. That block is dozens of reads per build;
+the container's HEALTHCHECK asks every 30 seconds and the block is cached for
+15 minutes, so it is built up to ~96 times a day. (An external cron pinger used
+to add about 150 requests a day; its `/health` alias went in November 2026.)
 
 ## What the end of a pause looks like
 

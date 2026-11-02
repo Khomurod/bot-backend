@@ -12,7 +12,6 @@ const config = require('../config/config');
 const { telegramClientOptions } = require('../services/telegramAgent');
 const db = require('../database/db');
 const { registerHomeTimeRequestHandlers } = require('./homeTimeRequestHandlers');
-const { registerDatatruckPeerHandlers } = require('./datatruckPeerHandlers');
 const { registerMileageBonusHandlers } = require('./mileageBonusHandlers');
 const { registerLocationCheckinHandlers } = require('./locationCheckinHandlers');
 const { registerCreatorMessageManager } = require('./creatorMessageManager');
@@ -196,7 +195,6 @@ async function startBot() {
     // handlers, so that reply is consumed; anything else falls through.
     registerHomeTimeViolationHandlers(bot);
 
-    registerDatatruckPeerHandlers(bot);
     registerCreatorMessageManager(bot);
     // Creator-only (user id 2117922421) messaging panel, restricted to the
     // bot's private chat: "Send Broadcast Message" (pick an audience) and

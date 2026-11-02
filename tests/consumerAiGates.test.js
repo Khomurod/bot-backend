@@ -103,7 +103,6 @@ test('no consumer still reads an AI key constant from a client module', () => {
   const fs = require('node:fs');
   const files = [
     'services/translationService.js',
-    'services/datatruckBanterMessage.js',
     'services/aiAnnotationService.js',
     'services/groupStatusAiClassifier.js',
     // `services/employeeBirthdayMessage.js` went when the birthday post became
@@ -112,7 +111,8 @@ test('no consumer still reads an AI key constant from a client module', () => {
     // Center was removed — it held the Groq and Gemini reads for the Send Load
     // tab's rate-confirmation parser, and went with it. The same is true of
     // `services/pinnedContext/loadContextFromText.js`, which went with the
-    // pinned-load reading (October 2026). A file that no longer exists cannot
+    // pinned-load reading (October 2026), and of `services/datatruckBanterMessage.js`,
+    // which went with the Datatruck peer reactions (November 2026). A file that no longer exists cannot
     // reintroduce the gate, and listing it would only fail on ENOENT and say
     // nothing about the rule.
   ];

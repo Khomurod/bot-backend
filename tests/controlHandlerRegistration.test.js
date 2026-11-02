@@ -20,11 +20,11 @@ test('registered after the capture pipeline and before every other message handl
   const source = fs.readFileSync(path.join(__dirname, '..', 'bot', 'bot.js'), 'utf8');
   const capture = source.indexOf('registerGroupCaptureHandlers(bot);');
   const control = source.indexOf('registerControlReplyHandlers(bot);');
-  const datatruck = source.indexOf('registerDatatruckPeerHandlers(bot);');
+  const next = source.indexOf('registerCreatorMessageManager(bot);');
 
-  assert.ok(capture > 0 && control > 0 && datatruck > 0, 'all three are registered');
+  assert.ok(capture > 0 && control > 0 && next > 0, 'all three are registered');
   assert.ok(control > capture, 'the reply must still be captured as group activity');
-  assert.ok(control < datatruck, 'an answer must be consumed before anything else parses it');
+  assert.ok(control < next, 'an answer must be consumed before anything else parses it');
 });
 
 function fakeBot() {

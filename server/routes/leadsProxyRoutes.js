@@ -1,16 +1,18 @@
 /**
- * Leads-Bot proxy + Indeed lead intake.
+ * Leads-Bot proxy.
  *
- * IMPORTANT: this router is mounted BEFORE the global express.json() so
- * (1) the raw body is preserved for Facebook's X-Hub-Signature-256
- * verification inside webhook_server.py, and (2) the Indeed route can accept
- * a base64 résumé PDF (up to ~12mb) with its own JSON parser.
+ * IMPORTANT: this router is mounted BEFORE the global express.json() so the
+ * raw body is preserved for Facebook's X-Hub-Signature-256 verification inside
+ * webhook_server.py.
+ *
+ * The Indeed intake that also lived here (`POST /api/internal/indeed/lead`, fed
+ * by a Gmail Apps Script) was removed in November 2026 at the owner's decision;
+ * see docs/ARCHIVED_FEATURES.md.
  */
 const express = require('express');
 const http = require('http');
-const { ingestIndeedLead } = require('../../services/indeedLeadService');
 
-function createLeadsProxyRoutes({ internalSharedSecretGuard }) {
+function createLeadsProxyRoutes() {
   const router = express.Router();
 
   const LEADS_BOT_PORT = process.env.LEADS_BOT_PORT || 8000;
@@ -41,27 +43,6 @@ function createLeadsProxyRoutes({ internalSharedSecretGuard }) {
 
   router.all('/webhook', proxyToLeadsBot);
   router.all('/rc-webhook', proxyToLeadsBot);
-
-  // Indeed lead intake from the Gmail Apps Script. Auth is the same internal
-  // shared secret used by the Facebook internal webhook.
-  router.post(
-    '/api/internal/indeed/lead',
-    express.json({ limit: '12mb' }),
-    internalSharedSecretGuard,
-    async (req, res) => {
-      try {
-        const { messageId, from, subject, body, resumePdfBase64 } = req.body || {};
-        if (!messageId) {
-          return res.status(400).json({ error: 'messageId is required' });
-        }
-        const result = await ingestIndeedLead({ messageId, from, subject, body, resumePdfBase64 });
-        return res.json({ status: 'accepted', ...result });
-      } catch (err) {
-        console.error('[API] Indeed lead ingest failed:', err.message);
-        return res.status(500).json({ error: 'Failed to ingest Indeed lead', detail: err.message });
-      }
-    }
-  );
 
   return router;
 }

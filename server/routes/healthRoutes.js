@@ -41,10 +41,12 @@ function createHealthRoutes({
 }) {
   const router = express.Router();
 
-  // ─── Health Check (public, for Render + external cron / uptime pings) ───
+  // ─── Health Check (public; the container's HEALTHCHECK curls it) ───
   // Pings the DB so a healthy response genuinely means the app can serve
-  // requests, not just that Node is alive. Exposed at /api/health and /health
-  // (short path for cron jobs). HEAD returns the same status code without a body.
+  // requests, not just that Node is alive. HEAD returns the same status code
+  // without a body. The short `/health` alias went in November 2026: it existed
+  // for an external cron pinger that kept the Render instance awake, and an
+  // always-on Coolify container needs no waking.
   let metaCredentialHealthCache = { checkedAt: 0, meta: null };
   const META_CREDENTIAL_HEALTH_TTL_MS = 5 * 60 * 1000;
 
@@ -252,8 +254,6 @@ function createHealthRoutes({
   router.head('/', siteRootHandler);
   router.get('/api/health', healthHandler);
   router.head('/api/health', healthHandler);
-  router.get('/health', healthHandler);
-  router.head('/health', healthHandler);
 
   // Avoid noisy browser console 404 for default favicon requests.
   router.get('/favicon.ico', (req, res) => {
