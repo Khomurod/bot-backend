@@ -198,3 +198,12 @@ div.error {
   color: var(--danger);
   font-size: 13px;
 }
+
+/* Live Locations on a phone: the unit list before the map, and not taller
+   than half the screen, so both are reachable (November 2026). */
+@media (max-width: 768px) {
+  .live-units-panel {
+    order: -1;
+    max-height: 50vh !important;
+  }
+}

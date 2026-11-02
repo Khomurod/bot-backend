@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { timeAgo } from "../utils/formatTime";
-import { clockTime, PROVIDER_LABEL } from "./liveLocations/constants";
+import { clockTime, PROVIDER_LABEL, FILTERS, unitMatchesFilter } from "./liveLocations/constants";
 import { useLiveSnapshot } from "./liveLocations/useLiveSnapshot";
 import { useLeafletMap } from "./liveLocations/useLeafletMap";
 import { DiagnosticsPanel } from "./liveLocations/DiagnosticsPanel";
@@ -35,27 +35,21 @@ export default function LiveLocationsPage() {
   const live = useLiveSnapshot();
   const {
     snapshot, loading, refreshing, error, errorObject, lastUpdated, autoRefresh, setAutoRefresh,
-    selectedUnit, setSelectedUnit, load, units, summary, providerErrors,
+    selectedUnit, setSelectedUnit, load, units, providerErrors,
   } = live;
 
-  const filtered = useMemo(() => {
+  // The search first, then the filter; the counts on the filter buttons are
+  // taken after the search, so each one says what its button would show.
+  const searched = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return units.filter((u) => {
-      if (q) {
-        const hay = `${u.unit || ""} ${u.driverName || ""} ${u.groupName || ""}`.toLowerCase();
-        if (!hay.includes(q)) return false;
-      }
-      switch (filter) {
-        case "active_load": return !!u.load;
-        case "no_load": return !u.load;
-        case "stale": return !!(u.location && u.location.isStale);
-        case "samsara": return u.provider === "samsara";
-        case "factor": return u.provider === "factor";
-        case "leader": return u.provider === "leader";
-        default: return true;
-      }
-    });
-  }, [units, search, filter]);
+    if (!q) return units;
+    return units.filter((u) => `${u.unit || ""} ${u.driverName || ""} ${u.groupName || ""}`.toLowerCase().includes(q));
+  }, [units, search]);
+  const filtered = useMemo(() => searched.filter((u) => unitMatchesFilter(u, filter)), [searched, filter]);
+  const filterCounts = useMemo(
+    () => Object.fromEntries(FILTERS.map((f) => [f.key, searched.filter((u) => unitMatchesFilter(u, f.key)).length])),
+    [searched],
+  );
 
   const map = useLeafletMap({
     filtered, selectedUnit, setSelectedUnit,
@@ -65,13 +59,6 @@ export default function LiveLocationsPage() {
   // The header toolbar renders the "Fit visible" button.
   const { fitAll } = map;
 
-  const cards = summary ? [
-    { label: "Units visible", value: filtered.length, color: "var(--accent-text)" },
-    { label: "Active loads", value: summary.activeLoads, color: "var(--success)" },
-    { label: "Stale GPS", value: summary.staleGps, color: "var(--warning)" },
-    { label: "No active load", value: summary.noActiveLoad, color: "var(--info)" },
-    { label: "Provider errors", value: summary.providerErrors, color: "var(--danger)" },
-  ] : [];
 
   return (
     <div>
@@ -150,16 +137,9 @@ export default function LiveLocationsPage() {
         </div>
       )}
 
-      {/* Status cards */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 12, marginBottom: 16 }}>
-        {cards.map((c) => (
-          <div key={c.label} className="card" style={{ padding: "12px 16px" }}>
-            <div style={{ fontSize: 22, fontWeight: 700, color: c.color }}>{c.value}</div>
-            <div style={{ fontSize: 12, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.5px" }}>{c.label}</div>
-          </div>
-        ))}
-      </div>
-
+      {/* The five count cards are gone (November 2026): they repeated the
+          filters below. Each filter now carries its own count, and the
+          provider errors are the banner above. */}
       <MapAndUnitList
         {...map}
         filtered={filtered}
@@ -169,6 +149,7 @@ export default function LiveLocationsPage() {
         setSearch={setSearch}
         filter={filter}
         setFilter={setFilter}
+        filterCounts={filterCounts}
         loading={loading}
         snapshot={snapshot}
       />

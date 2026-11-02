@@ -18,7 +18,7 @@ import TabBar from "../../components/ui/TabBar";
 export function MapAndUnitList({
   mapContainerRef, mapError, tileError, mapReady,
   filtered, units, selectedUnit, selectUnit, fitAll,
-  search, setSearch, filter, setFilter,
+  search, setSearch, filter, setFilter, filterCounts = {},
   loading, snapshot,
 }) {
   return (
@@ -58,8 +58,9 @@ export function MapAndUnitList({
         )}
       </div>
 
-      {/* Side panel */}
-      <div className="card" style={{ flex: "0 1 360px", minWidth: 280, display: "flex", flexDirection: "column", maxHeight: "max(460px, calc(100vh - 300px))" }}>
+      {/* Side panel. On a phone it comes BEFORE the map (live-units-panel,
+          styles/12-ui.css): the list started 1,100 px down otherwise. */}
+      <div className="card live-units-panel" style={{ flex: "0 1 360px", minWidth: 280, display: "flex", flexDirection: "column", maxHeight: "max(460px, calc(100vh - 300px))" }}>
         <input
           className="form-input"
           placeholder="Search by unit or driver…"
@@ -67,7 +68,15 @@ export function MapAndUnitList({
           onChange={(e) => setSearch(e.target.value)}
           style={{ marginBottom: 10 }}
         />
-        <TabBar filter size="sm" tabs={FILTERS} value={filter} onChange={setFilter} ariaLabel="Which units" style={{ marginBottom: 10 }} />
+        <TabBar
+          filter
+          size="sm"
+          tabs={FILTERS.map((f) => ({ key: f.key, label: <>{f.label} <span className="wz-tab-count">{filterCounts[f.key] ?? 0}</span></> }))}
+          value={filter}
+          onChange={setFilter}
+          ariaLabel="Which units"
+          style={{ marginBottom: 10 }}
+        />
         <div style={{ overflowY: "auto", flex: 1, margin: "0 -8px" }}>
           {filtered.length === 0 ? (
             <div className="empty-state" style={{ padding: 20 }}>
@@ -95,11 +104,13 @@ export function MapAndUnitList({
                 </span>
               </div>
               <div style={{ fontSize: 13, color: "var(--text-secondary)" }}>{u.driverName || u.groupName || "—"}</div>
-              <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>
-                {u.location
-                  ? `${u.location.speedMph != null ? u.location.speedMph + " mph · " : ""}${u.location.lastUpdated ? timeAgo(u.location.lastUpdated) : "—"}`
-                  : "no GPS"}
-              </div>
+              {/* Each status said once: "no GPS" is the corner label above,
+                  not a second line here too. */}
+              {u.location && (
+                <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>
+                  {`${u.location.speedMph != null ? u.location.speedMph + " mph · " : ""}${u.location.lastUpdated ? timeAgo(u.location.lastUpdated) : "—"}`}
+                </div>
+              )}
               <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>
                 {u.load
                   ? `${u.load.loadId || "load"}${u.load.nextStopType ? " · next " + u.load.nextStopType : ""} · ${fmtEta(u.eta)}`
