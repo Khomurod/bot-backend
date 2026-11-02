@@ -28,7 +28,8 @@ Heavy libraries are lazy-loaded and cost nothing until first use:
 
 - `pdf-parse` (~20 MB RSS) — loads on first PDF text extraction (the Indeed
   lead import is its one caller since the Finance Monitor was removed).
-- `nodemailer` — loads on first OTP email.
+  (`nodemailer` was listed here for the email one-time codes; it went with
+  them.)
 
 Runtime memory pressure therefore comes from *work*, not boot: PDF jobs,
 multer uploads held in memory, AI document batches, and Telegram media buffers.
