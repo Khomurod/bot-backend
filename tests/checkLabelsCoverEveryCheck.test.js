@@ -43,7 +43,9 @@ const quotedKeys = (fragment) => [...fragment.matchAll(QUOTED_KEY)].map((m) => m
  *     (`checkKey: botObserved ? 'identity.status_disagreement' : '…'`);
  *   - `const CHECK_X = 'a.b'`;
  *   - a check module's `CHECK_KEYS = [ … ]` list (RETIRED_CHECK_KEYS is not
- *     matched: those no longer file anything).
+ *     matched: those no longer file anything);
+ *   - a `CHECKS = { NAME: 'a.b', … }` table, the form lib/identity's
+ *     resolvers use (`CHECKS.UNNAMED` in a CHECK_KEYS list is its key).
  */
 function filedCheckKeys() {
   const keys = new Set();
@@ -52,6 +54,9 @@ function filedCheckKeys() {
     for (const m of text.matchAll(/checkKey:([^\n]*)/g)) quotedKeys(m[1]).forEach((k) => keys.add(k));
     for (const m of text.matchAll(/\bCHECK[A-Z_]*\s*=\s*'([a-z_]+\.[a-z_]+)'/g)) keys.add(m[1]);
     for (const m of text.matchAll(/\bCHECK_KEYS\s*=\s*(?:Object\.freeze\(\s*)?\[([\s\S]*?)\]/g)) {
+      quotedKeys(m[1]).forEach((k) => keys.add(k));
+    }
+    for (const m of text.matchAll(/\bCHECKS\s*=\s*(?:Object\.freeze\(\s*)?\{([\s\S]*?)\}/g)) {
       quotedKeys(m[1]).forEach((k) => keys.add(k));
     }
   }
@@ -67,13 +72,15 @@ function labelledKeys() {
 
 test('the scan finds the checks it is meant to (control)', () => {
   const keys = filedCheckKeys();
-  // A literal, a constant, both branches of a ternary, and a key declared
-  // only in a CHECK_KEYS list — every form the scan reads.
+  // A literal, a constant, both branches of a ternary, a key declared only in
+  // a CHECK_KEYS list, and two from a CHECKS table — every form the scan reads.
   assert.ok(keys.has('identity.duplicate_unit'));
   assert.ok(keys.has('home_time.board_disagrees_with_state'));
   assert.ok(keys.has('identity.status_disagreement'));
   assert.ok(keys.has('identity.status_needs_decision'));
   assert.ok(keys.has('home_time.clock_reset_on_group_change'));
+  assert.ok(keys.has('identity.telegram_member_unnamed'));
+  assert.ok(keys.has('identity.telegram_members_ambiguous'));
   assert.ok(!keys.has('route_control.assignment_on_inactive_group'), 'a retired key is not a filed one');
   assert.ok(keys.size >= 25, `only ${keys.size} keys found — the scan is broken`);
 });
