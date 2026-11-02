@@ -96,7 +96,11 @@ export default function LeadsPage() {
         <div className="empty-state">
           <div className="icon">📥</div>
           <h3>No leads yet</h3>
-          <p>Facebook leads will appear here as they arrive.</p>
+          <p>
+            {source === "indeed"
+              ? "No new Indeed leads arrive: that intake was removed in November 2026. Indeed leads recorded before then are listed here."
+              : "Facebook leads will appear here as they arrive."}
+          </p>
         </div>
       ) : (
         <div className="table-container">
