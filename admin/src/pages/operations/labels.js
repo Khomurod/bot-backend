@@ -108,7 +108,8 @@ const CHECK_LABELS = {
   'identity.bot_not_member': 'Active group the bot is no longer a member of',
   'identity.unit_title_mismatch': 'Group title names a different unit than the profile',
   'ops.no_notification_destination': 'Wenze has nowhere to send its notices',
-  'ai.policy_source_lost': "An AI provider's terms page can no longer be found",
+  // Terms, privacy, pricing or model-policy: any watched page, not only terms.
+  'ai.policy_source_lost': "A watched AI provider page can no longer be found",
 };
 
 export function checkLabel(checkKey) {

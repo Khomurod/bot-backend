@@ -33,15 +33,27 @@ function sources(dir, out = []) {
   return out;
 }
 
+const QUOTED_KEY = /'([a-z_]+\.[a-z_]+)'/g;
+const quotedKeys = (fragment) => [...fragment.matchAll(QUOTED_KEY)].map((m) => m[1]);
+
+/**
+ * The places a check key is DECLARED, and only those, so an unrelated dotted
+ * string elsewhere is never taken for one:
+ *   - `checkKey: 'a.b'`, or a ternary on that line
+ *     (`checkKey: botObserved ? 'identity.status_disagreement' : '…'`);
+ *   - `const CHECK_X = 'a.b'`;
+ *   - a check module's `CHECK_KEYS = [ … ]` list (RETIRED_CHECK_KEYS is not
+ *     matched: those no longer file anything).
+ */
 function filedCheckKeys() {
   const keys = new Set();
-  const patterns = [
-    /checkKey:\s*'([a-z_]+\.[a-z_]+)'/g,
-    /\bCHECK[A-Z_]*\s*=\s*'([a-z_]+\.[a-z_]+)'/g,
-  ];
   for (const rel of ['services', 'lib', 'database', 'bot', 'server'].flatMap((d) => sources(d))) {
     const text = code(read(rel));
-    for (const re of patterns) for (const m of text.matchAll(re)) keys.add(m[1]);
+    for (const m of text.matchAll(/checkKey:([^\n]*)/g)) quotedKeys(m[1]).forEach((k) => keys.add(k));
+    for (const m of text.matchAll(/\bCHECK[A-Z_]*\s*=\s*'([a-z_]+\.[a-z_]+)'/g)) keys.add(m[1]);
+    for (const m of text.matchAll(/\bCHECK_KEYS\s*=\s*(?:Object\.freeze\(\s*)?\[([\s\S]*?)\]/g)) {
+      quotedKeys(m[1]).forEach((k) => keys.add(k));
+    }
   }
   return keys;
 }
@@ -55,9 +67,14 @@ function labelledKeys() {
 
 test('the scan finds the checks it is meant to (control)', () => {
   const keys = filedCheckKeys();
-  // One literal and one constant, from two different services.
+  // A literal, a constant, both branches of a ternary, and a key declared
+  // only in a CHECK_KEYS list — every form the scan reads.
   assert.ok(keys.has('identity.duplicate_unit'));
   assert.ok(keys.has('home_time.board_disagrees_with_state'));
+  assert.ok(keys.has('identity.status_disagreement'));
+  assert.ok(keys.has('identity.status_needs_decision'));
+  assert.ok(keys.has('home_time.clock_reset_on_group_change'));
+  assert.ok(!keys.has('route_control.assignment_on_inactive_group'), 'a retired key is not a filed one');
   assert.ok(keys.size >= 25, `only ${keys.size} keys found — the scan is broken`);
 });
 
