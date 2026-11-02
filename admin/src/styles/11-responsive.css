@@ -14,11 +14,13 @@
   margin-bottom: 12px;
 }
 
+/* One compact row of counts (November 2026). They were tiles, five high on a
+   phone, pushing the driver table below the fold. */
 .home-time-summary-strip {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-  gap: 10px;
-  margin: 16px 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0;
 }
 
 .home-time-summary-chip,
@@ -37,6 +39,17 @@
   font-size: 20px;
   font-weight: 700;
   color: var(--text-primary);
+}
+
+.home-time-summary-chip {
+  flex-direction: row;
+  align-items: baseline;
+  gap: 6px;
+  padding: 6px 10px;
+}
+
+.home-time-summary-chip strong {
+  font-size: 16px;
 }
 
 .home-time-summary-chip span,
@@ -248,7 +261,6 @@
 }
 
 @media (max-width: 768px) {
-  .home-time-summary-strip,
   .home-time-metrics,
   .home-time-form-grid {
     grid-template-columns: 1fr;

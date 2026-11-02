@@ -63,10 +63,7 @@ export default function HomeTimePage({ tab: routeTab, onTabChange }) {
     <div>
       <div className="page-header">
         <h2>Driver Home Time</h2>
-        <p>
-          The main table now carries the operational view directly. Click any column header to sort, then click a row
-          to open the full driver popup.
-        </p>
+        <p>Who is home and who is on the road. Click a column to sort, a row for that driver's full record.</p>
       </div>
 
       {status && (
