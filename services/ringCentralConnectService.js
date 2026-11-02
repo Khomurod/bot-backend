@@ -72,7 +72,7 @@ async function createRecruiterConnectLink({ recruiterId = null, invitedName = nu
   const cfg = await rc.getRcConfig();
   if (!cfg.clientId || !cfg.clientSecret) {
     throw new Error(
-      'Set the shared RingCentral Client ID and Secret in Settings → RingCentral before inviting a recruiter.'
+      'Set the shared RingCentral Client ID and Secret in Settings → RingCentral Connection before inviting a recruiter.'
     );
   }
 

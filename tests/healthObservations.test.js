@@ -214,7 +214,7 @@ test('NO DESTINATION NEEDS A PERSON, and says how many notices that has cost', a
   assert.equal(d.state, 'needs_human_attention');
   assert.match(d.reason, /1247/,
     '"not configured" is a sentence nobody acts on; a count is one somebody does');
-  assert.match(d.reason, /Settings → Notifications/,
+  assert.match(d.reason, /Settings → Where the Bot Posts/,
     'and it says where to go, because a warning without an address is a mood');
 });
 
@@ -294,7 +294,7 @@ test('EACH MISSING PIECE IS NAMED, with where to fix it', async () => {
   assert.match(r.reason, /Nothing has been approved/);
   assert.match(r.reason, /Teach Wenze/);
   assert.match(r.reason, /capability is switched off/);
-  assert.match(r.reason, /Responsibilities/,
+  assert.match(r.reason, /Settings → AI → AI Tasks/,
     'a count on its own sends somebody hunting through six settings screens');
 });
 

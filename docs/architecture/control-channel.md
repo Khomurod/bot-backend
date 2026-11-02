@@ -181,7 +181,7 @@ accepts on a screen.
 
 A memory is taken back, never deleted: `revoked_at` is set and the row stays, so
 "Wenze stopped asking because you said X, and you withdrew that on the 3rd" is
-still readable. Settings → Answering Wenze in Telegram lists what is remembered
+still readable. Settings → AI → Wenze's Questions → Answering Wenze in Telegram (under Notifications until November 2026) lists what is remembered
 with a **Forget** button; the finding's own detail panel shows the Telegram
 conversation and the standing answer beside it.
 

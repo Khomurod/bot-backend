@@ -3,7 +3,14 @@ import React from "react";
 import * as api from "../../../api";
 
 /**
- * AI Responsibilities — what Wenze is allowed to use AI for, in words.
+ * AI Tasks (named AI Responsibilities until November 2026) — what Wenze is
+ * allowed to use AI for, in words.
+ *
+ * COMPACT SINCE NOVEMBER 2026. Each task is one row: its name, what it may do
+ * (the two badges), one line of what it decides, and its switches. Why it may
+ * change something, the automatic change's rule and what happens with AI off
+ * are behind "How it works" — read once, not scrolled past seventeen times.
+ * The automatic-change switch itself stays in view.
  *
  * The old "What AI is used for" table listed capability keys and rendered
  * nothing at all in production, because no row was ever written. Worse, it
@@ -75,14 +82,14 @@ export default function ResponsibilitiesCard({ flash }) {
     }
   }
 
-  if (loading) return <div className="card"><h3>AI Responsibilities</h3><p>Loading…</p></div>;
+  if (loading) return <div className="card"><h3>AI Tasks</h3><p>Loading…</p></div>;
 
   return (
     <div className="card">
-      <h3>AI Responsibilities</h3>
+      <h3 style={{ marginTop: 0 }}>AI Tasks</h3>
       <p className="muted">
         Every decision Wenze can use AI for. Switching one off does not break the feature —
-        each one says below what Wenze does instead.
+        "How it works" on each one says what Wenze does instead.
       </p>
       {error && <p className="error">{error}</p>}
       {automationError && (
@@ -101,12 +108,12 @@ export default function ResponsibilitiesCard({ flash }) {
               style={{
                 border: "1px solid var(--border)",
                 borderRadius: 8,
-                padding: "10px 12px",
-                marginBottom: 8,
+                padding: "8px 12px",
+                marginBottom: 6,
               }}
             >
               <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
-                <div>
+                <div style={{ minWidth: 0 }}>
                   <strong>{cap.label}</strong>
                   {cap.changesState && (
                     <span
@@ -130,10 +137,7 @@ export default function ResponsibilitiesCard({ flash }) {
                       sends message text
                     </span>
                   )}
-                  <div className="muted" style={{ marginTop: 4 }}>{cap.what}</div>
-                  {cap.stateNote && (
-                    <div className="muted" style={{ marginTop: 4 }}><em>{cap.stateNote}</em></div>
-                  )}
+                  <div className="muted" style={{ marginTop: 2, fontSize: 13 }}>{cap.what}</div>
                 </div>
                 <label style={{ whiteSpace: "nowrap" }}>
                   <input
@@ -146,40 +150,47 @@ export default function ResponsibilitiesCard({ flash }) {
                 </label>
               </div>
 
+              {/* The second switch stays in view: it is the one that lets Wenze
+                  change a record by itself, and a person must see it is there. */}
               {cap.automation && (
-                <div
-                  style={{
-                    marginTop: 8, paddingTop: 8, borderTop: "1px dashed var(--border)",
-                    fontSize: 13,
-                  }}
-                >
-                  <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <input
-                      type="checkbox"
-                      checked={cap.automation.enabled === true}
-                      disabled={busy === `${cap.key}:auto` || cap.automation.known === false}
-                      onChange={(e) => toggleAutomation(cap, e.target.checked)}
-                    />
-                    <strong>Make the change automatically when Wenze is confident</strong>
-                    {cap.automation.known === false && (
-                      <span className="muted">— setting unknown, could not be read</span>
-                    )}
-                    {cap.automation.maxPerRun != null && (
-                      <span className="muted">(at most {cap.automation.maxPerRun} a run)</span>
-                    )}
-                  </label>
-                  <div className="muted" style={{ marginTop: 4 }}>
-                    {cap.mediumNote || "Anything less than confident goes to Needs Attention instead."}{" "}
-                    The same switch is in{" "}
-                    <a href="#operations/checks">Needs Attention → Automation</a>.
-                  </div>
-                </div>
+                <label style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6, fontSize: 13, flexWrap: "wrap" }}>
+                  <input
+                    type="checkbox"
+                    checked={cap.automation.enabled === true}
+                    disabled={busy === `${cap.key}:auto` || cap.automation.known === false}
+                    onChange={(e) => toggleAutomation(cap, e.target.checked)}
+                  />
+                  <strong>Make the change automatically when Wenze is confident</strong>
+                  {cap.automation.known === false && (
+                    <span className="muted">— setting unknown, could not be read</span>
+                  )}
+                  {cap.automation.maxPerRun != null && (
+                    <span className="muted">(at most {cap.automation.maxPerRun} a run)</span>
+                  )}
+                </label>
               )}
 
-              {cap.fallback && (
-                <div className="muted" style={{ marginTop: 6, fontSize: 12 }}>
-                  <strong>With AI off:</strong> {cap.fallback}
-                </div>
+              {/* What it may change, the automatic change's rule and the
+                  fallback: the reasons behind the switches, read once. */}
+              {(cap.stateNote || cap.automation || cap.fallback) && (
+                <details style={{ marginTop: 4, fontSize: 12 }}>
+                  <summary className="muted" style={{ cursor: "pointer" }}>How it works</summary>
+                  {cap.stateNote && (
+                    <div className="muted" style={{ marginTop: 4 }}><em>{cap.stateNote}</em></div>
+                  )}
+                  {cap.automation && (
+                    <div className="muted" style={{ marginTop: 4 }}>
+                      {cap.mediumNote || "Anything less than confident goes to Needs Attention instead."}{" "}
+                      The same automatic-change switch is in{" "}
+                      <a href="#operations/checks">Needs Attention → Automation</a>.
+                    </div>
+                  )}
+                  {cap.fallback && (
+                    <div className="muted" style={{ marginTop: 4 }}>
+                      <strong>With AI off:</strong> {cap.fallback}
+                    </div>
+                  )}
+                </details>
               )}
             </div>
           ))}

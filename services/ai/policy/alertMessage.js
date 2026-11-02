@@ -64,7 +64,7 @@ function buildAlertBody(finding, { suspension = null, deterministic = false } = 
       + 'anything until someone reviews this. AI features fall back to their deterministic '
       + 'logic in the meantime.',
       `Rule: <code>${escapeHtml(finding.suspensionRule)}</code>`,
-      'Clear it in Admin → Settings → AI.'
+      'Clear it in Admin → Settings → AI → AI Providers.'
     );
   } else if (suspension?.rule) {
     // The rule matched but the operator has automatic suspension turned off.

@@ -1,5 +1,5 @@
 /**
- * Settings' own navigation: fourteen sections under seven groups, every one of
+ * Settings' own navigation: nineteen sections under five groups, every one of
  * them reachable, and the choice is the PAGE's (and so the address's) — the
  * navigation only reports it.
  */
@@ -7,24 +7,24 @@ import React from "react";
 import { describe, expect, test, vi } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import SettingsNav from "./SettingsNav";
+import SettingsNav, { itemIsVisible } from "./SettingsNav";
 import { SETTINGS_GROUPS, SETTINGS_SECTION_KEYS, settingsSectionLabel } from "./sections";
 
 describe("Settings sections", () => {
-  test("seven groups, fourteen sections, each key once, in this order", () => {
-    expect(SETTINGS_GROUPS.map((g) => g.label)).toEqual([
-      "Integrations", "AI", "Telegram Bot", "Recruiting", "Office Screens", "Administration", "Maintenance",
-    ]);
+  test("five groups, nineteen sections, each key once, in this order", () => {
+    expect(SETTINGS_GROUPS.map((g) => g.label)).toEqual(["Fleet", "Recruiting", "AI", "Telegram", "System"]);
     expect(SETTINGS_SECTION_KEYS).toEqual([
-      "location", "samsara", "board", "ringcentral", "metacrm",
-      "ai",
-      "notifications", "groups", "access", "reactions",
-      "safety",
-      "grossrace",
-      "admins",
-      "leftovers",
+      "location", "samsara", "samsara_video", "board",
+      "ringcentral", "rc_connection", "bitrix", "metacrm", "safety",
+      "ai", "ai_tasks", "ai_questions", "ai_terms",
+      "notifications", "access", "reactions",
+      "admins", "grossrace", "leftovers",
     ]);
     expect(new Set(SETTINGS_SECTION_KEYS).size).toBe(SETTINGS_SECTION_KEYS.length);
+  });
+
+  test("no group is a heading over a single entry (November 2026)", () => {
+    for (const group of SETTINGS_GROUPS) expect(group.sections.length).toBeGreaterThanOrEqual(3);
   });
 
   test("maintenance is last, so it is never where a person lands first", () => {
@@ -50,7 +50,7 @@ describe("SettingsNav", () => {
       }
     }
     expect(within(nav).getByRole("button", { name: "Dispatcher Board" })).toHaveAttribute("aria-current", "page");
-    await userEvent.click(within(nav).getByRole("button", { name: "AI & Autonomy" }));
+    await userEvent.click(within(nav).getByRole("button", { name: "AI Providers" }));
     expect(onChange).toHaveBeenCalledWith("ai");
   });
 
@@ -62,5 +62,47 @@ describe("SettingsNav", () => {
     expect(within(picker).getAllByRole("option").map((o) => o.value)).toEqual([...SETTINGS_SECTION_KEYS]);
     await userEvent.selectOptions(picker, "leftovers");
     expect(onChange).toHaveBeenCalledWith("leftovers");
+  });
+});
+
+describe("the active section stays in view in a list that scrolls by itself", () => {
+  const box = { top: 140, bottom: 876 };
+  test("an item inside the list and the window is left alone", () => {
+    expect(itemIsVisible({ top: 300, bottom: 330 }, box, 768)).toBe(true);
+  });
+
+  test("an item inside the list but below the window is not visible (the nav is not stuck yet)", () => {
+    expect(itemIsVisible({ top: 800, bottom: 830 }, box, 768)).toBe(false);
+  });
+
+  test("a quarter-pixel past the edge is still visible", () => {
+    expect(itemIsVisible({ top: 735.1, bottom: 768.1 }, { top: 31.9, bottom: 767.9 }, 768)).toBe(true);
+  });
+
+  test("an item scrolled out of the list is not visible", () => {
+    expect(itemIsVisible({ top: 100, bottom: 130 }, box, 768)).toBe(false);
+  });
+
+  test("opened by its address out of sight, the active item is scrolled into view; in view, it is not", () => {
+    const scroll = vi.fn();
+    const rect = vi.spyOn(Element.prototype, "getBoundingClientRect");
+    const proto = Element.prototype;
+    const had = "scrollIntoView" in proto;
+    proto.scrollIntoView = scroll;
+    try {
+      rect.mockImplementation(function measure() {
+        return this.getAttribute?.("aria-current") === "page" ? { top: 900, bottom: 930 } : { top: 0, bottom: 760 };
+      });
+      const { rerender } = render(<SettingsNav value="leftovers" onChange={() => {}} />);
+      expect(scroll).toHaveBeenCalledWith({ block: "nearest" });
+
+      scroll.mockClear();
+      rect.mockImplementation(() => ({ top: 10, bottom: 40 }));
+      rerender(<SettingsNav value="location" onChange={() => {}} />);
+      expect(scroll).not.toHaveBeenCalled();
+    } finally {
+      rect.mockRestore();
+      if (!had) delete proto.scrollIntoView;
+    }
   });
 });

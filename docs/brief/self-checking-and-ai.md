@@ -208,7 +208,7 @@ feature it belongs to.
   title — and it can never make the endpoint unhealthy: a summary that throws
   reads `available: false` at status 200. `tests/healthOperationsBlock.test.js`.
 - **An administrator can see and control what AI is allowed to decide.**
-  Settings → AI → **AI Responsibilities** lists every decision Wenze uses a
+  Settings → AI → **AI Tasks** (named AI Responsibilities until November 2026) lists every decision Wenze uses a
   model for, in plain words: what it decides, whether it can change stored
   information (and what it writes), whether the prompt carries driver message
   text, and — the part that makes a switch judgeable — what Wenze does instead
@@ -331,7 +331,7 @@ feature it belongs to.
   recorded is a decision nobody can review later.
 - **A remembered "yes" is never re-applied.** It is kept as a record; permission
   for Wenze to act by itself lives on the Automation screen, where it is visible
-  and can be switched off. Settings → Answering Wenze in Telegram lists every
+  and can be switched off. Settings → AI → Wenze's Questions → Answering Wenze in Telegram lists every
   standing answer with a Forget button.
 - **Saying the question itself is wrong now goes somewhere.** "This is a bug",
   "stop asking me this", "the truck numbers come from the wrong place" — that is

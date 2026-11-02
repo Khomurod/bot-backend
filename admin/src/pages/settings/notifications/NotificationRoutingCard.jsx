@@ -80,6 +80,16 @@ export default function NotificationRoutingCard({ flash }) {
   // for a category override would have rerouted every defaulted category while
   // leaving the broken override exactly as it was.
   const [fix, setFix] = React.useState(null);
+  // The overrides open by themselves when one is saved or the server points
+  // at one to fix. They never close by themselves: clearing the last override
+  // and moving to another field saves it, and the section must not fold away
+  // under the person still editing it.
+  const [overridesOpen, setOverridesOpen] = React.useState(false);
+  React.useEffect(() => {
+    const saved = (data?.categories || [])
+      .some((c) => String(data?.settings?.categoryChatIds?.[c.key] ?? "").trim());
+    if (saved || fix?.field?.startsWith("categoryChatIds.")) setOverridesOpen(true);
+  }, [data, fix]);
 
   const apply = React.useCallback((payload) => {
     setData(payload);
@@ -170,6 +180,9 @@ export default function NotificationRoutingCard({ flash }) {
   const candidates = data?.candidates || [];
   const discarded = data?.discarded || null;
   const defaultConfigured = Boolean(String(form.defaultChatId ?? "").trim());
+  // Counted from what is SAVED, so the summary does not change as a person types.
+  const overrideCount = categories
+    .filter((c) => String(data?.settings?.categoryChatIds?.[c.key] ?? "").trim()).length;
   const overridesConfigured = Object.values(form.categoryChatIds || {})
     .filter((v) => String(v ?? "").trim()).length;
   const reachable = defaultConfigured || overridesConfigured > 0;
@@ -287,7 +300,20 @@ export default function NotificationRoutingCard({ flash }) {
         )}
       </div>
 
-      <h4 style={{ marginTop: 20, marginBottom: 0 }}>Send these somewhere else</h4>
+      {/* Collapsed since November 2026: most deployments send everything to
+          the default group, and eight empty rows were most of this screen.
+          See overridesOpen for when it opens by itself. */}
+      <details
+        style={{ marginTop: 20 }}
+        open={overridesOpen}
+        onToggle={(e) => setOverridesOpen(e.currentTarget.open)}
+      >
+      <summary style={{ cursor: "pointer", fontWeight: 600 }}>
+        Send some kinds of notice to a different group
+        <span className="muted" style={{ fontWeight: 400 }}>
+          {" "}({overrideCount > 0 ? `${overrideCount} of ${categories.length} sent elsewhere` : `${categories.length} kinds, all to the default group`})
+        </span>
+      </summary>
       {categories.map((c) => (
         <Row
           key={c.key}
@@ -306,6 +332,7 @@ export default function NotificationRoutingCard({ flash }) {
           onPreview={preview}
         />
       ))}
+      </details>
 
       {queue && (
         <p className="muted" style={{ marginTop: 14, fontSize: 12 }}>

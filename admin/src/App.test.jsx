@@ -107,6 +107,17 @@ describe("a hash opens the page it names", () => {
     await waitFor(() => expect(window.location.hash).toBe("#settings/board"));
   });
 
+  test("#settings/groups — a section merged into another — opens Where the Bot Posts", async () => {
+    // Bonus Groups became part of Where the Bot Posts in November 2026. A held
+    // link must open that content, not the first section, and the address
+    // must say where it landed.
+    goTo("#settings/groups");
+    await renderShell();
+    await waitFor(() => expect(window.location.hash).toBe("#settings/notifications"));
+    const nav = screen.getByRole("navigation", { name: "Settings sections" });
+    expect(within(nav).getByRole("button", { name: "Where the Bot Posts" })).toHaveAttribute("aria-current", "page");
+  });
+
   test("a hash naming nothing opens Driver Groups rather than a blank shell", async () => {
     goTo("#not_a_page");
     await renderShell();
@@ -147,7 +158,7 @@ describe("tabs and sections have addresses", () => {
     });
 
     const nav = screen.getByRole("navigation", { name: "Settings sections" });
-    await userEvent.click(within(nav).getByRole("button", { name: "AI & Autonomy" }));
+    await userEvent.click(within(nav).getByRole("button", { name: "AI Providers" }));
     await waitFor(() => expect(window.location.hash).toBe("#settings/ai"));
     await waitFor(() => {
       // The Dispatcher Board card is gone, so the section really moved.

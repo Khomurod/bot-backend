@@ -18,8 +18,8 @@ answer:
   questions (the owner's words: "I just want to answer with text");
 - Wenze says back what it understood — **"Understood: … Saved"** — and uses the
   answer in every later prompt for that kind of decision;
-- the lessons are listed in the admin (**Settings → AI → What Wenze learned from
-  you**) and can be removed there;
+- the lessons are listed in the admin (**Settings → AI → Wenze's Questions → What
+  Wenze learned from you**) and can be removed there;
 - accounting's reason for **"Not charging"** a home-time violation is learned
   from too.
 
@@ -156,7 +156,7 @@ removal and every skip from the admin.
 
 ## The switch
 
-**Settings → AI → Ask me when unsure** (`ai_settings.learning_enabled`, on by
+**Settings → AI → Wenze's Questions → Ask me when unsure** (`ai_settings.learning_enabled`, on by
 default). Off: nothing is asked and nothing new is queued, so switching it back
 on does not start with a backlog of stale questions; questions already queued
 wait, and lessons already kept are still given to prompts. The master AI switch

@@ -12,7 +12,7 @@ The findings engine, tiered corrections and the audit trail that AI helps with
 stay in §4a. The provider terms watcher is
 [§4c](ai-terms-watcher.md).
 
-### AI routing and governance (Admin → Settings → AI)
+### AI routing and governance (Admin → Settings → AI → AI Providers)
 
 - **AI is an accelerator, never a dependency.** Twelve consumers already degrade
   to deterministic logic. The master switch being OFF is a supported, tested
@@ -134,7 +134,7 @@ stay in §4a. The provider terms watcher is
   Accounting's "Not charging" reasons are kept the same way (no driver name).
   Every escalating decision's prompt is given its scope's lessons after the
   caller's own instructions. Lessons are listed and removed on Settings → AI →
-  What Wenze learned from you, with the "Ask me when unsure" switch.
+  Wenze's Questions → What Wenze learned from you, with the "Ask me when unsure" switch.
   See `docs/architecture/ai-learning.md`.
 - **A picture goes to any model that can see it** (`lib/ai/vision.js`), free
   ones first — Gemini, Llama 4 on Groq, vision models on OpenRouter — and Claude
@@ -389,7 +389,7 @@ stay in §4a. The provider terms watcher is
   the roster empty AND with the master switch off, no provider is contacted at
   all and the deterministic paths still answer.
 
-### AI provider terms watcher (Admin → Settings → AI)
+### AI provider terms watcher (Admin → Settings → AI → Provider Terms)
 
 Moved to **[§4c. The AI provider terms watcher](ai-terms-watcher.md)** — the
 conditional-GET pipeline, the deterministic suspension rules and the alert

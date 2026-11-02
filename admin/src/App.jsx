@@ -119,7 +119,7 @@ const PAGE_COMPONENTS = {
   // Recruiting
   leads: () => <LeadsPage />,
   facebook_leads: (route) => <FacebookLeadsPage {...route} />,
-  recruiter_kpis: () => <RecruiterKpiPage />,
+  recruiter_kpis: (route) => <RecruiterKpiPage {...route} />,
   // Communications. Send Message, Surveys, Scheduled and History (Edit by Link
   // is a section of History since November 2026) are tabs of ONE page; their
   // old keys live in LEGACY_PAGE_KEYS, so a

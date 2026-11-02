@@ -177,7 +177,7 @@ condition by the sweep, attributed to the operator who gave it. A remembered
 "yes" is never re-applied: permission for Wenze to act by itself lives in
 `operational_check_settings.mode`, changed by an administrator on the Automation
 screen under `operations.corrections.apply`. Revoking a memory is an
-`admin.full_access` action on Settings → Answering Wenze in Telegram, audited as
+`admin.full_access` action on Settings → AI → Wenze's Questions → Answering Wenze in Telegram, audited as
 `control_knowledge.revoke`.
 Do not copy the username fallback into new code, and do not describe either gate
 as ID-only.

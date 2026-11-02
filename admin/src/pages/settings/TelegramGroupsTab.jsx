@@ -2,7 +2,10 @@ import React, { useCallback, useEffect, useState } from "react";
 import * as api from "../../api";
 import { Banner } from "./fields";
 
-// ────────────── Bonus Groups (Settings → Telegram Bot; was Telegram Groups) ──────
+// ── Bonus groups: part of Settings → Where the Bot Posts since November 2026 ──
+// (its own "Bonus Groups" section, and "Telegram Groups" before that).
+// Rendered by NotificationsTab under the routing card, with its own Save:
+// these two ids save together, the routing card's fields save as you leave them.
 
 /**
  * The message categories, in display order. `key` is the API/DB category name —
@@ -87,7 +90,7 @@ export default function TelegramGroupsTab() {
       const s = await api.updateMessageGroupSettings(payload);
       setSettings(s);
       setForm(formFromSettings(s));
-      setMessage({ type: "success", text: "Telegram group settings saved." });
+      setMessage({ type: "success", text: "Bonus groups saved." });
     } catch (err) { setMessage({ type: "error", text: err.message }); }
     finally { setSaving(false); }
   };
@@ -96,12 +99,10 @@ export default function TelegramGroupsTab() {
 
   return (
     <div>
-      <p style={{ color: "var(--text-muted)", marginTop: 0 }}>
-        The Telegram group each message category is sent to. Enter the group's chat ID
-        (e.g. <code>-1001234567890</code>). Each category has its own destination — enter the
-        same ID in more than one field to share a group. If a field is left blank, that
-        category's messages are <strong>not sent</strong> and a configuration error is logged
-        (there is no hidden default, and no category ever falls back to another).
+      <h3 style={{ margin: "24px 0 4px" }}>Bonus groups</h3>
+      <p style={{ color: "var(--text-muted)", marginTop: 0, fontSize: 13 }}>
+        Where the two bonus cards go. A blank field means those messages are{" "}
+        <strong>not sent</strong> — they never fall back to the default group above or to each other.
       </p>
       <Banner message={message} />
 
@@ -119,7 +120,7 @@ export default function TelegramGroupsTab() {
       ))}
 
       <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-        <button className="btn btn-primary" onClick={save} disabled={saving}>{saving ? "Saving…" : "Save settings"}</button>
+        <button className="btn btn-primary" onClick={save} disabled={saving}>{saving ? "Saving…" : "Save bonus groups"}</button>
         {settings?.updatedAt && <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Last updated {new Date(settings.updatedAt).toLocaleString()}</span>}
       </div>
 

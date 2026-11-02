@@ -142,7 +142,7 @@ async function integrationObservations(deps, nowMs) {
         reason: config?.enabled === false
           ? `notifications are switched off${n ? ` — ${n} notices discarded so far` : ''}`
           : 'no Telegram group is configured, so every alert is discarded'
-            + `${n ? ` — ${n} so far` : ''}. Set one in Settings → Notifications.`,
+            + `${n ? ` — ${n} so far` : ''}. Set one in Settings → Where the Bot Posts.`,
       }));
     }
   } catch (_) {
@@ -248,7 +248,7 @@ async function integrationObservations(deps, nowMs) {
         ? (neverInbound
           ? 'Everything is configured, but no candidate SMS has ever reached this '
             + 'application — so the RingCentral inbound subscription may not be live. '
-            + 'Check the leads engine log (Settings → RingCentral).'
+            + 'Check the leads engine log on the server; no screen shows it.'
           // READY, AND STILL WORTH A SENTENCE. A schedule can leave every
           // weekday evening unreachable and still be "working" because the
           // weekends are open. Nothing is broken, so this does not block — but

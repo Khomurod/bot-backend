@@ -139,14 +139,21 @@ prevent, and the poller is the one holding the Samsara credential and the
 Telegram bots. It also selects neither `raw_event` nor `targets`: they are large,
 they are the worker's business, and neither belongs in an HTTP response.
 
-### The music overlay is unchanged
+### The music overlay is unchanged, in its own section
 
-Settings → Samsara renders the existing driver-group music component
-(`admin/src/pages/settings/SafetyEventsTab.jsx`) as a section, and it still talks
-to its own `/api/settings/safety-events*` endpoints and its own tables. Uploaded
-clips, volume, fades, original-audio mixing, the maximum processed length and
-the driver-group-only rule all behave exactly as before — the tab was folded in
-so an administrator sees Samsara as one integration, not rewritten.
+Settings → Samsara Video & Music (`#settings/samsara_video`) renders the
+existing driver-group music component
+(`admin/src/pages/settings/SafetyEventsTab.jsx`), and it still talks to its own
+`/api/settings/safety-events*` endpoints and its own tables. Uploaded clips,
+volume, fades, original-audio mixing, the maximum processed length and the
+driver-group-only rule all behave exactly as before. It was a section at the
+bottom of Settings → Samsara until November 2026; it became its own section,
+next to Samsara, because the two forms had two Save buttons on one screen and
+nothing said which saved what.
+
+**The API key is typed in one place.** Settings → Location Providers used to
+offer a second Samsara key field that wrote the same row; since November 2026
+it shows the key's state, links here, and its Test uses the stored key.
 
 A clip can also be loaded without the panel, from a shell that has
 `DATABASE_URL`: `npm run upload-safety-music -- <file> [--name …] [--description …]

@@ -1,5 +1,5 @@
 /**
- * Settings → RingCentral → a recruiter row: saving a Bitrix id, and the
+ * Settings → Recruiters & Numbers → a recruiter row: saving a Bitrix id, and the
  * "Check Bitrix user" button.
  *
  * Two guarantees this pins:

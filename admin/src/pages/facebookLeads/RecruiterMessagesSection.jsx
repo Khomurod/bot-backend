@@ -25,7 +25,7 @@ export function RecruiterMessagesSection({
       <div className="card" style={{ marginBottom: 16, padding: 16 }}>
         <h3 style={{ marginTop: 0 }}>Recruiter messages</h3>
         <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0 }}>
-          No active recruiters yet. Add them under <strong>Settings → RingCentral</strong>;
+          No active recruiters yet. Add them under <a href="#settings/ringcentral">Settings → Recruiters &amp; Numbers</a>;
           each one can then have their own lead message here.
         </p>
       </div>
