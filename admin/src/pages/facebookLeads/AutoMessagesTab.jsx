@@ -293,7 +293,7 @@ export function AutoMessagesTab({
         <div style={{ marginTop: 12 }}>
           <PreviewPanel
             title="✏️ Editing Preview"
-            subtitle={`Previewing: ${editingLabel}. Click a rule or fallback above to switch.`}
+            subtitle={`Previewing: ${editingLabel}. Click into a rule, the fallback or a recruiter's message to switch.`}
             preview={editPreview}
           />
         </div>

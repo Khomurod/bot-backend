@@ -119,7 +119,7 @@ Status: ☐ planned · ◐ in review · ☑ merged.
 
 | # | Change | Must not be lost |
 |---|---|---|
-| ◐ D1 | **Customer Inquiries → Auto-Reply:** the editor on the left and one preview, kept in view, on the right. Order: basics → time rules → fallback → per-recruiter messages. The placeholder chips sit inside their card, and Save stays visible. On a phone the two-column grid stacks. | Every field and both previews' content (one place). |
+| ◐ D1 | **Customer Inquiries → Auto-Reply:** the editor on the left; on the right, kept in view, one column holding both previews (what a lead gets right now, and the message being edited). Order: basics → greeting schedule (the time rules) → fallback → per-recruiter messages. The placeholder chips sit inside their card, and Save stays visible. On a phone the two-column grid stacks. | Every field and both previews. |
 | ◐ D2 | **Teach:** "Conversations Wenze is carrying" (the live stop control) moves to the top of the hours card, right under the open/closed line, instead of under every setting. The Teach card itself stays first on the tab, in the order the page documents (teach, then decide when). The auto-reply's hours are labelled "Greeting schedule", and both screens say in one line that the two kinds of hours are separate on purpose. | Every control. The two kinds of hours stay separate. |
 | ☐ D3 | **Recruiter KPIs:** the new **Targets** tab (from A2). The targets summary becomes one line, and "Sync now" no longer wraps. | — |
 
