@@ -8,7 +8,6 @@ os.environ.setdefault("TELEGRAM_BOT_TOKEN", "test-telegram-token")
 os.environ.setdefault("TELEGRAM_CHAT_ID", "-1001234567890")
 os.environ.setdefault("WEBHOOK_VERIFY_TOKEN", "test-verify")
 os.environ.setdefault("META_APP_SECRET", "test-meta-secret")
-os.environ.setdefault("META_PAGE_ACCESS_TOKEN", "test-page-token")
 os.environ.setdefault("LEADS_INTERNAL_SHARED_SECRET", "test-internal-secret")
 
 import webhook_server as wh

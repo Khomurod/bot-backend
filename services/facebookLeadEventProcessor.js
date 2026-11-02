@@ -184,8 +184,8 @@ async function recordLead({ leadgenId, fullName, fieldMap, phone, connection, pa
  * RingCentral, so a row that has one has had its text — and must never get a
  * second one. Every path that can re-run a finished event goes through here:
  *
- *   · the admin "retry" button and the internal / Python retry endpoints, none
- *     of which check whether the event already completed;
+ *   · the admin "retry" button (Webhook log), which does not check whether the
+ *     event already completed;
  *   · the at-least-once window at startup, where an event killed AFTER the send
  *     and BEFORE `completeFacebookWebhookEvent` is re-claimed;
  *   · any future throw between the send and the end of the event.

@@ -181,6 +181,8 @@ test('GET /api/health, /health, HEAD; the removed dispatch APIs; the race displa
       ['POST', '/api/live-locations/duplicate-reports/scan'],
       ['POST', '/api/live-locations/duplicate-reports/1/resolve'],
       ['POST', '/api/dat-ui/inspect'],
+      // Only the Python /retry called it; the admin's Webhook log has its own.
+      ['POST', '/api/internal/facebook/retry-leadgen'],
     ]) {
       const res = await httpJson(server, method, retired, { Authorization: `Bearer ${adminToken}` });
       assert.equal(res.status, 404, `${method} ${retired} is gone`);

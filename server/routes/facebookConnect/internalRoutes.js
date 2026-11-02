@@ -1,6 +1,6 @@
 /**
  * Internal server-to-server endpoints called by the Python leads engine
- * (leads-bot/): webhook ingest, lead retry, /connect command setup, SMS mirror
+ * (leads-bot/): webhook ingest, /connect command setup, SMS mirror
  * registration, the Telegram SMS reply relay, and the recruiter extension list
  * the inbound-SMS subscription is built from.
  *
@@ -17,10 +17,7 @@ const {
   handleTelegramSmsReply,
   registerSmsMirror,
 } = require('../../../services/facebookLeadSmsMirrorService');
-const {
-  enqueueVerifiedFacebookPayload,
-  retryFacebookWebhookEvent,
-} = require('../../../services/facebookWebhookService');
+const { enqueueVerifiedFacebookPayload } = require('../../../services/facebookWebhookService');
 const rc = require('../../../database/ringcentral');
 
 function createFacebookInternalRoutes({ db, internalSharedSecretGuard }) {
@@ -33,23 +30,6 @@ function createFacebookInternalRoutes({ db, internalSharedSecretGuard }) {
     } catch (err) {
       console.error('[API] Facebook internal webhook ingest failed:', err.message);
       res.status(500).json({ error: 'Failed to ingest Facebook webhook payload', detail: err.message });
-    }
-  });
-
-  router.post('/api/internal/facebook/retry-leadgen', internalSharedSecretGuard, async (req, res) => {
-    try {
-      const leadgenId = String(req.body?.leadgenId || req.body?.leadgen_id || '').trim();
-      if (!leadgenId) {
-        return res.status(400).json({ error: 'leadgenId is required' });
-      }
-      const event = await retryFacebookWebhookEvent(leadgenId);
-      if (!event) {
-        return res.status(404).json({ error: 'No webhook event found for that leadgen id' });
-      }
-      return res.json({ status: 'queued', event });
-    } catch (err) {
-      console.error('[API] Facebook internal retry-leadgen failed:', err.message);
-      return res.status(500).json({ error: 'Failed to queue lead retry', detail: err.message });
     }
   });
 

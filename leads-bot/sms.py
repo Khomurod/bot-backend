@@ -1,20 +1,18 @@
 """
-RingCentral SMS sender.
-
-Sends an auto-response SMS to new leads via the RingCentral REST API, and
-downloads the attachments of inbound picture messages. Uses JWT
-authentication for a permanent, non-expiring connection. The subscription
-that brings inbound SMS here is rc_inbound_subscription.py.
+RingCentral access for the inbound side: the JWT access token, and the
+download of an inbound picture message's attachments. Texts to candidates are
+sent by the Node hub (the recruiter SMS sender), never from here. The
+subscription that brings inbound SMS here is rc_inbound_subscription.py.
 
 If RingCentral credentials are not configured, all functions are no-ops.
 """
 import logging
 import httpx
-from config import RC_CLIENT_ID, RC_CLIENT_SECRET, RC_JWT_TOKEN, RC_FROM_NUMBER
+from config import RC_CLIENT_ID, RC_CLIENT_SECRET, RC_JWT_TOKEN
 
 logger = logging.getLogger(__name__)
 
-# Cache the access token so we don't re-auth on every SMS
+# Cache the access token so we don't re-auth on every call
 _cached_token: dict = {"access_token": "", "expires_at": 0}
 
 # Base URL for relative attachment URIs from webhook payloads
@@ -82,43 +80,3 @@ async def _get_access_token() -> str:
     _cached_token["expires_at"] = time.time() + result.get("expires_in", 3600)
     logger.info("RingCentral access token obtained (expires in %ss).", result.get("expires_in"))
     return result["access_token"]
-
-
-async def send_sms(to: str, message: str) -> bool:
-    """Send an SMS via RingCentral.
-    
-    Args:
-        to: Phone number to send to (e.g. "+19513865263")
-        message: Text message body
-    
-    Returns:
-        True on success, False on failure. Never raises.
-    """
-    if not all([RC_CLIENT_ID, RC_CLIENT_SECRET, RC_JWT_TOKEN, RC_FROM_NUMBER]):
-        logger.info("RingCentral not configured — skipping SMS.")
-        return False
-
-    try:
-        token = await _get_access_token()
-
-        url = "https://platform.ringcentral.com/restapi/v1.0/account/~/extension/~/sms"
-        headers = {"Authorization": f"Bearer {token}"}
-        payload = {
-            "from": {"phoneNumber": RC_FROM_NUMBER},
-            "to": [{"phoneNumber": to}],
-            "text": message,
-        }
-
-        async with httpx.AsyncClient(timeout=15) as client:
-            resp = await client.post(url, json=payload, headers=headers)
-
-            if resp.is_success:
-                logger.info("SMS sent to %s successfully.", to)
-                return True
-            else:
-                logger.warning("RingCentral SMS failed (%s): %s", resp.status_code, resp.text)
-                return False
-
-    except Exception as exc:
-        logger.error("SMS send error to %s: %s", to, exc)
-        return False
