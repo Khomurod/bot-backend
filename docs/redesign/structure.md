@@ -47,7 +47,7 @@ configuration last.
 | | Retention | `#retention` | Who the company may lose, and what to do today |
 | **Recruiting** | Leads | `#leads` | Every incoming lead |
 | | Customer Inquiries | `#facebook_leads` (`/auto`, `/pages`, `/teach`) | What new leads receive, and what Wenze may tell a candidate |
-| | Recruiter KPIs | `#recruiter_kpis` | Daily call performance (links to where the targets are set) |
+| | Recruiter KPIs | `#recruiter_kpis` (`/overview`, `/targets`) | Daily call performance, and the targets it is scored against (a tab since November 2026) |
 | **Communications** | Messages | `#communications` (`/send`, `/surveys`, `/scheduled`, `/history`, `/edit_by_link`) | What the bot says to driver groups |
 | | Birthdays | `#company_birthdays` (`/birthdays`, `/employees`) | Employees, their birthday cards and wishes |
 | **Monitoring** | Needs Attention | `#operations` (`/findings`, `/history`, `/checks`, `/identity`, `/learning`) | Where records disagree, what was corrected, what may be corrected automatically, driver identity, Wenze's suggestions |
@@ -60,13 +60,20 @@ desktop, a single picker on a phone. Every section has its own address.
 
 | Settings group | Sections (address) |
 |---|---|
-| Integrations | Location Providers (`location`) · Samsara (`samsara`) · Dispatcher Board (`board`) · RingCentral & Bitrix24 (`ringcentral`) · Facebook ↔ Bitrix (`metacrm`) |
-| AI | AI & Autonomy (`ai`) |
-| Telegram Bot | Notifications (`notifications`) · Bonus Groups (`groups`) · Group Access (`access`) · Auto Reactions (`reactions`) |
-| Recruiting | Safety Approvals (`safety`) |
-| Office Screens | Gross Grand Prix (`grossrace`) |
-| Administration | Admin Accounts (`admins`) — added after the October 2026 audit |
-| Maintenance | Retired Leftovers (`leftovers`) |
+| Fleet | Location Providers (`location`) · Samsara (`samsara`) · Samsara Video & Music (`samsara_video`) · Dispatcher Board (`board`) |
+| Recruiting | Recruiters & Numbers (`ringcentral`) · RingCentral Connection (`rc_connection`) · Bitrix24 (`bitrix`) · Facebook ↔ Bitrix (`metacrm`) · Safety Approvals (`safety`) |
+| AI | AI Providers (`ai`) · AI Tasks (`ai_tasks`) · Wenze's Questions (`ai_questions`) · Provider Terms (`ai_terms`) |
+| Telegram | Where the Bot Posts (`notifications`; `#settings/groups` lands here) · Group Access (`access`) · Auto Reactions (`reactions`) |
+| System | Admin Accounts (`admins`) · Gross Grand Prix (`grossrace`) · Retired Leftovers (`leftovers`, last) |
+
+*November 2026* ([`density.md`](density.md)): the table above replaced seven
+groups — Integrations, AI, Telegram Bot, Recruiting, Office Screens,
+Administration, Maintenance — five of which held one entry. "AI & Autonomy"
+became the four AI sections (A1); "RingCentral & Bitrix24" became Recruiters &
+Numbers, RingCentral Connection and Bitrix24, with the KPI targets moved to
+Recruiter KPIs → Targets (A2); Samsara's music became its own section (A3);
+Notifications and Bonus Groups became Where the Bot Posts (A4). No key was
+renamed, so every older address still opens the same content.
 
 **Every page-level tab is an address** (`#page/tab`). Switching a tab updates
 the address without adding a Back step; a page from the sidebar is a Back step.
@@ -95,7 +102,10 @@ opens on Announcement, as Send Message always did.
   the AI configuration; where the bot posts and what it may do in groups
   (Telegram Bot); a recruiting-group workflow (Recruiting); the office race
   screens (Office Screens); one-off database cleanup (Maintenance, last, so it
-  is never the first thing a person lands on).
+  is never the first thing a person lands on). *Regrouped in November 2026*
+  by the work a section serves — Fleet, Recruiting, AI, Telegram, System — once
+  splitting the long screens would have left "Integrations" with eight entries
+  and five groups held one each; maintenance is still last.
 - **Birthdays holds the employees.** The employee list exists for one purpose,
   the birthday card, so the card's data and the birthdays are now two tabs of
   one page. Telegram Users keeps a pointer for anyone who looks there.
@@ -104,7 +114,10 @@ opens on Announcement, as Send Message always did.
   number texts a lead, so it sits beside the recruiter rows), and four features
   read it. The section is "RingCentral & Bitrix24" so a person looking for
   Bitrix finds it without knowing that history; "Facebook ↔ Bitrix" is the
-  Meta Conversions API and keeps the name the owner gave it.
+  Meta Conversions API and keeps the name the owner gave it. *Superseded in
+  November 2026* ([`density.md`](density.md) A2): that screen had grown to six
+  cards, so Bitrix24 is its own section, linked both ways with Recruiters &
+  Numbers where each recruiter's Bitrix user is set.
 - **Home Time's configuration has its own tab.** The policy, the notice groups
   and accounting's violation alerts were two screenfuls below the driver table
   people use daily.
@@ -119,6 +132,10 @@ opens on Announcement, as Send Message always did.
   the recruiting desk's own name.
 
 ## Every inventory row, old → new
+
+The right-hand column is where each function is today: the Settings rows name
+the November 2026 sections ([`density.md`](density.md) A1–A6), not the
+October groups they first moved to.
 
 | Old location | Function | New location |
 |---|---|---|
@@ -148,19 +165,19 @@ opens on Announcement, as Send Message always did.
 | Recruiting → Leads | Leads table, source filter, Indeed script | Recruiting → Leads |
 | Recruiting → Customer Inquiries | Auto-reply, pages, Teach Wenze + working hours | Recruiting → Customer Inquiries |
 | Recruiting → Recruiter KPIs | KPIs, date, sync | Recruiting → Recruiter KPIs |
-| Settings → Live Location | ELD provider keys, tests | Settings → Integrations → Location Providers |
-| Settings → RingCentral | Credentials, targets, recruiters, Bitrix24 connection | Settings → Integrations → RingCentral & Bitrix24 |
-| Settings → Facebook ↔ Bitrix | Meta CAPI for CRM | Settings → Integrations → Facebook ↔ Bitrix |
-| Settings → Samsara | Connection, safety events, video recovery, music | Settings → Integrations → Samsara |
-| Settings → Dispatcher Board (also its own sidebar entry) | Feed, Board ↔ Bitrix check | Settings → Integrations → Dispatcher Board |
-| Settings → AI (also "AI & Autonomy" in the sidebar) | Providers, order, health, responsibilities, lessons, terms watcher | Settings → AI → AI & Autonomy |
-| Settings → Notifications (also "Notification Routing") | Routing, control channel | Settings → Telegram Bot → Notifications |
-| Settings → Telegram Groups | Mileage / road bonus group ids | Settings → Telegram Bot → Bonus Groups |
-| Settings → Bot Group Access (also its own sidebar entry) | Super admin, groups table, recheck, request admin, export | Settings → Telegram Bot → Group Access |
-| Settings → Auto Reactions (also its own sidebar entry) | Reaction rules | Settings → Telegram Bot → Auto Reactions |
+| Settings → Live Location | ELD provider keys, tests | Settings → Fleet → Location Providers |
+| Settings → RingCentral | Credentials, targets, recruiters, Bitrix24 connection | Settings → Recruiting → **Recruiters & Numbers** (the recruiters, invite, add), **RingCentral Connection** (the shared credentials and webhook) and **Bitrix24**; the targets are Recruiter KPIs → **Targets** |
+| Settings → Facebook ↔ Bitrix | Meta CAPI for CRM | Settings → Recruiting → Facebook ↔ Bitrix |
+| Settings → Samsara | Connection, safety events, video recovery, music | Settings → Fleet → **Samsara** (connection, safety events, video recovery) and **Samsara Video & Music** |
+| Settings → Dispatcher Board (also its own sidebar entry) | Feed, Board ↔ Bitrix check | Settings → Fleet → Dispatcher Board |
+| Settings → AI (also "AI & Autonomy" in the sidebar) | Providers, order, health, responsibilities, lessons, terms watcher | Settings → AI → **AI Providers** (providers, order, health), **AI Tasks** (responsibilities), **Wenze's Questions** (lessons, control channel) and **Provider Terms** (terms watcher) |
+| Settings → Notifications (also "Notification Routing") | Routing, control channel | Settings → Telegram → **Where the Bot Posts** (routing); the control channel is AI → Wenze's Questions |
+| Settings → Telegram Groups | Mileage / road bonus group ids | Settings → Telegram → Where the Bot Posts (`#settings/groups` opens it) |
+| Settings → Bot Group Access (also its own sidebar entry) | Super admin, groups table, recheck, request admin, export | Settings → Telegram → Group Access |
+| Settings → Auto Reactions (also its own sidebar entry) | Reaction rules | Settings → Telegram → Auto Reactions |
 | Settings → Safety Approvals | Chat, topic, Safety people, hiring stages | Settings → Recruiting → Safety Approvals |
-| Settings → Gross Grand Prix | Celebration video, Windows sound | Settings → Office Screens → Gross Grand Prix |
-| Settings → Retired Leftovers | Purge roles, drop tables | Settings → Maintenance → Retired Leftovers |
+| Settings → Gross Grand Prix | Celebration video, Windows sound | Settings → System → Gross Grand Prix |
+| Settings → Retired Leftovers | Purge roles, drop tables | Settings → System → Retired Leftovers |
 
 ## Old addresses
 

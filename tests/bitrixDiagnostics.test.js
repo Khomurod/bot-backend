@@ -166,7 +166,7 @@ test('an unconfigured Bitrix stops after saying so, and says leads still get tex
   assert.equal(result.ok, false);
   assert.equal(result.steps.length, 1, 'no point checking anything else');
   // It has to say WHERE to configure it — the panel, not an env var on the host.
-  assert.match(result.steps[0].detail, /Settings → RingCentral → Bitrix24/);
+  assert.match(result.steps[0].detail, /Settings → Bitrix24/);
   assert.match(result.steps[0].detail, /shared number/i, 'the operator needs to know leads are not lost');
 });
 
@@ -232,7 +232,7 @@ test('an assignee nobody mapped is the finding that explains a shared-number fal
   assert.equal(step.ok, false);
   assert.match(step.detail, /Bitrix user 99/);
   assert.match(step.detail, /not mapped to any recruiter/);
-  assert.match(step.detail, /Settings → RingCentral/);
+  assert.match(step.detail, /Settings → Recruiters & Numbers/);
 });
 
 test('an assignee who is mapped but cannot send is a different, named problem', async () => {

@@ -1,5 +1,6 @@
 /**
- * Settings → Bonus Groups: each bonus category has its own destination, and
+ * The bonus groups (a card of Settings → Where the Bot Posts since November
+ * 2026; the Bonus Groups section before): each bonus category has its own destination, and
  * the two save independently of each other.
  *
  * The driver-raise review's two fields (REQUESTS to dispatch, RESULTS to
@@ -55,14 +56,14 @@ test("an unset category is shown as not configured, never pre-filled from anothe
 test("saving sends every category, trimmed, and leaves the untouched one as it was", async () => {
   await open(settings({ mileageBonus: "-100111" }));
   fireEvent.change(roadField(), { target: { value: " -100222 " } });
-  fireEvent.click(screen.getByRole("button", { name: /Save settings/ }));
+  fireEvent.click(screen.getByRole("button", { name: /Save bonus groups/ }));
 
   await waitFor(() => expect(updateMessageGroupSettings).toHaveBeenCalledTimes(1));
   expect(updateMessageGroupSettings).toHaveBeenCalledWith({
     mileageBonus: "-100111",
     roadBonus: "-100222",
   });
-  await waitFor(() => expect(screen.getByText(/settings saved/i)).toBeInTheDocument());
+  await waitFor(() => expect(screen.getByText(/Bonus groups saved/i)).toBeInTheDocument());
   expect(roadField()).toHaveValue("-100222");
 });
 

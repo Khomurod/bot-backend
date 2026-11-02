@@ -13,7 +13,9 @@ const read = (rel) => fs.readFileSync(path.resolve(__dirname, '..', rel), 'utf8'
 
 const publicPage = read('admin/src/pages/RecruitersPublicPage.jsx');
 const adminPage = read('admin/src/pages/RecruiterKpiPage.jsx');
-const settingsTab = read('admin/src/pages/settings/RingCentralTab.jsx');
+// The targets moved from the RingCentral settings screen to Recruiter KPIs →
+// Targets in November 2026 (docs/redesign/density.md A2).
+const settingsTab = read('admin/src/pages/recruiting/RecruiterTargetsTab.jsx');
 
 test('public leaderboard presents real call duration as the main KPI', () => {
   assert.match(publicPage, /Main KPI/i);
@@ -48,16 +50,18 @@ test('public leaderboard respects prefers-reduced-motion', () => {
 test('old 50/50 wording is gone from the recruiter UIs', () => {
   assert.ok(!publicPage.includes('50/50'), 'public page still mentions 50/50');
   assert.ok(!adminPage.includes('50/50'), 'admin KPI page still mentions 50/50');
-  assert.ok(!settingsTab.includes('50/50'), 'settings tab still mentions 50/50');
+  assert.ok(!settingsTab.includes('50/50'), 'targets tab still mentions 50/50');
 });
 
 test('admin KPI page uses the talk-time score labels', () => {
   assert.match(adminPage, /Daily Call Duration Score/);
   assert.match(adminPage, /Real Call Duration/);
-  assert.match(adminPage, /does NOT count toward talk time/);
+  // The targets line above the cards, and each card's own label.
+  assert.match(adminPage, /calls under \{shortThreshold\}s do not count/);
+  assert.match(adminPage, /excluded from talk time/);
 });
 
-test('settings tab explains the minimum-duration threshold', () => {
+test('the targets tab explains the minimum-duration threshold', () => {
   assert.match(settingsTab, /Minimum call duration counted toward talk time/);
   assert.match(settingsTab, /Calls shorter than this threshold do not count toward real talk time\. Default: 30 seconds\./);
   assert.match(settingsTab, /targetTalkMinutes/);

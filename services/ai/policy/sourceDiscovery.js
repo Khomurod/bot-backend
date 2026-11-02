@@ -193,7 +193,7 @@ async function reportLostSource(source, { error = null } = {}, deps = defaultDep
   const kind = KIND_LABEL[source.kind] || source.kind;
   const summary = `Wenze can no longer find ${label}'s ${kind} page. The last known address `
     + `(${source.url}) returns ${error || 'an error'} and no replacement was found on the provider's site. `
-    + 'Please check it in Settings → AI → Provider terms watcher.';
+    + 'Please check it in Settings → AI → Provider Terms.';
 
   await deps.operationalFindings.upsertFinding({
     checkKey: CHECK_KEY_LOST,

@@ -14,7 +14,7 @@
  * after a short, bounded wait rather than trusting the value at creation.
  *
  * CONFIGURATION IS READ AT CALL TIME, NOT AT LOAD TIME. It comes from
- * database/bitrix.js — the row an operator edits in Settings → RingCentral →
+ * database/bitrix.js — the row an operator edits in Settings →
  * Bitrix24, falling back to BITRIX24_* env vars for anything never saved — so
  * every entry point here is async and nothing caches a webhook URL in a
  * module-scope constant. The field map alone stays file/env-based
@@ -134,7 +134,7 @@ async function createCrmRecordFromLead({
       return {
         ok: false,
         reason: 'deal_config_incomplete',
-        error: 'A deal category and stage are required when the entity is "deal" — set them in Settings → RingCentral → Bitrix24.',
+        error: 'A deal category and stage are required when the entity is "deal" — set them in Settings → Bitrix24.',
       };
     }
   }

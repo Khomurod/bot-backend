@@ -1,5 +1,5 @@
 /**
- * Settings → RingCentral → Bitrix24: "Match recruiters to Bitrix users".
+ * Settings → Bitrix24: "Match recruiters to Bitrix users".
  *
  * The mapping decides whose RingCentral number texts a driver, so the panel's
  * job is as much refusal as it is convenience. These tests pin the two safety

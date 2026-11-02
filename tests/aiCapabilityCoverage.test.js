@@ -135,3 +135,17 @@ test('the catalogue describes each responsibility well enough to judge the switc
     }
   }
 });
+
+test('the texts a person reads name no source file (Settings → AI → AI Tasks)', () => {
+  // Two used to: "lib/safetyApprovals/reading.js keeps only names…". The admin
+  // renders these words to the owner; where the rule lives is for the code.
+  const READ_BY_PEOPLE = ['label', 'what', 'stateNote', 'rawTextNote', 'fallback', 'mediumNote'];
+  const offenders = [];
+  for (const cap of CAPABILITIES) {
+    for (const field of READ_BY_PEOPLE) {
+      const text = cap[field];
+      if (typeof text === 'string' && /\b[\w-]+\/[\w./-]+\.(js|jsx|py|sql)\b/.test(text)) offenders.push(`${cap.key}.${field}`);
+    }
+  }
+  assert.deepEqual(offenders, []);
+});

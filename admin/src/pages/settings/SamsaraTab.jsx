@@ -1,10 +1,9 @@
-import React, { Suspense, lazy, useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import * as api from "../../api";
+import PageFailure from "../../components/PageFailure";
 import { Banner, NumField } from "./fields";
 import { ConnectionCard } from "./samsara/ConnectionCard";
 import { VideoRecoveryCard } from "./samsara/VideoRecoveryCard";
-
-const SafetyEventsTab = lazy(() => import("./SafetyEventsTab"));
 
 /**
  * SAMSARA — one integration, one settings area.
@@ -16,9 +15,10 @@ const SafetyEventsTab = lazy(() => import("./SafetyEventsTab"));
  * settings row here, read by BOTH this app and the separate Samsara poller over
  * the shared database.
  *
- * The music overlay keeps its own component and its own endpoints — it is
- * rendered below as a section rather than rewritten, so nothing about the
- * uploaded clips, volume, fades or the driver-group behaviour changes.
+ * The music overlay keeps its own component, endpoints and Save. Since
+ * November 2026 it is its own section, Settings → Samsara Video & Music
+ * (`#settings/samsara_video`, SafetyEventsTab.jsx): the two forms on one screen
+ * had two Save buttons, and nothing said which saved what.
  */
 export default function SamsaraTab() {
   const [settings, setSettings] = useState(null);
@@ -27,6 +27,7 @@ export default function SamsaraTab() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState(null);
   const [form, setForm] = useState(null);
+  const [loadError, setLoadError] = useState(null);
 
   const applySettings = useCallback((next) => {
     setSettings(next);
@@ -54,7 +55,12 @@ export default function SamsaraTab() {
       const data = await api.getSamsaraSettings();
       applySettings(data.settings);
       setRecovery(data.recovery);
+      // A read that succeeds (on open, or a Retry after a failed one) leaves
+      // no stale "could not load" above the form. Save does not reload.
+      setLoadError(null);
+      setMessage(null);
     } catch (err) {
+      setLoadError(err);
       setMessage({ type: "error", text: err.message });
     } finally { setLoading(false); }
   }, [applySettings]);
@@ -89,13 +95,20 @@ export default function SamsaraTab() {
     } finally { setSaving(false); }
   };
 
+  // A first read that failed says so and offers Retry: this is the only
+  // screen that edits the Samsara key, so a spinner forever would lock it.
+  if (!form && loadError && !loading) {
+    return <PageFailure variant="inline" error={loadError} where="Samsara settings" onRetry={load} />;
+  }
   if (loading || !form) return <div className="loading"><div className="spinner"></div> Loading…</div>;
 
   return (
     <div>
       <p style={{ color: "var(--text-muted)", marginTop: 0 }}>
         Samsara safety events are polled by a separate service that reads these settings from
-        the shared database. Changes here reach it within five minutes — no redeploy.
+        the shared database. Changes here reach it within five minutes — no redeploy. The music
+        on driver-group videos is under{" "}
+        <a href="#settings/samsara_video">Samsara Video &amp; Music</a>.
       </p>
       <Banner message={message} />
 
@@ -134,12 +147,6 @@ export default function SamsaraTab() {
         )}
       </div>
 
-      <h3 style={{ borderTop: "1px solid var(--border)", paddingTop: 16 }}>
-        Safety-event video &amp; music
-      </h3>
-      <Suspense fallback={<div style={{ padding: 12, color: "var(--text-muted)" }}>Loading…</div>}>
-        <SafetyEventsTab />
-      </Suspense>
     </div>
   );
 }

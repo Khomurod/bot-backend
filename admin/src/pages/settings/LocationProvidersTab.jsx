@@ -21,7 +21,7 @@ export default function LocationProvidersTab() {
   const [testing, setTesting] = useState({});
   const [testUnit, setTestUnit] = useState("");
   const [form, setForm] = useState({
-    samsaraApiKey: "", driveHosProviderKey: "", driveHosApiBase: "",
+    driveHosProviderKey: "", driveHosApiBase: "",
     factorCompanyKey: "", leaderCompanyKey: "",
     samsaraEnabled: true, factorEnabled: true, leaderEnabled: true,
   });
@@ -51,13 +51,12 @@ export default function LocationProvidersTab() {
         samsaraEnabled: form.samsaraEnabled, factorEnabled: form.factorEnabled,
         leaderEnabled: form.leaderEnabled, driveHosApiBase: form.driveHosApiBase,
       };
-      if (form.samsaraApiKey.trim()) payload.samsaraApiKey = form.samsaraApiKey.trim();
       if (form.driveHosProviderKey.trim()) payload.driveHosProviderKey = form.driveHosProviderKey.trim();
       if (form.factorCompanyKey.trim()) payload.factorCompanyKey = form.factorCompanyKey.trim();
       if (form.leaderCompanyKey.trim()) payload.leaderCompanyKey = form.leaderCompanyKey.trim();
       const s = await api.updateEldSettings(payload);
       setSettings(s);
-      setForm((f) => ({ ...f, samsaraApiKey: "", driveHosProviderKey: "", factorCompanyKey: "", leaderCompanyKey: "" }));
+      setForm((f) => ({ ...f, driveHosProviderKey: "", factorCompanyKey: "", leaderCompanyKey: "" }));
       setMessage({ type: "success", text: "Live-location settings saved." });
     } catch (err) { setMessage({ type: "error", text: err.message }); }
     finally { setSaving(false); }
@@ -154,16 +153,23 @@ export default function LocationProvidersTab() {
             <input type="checkbox" checked={form.samsaraEnabled} onChange={(e) => setField("samsaraEnabled", e.target.checked)} /> Enabled
           </label>
         </div>
-        <KeyField label="Samsara API Key" hint={settings.samsaraApiKeySet ? settings.samsaraApiKeyMasked : "not set"} fromEnv={settings.samsaraFromEnv} value={form.samsaraApiKey} onChange={(v) => setField("samsaraApiKey", v)} />
-        {/* One credential, one home. A key entered here is written to the same
-            row the Samsara tab manages — it is the only copy the separate
-            Samsara poller can read — so the two screens can never disagree
-            about which key is live. */}
-        <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: -6, marginBottom: 8 }}>
-          Shared with <strong>Settings → Samsara</strong>, which also covers safety events and
-          missing-video recovery.
+        {/* One credential, one home — and since November 2026 one place to
+            type it. The key lives in the row Settings → Samsara manages (the
+            only copy the separate Samsara poller can read); this card used to
+            offer a second field that wrote the same row, so the key could be
+            changed from two screens. It shows the key's state and where to
+            change it; Test uses the stored key. */}
+        <div style={{ fontSize: 13, marginBottom: 8 }}>
+          <span style={{ fontWeight: 600 }}>Samsara API key:</span>{" "}
+          {settings.samsaraApiKeySet ? (
+            <span>{settings.samsaraApiKeyMasked}{settings.samsaraFromEnv ? " (from the environment)" : ""}</span>
+          ) : (
+            <span style={{ color: "var(--danger)" }}>not set</span>
+          )}
+          {" — "}set it in <a href="#settings/samsara">Settings → Samsara</a>, which also covers safety
+          events and missing-video recovery.
         </div>
-        <button className="btn btn-ghost btn-sm" onClick={() => runTest("samsara", { apiKey: form.samsaraApiKey.trim() || undefined })} disabled={testing.samsara}>Test connection</button>
+        <button className="btn btn-ghost btn-sm" onClick={() => runTest("samsara", {})} disabled={testing.samsara}>Test connection</button>
         <TestBadge provider="samsara" /><TestMessage provider="samsara" />
       </div>
 

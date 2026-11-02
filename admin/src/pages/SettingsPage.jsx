@@ -1,8 +1,8 @@
-import React, { Suspense, lazy } from "react";
+import React, { Suspense, lazy, useEffect } from "react";
 import useTabRoute from "../navigation/useTabRoute";
 import PageErrorBoundary from "../components/PageErrorBoundary";
 import SettingsNav from "./settings/SettingsNav";
-import { SETTINGS_SECTION_KEYS, settingsSectionLabel } from "./settings/sections";
+import { SETTINGS_SECTION_ALIASES, SETTINGS_SECTION_KEYS, settingsSectionLabel } from "./settings/sections";
 
 /**
  * Settings — tab shell. Each tab lives in ./settings/ and is lazy-loaded so
@@ -24,25 +24,31 @@ import { SETTINGS_SECTION_KEYS, settingsSectionLabel } from "./settings/sections
  * something, and a tab is already lazy and already shown one at a time, so the
  * grouping bought nothing the tab bar was not already doing.
  *
- * The Samsara tab is ONE integration rather than one screen per moving part:
- * the connection, the safety-event switches, missing-video recovery and the
- * driver-group music overlay (still its own component, ./settings/
- * SafetyEventsTab.jsx) all live under it.
+ * Samsara is one integration in two sections since November 2026: Samsara
+ * (the connection, the safety-event switches, missing-video recovery — one
+ * settings row, one Save) and Samsara Video & Music (the driver-group music
+ * overlay, ./settings/SafetyEventsTab.jsx, with its own Save). On one screen
+ * they had two Save buttons and nothing said which saved what.
  *
  * GROUPED, AND EVERY SECTION HAS AN ADDRESS (October 2026). Thirteen sections in
  * one row of tabs read as a list of everything ever added; they are now under
- * six groups (./settings/sections.js) in the page's own navigation, and the
+ * groups (./settings/sections.js; five since November 2026) in the page's own navigation, and the
  * open section is the second half of the address — `#settings/board`. One
  * sidebar entry opens this page; the six it used to have are legacy keys that
  * land on the same sections.
  */
 
 const LocationProvidersTab = lazy(() => import("./settings/LocationProvidersTab"));
-const RingCentralTab = lazy(() => import("./settings/RingCentralTab"));
-const TelegramGroupsTab = lazy(() => import("./settings/TelegramGroupsTab"));
+const RecruitersTab = lazy(() => import("./settings/RecruitersTab"));
+const RcConnectionTab = lazy(() => import("./settings/RcConnectionTab"));
+const BitrixTab = lazy(() => import("./settings/BitrixTab"));
 const SamsaraTab = lazy(() => import("./settings/SamsaraTab"));
+const SafetyEventsTab = lazy(() => import("./settings/SafetyEventsTab"));
 const DispatcherBoardTab = lazy(() => import("./settings/DispatcherBoardTab"));
 const AiTab = lazy(() => import("./settings/AiTab"));
+const AiTasksTab = lazy(() => import("./settings/AiTasksTab"));
+const WenzeQuestionsTab = lazy(() => import("./settings/WenzeQuestionsTab"));
+const ProviderTermsTab = lazy(() => import("./settings/ProviderTermsTab"));
 const NotificationsTab = lazy(() => import("./settings/NotificationsTab"));
 const SafetyApprovalsTab = lazy(() => import("./settings/SafetyApprovalsTab"));
 const AutoReactionsPanel = lazy(() => import("./settings/bot/AutoReactionsPanel"));
@@ -58,7 +64,13 @@ const AdminAccountsTab = lazy(() => import("./settings/admins/AdminAccountsTab")
  * opens. An unrecognised section opens the first one rather than a blank page.
  */
 export default function SettingsPage({ tab: routeTab, onTabChange }) {
-  const [tab, setTab] = useTabRoute(SETTINGS_SECTION_KEYS, { tab: routeTab, onTabChange });
+  // A section merged into another (`#settings/groups`) opens the one its
+  // content is in, and the address is corrected to say so.
+  const aliasedTo = SETTINGS_SECTION_ALIASES[routeTab] || null;
+  useEffect(() => {
+    if (aliasedTo && onTabChange) onTabChange(aliasedTo);
+  }, [aliasedTo]);
+  const [tab, setTab] = useTabRoute(SETTINGS_SECTION_KEYS, { tab: aliasedTo || routeTab, onTabChange });
   return (
     <div>
       <div className="page-header">
@@ -74,13 +86,18 @@ export default function SettingsPage({ tab: routeTab, onTabChange }) {
           <PageErrorBoundary resetKey={tab}>
           <Suspense fallback={<div className="loading"><div className="spinner"></div> Loading…</div>}>
             {tab === "location" && <LocationProvidersTab />}
-            {tab === "ringcentral" && <RingCentralTab />}
+            {tab === "ringcentral" && <RecruitersTab />}
+            {tab === "rc_connection" && <RcConnectionTab />}
+            {tab === "bitrix" && <BitrixTab />}
             {tab === "metacrm" && <MetaCrmTab />}
-            {tab === "groups" && <TelegramGroupsTab />}
             {tab === "samsara" && <SamsaraTab />}
+            {tab === "samsara_video" && <SafetyEventsTab />}
             {tab === "board" && <DispatcherBoardTab />}
             {tab === "safety" && <SafetyApprovalsTab />}
             {tab === "ai" && <AiTab />}
+            {tab === "ai_tasks" && <AiTasksTab />}
+            {tab === "ai_questions" && <WenzeQuestionsTab />}
+            {tab === "ai_terms" && <ProviderTermsTab />}
             {tab === "notifications" && <NotificationsTab />}
             {tab === "reactions" && <AutoReactionsPanel />}
             {tab === "access" && <GroupAccessPanel />}

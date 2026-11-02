@@ -112,7 +112,7 @@ async function checkBitrixStages(deps, token) {
     rows = await deps.listStageRows(Number(CATEGORY_ID));
   } catch (err) {
     if (err?.reason === 'not_configured') {
-      return { connected: false, result: check('bitrix', label, CHECK.FAIL, 'Bitrix24 is not connected. Connect it in Settings → RingCentral → Bitrix24.') };
+      return { connected: false, result: check('bitrix', label, CHECK.FAIL, 'Bitrix24 is not connected. Connect it in Settings → Bitrix24.') };
     }
     return { connected: false, result: check('bitrix', label, CHECK.FAIL, `Bitrix could not be read: ${redactSecret(err?.message, token)}`) };
   }
