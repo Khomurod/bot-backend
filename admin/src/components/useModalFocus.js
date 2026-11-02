@@ -19,17 +19,20 @@ export function focusFirstIn(element) {
  *
  *   - When it opens, focus moves to the first control inside.
  *   - When it closes, focus returns to `returnFocusRef` if the caller gave
- *     one, otherwise to whatever had focus when it opened.
+ *     one, otherwise to whatever had focus when it opened. If that control
+ *     is disabled by then (a confirmed send disables its own button), focus
+ *     goes to `fallbackFocusRef` instead of falling out of the page.
  *   - Tab and Shift+Tab stay inside.
  *   - Escape calls `onEscape`. Pass null while the dialog must not be
  *     dismissed, for example while its request is in flight.
  */
-export function useModalFocus(dialogRef, { onEscape = null, returnFocusRef = null } = {}) {
+export function useModalFocus(dialogRef, { onEscape = null, returnFocusRef = null, fallbackFocusRef = null } = {}) {
   React.useEffect(() => {
     const opener = document.activeElement;
     focusFirstIn(dialogRef.current);
     return () => {
-      const target = returnFocusRef?.current || opener;
+      let target = returnFocusRef?.current || opener;
+      if (target?.disabled) target = fallbackFocusRef?.current || target;
       if (target?.isConnected && typeof target.focus === "function") target.focus();
     };
     // Runs once per opening: the opener is whatever had focus at that moment.

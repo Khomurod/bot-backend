@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import * as api from "../api";
 import { sortBySoonestBirthday } from "../components/Shared";
 import ConfirmDialog from "../components/ConfirmDialog";
@@ -30,6 +30,9 @@ export default function CompanyBirthdaysPage() {
   const [customMessage, setCustomMessage] = useState("");
   const [addOpen, setAddOpen] = useState(false);
   const [confirmAction, setConfirmAction] = useState(null);
+  // A confirmed send disables the button that opened its confirm, so focus
+  // comes back to the toolbar itself rather than leaving the page.
+  const toolbarRef = useRef(null);
 
   const fail = useCallback((text) => setStatus({ type: "error", text }), []);
 
@@ -141,7 +144,7 @@ export default function CompanyBirthdaysPage() {
 
       {status && <div className={`alert alert-${status.type}`} style={{ marginBottom: 16 }}>{status.text}</div>}
 
-      <div role="toolbar" aria-label="Birthday actions" style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
+      <div ref={toolbarRef} tabIndex={-1} role="toolbar" aria-label="Birthday actions" style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
         <button className="btn btn-primary" type="button" onClick={() => setConfirmAction({ type: "sendToday" })} disabled={requesting}>
           {running === "sendToday" ? "⏳ Sending..." : "Send today's wishes now"}
         </button>
@@ -220,6 +223,7 @@ export default function CompanyBirthdaysPage() {
           confirmLabel={copy.label}
           danger={copy.danger}
           onCancel={() => setConfirmAction(null)}
+          fallbackFocusRef={toolbarRef}
           onConfirm={() => runConfirmed(confirmAction)}
         >
           {copy.body}

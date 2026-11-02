@@ -128,3 +128,15 @@ test("while one send runs, only its own button says so; the others are just disa
   finish({ sent: true, names: "Aziz Karimov" });
   await waitFor(() => expect(request).not.toBeDisabled());
 });
+
+test("after a confirmed send disables its own button, focus lands on the toolbar, not the page", async () => {
+  await setup();
+  let finish;
+  api.sendEmployeeBirthdayRequest.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+  await userEvent.click(screen.getByRole("button", { name: /Send Telegram Request/ }));
+  await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Send" }));
+
+  const toolbar = screen.getByRole("toolbar", { name: "Birthday actions" });
+  await waitFor(() => expect(document.activeElement).toBe(toolbar));
+  finish({});
+});
