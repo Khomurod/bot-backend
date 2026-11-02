@@ -24,10 +24,11 @@ import { SETTINGS_SECTION_KEYS, settingsSectionLabel } from "./settings/sections
  * something, and a tab is already lazy and already shown one at a time, so the
  * grouping bought nothing the tab bar was not already doing.
  *
- * The Samsara tab is ONE integration rather than one screen per moving part:
- * the connection, the safety-event switches, missing-video recovery and the
- * driver-group music overlay (still its own component, ./settings/
- * SafetyEventsTab.jsx) all live under it.
+ * Samsara is one integration in two sections since November 2026: Samsara
+ * (the connection, the safety-event switches, missing-video recovery — one
+ * settings row, one Save) and Samsara Video & Music (the driver-group music
+ * overlay, ./settings/SafetyEventsTab.jsx, with its own Save). On one screen
+ * they had two Save buttons and nothing said which saved what.
  *
  * GROUPED, AND EVERY SECTION HAS AN ADDRESS (October 2026). Thirteen sections in
  * one row of tabs read as a list of everything ever added; they are now under
@@ -43,6 +44,7 @@ const RcConnectionTab = lazy(() => import("./settings/RcConnectionTab"));
 const BitrixTab = lazy(() => import("./settings/BitrixTab"));
 const TelegramGroupsTab = lazy(() => import("./settings/TelegramGroupsTab"));
 const SamsaraTab = lazy(() => import("./settings/SamsaraTab"));
+const SafetyEventsTab = lazy(() => import("./settings/SafetyEventsTab"));
 const DispatcherBoardTab = lazy(() => import("./settings/DispatcherBoardTab"));
 const AiTab = lazy(() => import("./settings/AiTab"));
 const AiTasksTab = lazy(() => import("./settings/AiTasksTab"));
@@ -85,6 +87,7 @@ export default function SettingsPage({ tab: routeTab, onTabChange }) {
             {tab === "metacrm" && <MetaCrmTab />}
             {tab === "groups" && <TelegramGroupsTab />}
             {tab === "samsara" && <SamsaraTab />}
+            {tab === "samsara_video" && <SafetyEventsTab />}
             {tab === "board" && <DispatcherBoardTab />}
             {tab === "safety" && <SafetyApprovalsTab />}
             {tab === "ai" && <AiTab />}

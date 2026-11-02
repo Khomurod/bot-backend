@@ -54,3 +54,18 @@ test("retry reads again, and the stored values come back into the form", async (
   expect(screen.getByText("••••1234")).toBeInTheDocument();
   await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
 });
+
+test("the Samsara key is typed in one place: here it is a status and a link", async () => {
+  // It was a second field writing the same row Settings → Samsara manages
+  // (November 2026, docs/redesign/density.md A3).
+  api.getEldSettings.mockResolvedValueOnce(stored);
+  api.updateEldSettings.mockResolvedValueOnce(stored);
+  render(<LocationProvidersTab />);
+  expect(await screen.findByText("••••1234")).toBeInTheDocument();
+  expect(screen.queryByLabelText("Samsara API Key")).not.toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "Settings → Samsara" })).toHaveAttribute("href", "#settings/samsara");
+
+  fireEvent.click(screen.getByRole("button", { name: "Save settings" }));
+  await waitFor(() => expect(api.updateEldSettings).toHaveBeenCalledTimes(1));
+  expect(api.updateEldSettings.mock.calls[0][0]).not.toHaveProperty("samsaraApiKey");
+});

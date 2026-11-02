@@ -12,6 +12,8 @@ export const SETTINGS_GROUPS = Object.freeze([
     sections: [
       { key: "location", label: "Location Providers" },
       { key: "samsara", label: "Samsara" },
+      // Its own section since November 2026: it has its own Save.
+      { key: "samsara_video", label: "Samsara Video & Music" },
       { key: "board", label: "Dispatcher Board" },
       // One "RingCentral & Bitrix24" screen of six cards until November 2026.
       // `ringcentral` stays the recruiters' address, which old links meant.
