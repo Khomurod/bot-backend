@@ -103,4 +103,17 @@ test("Automation: the dry run comes before the switches; the keys are under Deta
   expect(details.open).toBe(false);
   expect(details.textContent).toMatch(/identity\.duplicate_unit/);
   expect(screen.getByRole("checkbox", { name: "Auto-apply" })).toBeTruthy();
+  expect(screen.getByRole("spinbutton", {
+    name: "Most changes per run: One unit on several active drivers",
+  })).toBeTruthy();
+});
+
+test("System Health: a first read that fails never says nothing needs a look", async () => {
+  api.getSystems.mockRejectedValue(new Error("Server unreachable"));
+  render(<SystemsTab />);
+  expect(await screen.findByText("Current state unavailable")).toBeTruthy();
+  expect(screen.getByText("Server unreachable")).toBeTruthy();
+  expect(screen.queryByText("Nothing needs a look")).toBeNull();
+  expect(screen.queryByText(/Every job that reported is working/)).toBeNull();
+  expect(screen.queryByText("Need a person")).toBeNull();
 });

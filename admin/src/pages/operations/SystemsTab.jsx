@@ -153,6 +153,26 @@ export default function SystemsTab({ flash }) {
 
   if (loading && !data) return <div className="muted">Loading…</div>;
 
+  const failureBox = failure && (
+    <div style={{
+      border: "1px solid var(--danger-solid)", borderRadius: 8, padding: "8px 12px", marginBottom: 12,
+    }}>{failure}</div>
+  );
+
+  // Nothing was ever read: no tiles of zeroes and no "nothing needs a look",
+  // which would present an unread state as a healthy one.
+  if (!data) {
+    return (
+      <div>
+        {failureBox}
+        <h4 style={{ margin: "16px 0 8px" }}>Current state unavailable</h4>
+        <p className="muted" style={{ margin: 0, fontSize: 13 }}>
+          The page could not read what the jobs last reported. It tries again every two minutes.
+        </p>
+      </div>
+    );
+  }
+
   const components = data?.components || [];
   const sorted = [...components].sort((a, b) => {
     const ra = (STATE[a.state] || STATE.cannot_determine).rank;
@@ -168,11 +188,7 @@ export default function SystemsTab({ flash }) {
 
   return (
     <div>
-      {failure && (
-        <div style={{
-          border: "1px solid var(--danger-solid)", borderRadius: 8, padding: "8px 12px", marginBottom: 12,
-        }}>{failure}</div>
-      )}
+      {failureBox}
 
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
         <Tile label="Need a person" value={data?.needingAttention} colour="var(--danger)" />
