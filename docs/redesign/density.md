@@ -102,8 +102,8 @@ Status: ☐ planned · ◐ in review · ☑ merged.
 
 | # | Change | Must not be lost |
 |---|---|---|
-| ☐ B1 | **System Health:** one "Needs a look" section first, across all groups (needs a person, stopped, failing, not reported). Each group follows as a one-line summary ("Engines: 21 working, 2 not reported") that expands into compact rows. The alert-delivery message is shown once, as that section's heading; its wording no longer claims that a RingCentral login problem is an alert-delivery problem. | Every row's reason and last error. "Not reported" is never shown as working. |
-| ☐ B2 | **Needs Attention:** the intro becomes one line plus "How this works". The full configuration banner shows only on the findings tab; elsewhere it is one line with a link. **Automation:** the dry run comes first, the internal keys and migration notes sit behind a per-row "Details", and the switch and cap stack under the label on a phone. | The banner's content, every mode and cap, the preview. |
+| ◐ B1 | **System Health:** one "Needs a look" section first, across all groups: needs a person, stopped, failing, blipped. "Not reported" is not in it — it is normal for half an hour after a deploy — but each group's summary counts it separately and never as working. Each group follows as a one-line summary ("Engines: 21 working, 2 not reported") that expands into its rows. The lost-alerts row is shown once, as that section's loudest line; the page no longer also draws the banner. The banner's heading "cannot tell anybody" now belongs only to the notification destination; other gaps read "Not set up yet". | Every row's reason and last error. "Not reported" is never shown as working. |
+| ◐ B2 | **Needs Attention:** the intro becomes one line plus "How this works". The full configuration banner shows only on the findings tab; elsewhere it is one line with a link. **Automation:** the dry run comes first, the internal keys and migration notes sit behind a per-row "Details", and the switch and cap stack under the label on a phone. | The banner's content, every mode and cap, the preview. |
 
 ### C — Drivers
 
