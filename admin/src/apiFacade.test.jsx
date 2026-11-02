@@ -53,6 +53,11 @@ test("no two forwarded modules export the same name", () => {
 });
 
 test("the public surface stays at its known size", () => {
+  // 226 with Settings → Reactions' client moved into ./api/autoReactions.js
+  // and forwarded here like every other domain (block 5 of the audit):
+  // `getAutoReactions`, `createAutoReaction`, `updateAutoReaction`,
+  // `deleteAutoReaction`. It had sat outside api/ with its own copy of the
+  // headers and error handling.
   // 222 after the hidden-functions audit's block 4b: the client's positional
   // `sendBroadcastTest` wrapper went (no caller; Send Message calls
   // `testBroadcast`) — exactly one.
@@ -87,7 +92,7 @@ test("the public surface stays at its known size", () => {
   // Tracking and QBQ/SOS, and 205 when api.js was first split into domain
   // modules. Growing this is fine — update the number. A DROP that is not a
   // deliberate feature removal means a call site somewhere just broke.
-  expect(Object.keys(api).length).toBeGreaterThanOrEqual(222);
+  expect(Object.keys(api).length).toBeGreaterThanOrEqual(226);
 });
 
 describe("a sample of calls from every domain still resolves", () => {

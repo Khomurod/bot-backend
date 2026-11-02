@@ -1,11 +1,11 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { getBotUsers } from "../../../api";
 import {
+  getBotUsers,
   getAutoReactions,
   createAutoReaction,
   updateAutoReaction,
   deleteAutoReaction,
-} from "../../../autoReactionsApi";
+} from "../../../api";
 
 function userLabel(u) {
   const name = [u.first_name, u.last_name].filter(Boolean).join(" ").trim();
