@@ -60,13 +60,20 @@ desktop, a single picker on a phone. Every section has its own address.
 
 | Settings group | Sections (address) |
 |---|---|
-| Integrations | Location Providers (`location`) · Samsara (`samsara`) · Samsara Video & Music (`samsara_video`, its own section since November 2026, A3) · Dispatcher Board (`board`) · Recruiters & Numbers (`ringcentral`) · RingCentral Connection (`rc_connection`) · Bitrix24 (`bitrix`) — one "RingCentral & Bitrix24" screen until November 2026 ([`density.md`](density.md) A2) · Facebook ↔ Bitrix (`metacrm`) |
-| AI | AI Providers (`ai`) · AI Tasks (`ai_tasks`) · Wenze's Questions (`ai_questions`) · Provider Terms (`ai_terms`) — one "AI & Autonomy" screen until November 2026 ([`density.md`](density.md) A1) |
-| Telegram Bot | Where the Bot Posts (`notifications`; Notifications and Bonus Groups until November 2026, A4 — `#settings/groups` lands here; "Answering Wenze in Telegram" moved to Wenze's Questions, A1) · Group Access (`access`) · Auto Reactions (`reactions`) |
-| Recruiting | Safety Approvals (`safety`) |
-| Office Screens | Gross Grand Prix (`grossrace`) |
-| Administration | Admin Accounts (`admins`) — added after the October 2026 audit |
-| Maintenance | Retired Leftovers (`leftovers`) |
+| Fleet | Location Providers (`location`) · Samsara (`samsara`) · Samsara Video & Music (`samsara_video`) · Dispatcher Board (`board`) |
+| Recruiting | Recruiters & Numbers (`ringcentral`) · RingCentral Connection (`rc_connection`) · Bitrix24 (`bitrix`) · Facebook ↔ Bitrix (`metacrm`) · Safety Approvals (`safety`) |
+| AI | AI Providers (`ai`) · AI Tasks (`ai_tasks`) · Wenze's Questions (`ai_questions`) · Provider Terms (`ai_terms`) |
+| Telegram | Where the Bot Posts (`notifications`; `#settings/groups` lands here) · Group Access (`access`) · Auto Reactions (`reactions`) |
+| System | Admin Accounts (`admins`) · Gross Grand Prix (`grossrace`) · Retired Leftovers (`leftovers`, last) |
+
+*November 2026* ([`density.md`](density.md)): the table above replaced seven
+groups — Integrations, AI, Telegram Bot, Recruiting, Office Screens,
+Administration, Maintenance — five of which held one entry. "AI & Autonomy"
+became the four AI sections (A1); "RingCentral & Bitrix24" became Recruiters &
+Numbers, RingCentral Connection and Bitrix24, with the KPI targets moved to
+Recruiter KPIs → Targets (A2); Samsara's music became its own section (A3);
+Notifications and Bonus Groups became Where the Bot Posts (A4). No key was
+renamed, so every older address still opens the same content.
 
 **Every page-level tab is an address** (`#page/tab`). Switching a tab updates
 the address without adding a Back step; a page from the sidebar is a Back step.
@@ -95,7 +102,10 @@ opens on Announcement, as Send Message always did.
   the AI configuration; where the bot posts and what it may do in groups
   (Telegram Bot); a recruiting-group workflow (Recruiting); the office race
   screens (Office Screens); one-off database cleanup (Maintenance, last, so it
-  is never the first thing a person lands on).
+  is never the first thing a person lands on). *Regrouped in November 2026*
+  by the work a section serves — Fleet, Recruiting, AI, Telegram, System — once
+  splitting the long screens would have left "Integrations" with eight entries
+  and five groups held one each; maintenance is still last.
 - **Birthdays holds the employees.** The employee list exists for one purpose,
   the birthday card, so the card's data and the birthdays are now two tabs of
   one page. Telegram Users keeps a pointer for anyone who looks there.

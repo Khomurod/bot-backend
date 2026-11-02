@@ -1,5 +1,5 @@
 /**
- * Settings' own navigation: nineteen sections under seven groups, every one of
+ * Settings' own navigation: nineteen sections under five groups, every one of
  * them reachable, and the choice is the PAGE's (and so the address's) — the
  * navigation only reports it.
  */
@@ -11,20 +11,20 @@ import SettingsNav from "./SettingsNav";
 import { SETTINGS_GROUPS, SETTINGS_SECTION_KEYS, settingsSectionLabel } from "./sections";
 
 describe("Settings sections", () => {
-  test("seven groups, nineteen sections, each key once, in this order", () => {
-    expect(SETTINGS_GROUPS.map((g) => g.label)).toEqual([
-      "Integrations", "AI", "Telegram Bot", "Recruiting", "Office Screens", "Administration", "Maintenance",
-    ]);
+  test("five groups, nineteen sections, each key once, in this order", () => {
+    expect(SETTINGS_GROUPS.map((g) => g.label)).toEqual(["Fleet", "Recruiting", "AI", "Telegram", "System"]);
     expect(SETTINGS_SECTION_KEYS).toEqual([
-      "location", "samsara", "samsara_video", "board", "ringcentral", "rc_connection", "bitrix", "metacrm",
+      "location", "samsara", "samsara_video", "board",
+      "ringcentral", "rc_connection", "bitrix", "metacrm", "safety",
       "ai", "ai_tasks", "ai_questions", "ai_terms",
       "notifications", "access", "reactions",
-      "safety",
-      "grossrace",
-      "admins",
-      "leftovers",
+      "admins", "grossrace", "leftovers",
     ]);
     expect(new Set(SETTINGS_SECTION_KEYS).size).toBe(SETTINGS_SECTION_KEYS.length);
+  });
+
+  test("no group is a heading over a single entry (November 2026)", () => {
+    for (const group of SETTINGS_GROUPS) expect(group.sections.length).toBeGreaterThanOrEqual(3);
   });
 
   test("maintenance is last, so it is never where a person lands first", () => {

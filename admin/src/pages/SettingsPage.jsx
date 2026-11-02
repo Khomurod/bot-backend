@@ -32,7 +32,7 @@ import { SETTINGS_SECTION_ALIASES, SETTINGS_SECTION_KEYS, settingsSectionLabel }
  *
  * GROUPED, AND EVERY SECTION HAS AN ADDRESS (October 2026). Thirteen sections in
  * one row of tabs read as a list of everything ever added; they are now under
- * six groups (./settings/sections.js) in the page's own navigation, and the
+ * groups (./settings/sections.js; five since November 2026) in the page's own navigation, and the
  * open section is the second half of the address — `#settings/board`. One
  * sidebar entry opens this page; the six it used to have are legacy keys that
  * land on the same sections.
