@@ -189,12 +189,13 @@ repository-wide working rules. The highest-consequence items:
 19. **`/rc-webhook` acts only on notifications from our RingCentral
     subscription.** Every subscription carries `deliveryMode.verificationToken`
     (an HMAC of `LEADS_INTERNAL_SHARED_SECRET`), RingCentral returns it as
-    `Verification-Token`, and a wrong token is refused. A missing token is
-    refused once this process has registered a subscription that carries it,
-    so the first pass of every process registers afresh, successor first.
-    Before that a token-less notification is still accepted, so nothing real
-    is lost while an older subscription is live. A forged "inbound SMS" used to
-    reach the leads group and the after-hours reply.
+    `Verification-Token`. Once this process has registered a subscription that
+    carries the token, anything without it is refused; before that it is
+    accepted, so nothing real is lost while an older subscription (no token, or
+    an old secret's) is live. Each process registers afresh, successor first,
+    but only from a roster it could read. With no secret it fails closed. A
+    forged "inbound SMS" used to reach the leads group and the after-hours
+    reply.
     `leads-bot/test_rc_webhook_auth.py`;
     `docs/architecture/recruiter-sms-sender.md`.
 

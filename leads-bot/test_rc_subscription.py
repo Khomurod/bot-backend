@@ -105,7 +105,10 @@ class TestReconcileRcSubscription(unittest.IsolatedAsyncioTestCase):
         ):
             with patch.object(rcs, "register_sms_webhook", new_callable=AsyncMock, return_value=True) as register:
                 self.assertTrue(await rcs.reconcile_rc_subscription(CALLBACK))
-                register.assert_awaited_once_with(CALLBACK, [], fresh=True)
+                # NOT fresh: a fresh registration from an unknown roster would
+                # replace a subscription covering every recruiter with the
+                # shared number alone. The existing coverage is kept instead.
+                register.assert_awaited_once_with(CALLBACK, [])
 
     async def test_a_failed_registration_is_retried_next_tick(self):
         with patch.object(rcs, "_fetch_ringcentral_sms_extensions", new_callable=AsyncMock, return_value=["101"]):

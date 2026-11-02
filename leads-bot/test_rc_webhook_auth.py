@@ -49,18 +49,23 @@ class VerdictTests(unittest.TestCase):
         self.assertEqual(auth.verdict(self.T, expected=self.T, armed=True), auth.ACCEPT)
         self.assertEqual(auth.verdict(f" {self.T} ", expected=self.T, armed=False), auth.ACCEPT)
 
-    def test_a_wrong_token_is_refused_armed_or_not(self):
-        for armed in (False, True):
-            self.assertEqual(auth.verdict("nope", expected=self.T, armed=armed), auth.REJECT)
-        self.assertEqual(auth.verdict("ünïcode", expected=self.T, armed=False), auth.REJECT)
+    def test_a_wrong_token_is_refused_once_armed(self):
+        self.assertEqual(auth.verdict("nope", expected=self.T, armed=True), auth.REJECT)
+        self.assertEqual(auth.verdict("ünïcode", expected=self.T, armed=True), auth.REJECT)
+
+    def test_before_arming_an_old_token_still_gets_through(self):
+        # The live subscription may carry the token of a secret since changed.
+        self.assertEqual(auth.verdict("old-token", expected=self.T, armed=False), auth.ACCEPT_UNVERIFIED)
 
     def test_no_token_is_refused_once_armed_and_let_through_before(self):
         self.assertEqual(auth.verdict(None, expected=self.T, armed=True), auth.REJECT)
         self.assertEqual(auth.verdict("", expected=self.T, armed=True), auth.REJECT)
         self.assertEqual(auth.verdict(None, expected=self.T, armed=False), auth.ACCEPT_UNVERIFIED)
 
-    def test_nothing_to_check_against_never_drops_a_message(self):
-        self.assertEqual(auth.verdict(None, expected=None, armed=True), auth.ACCEPT_UNVERIFIED)
+    def test_nothing_to_check_against_fails_closed(self):
+        for armed in (False, True):
+            self.assertEqual(auth.verdict(None, expected=None, armed=armed), auth.REJECT)
+            self.assertEqual(auth.verdict("anything", expected=None, armed=armed), auth.REJECT)
 
 
 class RegistrationCarriesTheTokenTests(unittest.TestCase):
@@ -83,6 +88,12 @@ class RegistrationCarriesTheTokenTests(unittest.TestCase):
         self.assertTrue(patched(client, lambda: rcin.register_sms_webhook(CALLBACK, ["101"], fresh=True)))
         self.assertEqual(client.calls, ["post", "delete"])
         self.assertTrue(client.deletes[0].endswith("/sub-old"))
+
+    def test_without_a_secret_nothing_is_registered(self):
+        client = FakeClient([response(200, {"id": "sub-new"})])
+        with patch.object(rcin, "verification_token", return_value=None):
+            self.assertFalse(patched(client, lambda: rcin.register_sms_webhook(CALLBACK, ["101"], fresh=True)))
+        self.assertEqual(client.posts, [])
 
     def test_without_fresh_a_matching_active_subscription_is_kept(self):
         client = FakeClient([], get_response=listing(ours("sub-old")))
@@ -114,6 +125,21 @@ class ArmingTests(unittest.IsolatedAsyncioTestCase):
             await rcs.reconcile_rc_subscription(CALLBACK)
         self.assertTrue(auth.is_armed())
         self.assertEqual(register.await_args_list[1].kwargs, {"fresh": True})
+
+    async def test_an_unknown_roster_is_never_registered_afresh(self):
+        # The first read fails: keep what covers every recruiter, do not arm.
+        with patch.object(rcs, "_fetch_ringcentral_sms_extensions", new_callable=AsyncMock, side_effect=RuntimeError("hub down")):
+            with patch.object(rcs, "register_sms_webhook", new_callable=AsyncMock, return_value=True) as register:
+                await rcs.reconcile_rc_subscription(CALLBACK)
+        self.assertEqual(register.await_args.kwargs, {})
+        self.assertFalse(auth.is_armed())
+        # The next read works — even an unchanged (empty) roster — so it is
+        # registered afresh from what is now known, and the check arms.
+        with patch.object(rcs, "_fetch_ringcentral_sms_extensions", new_callable=AsyncMock, return_value=[]):
+            with patch.object(rcs, "register_sms_webhook", new_callable=AsyncMock, return_value=True) as register:
+                await rcs.reconcile_rc_subscription(CALLBACK)
+        self.assertEqual(register.await_args.kwargs, {"fresh": True})
+        self.assertTrue(auth.is_armed())
 
     async def test_later_passes_are_not_fresh(self):
         with patch.object(rcs, "register_sms_webhook", new_callable=AsyncMock, return_value=True) as register:
@@ -153,8 +179,14 @@ class RouteTests(unittest.TestCase):
         self.assertEqual(self.post().status_code, 200)
         self.forward.assert_awaited_once()
 
-    def test_a_wrong_token_is_refused_even_before_arming(self):
-        self.assertEqual(self.post("guessed").status_code, 403)
+    def test_before_arming_a_subscription_with_an_old_token_still_gets_through(self):
+        self.assertEqual(self.post("token-of-a-secret-since-changed").status_code, 200)
+        self.forward.assert_awaited_once()
+
+    def test_without_a_secret_everything_is_refused(self):
+        with patch.object(auth, "verification_token", return_value=None):
+            self.assertEqual(self.post().status_code, 403)
+            self.assertEqual(self.post("anything").status_code, 403)
         self.forward.assert_not_awaited()
 
     def test_the_validation_handshake_still_answers(self):

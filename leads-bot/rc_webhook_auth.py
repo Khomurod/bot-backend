@@ -18,11 +18,14 @@ then registers a subscription that carries the new one
 (webhook/rc_subscription.py registers afresh on every boot).
 
 NOTHING THAT IS REALLY RINGCENTRAL IS LOST WHILE THIS TAKES OVER. Until this
-process has registered a subscription carrying the token ("armed"), a
-notification WITHOUT the header is still accepted, and logged. Until then the
-only live subscription may be the one registered before this existed. Once
-armed, a missing header is refused. A WRONG token is refused always: nothing
-real ever sends one.
+process has registered a subscription carrying the current token ("armed"), a
+notification without the right header is still accepted, and logged. Until
+then the live subscription may be one registered before this existed (no
+header) or under a secret since changed (an old token). Once armed, only the
+right token passes.
+
+WITHOUT A SECRET IT FAILS CLOSED: every notification is refused and no
+subscription is registered, so RingCentral sends nothing that could be lost.
 """
 import hashlib
 import hmac
@@ -66,18 +69,22 @@ def _reset_for_tests() -> None:
 def verdict(received: str | None, *, expected: str | None, armed: bool) -> str:
     """What to do with one notification, from its Verification-Token header. Pure.
 
+    - nothing to compare with (no secret): REJECT. Fail closed — and
+      register_sms_webhook() registers nothing then, so nothing real is sent;
     - the right token: ACCEPT;
-    - a wrong token: REJECT, armed or not — RingCentral never sends one;
-    - no token: REJECT once armed; before that ACCEPT_UNVERIFIED (the
-      subscription registered before tokens existed may still be the live one);
-    - nothing to compare with (no secret): ACCEPT_UNVERIFIED — the behaviour
-      before this check, never a reason to drop a candidate's message.
+    - anything else, once armed: REJECT;
+    - anything else before that: ACCEPT_UNVERIFIED. The live subscription may
+      be one registered before tokens existed (no header), or under a secret
+      that has since changed (the OLD token). Refusing either would drop real
+      candidates' replies whenever the fresh registration is slow or failing,
+      and it opens nothing a missing header did not.
     """
     if not expected:
-        return ACCEPT_UNVERIFIED
+        return REJECT
     if received:
         # Bytes, not str: compare_digest refuses a str with non-ASCII characters,
         # and a forged header can carry anything.
         given = received.strip().encode("utf-8", "replace")
-        return ACCEPT if hmac.compare_digest(given, expected.encode("utf-8")) else REJECT
+        if hmac.compare_digest(given, expected.encode("utf-8")):
+            return ACCEPT
     return REJECT if armed else ACCEPT_UNVERIFIED

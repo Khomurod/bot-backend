@@ -233,6 +233,17 @@ async def register_sms_webhook(
         logger.info("RingCentral not configured — skipping webhook registration.")
         return False
 
+    verification = verification_token()
+    if not verification:
+        # /rc-webhook refuses everything without a token to check against
+        # (rc_webhook_auth.py), so a subscription now would deliver nothing
+        # but refusals. Fail closed, loudly.
+        logger.error(
+            "No LEADS_INTERNAL_SHARED_SECRET (or JWT_SECRET) to derive the RingCentral "
+            "verification token from: the inbound-SMS subscription is NOT registered."
+        )
+        return False
+
     try:
         token = await _get_access_token()
         headers = {"Authorization": f"Bearer {token}"}
@@ -262,18 +273,13 @@ async def register_sms_webhook(
             # and deleting it first left nothing watching whenever RingCentral
             # then refused or failed the new request.
 
-            delivery = {"transportType": "WebHook", "address": callback_url}
-            token = verification_token()
-            if token:
-                delivery["verificationToken"] = token
-            else:
-                logger.warning(
-                    "No LEADS_INTERNAL_SHARED_SECRET to derive the RingCentral verification "
-                    "token from: /rc-webhook cannot tell RingCentral from anybody else."
-                )
             payload = {
                 "eventFilters": wanted_filters,
-                "deliveryMode": delivery,
+                "deliveryMode": {
+                    "transportType": "WebHook",
+                    "address": callback_url,
+                    "verificationToken": verification,
+                },
                 "expiresIn": 630720000,  # ~20 years (max allowed will be applied by RC)
             }
             resp = await client.post(RC_SUBSCRIPTION_URL, json=payload, headers=headers)

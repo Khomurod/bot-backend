@@ -383,12 +383,15 @@ November 2026). `/rc-webhook` is public, and it used to forward any POST that
 looked like an inbound SMS — into the leads group and on to the after-hours
 reply. Every subscription now carries `deliveryMode.verificationToken`, an
 HMAC of `LEADS_INTERNAL_SHARED_SECRET` (no new variable), which RingCentral
-returns as `Verification-Token` on each notification. A wrong token gets 403
-always. A missing one is refused once this process has registered a
-subscription carrying the token. Until then it is accepted and logged, so
-nothing real is lost while an older subscription is still the live one. That
-is why the first pass of every process registers **afresh** (successor first,
-then the old one is deleted).
+returns as `Verification-Token` on each notification. Once this process has
+registered a subscription carrying the token (*armed*), anything without the
+right token gets 403. Before that it is accepted and logged: the live
+subscription may predate tokens, or carry the token of a secret since changed,
+and refusing it would drop real replies. So each process registers **afresh**
+(successor first, then the old one is deleted) as soon as it has read the
+roster, never from a roster it could not read, which would swap every
+recruiter's filter for the shared number's. With no secret at all it fails
+closed: nothing is registered and everything is refused.
 
 ## Operational prerequisites (not code)
 
