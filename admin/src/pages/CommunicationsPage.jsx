@@ -1,4 +1,4 @@
-import React, { Suspense, lazy } from "react";
+import React, { Suspense, lazy, useEffect } from "react";
 import PageErrorBoundary from "../components/PageErrorBoundary";
 import TabBar, { tabPanelProps } from "../components/ui/TabBar";
 import useTabRoute from "../navigation/useTabRoute";
@@ -38,20 +38,29 @@ const SendMessageTab = lazy(() => import("./communications/SendMessageTab"));
 const SurveysTab = lazy(() => import("./communications/SurveysTab"));
 const ScheduledTab = lazy(() => import("./communications/ScheduledTab"));
 const HistoryTab = lazy(() => import("./communications/HistoryTab"));
-const EditByLinkTab = lazy(() => import("./communications/EditByLinkTab"));
 
 const TABS = [
   { key: "send", label: "Send Message", Component: SendMessageTab },
   { key: "surveys", label: "Surveys", Component: SurveysTab },
   { key: "scheduled", label: "Scheduled", Component: ScheduledTab },
   { key: "history", label: "History", Component: HistoryTab },
-  { key: "edit_by_link", label: "Edit by Link", Component: EditByLinkTab },
 ];
 
 export const COMMUNICATIONS_TAB_KEYS = Object.freeze(TABS.map((t) => t.key));
 
+/**
+ * Tabs that became part of another: a held link opens the one their content is
+ * in, and the address is corrected. "Edit by Link" is a section of History
+ * since November 2026.
+ */
+export const COMMUNICATIONS_TAB_ALIASES = Object.freeze({ edit_by_link: "history" });
+
 export default function CommunicationsPage({ tab: routeTab, onTabChange }) {
-  const [tab, setTab] = useTabRoute(COMMUNICATIONS_TAB_KEYS, { tab: routeTab, onTabChange });
+  const aliasedTo = COMMUNICATIONS_TAB_ALIASES[routeTab] || null;
+  useEffect(() => {
+    if (aliasedTo && onTabChange) onTabChange(aliasedTo);
+  }, [aliasedTo]);
+  const [tab, setTab] = useTabRoute(COMMUNICATIONS_TAB_KEYS, { tab: aliasedTo || routeTab, onTabChange });
   const active = TABS.find((t) => t.key === tab) || TABS[0];
   const Active = active.Component;
 

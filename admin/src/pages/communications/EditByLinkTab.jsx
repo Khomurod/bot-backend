@@ -2,7 +2,17 @@ import React, { useState, useRef } from "react";
 import * as api from "../../api";
 import { useFormattingToolbar } from "../../components/Shared";
 
-export default function EditByLinkTab() {
+/**
+ * Edit or delete a message the bot sent, by its Telegram link — including one
+ * that is not in the History log.
+ *
+ * A SECTION OF HISTORY SINCE NOVEMBER 2026 (`embedded`): it was its own tab,
+ * "Edit by Link", beside History, and both tabs did the same job — change or
+ * remove a sent message. History shows it at the top as a closed "Have a
+ * message link?" section; `#communications/edit_by_link` lands there. The
+ * delete still asks first.
+ */
+export default function EditByLinkTab({ embedded = false }) {
   const [url, setUrl] = useState('');
   const [newText, setNewText] = useState('');
   const [status, setStatus] = useState(null);
@@ -43,9 +53,17 @@ export default function EditByLinkTab() {
     }
   };
 
+  const Wrapper = embedded ? "details" : "div";
   return (
-    <div>
-      <p style={{ color: "var(--text-secondary)", fontSize: 14, marginBottom: 20 }}>Edit or delete a message the bot previously sent in Telegram.</p>
+    <Wrapper className={embedded ? "card" : undefined} style={embedded ? { marginBottom: 16 } : undefined}>
+      {embedded ? (
+        <summary style={{ cursor: "pointer", fontWeight: 600 }}>
+          Have a message link?{" "}
+          <span style={{ fontWeight: 400, color: "var(--text-muted)" }}>Edit or delete a message the bot sent — even one not in the list below.</span>
+        </summary>
+      ) : (
+        <p style={{ color: "var(--text-secondary)", fontSize: 14, marginBottom: 20 }}>Edit or delete a message the bot previously sent in Telegram.</p>
+      )}
 
       {status && (
         <div className={`alert alert-${status.type}`}>
@@ -53,7 +71,7 @@ export default function EditByLinkTab() {
         </div>
       )}
 
-      <div className="card">
+      <div className={embedded ? undefined : "card"} style={embedded ? { marginTop: 12 } : undefined}>
         <div className="form-group">
           <label>Message Link</label>
           <input
@@ -108,7 +126,7 @@ export default function EditByLinkTab() {
           </div>
         </div>
       )}
-    </div>
+    </Wrapper>
   );
 }
 

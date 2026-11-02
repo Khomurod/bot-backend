@@ -50,7 +50,6 @@ const TABS = [
   ["Surveys", /Create and manage driver feedback surveys/i],
   ["Scheduled", /Messages queued for future delivery/i],
   ["History", /Every message the bot has sent/i],
-  ["Edit by Link", /Edit or delete a message the bot previously sent/i],
 ];
 
 test("opens on Send Message", async () => {
@@ -109,5 +108,26 @@ describe("one tab failing does not take the section down", () => {
       expect(screen.getByText(TABS[2][1])).toBeTruthy();
     });
     spy.mockRestore();
+  });
+});
+
+describe("Edit by Link is a section of History (November 2026)", () => {
+  test("History carries it, closed, with its link field and both actions", async () => {
+    render(<CommunicationsPage />);
+    fireEvent.click(screen.getByRole("tab", { name: /History/i }));
+    const summary = await screen.findByText(/Have a message link\?/);
+    const section = summary.closest("details");
+    expect(section.open).toBe(false);
+    expect(section.querySelector('input[placeholder^="Paste a Telegram message link"]')).toBeTruthy();
+    expect(section.textContent).toMatch(/Update Message/);
+    expect(section.textContent).toMatch(/Delete Message/);
+    expect(screen.queryByRole("tab", { name: /Edit by Link/i })).toBeNull();
+  });
+
+  test("#communications/edit_by_link opens History and corrects the address", async () => {
+    const onTabChange = vi.fn();
+    render(<CommunicationsPage tab="edit_by_link" onTabChange={onTabChange} />);
+    await waitFor(() => expect(onTabChange).toHaveBeenCalledWith("history"));
+    expect(await screen.findByText(TABS[3][1])).toBeTruthy();
   });
 });

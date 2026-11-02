@@ -103,7 +103,7 @@ describe("resolveRoute", () => {
     expect(resolveRoute("questions")).toEqual({ page: "communications", tab: "surveys" });
     expect(resolveRoute("scheduled")).toEqual({ page: "communications", tab: "scheduled" });
     expect(resolveRoute("bot_messages")).toEqual({ page: "communications", tab: "history" });
-    expect(resolveRoute("manager")).toEqual({ page: "communications", tab: "edit_by_link" });
+    expect(resolveRoute("manager")).toEqual({ page: "communications", tab: "history" });
   });
 
   test("every old Settings entry opens its own section, never just the first one", () => {

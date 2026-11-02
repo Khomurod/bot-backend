@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import * as api from "../../api";
+import EditByLinkTab from "./EditByLinkTab";
 import { absoluteTime, preview } from "./format";
 
 const PAGE_SIZE = 50;
@@ -120,10 +121,14 @@ export default function HistoryTab() {
 
   return (
     <div>
-      <p style={{ color: "var(--text-secondary)", fontSize: 14, marginBottom: 20 }}>
+      <p style={{ color: "var(--text-secondary)", fontSize: 14, marginBottom: 12 }}>
         Every message the bot has sent. Edit or delete any of them directly — even in groups
         that don't expose message links.
       </p>
+
+      {/* Was its own tab, "Edit by Link" (November 2026): the same job as this
+          list, for a message found by its Telegram link instead. */}
+      <EditByLinkTab embedded />
 
       {message && (
         <div className={`alert alert-${message.type}`}>

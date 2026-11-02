@@ -73,7 +73,8 @@ export const LEGACY_PAGE_KEYS = Object.freeze({
   questions: 'communications/surveys',
   scheduled: 'communications/scheduled',
   bot_messages: 'communications/history',
-  manager: 'communications/edit_by_link',
+  // Edit by Link became a section at the top of History in November 2026.
+  manager: 'communications/history',
   // Stage C3 / C3b — Settings entries that each opened one tab. Since the
   // October 2026 structure there is one Settings entry and every section has
   // its own address.

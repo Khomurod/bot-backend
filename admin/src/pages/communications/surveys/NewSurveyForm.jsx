@@ -34,6 +34,10 @@ export default function NewSurveyForm({ onSaved, onCancel }) {
     uz: { question: "", options: ["", ""] },
   });
   const [translatedFrom, setTranslatedFrom] = React.useState(null);
+  // Russian and Uzbek are folded until needed (November 2026): open, the form
+  // was 1,500 px before a single field was filled. They open by themselves
+  // after Translate, and from the hint beside a Save that is still waiting.
+  const [openOther, setOpenOther] = React.useState(false);
   const [busy, setBusy] = React.useState(null);
   const [error, setError] = React.useState(null);
   const [note, setNote] = React.useState(null);
@@ -81,6 +85,7 @@ export default function NewSurveyForm({ onSaved, onCancel }) {
       options: options.map((_, i) => rows[i + 1]?.[key] || ""),
     }])));
     setTranslatedFrom(englishSnapshot);
+    setOpenOther(true);
     setNote("Translated. Check the Russian and Uzbek before saving — you can edit them.");
   });
 
@@ -145,6 +150,11 @@ export default function NewSurveyForm({ onSaved, onCancel }) {
         </div>
       )}
 
+      <details open={openOther} onToggle={(e) => setOpenOther(e.currentTarget.open)} style={{ margin: "8px 0" }}>
+      <summary style={{ cursor: "pointer", fontWeight: 600 }}>
+        Russian and Uzbek{" "}
+        <span style={{ fontWeight: 400, color: "var(--text-muted)" }}>— {otherReady ? "filled in" : "not filled in yet"}</span>
+      </summary>
       {OTHER_LANGUAGES.map(({ key, label }) => (
         <fieldset key={key} style={{ border: 0, padding: 0, margin: "8px 0" }}>
           <legend style={{ fontWeight: 600, marginBottom: 6 }}>{label}</legend>
@@ -162,6 +172,7 @@ export default function NewSurveyForm({ onSaved, onCancel }) {
           ))}
         </fieldset>
       ))}
+      </details>
 
       {error && <div className="alert alert-error" role="alert" style={{ marginBottom: 8 }}>{error}</div>}
       {note && <div className="alert alert-success" role="status" style={{ marginBottom: 8 }}>{note}</div>}
@@ -172,7 +183,13 @@ export default function NewSurveyForm({ onSaved, onCancel }) {
         <button type="button" className="btn btn-ghost btn-sm" disabled={busy !== null} onClick={onCancel}>Cancel</button>
         {!(englishReady && otherReady) && (
           <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-            {!englishReady ? `Write the question and at least ${MIN_OPTIONS} options in English.` : "Fill in the Russian and Uzbek versions."}
+            {!englishReady ? `Write the question and at least ${MIN_OPTIONS} options in English.` : (
+              <>Fill in the{" "}
+                <button type="button" className="btn btn-ghost btn-sm" style={{ padding: "0 4px", fontSize: 12 }} onClick={() => setOpenOther(true)}>
+                  Russian and Uzbek versions
+                </button>.
+              </>
+            )}
           </span>
         )}
       </div>
