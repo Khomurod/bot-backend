@@ -49,3 +49,8 @@ export const WEEKLY_DAY_OPTIONS = [
   { value: '6', label: 'Saturday' },
   { value: '7', label: 'Sunday' },
 ];
+
+/** How many sends in a history list had at least one failed delivery. PURE. */
+export function historyFailures(history) {
+  return (history || []).filter((b) => Number(b.failed_count) > 0).length;
+}

@@ -81,11 +81,26 @@
   }
 }
 
+/* On a phone the preview comes before the composer, so what the message will
+   look like is above the Send button, not under it (November 2026). */
+@media (max-width: 768px) {
+  .broadcast-preview-section {
+    order: -1;
+    position: static;
+  }
+}
+
 /* ─── Broadcast History ─── */
 .broadcast-history {
   display: flex;
   flex-direction: column;
   gap: 0;
+}
+
+/* A collapsed history (November 2026) is a <details>: a flex box would break
+   its own open/closed rendering. */
+details.broadcast-history {
+  display: block;
 }
 
 .broadcast-history-item {

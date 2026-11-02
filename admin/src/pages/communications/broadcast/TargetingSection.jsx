@@ -1,5 +1,20 @@
 import React from "react";
 
+/** The audience in one phrase, for the closed "Target groups" line. PURE. */
+export function audienceSummary({ targetType, selectedDriverIds = [], selectedLanguages = [], targetActiveFilter }) {
+  const drivers = targetActiveFilter === 'active' ? 'active drivers'
+    : targetActiveFilter === 'inactive' ? 'inactive drivers' : 'all drivers';
+  if (targetType === 'specific_drivers') {
+    const n = selectedDriverIds.length;
+    return n ? `${n} chosen group${n === 1 ? '' : 's'}` : 'no group chosen yet';
+  }
+  if (targetType === 'language_groups') {
+    const langs = selectedLanguages.map((l) => l.toUpperCase()).join(', ');
+    return langs ? `${langs} groups · ${drivers}` : 'no language chosen yet';
+  }
+  return `all groups · ${drivers}`;
+}
+
 /**
  * Audience and language — SHARED by both tabs.
  *
@@ -35,7 +50,9 @@ export function TargetingSection({
       </div>
     </div>
     <details className="collapse-panel">
-      <summary>Target groups</summary>
+      {/* The chosen audience is on the closed line (November 2026): the
+          "active drivers only" default could not be seen without opening it. */}
+      <summary>Target groups <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>— {audienceSummary({ targetType, selectedDriverIds, selectedLanguages, targetActiveFilter })}</span></summary>
       <div className="form-group" style={{ marginTop: 12, marginBottom: 0 }}>
         <div style={{ display: 'flex', gap: 16, marginBottom: 12, flexWrap: 'wrap' }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
