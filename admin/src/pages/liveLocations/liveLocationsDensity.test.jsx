@@ -11,7 +11,8 @@ import { FILTERS, unitMatchesFilter } from "./constants";
 
 const UNITS = [
   { unit: "101", driverName: "John Carter", provider: "samsara", location: { speedMph: 61, lastUpdated: new Date().toISOString(), isStale: false }, load: { loadId: "L1" } },
-  { unit: "202", driverName: "Maria Lopez", provider: null, location: null, load: null },
+  // The warnings exactly as services/liveLocations/snapshot.js builds them.
+  { unit: "202", driverName: "Maria Lopez", provider: null, location: null, load: null, warnings: ["no_gps", "no_active_load", "duplicate_unit_ambiguous"] },
 ];
 
 test("each filter's count is what that filter would show", () => {
@@ -32,6 +33,8 @@ test("the filters carry their counts, and a unit with no GPS says it once", () =
   expect(screen.getByRole("button", { name: /^Active load 1/ })).toBeTruthy();
   expect(screen.getByRole("button", { name: /^No active load 1/ })).toBeTruthy();
   const maria = screen.getByText("Maria Lopez").closest("button");
-  expect(maria.textContent.match(/no GPS/g)).toHaveLength(1);
-  expect(maria.textContent.match(/no active load/g)).toHaveLength(1);
+  expect(maria.textContent.match(/no gps/gi)).toHaveLength(1);
+  expect(maria.textContent.match(/no active load/gi)).toHaveLength(1);
+  // A warning the row does not otherwise state is still shown.
+  expect(maria.textContent).toMatch(/duplicate unit ambiguous/);
 });

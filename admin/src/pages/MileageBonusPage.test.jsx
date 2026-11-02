@@ -6,7 +6,7 @@
  */
 import React from "react";
 import { beforeEach, expect, test, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import * as api from "../api";
 import MileageBonusPage from "./MileageBonusPage";
 
@@ -49,4 +49,17 @@ test("the per-driver switch says in or out of the bonus program", async () => {
   render(<MileageBonusPage />);
   const select = await screen.findByRole("combobox", { name: "Mileage status for John Carter" });
   expect([...select.options].map((o) => o.textContent)).toEqual(["In bonus program", "Excluded"]);
+});
+
+test("excluding a driver asks and reports in the bonus program's words, never 'inactive'", async () => {
+  const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+  api.updateMileageBonusDriverStatus.mockResolvedValue({ cleanedNotifications: [] });
+  render(<MileageBonusPage />);
+  const select = await screen.findByRole("combobox", { name: "Mileage status for John Carter" });
+  fireEvent.change(select, { target: { value: "inactive" } });
+
+  expect(confirm.mock.calls[0][0]).toMatch(/^Exclude John Carter from the bonus program\?/);
+  expect(await screen.findByText("John Carter is now excluded from the bonus program.")).toBeTruthy();
+  expect(api.updateMileageBonusDriverStatus).toHaveBeenCalledWith("john carter", "inactive");
+  confirm.mockRestore();
 });

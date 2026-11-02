@@ -143,12 +143,16 @@ export function memberOptionLabel(member) {
 /**
  * The rows a search keeps: driver name, group title, unit or @username, in the
  * browser, within the open view. PURE.
+ *
+ * It matches what the row shows: the full name as displayed ("Aziz Karimov",
+ * both drivers of a team), and the username with or without its "@", which
+ * the row prints but the stored value omits.
  */
 export function matchesSearch(profile, query) {
   const q = String(query || "").trim().toLowerCase();
   if (!q) return true;
-  return [
-    profile.first_name, profile.last_name, profile.secondary_first_name, profile.secondary_last_name,
-    profile.group_name, profile.unit_number, profile.telegram_username,
-  ].some((v) => String(v || "").toLowerCase().includes(q));
+  const has = (v) => String(v || "").toLowerCase().includes(q);
+  if ([driverLabel(profile), profile.group_name, profile.unit_number, profile.telegram_username].some(has)) return true;
+  const handle = q.startsWith("@") ? q.slice(1) : "";
+  return Boolean(handle) && String(profile.telegram_username || "").toLowerCase().includes(handle);
 }

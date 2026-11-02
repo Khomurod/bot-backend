@@ -86,8 +86,10 @@ export default function MileageBonusPage() {
   };
 
   const handleDriverStatus = async (driver, nextStatus) => {
+    // The bonus program's words, as on the select: this never changes whether
+    // the driver works here (Driver Groups' Active/Inactive).
     if (nextStatus === "inactive" && !window.confirm(
-      `Make ${driver.driver_name} inactive? Mileage calculation and new bonus messages will stop, and open Telegram bonus cards will be disregarded.`
+      `Exclude ${driver.driver_name} from the bonus program? Mileage calculation and new bonus messages will stop, and open Telegram bonus cards will be disregarded.`
     )) return;
     setStatus(null);
     try {
@@ -99,7 +101,9 @@ export default function MileageBonusPage() {
         .filter(Boolean);
       setStatus({
         type: cleanupErrors.length ? "error" : "success",
-        text: `${driver.driver_name} is now ${nextStatus}.`
+        text: (nextStatus === "inactive"
+          ? `${driver.driver_name} is now excluded from the bonus program.`
+          : `${driver.driver_name} is back in the bonus program.`)
           + (cleanupErrors.length ? ` Telegram cleanup warning: ${cleanupErrors.join(" | ")}` : ""),
       });
       await load();

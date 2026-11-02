@@ -46,6 +46,13 @@ export function DriverProfilesTable({
   )
 ) : (
   <div className="table-container">
+    {/* On a phone the header row is hidden (each row is a card), and the
+        status sort lives in that header — so the phone gets its own button. */}
+    {activeTab === "all" && (
+      <button type="button" className="btn btn-ghost btn-sm wz-card-table-phone-control" onClick={toggleStatusSort}>
+        Sort by status: {statusSort === "active-first" ? "Active first" : "Inactive first"}
+      </button>
+    )}
     <table className="wz-card-table">
       <thead>
         <tr>

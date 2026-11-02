@@ -73,8 +73,22 @@ test("the AI pass is a secondary button, not the page's primary action", async (
   expect(ai.className).not.toMatch(/btn-primary/);
 });
 
+test("on the All view the status sort also has a button outside the header row (hidden on a phone)", async () => {
+  render(<GroupsPage />);
+  await screen.findByRole("button", { name: "John Carter" });
+  const sort = screen.getByRole("button", { name: /^Sort by status: Active first/ });
+  // It is outside the table, so hiding <thead> on a phone does not hide it.
+  expect(sort.closest("table")).toBeNull();
+  fireEvent.click(sort);
+  expect(screen.getByRole("button", { name: /^Sort by status: Inactive first/ })).toBeTruthy();
+});
+
 test("matchesSearch reads names, the group title, the unit and @username", () => {
   const p = { first_name: "Aziz", last_name: "Karimov", group_name: "WENZE UNIT # 303", unit_number: "303", telegram_username: "aziz_k" };
   for (const q of ["aziz", "KARIMOV", "303", "aziz_k", ""]) expect(matchesSearch(p, q)).toBe(true);
+  // What the row displays: the full name, and the username with its "@".
+  for (const q of ["Aziz Karimov", "@aziz_k", "@AZIZ"]) expect(matchesSearch(p, q)).toBe(true);
+  expect(matchesSearch({ ...p, first_name: "Tom", last_name: "Hill", secondary_first_name: "Ann", secondary_last_name: "Ray" }, "tom hill / ann")).toBe(true);
   expect(matchesSearch(p, "carter")).toBe(false);
+  expect(matchesSearch(p, "@carter")).toBe(false);
 });

@@ -199,11 +199,11 @@ div.error {
   font-size: 13px;
 }
 
-/* Live Locations on a phone: the unit list before the map, and not taller
-   than half the screen, so both are reachable (November 2026). */
+/* Live Locations on a phone: the unit list before the map (November 2026).
+   Its height stays the panel's own rule: a half-screen cap left a 320 px-wide
+   phone about 12 px of list under the search and the wrapped filters. */
 @media (max-width: 768px) {
   .live-units-panel {
     order: -1;
-    max-height: 50vh !important;
   }
 }

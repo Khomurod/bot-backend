@@ -3,6 +3,11 @@ import { timeAgo } from "../../utils/formatTime";
 import { FILTERS, PROVIDER_LABEL, statusColor, fmtEta } from "./constants";
 import TabBar from "../../components/ui/TabBar";
 
+// "no GPS" is the row's corner label and "no active load" its load line, so
+// the warning line names only what the row does not already say.
+const SHOWN_ON_THE_ROW = new Set(["no_gps", "no_active_load"]);
+const otherWarnings = (unit) => (unit.warnings || []).filter((w) => !SHOWN_ON_THE_ROW.has(w));
+
 /**
  * The map pane and the unit side panel, side by side.
  *
@@ -116,9 +121,9 @@ export function MapAndUnitList({
                   ? `${u.load.loadId || "load"}${u.load.nextStopType ? " · next " + u.load.nextStopType : ""} · ${fmtEta(u.eta)}`
                   : "no active load"}
               </div>
-              {u.warnings && u.warnings.length > 0 && (
+              {otherWarnings(u).length > 0 && (
                 <div style={{ fontSize: 11, color: "var(--warning)", marginTop: 2 }} title={u.matchWarning || undefined}>
-                  ⚠ {u.warnings.map((w) => w.replace(/_/g, " ")).join(", ")}
+                  ⚠ {otherWarnings(u).map((w) => w.replace(/_/g, " ")).join(", ")}
                 </div>
               )}
               {u.matchWarning && (

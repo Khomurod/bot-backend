@@ -6,9 +6,20 @@
  * card below 640 px: the header row hides and every cell shows its own label
  * from `data-label`. Desktop is untouched.
  */
+/* A control that lives in the hidden header row (a sort) needs a stand-in
+   above the cards; it shows only where the header does not. */
+button.wz-card-table-phone-control {
+  display: none;
+}
+
 @media (max-width: 640px) {
   table.wz-card-table thead {
     display: none;
+  }
+
+  button.wz-card-table-phone-control {
+    display: inline-flex;
+    margin-bottom: 8px;
   }
 
   table.wz-card-table,
