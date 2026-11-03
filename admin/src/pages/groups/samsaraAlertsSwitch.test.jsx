@@ -130,10 +130,21 @@ test("a later answer rebuilds the message on screen, so it never contradicts the
 
   window.dispatchEvent(new Event("focus"));
   await waitFor(() => expect(screen.queryByText(/no longer posted to this driver group/)).toBeNull());
-  // Announced to a screen reader, not just repainted.
+  // Announced to a screen reader, not just repainted: it sits in a status
+  // region that was already mounted before any message existed.
   const live = document.querySelector(".alert-warning");
-  expect(live.getAttribute("role")).toBe("status");
+  expect(live.parentElement.getAttribute("role")).toBe("status");
   expect(live.textContent).toMatch(/Saved, but not applied yet/);
+});
+
+test("the message's live regions are mounted, empty, before any message appears", async () => {
+  api.getDriverProfiles.mockResolvedValue([driver()]);
+  render(<GroupsPage />);
+  await screen.findByRole("button", { name: "John Carter" });
+  const regions = [...document.querySelectorAll('[role="status"], [role="alert"]')]
+    .filter((el) => !el.closest(".home-time-modal-card"));
+  expect(regions.map((el) => el.getAttribute("role")).sort()).toEqual(["alert", "status"]);
+  expect(regions.every((el) => el.textContent === "")).toBe(true);
 });
 
 test("a failed save is announced as an alert", async () => {

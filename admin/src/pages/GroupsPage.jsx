@@ -64,12 +64,17 @@ export default function GroupsPage() {
       </div>
 
       {/* Announced: a later answer from the Samsara service can rewrite this
-          message while the page sits open. An error interrupts; the rest wait. */}
-      {message && (
-        <div className={`alert alert-${message.type}`} role={message.type === "error" ? "alert" : "status"}>
-          {message.text}
-        </div>
-      )}
+          message while the page sits open. Both live regions stay mounted,
+          empty, so a message added to them is read out (WAI-ARIA technique
+          ARIA22). An error interrupts; the rest wait. */}
+      <div role="status">
+        {message && message.type !== "error" && (
+          <div className={`alert alert-${message.type}`}>{message.text}</div>
+        )}
+      </div>
+      <div role="alert">
+        {message?.type === "error" && <div className="alert alert-error">{message.text}</div>}
+      </div>
 
 
       {/*
