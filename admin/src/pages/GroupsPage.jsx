@@ -63,8 +63,10 @@ export default function GroupsPage() {
         </div>
       </div>
 
+      {/* Announced: a later answer from the Samsara service can rewrite this
+          message while the page sits open. An error interrupts; the rest wait. */}
       {message && (
-        <div className={`alert alert-${message.type}`}>
+        <div className={`alert alert-${message.type}`} role={message.type === "error" ? "alert" : "status"}>
           {message.text}
         </div>
       )}

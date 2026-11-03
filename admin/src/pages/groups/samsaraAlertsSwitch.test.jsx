@@ -130,7 +130,19 @@ test("a later answer rebuilds the message on screen, so it never contradicts the
 
   window.dispatchEvent(new Event("focus"));
   await waitFor(() => expect(screen.queryByText(/no longer posted to this driver group/)).toBeNull());
-  expect(document.querySelector(".alert-warning").textContent).toMatch(/Saved, but not applied yet/);
+  // Announced to a screen reader, not just repainted.
+  const live = document.querySelector(".alert-warning");
+  expect(live.getAttribute("role")).toBe("status");
+  expect(live.textContent).toMatch(/Saved, but not applied yet/);
+});
+
+test("a failed save is announced as an alert", async () => {
+  api.getDriverProfiles.mockResolvedValue([driver()]);
+  api.setSamsaraDriverAlerts.mockRejectedValue(new Error("Server error"));
+  render(<GroupsPage />);
+  const section = await openDetails("John Carter");
+  await userEvent.click(within(section).getByRole("switch"));
+  expect((await screen.findByRole("alert")).textContent).toMatch(/Server error/);
 });
 
 test("only the newest answer counts: an older read that lands late is ignored", async () => {
