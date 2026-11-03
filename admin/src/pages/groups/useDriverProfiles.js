@@ -34,7 +34,8 @@ export function useDriverProfiles() {
   const [openProfileId, setOpenProfileId] = useState(null);
   const [membersByGroup, setMembersByGroup] = useState({});
   // Does the running Samsara service apply the per-driver switch? null while
-  // unknown; false when it has not said so (or could not be asked).
+  // unknown; false when it has not said so (or could not be asked). Only true
+  // lets the screen say Off is applied.
   const [samsaraEnforced, setSamsaraEnforced] = useState(null);
 
   const fetchProfiles = useCallback(async () => {
@@ -59,12 +60,25 @@ export function useDriverProfiles() {
     fetchProfiles();
   }, [fetchProfiles]);
 
+  // Asked on open and again whenever the page comes back into view, so a
+  // Samsara service rolled back while this page sat open is noticed. No timer:
+  // nothing here is worth a query a minute against the database allowance.
   useEffect(() => {
     let live = true;
-    api.getSamsaraDriverAlertsStatus()
-      .then((s) => { if (live) setSamsaraEnforced(s?.enforced === true); })
-      .catch(() => { if (live) setSamsaraEnforced(false); });
-    return () => { live = false; };
+    const refresh = () => {
+      api.getSamsaraDriverAlertsStatus()
+        .then((s) => { if (live) setSamsaraEnforced(s?.enforced === true); })
+        .catch(() => { if (live) setSamsaraEnforced(false); });
+    };
+    const onVisible = () => { if (document.visibilityState === "visible") refresh(); };
+    refresh();
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      live = false;
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, []);
 
   const displayProfiles = useMemo(

@@ -103,6 +103,31 @@ test("a status that cannot be read is treated as not applied, never as applied",
   await waitFor(() => expect(section.textContent).toMatch(/Saved, but not applied yet/));
 });
 
+test("while the status is still unknown, Off is not claimed as applied", async () => {
+  api.getSamsaraDriverAlertsStatus.mockReturnValue(new Promise(() => {}));
+  api.getDriverProfiles.mockResolvedValue([driver({ samsara_driver_alerts_enabled: false })]);
+  render(<GroupsPage />);
+  const row = (await screen.findByRole("button", { name: "John Carter" })).closest("tr");
+  expect(row.textContent).toMatch(/off \(not applied yet\)/);
+  const section = await openDetails("John Carter");
+  expect(section.textContent).toMatch(/Saved, but not applied yet/);
+  expect(section.textContent).not.toMatch(/Not posted here/);
+});
+
+test("coming back to the page re-asks, so a rolled-back Samsara service is noticed", async () => {
+  api.getSamsaraDriverAlertsStatus
+    .mockResolvedValueOnce({ enforced: true })
+    .mockResolvedValue({ enforced: false });
+  api.getDriverProfiles.mockResolvedValue([driver({ samsara_driver_alerts_enabled: false })]);
+  render(<GroupsPage />);
+  const section = await openDetails("John Carter");
+  await waitFor(() => expect(section.textContent).toMatch(/Not posted here/));
+
+  window.dispatchEvent(new Event("focus"));
+  await waitFor(() => expect(section.textContent).toMatch(/Saved, but not applied yet/));
+  expect(api.getSamsaraDriverAlertsStatus).toHaveBeenCalledTimes(2);
+});
+
 test("ON never shows the not-applied warning, whatever the service says", async () => {
   api.getSamsaraDriverAlertsStatus.mockResolvedValue({ enforced: false });
   api.getDriverProfiles.mockResolvedValue([driver()]);

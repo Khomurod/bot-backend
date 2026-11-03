@@ -18,8 +18,9 @@ import { NOT_APPLIED_YET } from "./samsaraSwitchText";
  *
  * IT NEVER CLAIMS MORE THAN IS TRUE. The switch is enforced by the separate
  * Samsara service, which deploys on its own. `enforced` comes from that
- * service's heartbeat; until it says it honours the switch (false), the box
- * says the setting is saved but alerts still reach the group.
+ * service's heartbeat; until it says it honours the switch — anything but
+ * true, including "not known yet" — the box says the setting is saved but
+ * alerts still reach the group.
  */
 export default function SamsaraAlertsSwitch({ profile, saving, onChange, team = false, enforced = null }) {
   const labelId = React.useId();
@@ -45,7 +46,7 @@ export default function SamsaraAlertsSwitch({ profile, saving, onChange, team = 
       <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 6 }}>
         {enabled ? (
           <>Each Samsara safety or speeding alert routed to this driver is posted here, as well as to the Samsara Notifications group.</>
-        ) : enforced === false ? (
+        ) : enforced !== true ? (
           <span role="status" style={{ color: "var(--warning)" }}>{NOT_APPLIED_YET}</span>
         ) : (
           <>

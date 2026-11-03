@@ -133,7 +133,7 @@ export function DriverProfilesTable({
                 {/* Only the exception is shown: ON is every group's default. */}
                 {!company && profile.samsara_driver_alerts_enabled === false && (
                   <div style={{ fontSize: 11, color: "var(--warning)" }}>
-                    Samsara alerts in group: off{samsaraEnforced === false ? " (not applied yet)" : ""}
+                    Samsara alerts in group: off{samsaraEnforced !== true ? " (not applied yet)" : ""}
                   </div>
                 )}
                 {profile.duplicate_conflict && (

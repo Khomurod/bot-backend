@@ -80,8 +80,13 @@ group: off" when it is off; ON is every group's default and shows nothing.
    latest heartbeat says so (`GET /api/groups/samsara-driver-alerts/status`),
    an Off group reads **"Saved, but not applied yet … alerts still reach this
    group"** in the popup, in the page message and on its row ("off (not
-   applied yet)"). A status that cannot be read counts as not applied; a
-   rolled-back service stops saying it and the screen follows.
+   applied yet)"). A status that cannot be read, or is not known yet, counts
+   as not applied; a rolled-back service stops saying it, and the page asks
+   again whenever it comes back into view. **No freshness window, on purpose:**
+   the flag says which build is deployed, not whether it is awake. A stopped
+   service posts nothing, so "not posted here" stays true; any running build
+   overwrites the row on its next beat. Whether the service is alive is the
+   System Health `samsara_safety_pipeline` line's job.
 
 ## Real-world cases
 
