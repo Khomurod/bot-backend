@@ -1,6 +1,6 @@
 import React from "react";
 
-import { NOT_APPLIED_YET } from "./samsaraSwitchText";
+import { CHECKING, NOT_APPLIED_YET } from "./samsaraSwitchText";
 
 /**
  * Driver details → "Samsara alerts in this group": whether the Samsara
@@ -18,9 +18,9 @@ import { NOT_APPLIED_YET } from "./samsaraSwitchText";
  *
  * IT NEVER CLAIMS MORE THAN IS TRUE. The switch is enforced by the separate
  * Samsara service, which deploys on its own. `enforced` comes from that
- * service's heartbeat; until it says it honours the switch — anything but
- * true, including "not known yet" — the box says the setting is saved but
- * alerts still reach the group.
+ * service's heartbeat. Off reads "not posted here" only when it said true,
+ * "saved, but not applied yet" when it said false, and "checking" — no claim
+ * either way — while it has not answered.
  */
 export default function SamsaraAlertsSwitch({ profile, saving, onChange, team = false, enforced = null }) {
   const labelId = React.useId();
@@ -46,8 +46,10 @@ export default function SamsaraAlertsSwitch({ profile, saving, onChange, team = 
       <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 6 }}>
         {enabled ? (
           <>Each Samsara safety or speeding alert routed to this driver is posted here, as well as to the Samsara Notifications group.</>
-        ) : enforced !== true ? (
+        ) : enforced === false ? (
           <span role="status" style={{ color: "var(--warning)" }}>{NOT_APPLIED_YET}</span>
+        ) : enforced !== true ? (
+          <span role="status">{CHECKING}</span>
         ) : (
           <>
             Not posted here. The Samsara Notifications group and its subscribers still get every alert for this

@@ -1,10 +1,10 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import * as api from "../../api";
 import {
   groupView, prepareDisplayProfiles, profileToDraft,
   normalizeManualUsername, isValidManualUsername, memberOptionLabel,
 } from "./driverProfileShaping";
-import { samsaraSwitchMessage } from "./samsaraSwitchText";
+import { refreshSamsaraMessage, samsaraSwitchMessage } from "./samsaraSwitchText";
 
 /**
  * Driver Groups data: the profile list, one editable draft per profile, the
@@ -37,6 +37,14 @@ export function useDriverProfiles() {
   // unknown; false when it has not said so (or could not be asked). Only true
   // lets the screen say Off is applied.
   const [samsaraEnforced, setSamsaraEnforced] = useState(null);
+  // Only the NEWEST answer about the Samsara service is applied: focus and
+  // visibility can start overlapping reads, and a save's own answer must not
+  // be overwritten by a read that started before it.
+  const samsaraSeq = useRef(0);
+  const applySamsaraEnforced = useCallback((value) => {
+    setSamsaraEnforced(value);
+    setMessage((m) => refreshSamsaraMessage(m, value));
+  }, []);
 
   const fetchProfiles = useCallback(async () => {
     setLoading(true);
@@ -66,9 +74,11 @@ export function useDriverProfiles() {
   useEffect(() => {
     let live = true;
     const refresh = () => {
+      const seq = ++samsaraSeq.current;
+      const apply = (value) => { if (live && seq === samsaraSeq.current) applySamsaraEnforced(value); };
       api.getSamsaraDriverAlertsStatus()
-        .then((s) => { if (live) setSamsaraEnforced(s?.enforced === true); })
-        .catch(() => { if (live) setSamsaraEnforced(false); });
+        .then((s) => apply(s?.enforced === true))
+        .catch(() => apply(false));
     };
     const onVisible = () => { if (document.visibilityState === "visible") refresh(); };
     refresh();
@@ -79,7 +89,7 @@ export function useDriverProfiles() {
       window.removeEventListener("focus", refresh);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, []);
+  }, [applySamsaraEnforced]);
 
   const displayProfiles = useMemo(
     () => prepareDisplayProfiles(allProfiles, activeTab, activeTab === "all" ? statusSort : null),
@@ -229,6 +239,7 @@ export function useDriverProfiles() {
     try {
       const saved = await api.setSamsaraDriverAlerts(profile.group_id, enabled);
       const enforced = saved?.enforced === true;
+      samsaraSeq.current += 1;
       setSamsaraEnforced(enforced);
       setMessage(samsaraSwitchMessage(enabled, enforced));
       await fetchProfiles();

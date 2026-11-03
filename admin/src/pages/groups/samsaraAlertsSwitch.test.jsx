@@ -103,13 +103,49 @@ test("a status that cannot be read is treated as not applied, never as applied",
   await waitFor(() => expect(section.textContent).toMatch(/Saved, but not applied yet/));
 });
 
-test("while the status is still unknown, Off is not claimed as applied", async () => {
+test("while the Samsara service has not answered, Off claims nothing either way", async () => {
   api.getSamsaraDriverAlertsStatus.mockReturnValue(new Promise(() => {}));
   api.getDriverProfiles.mockResolvedValue([driver({ samsara_driver_alerts_enabled: false })]);
   render(<GroupsPage />);
   const row = (await screen.findByRole("button", { name: "John Carter" })).closest("tr");
-  expect(row.textContent).toMatch(/off \(not applied yet\)/);
+  expect(row.textContent).toMatch(/off \(checking\)/);
   const section = await openDetails("John Carter");
+  expect(section.textContent).toMatch(/Checking whether the Samsara service applies this switch/);
+  expect(section.textContent).not.toMatch(/Not posted here/);
+  expect(section.textContent).not.toMatch(/still reach this group/);
+});
+
+test("a later answer rebuilds the message on screen, so it never contradicts the switch", async () => {
+  api.getSamsaraDriverAlertsStatus
+    .mockResolvedValueOnce({ enforced: true })
+    .mockResolvedValue({ enforced: false });
+  api.getDriverProfiles
+    .mockResolvedValueOnce([driver()])
+    .mockResolvedValue([driver({ samsara_driver_alerts_enabled: false })]);
+  api.setSamsaraDriverAlerts.mockResolvedValue({ group_id: 501, samsara_driver_alerts_enabled: false, enforced: true });
+  render(<GroupsPage />);
+  const section = await openDetails("John Carter");
+  await userEvent.click(within(section).getByRole("switch"));
+  expect(await screen.findByText(/no longer posted to this driver group/)).toBeTruthy();
+
+  window.dispatchEvent(new Event("focus"));
+  await waitFor(() => expect(screen.queryByText(/no longer posted to this driver group/)).toBeNull());
+  expect(document.querySelector(".alert-warning").textContent).toMatch(/Saved, but not applied yet/);
+});
+
+test("only the newest answer counts: an older read that lands late is ignored", async () => {
+  let finishFirst;
+  api.getSamsaraDriverAlertsStatus
+    .mockReturnValueOnce(new Promise((resolve) => { finishFirst = resolve; }))
+    .mockResolvedValue({ enforced: false });
+  api.getDriverProfiles.mockResolvedValue([driver({ samsara_driver_alerts_enabled: false })]);
+  render(<GroupsPage />);
+  const section = await openDetails("John Carter");
+
+  window.dispatchEvent(new Event("focus"));
+  await waitFor(() => expect(section.textContent).toMatch(/Saved, but not applied yet/));
+  finishFirst({ enforced: true });
+  await new Promise((r) => setTimeout(r, 20));
   expect(section.textContent).toMatch(/Saved, but not applied yet/);
   expect(section.textContent).not.toMatch(/Not posted here/);
 });
