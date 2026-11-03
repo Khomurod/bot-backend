@@ -23,7 +23,7 @@ import { formatStatusSource, driverLabel, profileToDraft, needsReview, groupView
 export function DriverProfilesTable({
   loading, displayProfiles, draftsById, savingProfileId,
   statusSort, toggleStatusSort, setOpenProfileId,
-  updateDraft, saveProfilePatch, activeTab, query = "",
+  updateDraft, saveProfilePatch, activeTab, query = "", samsaraEnforced = null,
 }) {
   return (
     <>
@@ -129,6 +129,13 @@ export function DriverProfilesTable({
                 )}
                 {needsReview(profile) && (
                   <div style={{ fontSize: 11, color: "var(--warning)" }}>Needs review</div>
+                )}
+                {/* Only the exception is shown: ON is every group's default. */}
+                {!company && profile.samsara_driver_alerts_enabled === false && (
+                  <div style={{ fontSize: 11, color: "var(--warning)" }}>
+                    Samsara alerts in group: off
+                    {samsaraEnforced === false ? " (not applied yet)" : samsaraEnforced !== true ? " (checking)" : ""}
+                  </div>
                 )}
                 {profile.duplicate_conflict && (
                   <div style={{ fontSize: 11, color: "var(--warning)" }}>

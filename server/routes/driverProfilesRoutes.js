@@ -18,6 +18,15 @@ function mapDriverProfileForApi(profile) {
     group_id: profile.group_id,
     group_name: profile.group_name,
     telegram_group_id: profile.telegram_group_id,
+    // Driver Groups → driver details: whether Samsara alerts are also posted
+    // to this chat. The directory row always carries it; a single profile row
+    // (the PUT's answer) does not, and says null rather than guessing ON.
+    samsara_driver_alerts_enabled: typeof profile.samsara_driver_alerts_enabled === 'boolean'
+      ? profile.samsara_driver_alerts_enabled
+      : null,
+    // `groups.active` itself: the Samsara service routes only to active driver
+    // groups, whatever the profile's own status says.
+    group_active: typeof profile.group_active === 'boolean' ? profile.group_active : null,
     first_name: profile.first_name || null,
     last_name: profile.last_name || null,
     secondary_first_name: profile.secondary_first_name || null,

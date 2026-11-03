@@ -195,6 +195,7 @@ async function listGroupDirectorySourceRows({ includeNonDrivers = true } = {}) {
         g.last_message_seen_at,
         g.bot_member_status,
         g.bot_access_checked_at,
+        g.samsara_driver_alerts_enabled,
         dp.id AS profile_id,
         dp.first_name,
         dp.last_name,

@@ -1,9 +1,10 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import * as api from "../../api";
 import {
   groupView, prepareDisplayProfiles, profileToDraft,
   normalizeManualUsername, isValidManualUsername, memberOptionLabel,
 } from "./driverProfileShaping";
+import { refreshSamsaraMessage, samsaraSwitchMessage } from "./samsaraSwitchText";
 
 /**
  * Driver Groups data: the profile list, one editable draft per profile, the
@@ -32,6 +33,18 @@ export function useDriverProfiles() {
   const [statusSort, setStatusSort] = useState("active-first");
   const [openProfileId, setOpenProfileId] = useState(null);
   const [membersByGroup, setMembersByGroup] = useState({});
+  // Does the running Samsara service apply the per-driver switch? null while
+  // unknown; false when it has not said so (or could not be asked). Only true
+  // lets the screen say Off is applied.
+  const [samsaraEnforced, setSamsaraEnforced] = useState(null);
+  // Only the NEWEST answer about the Samsara service is applied: focus and
+  // visibility can start overlapping reads, and a save's own answer must not
+  // be overwritten by a read that started before it.
+  const samsaraSeq = useRef(0);
+  const applySamsaraEnforced = useCallback((value) => {
+    setSamsaraEnforced(value);
+    setMessage((m) => refreshSamsaraMessage(m, value));
+  }, []);
 
   const fetchProfiles = useCallback(async () => {
     setLoading(true);
@@ -54,6 +67,29 @@ export function useDriverProfiles() {
   useEffect(() => {
     fetchProfiles();
   }, [fetchProfiles]);
+
+  // Asked on open and again whenever the page comes back into view, so a
+  // Samsara service rolled back while this page sat open is noticed. No timer:
+  // nothing here is worth a query a minute against the database allowance.
+  useEffect(() => {
+    let live = true;
+    const refresh = () => {
+      const seq = ++samsaraSeq.current;
+      const apply = (value) => { if (live && seq === samsaraSeq.current) applySamsaraEnforced(value); };
+      api.getSamsaraDriverAlertsStatus()
+        .then((s) => apply(s?.enforced === true))
+        .catch(() => apply(false));
+    };
+    const onVisible = () => { if (document.visibilityState === "visible") refresh(); };
+    refresh();
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      live = false;
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [applySamsaraEnforced]);
 
   const displayProfiles = useMemo(
     () => prepareDisplayProfiles(allProfiles, activeTab, activeTab === "all" ? statusSort : null),
@@ -194,6 +230,33 @@ export function useDriverProfiles() {
     );
   };
 
+  // The Samsara driver-group switch lives on the GROUP, not the profile, so it
+  // has its own endpoint; like every other write here it re-fetches. The
+  // message claims only what the running Samsara service actually applies.
+  const handleSamsaraAlertsChange = async (profile, enabled) => {
+    setSavingProfileId(profile.id);
+    setMessage(null);
+    try {
+      const saved = await api.setSamsaraDriverAlerts(profile.group_id, enabled);
+      const enforced = saved?.enforced === true;
+      samsaraSeq.current += 1;
+      setSamsaraEnforced(enforced);
+      setMessage(samsaraSwitchMessage(enabled, enforced));
+      // What the server saved is shown at once, so a re-read that fails
+      // cannot leave the switch showing the old value next to a saved change.
+      if (typeof saved?.samsara_driver_alerts_enabled === "boolean") {
+        setAllProfiles((list) => list.map((item) => (item.group_id === profile.group_id
+          ? { ...item, samsara_driver_alerts_enabled: saved.samsara_driver_alerts_enabled }
+          : item)));
+      }
+      await fetchProfiles();
+    } catch (err) {
+      setMessage({ type: "error", text: err.message });
+    } finally {
+      setSavingProfileId(null);
+    }
+  };
+
   // COUNTED BY THE SAME FUNCTION THE TABS FILTER BY, so a count can never
   // disagree with what opening that tab shows — which is how a "3" above an
   // empty list happens.
@@ -209,6 +272,7 @@ export function useDriverProfiles() {
     openProfileId, setOpenProfileId, openProfile, membersByGroup,
     displayProfiles, tabCounts,
     updateDraft, saveProfilePatch, handleAiSync,
-    handleMemberSelect, handleManualUsernameSave, handleClearTelegram,
+    handleMemberSelect, handleManualUsernameSave, handleClearTelegram, handleSamsaraAlertsChange,
+    samsaraEnforced,
   };
 }

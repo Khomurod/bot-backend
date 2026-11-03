@@ -16,6 +16,7 @@ vi.mock("../api", () => ({
   getGroupMembers: vi.fn(),
   updateDriverProfile: vi.fn(),
   runDriverProfilesAiSync: vi.fn(),
+  getSamsaraDriverAlertsStatus: vi.fn(),
 }));
 
 const driver = (id, first, last, unit, over = {}) => ({
@@ -26,6 +27,7 @@ const driver = (id, first, last, unit, over = {}) => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
+  api.getSamsaraDriverAlertsStatus.mockResolvedValue({ enforced: true });
   api.getDriverProfiles.mockResolvedValue([
     driver(1, "John", "Carter", "101"),
     driver(2, "Maria", "Lopez", "202", { status_source: "manual" }),

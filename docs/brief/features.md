@@ -342,6 +342,13 @@ this row IS" outranks "it is switched on".
 looking for the word in the chat name, which disagreed with the server the
 moment a title was edited. `group_type` is a stored fact and the only input.
 
+**Samsara alerts in this group** (3 November 2026) — the driver details popup
+switches the copy of each Samsara alert posted into THAT driver's group on or
+off (`groups.samsara_driver_alerts_enabled`, default on; a row shows "Samsara
+alerts in group: off" when it is off). The Samsara Notifications group, its
+subscribers and the event record are never affected; a team shares one switch.
+The rules: [`samsara-driver-group-alerts.md`](../architecture/samsara-driver-group-alerts.md).
+
 Rows no longer carry a Dispatcher Board badge, and the person identity panel
 no longer has a board block (both removed October 2026 — the Board is read only
 by Home Time now; see
