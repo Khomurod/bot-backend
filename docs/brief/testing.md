@@ -22,7 +22,7 @@ npm run build:schema:check                        # schema.sql is in sync with b
   runs — and the 102 `*Pg` files against a local PostgreSQL 16 — **772 tests,
   772 pass, 0 fail, 0 skipped**. CI runs the non-`*Pg` files with no
   application env at all and the `*Pg` files against a real Postgres; both jobs
-  fail on any skip. The admin suite is **607 pass in 83 files**; the Python
+  fail on any skip. The admin suite is **608 pass in 83 files**; the Python
   leads tests are **112 pass**.
   **A test that pins `now` must pin every other clock it reads.** One pinned
   `now` to 2026-09-20 while the health code compared it with the REAL process

@@ -242,6 +242,13 @@ export function useDriverProfiles() {
       samsaraSeq.current += 1;
       setSamsaraEnforced(enforced);
       setMessage(samsaraSwitchMessage(enabled, enforced));
+      // What the server saved is shown at once, so a re-read that fails
+      // cannot leave the switch showing the old value next to a saved change.
+      if (typeof saved?.samsara_driver_alerts_enabled === "boolean") {
+        setAllProfiles((list) => list.map((item) => (item.group_id === profile.group_id
+          ? { ...item, samsara_driver_alerts_enabled: saved.samsara_driver_alerts_enabled }
+          : item)));
+      }
       await fetchProfiles();
     } catch (err) {
       setMessage({ type: "error", text: err.message });

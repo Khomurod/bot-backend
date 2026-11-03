@@ -244,6 +244,19 @@ test("an inactive group says Samsara does not post there either way", async () =
   expect(section.textContent).toMatch(/This group is inactive/);
 });
 
+test("a saved change shows at once, even if re-reading the list then fails", async () => {
+  api.getDriverProfiles
+    .mockResolvedValueOnce([driver()])
+    .mockRejectedValue(new Error("Database unavailable"));
+  api.setSamsaraDriverAlerts.mockResolvedValue({ group_id: 501, samsara_driver_alerts_enabled: false, enforced: true });
+  render(<GroupsPage />);
+  const section = await openDetails("John Carter");
+  await userEvent.click(within(section).getByRole("switch"));
+  expect((await screen.findByRole("alert")).textContent).toMatch(/Database unavailable/);
+  expect(within(section).getByRole("switch")).not.toBeChecked();
+  expect(within(section).getByText("Off")).toBeTruthy();
+});
+
 test("a failed save says so and leaves the switch where it was", async () => {
   api.getDriverProfiles.mockResolvedValue([driver()]);
   api.setSamsaraDriverAlerts.mockRejectedValue(new Error("Server error"));
