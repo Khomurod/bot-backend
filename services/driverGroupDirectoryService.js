@@ -37,6 +37,10 @@ function buildBaseDirectoryRow(row = {}) {
     group_name: row.group_name || '',
     group_type: row.group_type || null,
     group_active: row.group_active !== false,
+    // Whether the Samsara service also posts alerts into this chat (migration
+    // 0090). Anything but an explicit FALSE is ON — that is what the column
+    // defaults to and what the Samsara service assumes.
+    samsara_driver_alerts_enabled: row.samsara_driver_alerts_enabled !== false,
     status_source: row.status_source || null,
     status_updated_at: row.status_updated_at || null,
     first_name: row.first_name || null,

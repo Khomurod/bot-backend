@@ -5,10 +5,12 @@ import {
   driverLabel, memberOptionLabel, normalizeManualUsername,
 } from "./driverProfileShaping";
 import PersonIdentityPanel from "./PersonIdentityPanel";
+import SamsaraAlertsSwitch from "./SamsaraAlertsSwitch";
 
 /**
  * The driver detail editor: identity, team-driver pair, unit, type, status,
- * birthday, and the Telegram link.
+ * birthday, the Telegram link, and whether Samsara alerts are posted to this
+ * driver's group.
  *
  * THREE WAYS TO LINK A DRIVER, all reaching the same row:
  *   - pick a captured group member (stores BOTH numeric id and username);
@@ -28,7 +30,7 @@ import PersonIdentityPanel from "./PersonIdentityPanel";
 export function DriverDetailModal({
   openProfile, draftsById, savingProfileId, membersByGroup, setOpenProfileId,
   updateDraft, saveProfilePatch,
-  handleMemberSelect, handleManualUsernameSave, handleClearTelegram,
+  handleMemberSelect, handleManualUsernameSave, handleClearTelegram, handleSamsaraAlertsChange,
 }) {
   const profile = openProfile;
   if (!profile) return null;
@@ -77,6 +79,7 @@ export function DriverDetailModal({
     <div className="home-time-modal-body">
       <div style={{ display: "grid", gap: 14 }}>
         <PersonIdentityPanel personId={profile.person_id || null} />
+        <SamsaraAlertsSwitch profile={profile} saving={saving} onChange={handleSamsaraAlertsChange} team={teamInputs} />
         <div>
           <label style={fieldLabelStyle}>Driver Username (Telegram member seen in this group)</label>
           <select

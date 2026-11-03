@@ -40,7 +40,9 @@ be removed while cleaning up Samsara references.
 They never call each other. They share two things:
 
 1. **The same `DATABASE_URL`.** The Samsara service resolves "which driver group
-   belongs to truck #123?" from the shared `groups` table. It also owns its own
+   belongs to truck #123?" from the shared `groups` table, and reads that row's
+   `samsara_driver_alerts_enabled` before posting into it (the per-driver switch,
+   [`samsara-driver-group-alerts.md`](samsara-driver-group-alerts.md)). It also owns its own
    `samsara_*` cursor/dedup tables and writes `safety_event_video_jobs` and
    `samsara_video_recovery_jobs`; `bot-backend` remains the canonical owner of
    the `safety_event_*` music/settings tables **and of `samsara_settings`**,
@@ -52,7 +54,7 @@ They never call each other. They share two things:
 
 Given those two, both behaviors are preserved: safety/camera events go to the
 Samsara notifications group, and the video with its caption goes to the correct
-drivers group.
+drivers group — unless that one group has been switched off on Driver Groups.
 
 **The operating rule:** the separate service must be given the *same* database
 URL and the *same* bot tokens as this app.

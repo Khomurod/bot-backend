@@ -54,6 +54,20 @@ export async function updateDriverProfile(profileId, payload) {
   return res.json();
 }
 
+/**
+ * Switch the copy of Samsara alerts that is posted to ONE driver group on or
+ * off. The Samsara notifications group and its subscribers are not affected.
+ */
+export async function setSamsaraDriverAlerts(groupId, enabled) {
+  const res = await fetch(`${API_BASE}/groups/${groupId}/samsara-driver-alerts`, {
+    method: 'PUT',
+    headers: getHeaders(),
+    body: JSON.stringify({ enabled: enabled === true }),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
 export async function runDriverProfilesAiSync(apply = true) {
   const res = await fetch(`${API_BASE}/driver-profiles/ai-sync?apply=${apply ? 'true' : 'false'}`, {
     method: 'POST',

@@ -199,6 +199,18 @@ repository-wide working rules. The highest-consequence items:
     `leads-bot/test_rc_webhook_auth.py`;
     `docs/architecture/recruiter-sms-sender.md`.
 
+20. **The Samsara switch on a driver group governs that group's copy and
+    nothing else.** `groups.samsara_driver_alerts_enabled` (Driver Groups →
+    driver details) is ON by default for every group, old and new, and a
+    Samsara service without the column reads ON. OFF stops the post into that
+    one group and the recovered video into it; the Samsara Notifications group,
+    every subscriber, the safety-event record, routing and the delivery ledger
+    are untouched. A switch that cannot be read is never guessed — the driver
+    group is retried with the event, without re-sending what was delivered.
+    `tests/samsaraDriverGroupAlertsPg.test.js`; in `samsara-integration`,
+    `tests/driverGroupSwitch.test.js`;
+    `docs/architecture/samsara-driver-group-alerts.md`.
+
 - **A truck number alone is not globally unique, and nobody is merged on one.**
   Three fleets number their trucks independently: Company 001, Owner-Operator
   001 and Lease 001 are three trucks driven by three people, and production

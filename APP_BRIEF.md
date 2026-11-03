@@ -103,7 +103,11 @@ The three cooperate in **two different ways** — do not confuse them:
 
 - **Node hub ↔ Samsara service: shared PostgreSQL only.** Same `DATABASE_URL`,
   no in-process link and no HTTP link between them. The Samsara service reads
-  `groups` for driver-group routing, the safety-event video/music settings and
+  `groups` for driver-group routing — including
+  `groups.samsara_driver_alerts_enabled`, the per-driver switch on Driver
+  Groups that stops alerts being posted into that one driver's group and
+  nothing else (`docs/architecture/samsara-driver-group-alerts.md`) — the
+  safety-event video/music settings and
   the `samsara_settings` row this repo manages, and writes
   `safety_event_video_jobs` and `samsara_video_recovery_jobs`.
   **That table IS the configuration channel.** Settings → Samsara is where the
@@ -248,6 +252,7 @@ by a number on every stage does not belong in the file everything else fits in.
 | The Dispatcher Board ↔ Bitrix24 check: active drivers, their trucks and status compared every 15 minutes, each difference asked one at a time in Needs attention, "done" re-checked (Settings → Dispatcher Board) | `docs/architecture/board-bitrix-check.md` |
 | The Gross Grand Prix displays (`/dispatch`, `/dispatchteam`): the Datatruck read budget, and what a public page may show | `docs/architecture/gross-race.md` |
 | Samsara settings (the shared `samsara_settings` row, the shared-secret envelope for its API key) and missing-video recovery | `docs/architecture/samsara-settings-and-video-recovery.md` |
+| Every place a Samsara alert is posted, and the per-driver switch for the driver's own group (Driver Groups → driver details) | `docs/architecture/samsara-driver-group-alerts.md` |
 | Database: authoritative schema + migration rules | `database/baseline/`, `database/migrations/`, `docs/database/` |
 | Moving the database to another server | `docs/database/README.md` → the manual `Copy database` workflow (`scripts/copy-database.sh`) |
 | What was removed and why | `docs/ARCHIVED_FEATURES.md`, `docs/architecture/retired-*.md`, `docs/architecture/samsara-separation.md` |

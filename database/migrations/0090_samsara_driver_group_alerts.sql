@@ -1,0 +1,32 @@
+-- Migration 0090: samsara driver group alerts
+-- migrate:kind: schema
+--
+-- Keep it additive and idempotent (IF NOT EXISTS / ON CONFLICT). Review the
+-- full diff before pushing — this repo can auto-deploy. See
+-- database/migrations/README.md.
+
+--
+-- WHAT THIS IS FOR. The Samsara service (a separate deployment that shares
+-- only this database) posts every safety and speeding alert to the
+-- "Samsara Notifications" group and its subscribers, and ALSO to the driver's
+-- own Telegram group. A person can now switch that last copy off for one
+-- driver group from Driver Groups → driver details, and back on again.
+--
+-- ONE BOOLEAN ON THE CHAT, because the chat is what receives the post:
+--   - team drivers share one group, so they share one switch;
+--   - a Telegram supergroup upgrade moves this row in place
+--     (database/telegramChatMigration.js), so the choice follows the chat;
+--   - a truck handed to another driver routes to THAT driver's group, so the
+--     choice stays with the driver, not the truck.
+--
+-- DEFAULT TRUE, NOT NULL: every existing group, and every group created
+-- later, keeps posting exactly as it does today until somebody switches it
+-- off. The Samsara service also reads a missing column as "on", so it cannot
+-- go quiet if it deploys before this migration has run.
+--
+-- What the switch does NOT touch: the event is still recorded
+-- (driver_safety_events), the notifications group and every subscriber still
+-- get the alert, the video recovery for them still runs, and routing is
+-- unchanged. See docs/architecture/samsara-driver-group-alerts.md.
+
+ALTER TABLE groups ADD COLUMN IF NOT EXISTS samsara_driver_alerts_enabled BOOLEAN NOT NULL DEFAULT TRUE;

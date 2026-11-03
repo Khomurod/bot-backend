@@ -194,6 +194,27 @@ export function useDriverProfiles() {
     );
   };
 
+  // The Samsara driver-group switch lives on the GROUP, not the profile, so it
+  // has its own endpoint; like every other write here it re-fetches.
+  const handleSamsaraAlertsChange = async (profile, enabled) => {
+    setSavingProfileId(profile.id);
+    setMessage(null);
+    try {
+      await api.setSamsaraDriverAlerts(profile.group_id, enabled);
+      setMessage({
+        type: "success",
+        text: enabled
+          ? "Samsara alerts will be posted to this driver group again, from the next alert."
+          : "Samsara alerts are no longer posted to this driver group. The Samsara Notifications group still gets them.",
+      });
+      await fetchProfiles();
+    } catch (err) {
+      setMessage({ type: "error", text: err.message });
+    } finally {
+      setSavingProfileId(null);
+    }
+  };
+
   // COUNTED BY THE SAME FUNCTION THE TABS FILTER BY, so a count can never
   // disagree with what opening that tab shows — which is how a "3" above an
   // empty list happens.
@@ -209,6 +230,6 @@ export function useDriverProfiles() {
     openProfileId, setOpenProfileId, openProfile, membersByGroup,
     displayProfiles, tabCounts,
     updateDraft, saveProfilePatch, handleAiSync,
-    handleMemberSelect, handleManualUsernameSave, handleClearTelegram,
+    handleMemberSelect, handleManualUsernameSave, handleClearTelegram, handleSamsaraAlertsChange,
   };
 }

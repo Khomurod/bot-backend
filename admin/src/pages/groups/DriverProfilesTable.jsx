@@ -130,6 +130,10 @@ export function DriverProfilesTable({
                 {needsReview(profile) && (
                   <div style={{ fontSize: 11, color: "var(--warning)" }}>Needs review</div>
                 )}
+                {/* Only the exception is shown: ON is every group's default. */}
+                {!company && profile.samsara_driver_alerts_enabled === false && (
+                  <div style={{ fontSize: 11, color: "var(--warning)" }}>Samsara alerts in group: off</div>
+                )}
                 {profile.duplicate_conflict && (
                   <div style={{ fontSize: 11, color: "var(--warning)" }}>
                     Multiple active duplicates - review required
