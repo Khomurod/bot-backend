@@ -7,6 +7,9 @@
  *   - Off is also visible from the table row, without opening the driver.
  *   - A team shares one group, so the help says it applies to both.
  *   - A company chat has no switch: Samsara never posts to one.
+ *   - It never claims Off is applied before the running Samsara service says
+ *     it honours the switch (its heartbeat): until then it says "saved, but
+ *     not applied yet", in the popup, the page message and the row.
  */
 import React from "react";
 import { beforeEach, expect, test, vi } from "vitest";
@@ -19,6 +22,7 @@ vi.mock("../../api", () => ({
   updateDriverProfile: vi.fn(),
   runDriverProfilesAiSync: vi.fn(),
   setSamsaraDriverAlerts: vi.fn(),
+  getSamsaraDriverAlertsStatus: vi.fn(),
 }));
 
 import * as api from "../../api";
@@ -38,6 +42,7 @@ const chat = {
 beforeEach(() => {
   vi.clearAllMocks();
   api.getGroupMembers.mockResolvedValue([]);
+  api.getSamsaraDriverAlertsStatus.mockResolvedValue({ enforced: true, last_beat_at: "2026-11-03T15:00:00Z" });
 });
 
 async function openDetails(name) {
@@ -49,7 +54,7 @@ test("ON is shown as On, and switching it off calls the group endpoint and shows
   api.getDriverProfiles
     .mockResolvedValueOnce([driver()])
     .mockResolvedValue([driver({ samsara_driver_alerts_enabled: false })]);
-  api.setSamsaraDriverAlerts.mockResolvedValue({ group_id: 501, samsara_driver_alerts_enabled: false });
+  api.setSamsaraDriverAlerts.mockResolvedValue({ group_id: 501, samsara_driver_alerts_enabled: false, enforced: true });
   render(<GroupsPage />);
 
   const section = await openDetails("John Carter");
@@ -64,7 +69,47 @@ test("ON is shown as On, and switching it off calls the group endpoint and shows
   await waitFor(() => expect(within(section).getByRole("switch")).not.toBeChecked());
   expect(within(section).getByText("Off")).toBeTruthy();
   expect(section.textContent).toMatch(/still get every alert/);
+  expect(section.textContent).not.toMatch(/not applied yet/);
+  expect(screen.getByText(/no longer posted to this driver group/)).toBeTruthy();
   expect(api.getDriverProfiles).toHaveBeenCalledTimes(2);
+});
+
+test("before the Samsara service honours the switch, Off is 'saved, not applied yet' everywhere", async () => {
+  api.getSamsaraDriverAlertsStatus.mockResolvedValue({ enforced: false, last_beat_at: null });
+  api.getDriverProfiles
+    .mockResolvedValueOnce([driver()])
+    .mockResolvedValue([driver({ samsara_driver_alerts_enabled: false })]);
+  api.setSamsaraDriverAlerts.mockResolvedValue({ group_id: 501, samsara_driver_alerts_enabled: false, enforced: false });
+  render(<GroupsPage />);
+
+  const section = await openDetails("John Carter");
+  await userEvent.click(within(section).getByRole("switch"));
+  await waitFor(() => expect(within(section).getByRole("switch")).not.toBeChecked());
+  expect(within(section).getByRole("status").textContent).toMatch(/Saved, but not applied yet/);
+  expect(section.textContent).not.toMatch(/Not posted here/);
+  expect(screen.queryByText(/no longer posted to this driver group/)).toBeNull();
+  expect(document.querySelector(".alert-warning").textContent).toMatch(/alerts still reach this group/);
+
+  await userEvent.click(screen.getByRole("button", { name: "Close driver details" }));
+  const row = screen.getByRole("button", { name: "John Carter" }).closest("tr");
+  expect(row.textContent).toMatch(/Samsara alerts in group: off \(not applied yet\)/);
+});
+
+test("a status that cannot be read is treated as not applied, never as applied", async () => {
+  api.getSamsaraDriverAlertsStatus.mockRejectedValue(new Error("Server error"));
+  api.getDriverProfiles.mockResolvedValue([driver({ samsara_driver_alerts_enabled: false })]);
+  render(<GroupsPage />);
+  const section = await openDetails("John Carter");
+  await waitFor(() => expect(section.textContent).toMatch(/Saved, but not applied yet/));
+});
+
+test("ON never shows the not-applied warning, whatever the service says", async () => {
+  api.getSamsaraDriverAlertsStatus.mockResolvedValue({ enforced: false });
+  api.getDriverProfiles.mockResolvedValue([driver()]);
+  render(<GroupsPage />);
+  const section = await openDetails("John Carter");
+  await waitFor(() => expect(api.getSamsaraDriverAlertsStatus).toHaveBeenCalled());
+  expect(section.textContent).not.toMatch(/not applied yet/);
 });
 
 test("OFF is visible from the table row, and switching it back on sends true", async () => {

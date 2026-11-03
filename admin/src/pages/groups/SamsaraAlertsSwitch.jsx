@@ -1,5 +1,7 @@
 import React from "react";
 
+import { NOT_APPLIED_YET } from "./samsaraSwitchText";
+
 /**
  * Driver details → "Samsara alerts in this group": whether the Samsara
  * service ALSO posts its safety and speeding alerts into this driver's own
@@ -13,8 +15,13 @@ import React from "react";
  * Saves the moment it is changed, like the rest of this modal. A company chat
  * shows nothing: Samsara never posts to one. `team` is the modal's own answer
  * (`shouldShowTeamInputs`), so this cannot disagree with the team fields.
+ *
+ * IT NEVER CLAIMS MORE THAN IS TRUE. The switch is enforced by the separate
+ * Samsara service, which deploys on its own. `enforced` comes from that
+ * service's heartbeat; until it says it honours the switch (false), the box
+ * says the setting is saved but alerts still reach the group.
  */
-export default function SamsaraAlertsSwitch({ profile, saving, onChange, team = false }) {
+export default function SamsaraAlertsSwitch({ profile, saving, onChange, team = false, enforced = null }) {
   const labelId = React.useId();
   if (!profile || (profile.group_type && profile.group_type !== "driver")) return null;
 
@@ -38,6 +45,8 @@ export default function SamsaraAlertsSwitch({ profile, saving, onChange, team = 
       <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 6 }}>
         {enabled ? (
           <>Each Samsara safety or speeding alert routed to this driver is posted here, as well as to the Samsara Notifications group.</>
+        ) : enforced === false ? (
+          <span role="status" style={{ color: "var(--warning)" }}>{NOT_APPLIED_YET}</span>
         ) : (
           <>
             Not posted here. The Samsara Notifications group and its subscribers still get every alert for this

@@ -207,6 +207,9 @@ repository-wide working rules. The highest-consequence items:
     every subscriber, the safety-event record, routing and the delivery ledger
     are untouched. A switch that cannot be read is never guessed — the driver
     group is retried with the event, without re-sending what was delivered.
+    The screen says Off is applied only while the Samsara service's latest
+    heartbeat carries `driverGroupSwitch: true`; until then it says "saved,
+    but not applied yet".
     `tests/samsaraDriverGroupAlertsPg.test.js`; in `samsara-integration`,
     `tests/driverGroupSwitch.test.js`;
     `docs/architecture/samsara-driver-group-alerts.md`.

@@ -65,7 +65,7 @@ organization should converge toward.
 | Samsara safety events, alerts, videos, safety captions, safety idempotency, missing-video recovery | **External repo** `samsara-integration` (own Render service, free plan: it sleeps without an external ping to its `/health`). See its `docs/architecture/module-map.md`. |
 | **Its settings**, and the schema for them | **Here.** `database/samsaraSettings.js`, `server/routes/settings/samsaraRoutes.js`, `admin/src/pages/settings/SamsaraTab.jsx`, migration 0013 |
 | The recovery queue, read-only for diagnostics | `database/samsaraVideoRecovery.js` (never writes — the poller owns the jobs) |
-| The per-driver switch for alerts in the driver's own group (written here, read and enforced by the poller) | `database/samsaraDriverGroupAlerts.js`, `PUT /api/groups/:groupId/samsara-driver-alerts` (`server/routes/driverGroupsRoutes.js`), `admin/src/pages/groups/SamsaraAlertsSwitch.jsx`, migration 0090 — `samsara-driver-group-alerts.md` |
+| The per-driver switch for alerts in the driver's own group (written here, read and enforced by the poller) | `database/samsaraDriverGroupAlerts.js`, `PUT /api/groups/:groupId/samsara-driver-alerts` (`server/routes/driverGroupsRoutes.js`), `admin/src/pages/groups/SamsaraAlertsSwitch.jsx` + `samsaraSwitchText.js`, migration 0090; "is it applied" from the poller's heartbeat (`getSamsaraSwitchEnforcement`) — `samsara-driver-group-alerts.md` |
 | The envelope both services open the Samsara API key with | `lib/security/sharedIntegrationCrypto.js` (mirrored in the other repo) |
 | Separation rationale | `samsara-separation.md`, the note in `index.js` where the poller used to be spawned |
 | Settings + recovery contract | `samsara-settings-and-video-recovery.md` |

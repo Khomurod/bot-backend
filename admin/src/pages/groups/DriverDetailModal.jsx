@@ -31,6 +31,7 @@ export function DriverDetailModal({
   openProfile, draftsById, savingProfileId, membersByGroup, setOpenProfileId,
   updateDraft, saveProfilePatch,
   handleMemberSelect, handleManualUsernameSave, handleClearTelegram, handleSamsaraAlertsChange,
+  samsaraEnforced = null,
 }) {
   const profile = openProfile;
   if (!profile) return null;
@@ -79,7 +80,10 @@ export function DriverDetailModal({
     <div className="home-time-modal-body">
       <div style={{ display: "grid", gap: 14 }}>
         <PersonIdentityPanel personId={profile.person_id || null} />
-        <SamsaraAlertsSwitch profile={profile} saving={saving} onChange={handleSamsaraAlertsChange} team={teamInputs} />
+        <SamsaraAlertsSwitch
+          profile={profile} saving={saving} onChange={handleSamsaraAlertsChange}
+          team={teamInputs} enforced={samsaraEnforced}
+        />
         <div>
           <label style={fieldLabelStyle}>Driver Username (Telegram member seen in this group)</label>
           <select

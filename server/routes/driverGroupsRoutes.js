@@ -40,6 +40,13 @@ function createDriverGroupsRoutes({
     }
   });
 
+  // GET /api/groups/samsara-driver-alerts/status — does the running Samsara
+  // service honour the switch? The screen says "not applied yet" until it does.
+  router.get('/api/groups/samsara-driver-alerts/status', authMiddleware, async (req, res) => {
+    const status = await samsaraAlerts.getSamsaraSwitchEnforcement();
+    res.json({ enforced: status.enforced === true, last_beat_at: status.lastBeatAt || null });
+  });
+
   // PUT /api/groups/:groupId/samsara-driver-alerts — { enabled: true|false }
   router.put('/api/groups/:groupId/samsara-driver-alerts', authMiddleware, async (req, res) => {
     const groupId = Number(req.params.groupId);
@@ -74,7 +81,14 @@ function createDriverGroupsRoutes({
         `[API] Samsara alerts to driver group ${groupId} switched ${result.enabled ? 'ON' : 'OFF'}`
         + ` by ${req.admin?.username || req.admin?.id || 'unknown'}`,
       );
-      return res.json({ group_id: result.groupId, samsara_driver_alerts_enabled: result.enabled });
+      // The answer says whether the Samsara service applies it yet, so the
+      // screen never reports "not posted" while it still is.
+      const enforcement = await samsaraAlerts.getSamsaraSwitchEnforcement();
+      return res.json({
+        group_id: result.groupId,
+        samsara_driver_alerts_enabled: result.enabled,
+        enforced: enforcement.enforced === true,
+      });
     } catch (err) {
       console.error('[API] Error switching Samsara driver-group alerts:', err.message);
       return res.status(500).json({ error: 'Server error' });

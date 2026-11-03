@@ -4,6 +4,7 @@ import {
   groupView, prepareDisplayProfiles, profileToDraft,
   normalizeManualUsername, isValidManualUsername, memberOptionLabel,
 } from "./driverProfileShaping";
+import { samsaraSwitchMessage } from "./samsaraSwitchText";
 
 /**
  * Driver Groups data: the profile list, one editable draft per profile, the
@@ -32,6 +33,9 @@ export function useDriverProfiles() {
   const [statusSort, setStatusSort] = useState("active-first");
   const [openProfileId, setOpenProfileId] = useState(null);
   const [membersByGroup, setMembersByGroup] = useState({});
+  // Does the running Samsara service apply the per-driver switch? null while
+  // unknown; false when it has not said so (or could not be asked).
+  const [samsaraEnforced, setSamsaraEnforced] = useState(null);
 
   const fetchProfiles = useCallback(async () => {
     setLoading(true);
@@ -54,6 +58,14 @@ export function useDriverProfiles() {
   useEffect(() => {
     fetchProfiles();
   }, [fetchProfiles]);
+
+  useEffect(() => {
+    let live = true;
+    api.getSamsaraDriverAlertsStatus()
+      .then((s) => { if (live) setSamsaraEnforced(s?.enforced === true); })
+      .catch(() => { if (live) setSamsaraEnforced(false); });
+    return () => { live = false; };
+  }, []);
 
   const displayProfiles = useMemo(
     () => prepareDisplayProfiles(allProfiles, activeTab, activeTab === "all" ? statusSort : null),
@@ -195,18 +207,16 @@ export function useDriverProfiles() {
   };
 
   // The Samsara driver-group switch lives on the GROUP, not the profile, so it
-  // has its own endpoint; like every other write here it re-fetches.
+  // has its own endpoint; like every other write here it re-fetches. The
+  // message claims only what the running Samsara service actually applies.
   const handleSamsaraAlertsChange = async (profile, enabled) => {
     setSavingProfileId(profile.id);
     setMessage(null);
     try {
-      await api.setSamsaraDriverAlerts(profile.group_id, enabled);
-      setMessage({
-        type: "success",
-        text: enabled
-          ? "Samsara alerts will be posted to this driver group again, from the next alert."
-          : "Samsara alerts are no longer posted to this driver group. The Samsara Notifications group still gets them.",
-      });
+      const saved = await api.setSamsaraDriverAlerts(profile.group_id, enabled);
+      const enforced = saved?.enforced === true;
+      setSamsaraEnforced(enforced);
+      setMessage(samsaraSwitchMessage(enabled, enforced));
       await fetchProfiles();
     } catch (err) {
       setMessage({ type: "error", text: err.message });
@@ -231,5 +241,6 @@ export function useDriverProfiles() {
     displayProfiles, tabCounts,
     updateDraft, saveProfilePatch, handleAiSync,
     handleMemberSelect, handleManualUsernameSave, handleClearTelegram, handleSamsaraAlertsChange,
+    samsaraEnforced,
   };
 }

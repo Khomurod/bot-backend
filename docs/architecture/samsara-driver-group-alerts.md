@@ -72,6 +72,16 @@ group: off" when it is off; ON is every group's default and shows nothing.
    attempt.
 6. **Only a driver group can be switched** (the API answers 409 for any other
    chat): it is the only kind Samsara ever posts to.
+7. **The screen never claims Off is applied before it is.** The switch is
+   stored here and enforced by the Samsara service, and the two deploy
+   separately. Every heartbeat the Samsara service writes to
+   `background_service_runs` (`samsara_safety_pipeline`) carries
+   `driverGroupSwitch: true` from the build that enforces the switch. Until the
+   latest heartbeat says so (`GET /api/groups/samsara-driver-alerts/status`),
+   an Off group reads **"Saved, but not applied yet … alerts still reach this
+   group"** in the popup, in the page message and on its row ("off (not
+   applied yet)"). A status that cannot be read counts as not applied; a
+   rolled-back service stops saying it and the screen follows.
 
 ## Real-world cases
 
@@ -106,22 +116,27 @@ group: off" when it is off; ON is every group's default and shows nothing.
 | Read for the page | `database/db.js` `listGroupDirectorySourceRows` → `services/driverGroupDirectoryService.js` → `GET /api/driver-profiles` |
 | Screen | `admin/src/pages/groups/SamsaraAlertsSwitch.jsx` (in `DriverDetailModal.jsx`), the "off" line in `DriverProfilesTable.jsx` |
 | **Enforcement** | `samsara-integration`: `src/driverGroupSwitch.js` (the read), `src/broadcastDelivery.js` step 2, `src/videoRecoveryWorker.js` `deliverVideo`, wired in `index.js` |
+| "Is it applied?" | `samsara-integration` `src/hubHeartbeat.js` (`driverGroupSwitch: true` on every beat) → `getSamsaraSwitchEnforcement` in `database/samsaraDriverGroupAlerts.js` → `GET /api/groups/samsara-driver-alerts/status` → `admin/src/pages/groups/samsaraSwitchText.js` |
 
 ## Tests
 
 - `tests/samsaraDriverGroupAlertsPg.test.js` — existing groups read ON after the
   migration, new ones start ON, one group is switched without touching another,
   a non-driver chat is refused, Driver Groups shows the saved value, a
-  supergroup upgrade keeps it, and the exact read the Samsara service runs.
+  supergroup upgrade keeps it, the exact read the Samsara service runs, and
+  "applied" only while the latest heartbeat carries the capability.
 - `tests/samsaraDriverGroupAlertsRoutes.test.js` — only a real boolean, 404 /
-  409, the audit row, no detail on a 500.
+  409, the audit row, no detail on a 500, and `enforced` in the answer and the
+  status read.
 - `admin/src/pages/groups/samsaraAlertsSwitch.test.jsx` — On / Off are visible,
   a change calls the group endpoint and re-reads, the table shows Off, the team
   note by the page's own team rule (second name, or "A / B" in the title), the
-  inactive note, no switch on a company chat.
+  inactive note, no switch on a company chat, and "saved, but not applied yet"
+  everywhere until the Samsara service says it honours the switch.
 - In `samsara-integration`, `tests/driverGroupSwitch.test.js` — OFF posts
   nothing to the driver group while the notifications group and subscribers get
   identical messages, the event is still recorded, the ledger is untouched for
   the driver group; ON is call-for-call identical to a run without the switch;
   an unreadable switch retries without re-sending; the recovery drops a
-  switched-off group and keeps an unreadable one.
+  switched-off group and keeps an unreadable one. `tests/hubHeartbeat.test.js`:
+  every beat carries the capability.

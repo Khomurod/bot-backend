@@ -14,6 +14,9 @@
  *
  *   WHAT THE SAMSARA SERVICE READS is the column itself, on the routed row —
  *   the read at the bottom is the one it runs.
+ *
+ *   OFF IS REPORTED AS APPLIED ONLY WHEN IT IS. The screen asks the Samsara
+ *   service's own heartbeat row whether the running build honours the switch.
  */
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -127,4 +130,29 @@ test('the read the Samsara service runs, by group id and by chat id', { skip: sk
     'SELECT samsara_driver_alerts_enabled FROM groups WHERE telegram_group_id::text = $1', ['-6001']
   );
   assert.equal(byChat.rows[0].samsara_driver_alerts_enabled, false);
+});
+
+test('the switch counts as applied only when the Samsara heartbeat says so', { skip: skipWithoutPg() }, async (t) => {
+  const h = await createPgHarness(t, { extraDdl: ALL });
+  const { samsaraDriverGroupAlerts: store } = h.loadDataLayer(['samsaraDriverGroupAlerts']);
+
+  assert.deepEqual(await store.getSamsaraSwitchEnforcement(), { enforced: false, lastBeatAt: null },
+    'a service that never reported has not applied anything');
+
+  const beat = (summary) => h.query(
+    `INSERT INTO background_service_runs (service_key, last_finished_at, last_status, last_summary, updated_at)
+     VALUES ('samsara_safety_pipeline', NOW(), 'ok', $1::jsonb, NOW())
+     ON CONFLICT (service_key) DO UPDATE SET last_summary = EXCLUDED.last_summary, last_finished_at = NOW()`,
+    [JSON.stringify(summary)]
+  );
+  await beat({ newEvents: 2 });
+  assert.equal((await store.getSamsaraSwitchEnforcement()).enforced, false, 'an older build does not carry the capability');
+
+  await beat({ newEvents: 2, driverGroupSwitch: true });
+  const now = await store.getSamsaraSwitchEnforcement();
+  assert.equal(now.enforced, true);
+  assert.ok(now.lastBeatAt);
+
+  await beat({ newEvents: 0 });
+  assert.equal((await store.getSamsaraSwitchEnforcement()).enforced, false, 'a rolled-back service stops counting');
 });
