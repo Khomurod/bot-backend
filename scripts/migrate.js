@@ -12,6 +12,7 @@
  */
 // Startup boundary: fail fast with a clear message when DATABASE_URL etc. are
 // missing, instead of letting pg fall back to confusing localhost defaults.
+require('../config/appSecretsBoot').bootAppSecrets('bot');
 require('../config/config').assertRequiredConfig();
 
 const fs = require('node:fs');

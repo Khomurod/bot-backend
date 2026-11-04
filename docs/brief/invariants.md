@@ -214,6 +214,19 @@ repository-wide working rules. The highest-consequence items:
     `tests/driverGroupSwitch.test.js`;
     `docs/architecture/samsara-driver-group-alerts.md`.
 
+21. **A stored secret never leaves the server, and opens only with
+    `INTEGRATION_SECRET_KEY`.** Settings → Secrets (super administrators only,
+    by role) shows names, scopes and the last four characters of long values;
+    no API answer, log line, error or audit row carries a value. Values are
+    encrypted only under `INTEGRATION_SECRET_KEY` — never the key derived from
+    `DATABASE_URL`, which a copied `.env` holds. Every change is a new version;
+    a save this app could not start with (a required value missing, two bots on
+    one token, a token `getMe` refuses) is refused. The boot read runs before
+    `config/config.js` in every entrypoint and, on any failure, leaves Coolify's
+    environment untouched. `APP_SECRETS_VERSION` / `APP_SECRETS_OFF` in Coolify
+    are the way back. `tests/appSecrets*.test.js`;
+    `docs/architecture/app-secrets.md`.
+
 - **A truck number alone is not globally unique, and nobody is merged on one.**
   Three fleets number their trucks independently: Company 001, Owner-Operator
   001 and Lease 001 are three trucks driven by three people, and production

@@ -185,6 +185,7 @@ after deploy on the live service.
 | I4 | Idempotency ledgers still work. | **[AUTO]** dedupe tests (see module-map ledger list) pass. |
 | I5 | Important events are logged. | **[PROD]** Sends recorded in `bot_sent_messages`; errors in logs. |
 | I6 | **No sensitive token is printed in logs.** | **[MANUAL]** Grep new log lines for tokens/secrets; none present. |
+| I7 | **The app secrets load at boot, and no value is shown anywhere.** | **[AUTO]** `tests/appSecrets*.test.js`; **[PROD]** the boot log says `[Secrets] Loaded N setting(s) from the app (version V)` or why not (never a value); Settings → Secrets lists names and last four characters only. If a version keeps the app from starting: `APP_SECRETS_VERSION=<earlier>` or `APP_SECRETS_OFF=true` in Coolify (`docs/architecture/app-secrets.md`). |
 
 ---
 

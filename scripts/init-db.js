@@ -2,6 +2,7 @@
  * Initialize the database schema.
  * Run: node scripts/init-db.js
  */
+require('../config/appSecretsBoot').bootAppSecrets('bot');
 require('../config/config').assertRequiredConfig();
 
 const db = require('../database/db');

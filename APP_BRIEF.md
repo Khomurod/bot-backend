@@ -253,6 +253,7 @@ by a number on every stage does not belong in the file everything else fits in.
 | The Gross Grand Prix displays (`/dispatch`, `/dispatchteam`): the Datatruck read budget, and what a public page may show | `docs/architecture/gross-race.md` |
 | Samsara settings (the shared `samsara_settings` row, the shared-secret envelope for its API key) and missing-video recovery | `docs/architecture/samsara-settings-and-video-recovery.md` |
 | Every place a Samsara alert is posted, and the per-driver switch for the driver's own group (Driver Groups → driver details) | `docs/architecture/samsara-driver-group-alerts.md` |
+| Where the deployment's settings live (Settings → Secrets, since November 2026): two values in Coolify, everything else encrypted in the app; the boot read; rollback | `docs/architecture/app-secrets.md` |
 | Database: authoritative schema + migration rules | `database/baseline/`, `database/migrations/`, `docs/database/` |
 | Moving the database to another server | `docs/database/README.md` → the manual `Copy database` workflow (`scripts/copy-database.sh`) |
 | What was removed and why | `docs/ARCHIVED_FEATURES.md`, `docs/architecture/retired-*.md`, `docs/architecture/samsara-separation.md` |

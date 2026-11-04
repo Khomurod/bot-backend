@@ -117,6 +117,15 @@ sign-in screen. The screen needs `users.manage`; an account without it is told
 so in words. **Not on a screen yet:** changing an existing account's roles and
 editing roles and their permissions (`POST`/`PUT /api/admin/roles`).
 
+### Settings → Secrets is gated by ROLE (November 2026)
+
+The deployment's settings (`/api/settings/app-secrets*`,
+`docs/architecture/app-secrets.md`) are open to `super_admin` **by role**
+(`requireSuperAdmin` in `server/middleware/auth.js`), not by a permission: a
+permission can be granted to a lesser role by mistake, and here that would hand
+over every credential the deployment has. Every other account gets a 403 and
+the screen says so in words.
+
 ### Non-JWT access paths (be careful changing these)
 
 | Path | Gate |

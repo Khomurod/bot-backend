@@ -64,7 +64,7 @@ desktop, a single picker on a phone. Every section has its own address.
 | Recruiting | Recruiters & Numbers (`ringcentral`) · RingCentral Connection (`rc_connection`) · Bitrix24 (`bitrix`) · Facebook ↔ Bitrix (`metacrm`) · Safety Approvals (`safety`) |
 | AI | AI Providers (`ai`) · AI Tasks (`ai_tasks`) · Wenze's Questions (`ai_questions`) · Provider Terms (`ai_terms`) |
 | Telegram | Where the Bot Posts (`notifications`; `#settings/groups` lands here) · Group Access (`access`) · Auto Reactions (`reactions`) |
-| System | Admin Accounts (`admins`) · Gross Grand Prix (`grossrace`) · Retired Leftovers (`leftovers`, last) |
+| System | Admin Accounts (`admins`) · Secrets (`secrets`, super admins only — `docs/architecture/app-secrets.md`) · Gross Grand Prix (`grossrace`) · Retired Leftovers (`leftovers`, last) |
 
 *November 2026* ([`density.md`](density.md)): the table above replaced seven
 groups — Integrations, AI, Telegram Bot, Recruiting, Office Screens,
