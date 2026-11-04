@@ -110,8 +110,18 @@ export default function SecretsTab() {
         {bootText && <p style={{ marginBottom: 0 }}>{bootText}</p>}
         {view.boot?.pinned && (
           <div className="alert alert-warning" style={{ marginTop: 8, marginBottom: 0 }}>
-            <code>APP_SECRETS_VERSION</code> is set in Coolify, so every start loads that version — what you save here
-            takes effect only after you remove it from Coolify and redeploy.
+            {view.boot?.status === "off" ? (
+              <>
+                Both <code>APP_SECRETS_OFF</code> and <code>APP_SECRETS_VERSION</code> are set in Coolify;{" "}
+                <code>APP_SECRETS_OFF</code> wins, so nothing stored is loaded. Remove both and redeploy for the newest
+                version to load.
+              </>
+            ) : (
+              <>
+                <code>APP_SECRETS_VERSION</code> is set in Coolify, so every start loads that version — what you save
+                here takes effect only after you remove it from Coolify and redeploy.
+              </>
+            )}
           </div>
         )}
       </div>

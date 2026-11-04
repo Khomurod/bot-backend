@@ -120,3 +120,10 @@ test("pinned by APP_SECRETS_VERSION: a warning, and 'in use' marks the version a
   expect(screen.getByText(/1\s*\(in use\)/)).toBeTruthy();
   expect(screen.getByText(/2\s*\(newest\)/)).toBeTruthy();
 });
+
+test("both recovery switches set: the page says the off switch wins and both must go", async () => {
+  api.getAppSecrets.mockResolvedValue({ ...VIEW, boot: { status: "off", version: null, names: [], overridden: [], pinned: true } });
+  render(<SecretsTab />);
+  expect(await screen.findByText(/wins, so nothing stored is loaded/)).toBeTruthy();
+  expect(screen.queryByText(/so every start loads that version/)).toBeNull();
+});
