@@ -9,6 +9,7 @@
  * normally the one just created — is given super_admin here, explicitly,
  * rather than by the boot-time bootstrap. One with any role keeps it.
  */
+require('../config/appSecretsBoot').bootAppSecrets('bot');
 require('../config/config').assertRequiredConfig();
 
 const bcrypt = require('bcryptjs');

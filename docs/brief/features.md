@@ -434,6 +434,17 @@ The page and its assets are served through an **explicit allow-list** in
 self-contained file until it passed the 500-line limit, and the split must not
 turn one exposed file into an exposed directory.
 
+### The deployment's settings: Settings → System → Secrets (November 2026)
+
+A super administrator pastes or chooses one app's `.env` (Wenze or the Samsara
+service), sees what would be new, changed, removed or left in Coolify, with
+every bot token checked by Telegram, and saves it as a new version. The values
+are stored encrypted and never shown again — only names and the last four
+characters of long values. Saving restarts the app when its own values changed;
+an older version can be restored. Coolify keeps only `DATABASE_URL` and
+`INTEGRATION_SECRET_KEY`. The rules:
+[`app-secrets.md`](../architecture/app-secrets.md).
+
 ### Gross Grand Prix at `/dispatch` and `/dispatchteam`
 
 Office-screen races of this week's gross, counting the loads picked up this

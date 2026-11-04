@@ -59,6 +59,8 @@ export const SETTINGS_GROUPS = Object.freeze([
     label: "System",
     sections: [
       { key: "admins", label: "Admin Accounts" },
+      // November 2026: the deployment's settings, out of Coolify. Super admins only.
+      { key: "secrets", label: "Secrets" },
       { key: "grossrace", label: "Gross Grand Prix" },
       // Last, so it is never where a person lands first.
       { key: "leftovers", label: "Retired Leftovers" },

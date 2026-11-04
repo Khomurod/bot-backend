@@ -39,6 +39,14 @@ replace it, signed in to the admin panel as a full admin, with
 
 ## Environment
 
+**Since November 2026 the settings live in the app** (Settings → System →
+Secrets, `docs/architecture/app-secrets.md`). Coolify keeps only `DATABASE_URL`
+and `INTEGRATION_SECRET_KEY` — the same `INTEGRATION_SECRET_KEY` in both
+applications — plus, only while recovering, `APP_SECRETS_VERSION=<n>` (load an
+older version) or `APP_SECRETS_OFF=true` (ignore the stored values). The text
+below describes the values themselves, wherever they are kept; until the owner
+has uploaded them and emptied Coolify, Coolify still holds them.
+
 To move or recreate the environment, copy the existing one **whole**, as the
 move off Render in October 2026 did. Do not rebuild it from `.env.example`: that
 file lists what a deployment is expected to set, and the code also reads

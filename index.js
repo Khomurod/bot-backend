@@ -4,6 +4,9 @@
 // Fail fast on missing/malformed required configuration BEFORE any module
 // side effects. This is the startup boundary for config validation — the
 // config module itself never exits at import time (unit tests import it).
+// The stored app secrets (Settings → Secrets) go into process.env first: config
+// reads process.env the moment it loads. See config/appSecretsBoot.js.
+require('./config/appSecretsBoot').bootAppSecrets('bot');
 require('./config/config').assertRequiredConfig();
 
 const fs = require('fs');
@@ -336,6 +339,17 @@ async function start() {
 
   assertDistinctTelegramPollingTokens();
   await db.initializeDatabase();
+  // The Samsara API key stored under the DATABASE_URL-derived key moves under
+  // INTEGRATION_SECRET_KEY the first boot that has one (docs/architecture/app-secrets.md).
+  try {
+    const moved = await require('./database/samsaraSettings').moveApiKeyToExplicitKey();
+    if (moved.status === 'moved') console.log('[Secrets] Stored Samsara API key re-encrypted under INTEGRATION_SECRET_KEY.');
+    if (moved.status === 'unknown-key' || moved.status === 'unreadable') {
+      console.warn(`[Secrets] Stored Samsara API key could not be moved (${moved.status}); the Samsara service falls back to SAMSARA_API_KEY.`);
+    }
+  } catch (err) {
+    console.warn('[Secrets] Could not check the stored Samsara API key:', err.code || 'error');
+  }
   // One open home stay per group — created only when the data already obeys
   // it, never a migration (a failing migration fails boot). Logs and stands
   // down otherwise; the repair through Needs Attention clears the way.
