@@ -92,12 +92,14 @@ export default function DispatcherBoardTab() {
   const save = async () => {
     setSaving(true); setMessage(null);
     try {
+      const fromSecrets = settings?.source === "secrets";
       const payload = {
         enabled: form.enabled,
-        baseUrl: form.baseUrl.trim(),
+        // Connected from Settings → Secrets: the saved address is left as it is.
+        ...(fromSecrets ? {} : { baseUrl: form.baseUrl.trim() }),
         pollIntervalSeconds: Number(form.pollIntervalSeconds),
       };
-      if (form.token.trim()) payload.token = form.token.trim();
+      if (!fromSecrets && form.token.trim()) payload.token = form.token.trim();
       const s = await api.updateDispatchBoardSettings(payload);
       setSettings(s);
       // The token never lives in this form longer than one submission.
@@ -142,26 +144,36 @@ export default function DispatcherBoardTab() {
         </label>
       </div>
 
-      <div className="form-group">
-        <label style={{ display: "block", fontWeight: 600, marginBottom: 4 }}>Board web app URL</label>
-        <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 6 }}>
-          The Apps Script link that ends in <code>/exec</code>.
+      {settings?.source === "secrets" ? (
+        <div className="alert alert-info" style={{ marginBottom: 12 }}>
+          Connected to the board service ({settings.baseUrl}) with the key <code>DISPATCH_BOARD_API_KEY</code> from
+          Settings → Secrets. The old Apps Script address and token are not used while that key is set.
         </div>
-        <input
-          className="form-input"
-          type="text"
-          value={form.baseUrl}
-          placeholder="https://script.google.com/macros/s/…/exec"
-          onChange={(e) => setField("baseUrl", e.target.value)}
-        />
-      </div>
+      ) : (
+        <>
+          <div className="form-group">
+            <label style={{ display: "block", fontWeight: 600, marginBottom: 4 }}>Board web app URL</label>
+            <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 6 }}>
+              The old Apps Script link that ends in <code>/exec</code>. The board service that replaced it is
+              connected by adding <code>DISPATCH_BOARD_API_KEY</code> in Settings → Secrets.
+            </div>
+            <input
+              className="form-input"
+              type="text"
+              value={form.baseUrl}
+              placeholder="https://script.google.com/macros/s/…/exec"
+              onChange={(e) => setField("baseUrl", e.target.value)}
+            />
+          </div>
 
-      <KeyField
-        label="Board access token"
-        hint={settings?.tokenSet ? settings.tokenMasked : "not set"}
-        value={form.token}
-        onChange={(v) => setField("token", v)}
-      />
+          <KeyField
+            label="Board access token"
+            hint={settings?.tokenSet ? settings.tokenMasked : "not set"}
+            value={form.token}
+            onChange={(v) => setField("token", v)}
+          />
+        </>
+      )}
 
       <NumField
         label="Check the board every"

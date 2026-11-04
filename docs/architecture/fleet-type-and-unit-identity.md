@@ -54,6 +54,11 @@ automatically**.
 
 ## Two vocabularies, one translation
 
+**Where the board's fleet comes from** changed in November 2026: the board
+service writes it as a suffix of the truck (`021 CMP`), read by
+`lib/board/truckSuffix.js`; the old spreadsheet wrote it inside the name, read
+by `parseFleetLabel` below. See `dispatcher-board.md`.
+
 `driver_profiles.driver_type` predates the Dispatcher Board and speaks
 `owner` / `company_driver` / `lease`; the board speaks
 `owner_operator` / `company` / `lease`. Both are kept — renaming a column a dozen

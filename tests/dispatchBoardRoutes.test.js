@@ -276,3 +276,20 @@ test('a failure response never carries a board URL or its token', async (t) => {
   assert.ok(!res.text.includes(TOKEN), res.text);
   assert.ok(!res.text.includes('script.example.com'), res.text);
 });
+
+test('connected from Settings → Secrets, the test reads the board service with its key in a header and ignores a typed address', async (t) => {
+  const { app, seen, restore } = loadApp({
+    stored: { source: 'secrets', auth: 'header', baseUrl: 'https://board.example.com/api/public/v1/board', token: 'wz_test_key_000' },
+  });
+  t.after(restore);
+  const res = await call(app, 'POST', '/api/settings/dispatch-board/test', {
+    baseUrl: 'https://somewhere-else.example.com/exec', token: 'typed-token',
+  });
+  assert.equal(res.status, 200);
+  assert.equal(seen.fetches.length, 1);
+  assert.deepEqual(seen.fetches[0], {
+    baseUrl: 'https://board.example.com/api/public/v1/board', token: 'wz_test_key_000', auth: 'header',
+  });
+  assert.equal(res.json.connected, true);
+  assert.ok(!res.text.includes('wz_test_key_000'));
+});

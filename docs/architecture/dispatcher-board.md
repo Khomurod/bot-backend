@@ -3,9 +3,45 @@
 **Read this before changing anything that reads the board, compares a truck
 number, or decides which fleet a driver belongs to.**
 
-The Dispatcher Board is an external Google Apps Script web app in front of the
-dispatchers' own spreadsheet. It is not part of this application and nobody here
-controls its shape.
+The Dispatcher Board was an external Google Apps Script web app in front of the
+dispatchers' own spreadsheet. **Since November 2026 it is a board service of
+its own** — `GET https://board.wenzellc.com/api/public/v1/board` — and the
+spreadsheet is switched off. It is still not part of this application and
+nobody here controls its shape. See [The board service](#the-board-service-november-2026)
+for what changed; the rules below hold for both.
+
+## The board service (November 2026)
+
+- **Connection.** The key is `DISPATCH_BOARD_API_KEY` in Settings → Secrets
+  (optionally `DISPATCH_BOARD_API_URL`; the default is the address above). While
+  it is set it IS the connection: the Apps Script address and token saved on
+  Settings → Dispatcher Board are not used, and that screen says so. The ON/OFF
+  switch there still decides whether the board is read
+  (`database/dispatchBoardSettings.js` `boardApiFromEnv`).
+- **The key travels in `Authorization: Bearer`, never in the URL**, only to an
+  **https** address (an `http://` one is refused before anything is sent), and **no
+  redirect is followed** — a request holding a key goes nowhere it was not sent
+  (`services/dispatchBoard/client.js`, `auth: 'header'`). The Apps Script rules
+  below (query-string token, one redirect) apply only to the old connection.
+- **Shape.** `{generated_at, count, trucks: [...]}`, about 105 rows, no paging.
+  `lib/board/parse.js` reads rows under `trucks` as the `board_api` format:
+  - `truck` is the unit AND the fleet: `021 CMP`. The unit is the number with
+    its leading zeros (`021` — what Wenze's groups and people carry); the suffix
+    is the fleet, read by `lib/board/truckSuffix.js` as the owner decided:
+    `COMP`, `CPM`, `CMP`, `V`, `R` (rental) and a driver's name → company; `L`
+    → lease; nothing after the number → owner-operator; anything that does not
+    start with a number → `unknown`. Names carry no `(COMPANY DRIVER)` label any
+    more. A line's key is its unit and person, so a corrected suffix is not a
+    new line.
+  - a team is `driver` + `team_driver` (both seats named), read through the
+    same rule as the sheet's `A / B`; a line with only `team_driver` filled is
+    that one driver.
+  - **`team` is the DISPATCHER's team** ("Tim's Team"), not a two-driver crew —
+    on the board service it is not read as the crew flag (the old sheet's `team`
+    still is).
+  - `row_updated_at` changes with ANY edit of the line, so it is not when the
+    status changed: the poller still stamps that itself. `location*`,
+    `appointment`, `speed_mph`, `load_*` are not read.
 
 ## What it is for now: Home Time's home-in and home-out
 
@@ -82,7 +118,7 @@ says the dispatcher meant a team, the separator says they typed one, and which
 is right is a human question. **A composite person is never split
 automatically.**
 
-## The token travels in the query string
+## The token travels in the query string (the old Apps Script connection)
 
 That is the Apps Script's design and cannot be changed from here. Three
 consequences, all enforced in code:
@@ -256,10 +292,10 @@ separately and refuses both when the two names resolve to one stored person.
 | | statuses | |
 |---|---|---|
 | **home** | `HOME`, `VACATION` | the driver is not working |
-| **working** | `DISPATCHED`, `ENROUTE` | the driver is on the road right now |
+| **working** | `DISPATCHED`, `ENROUTE`, `COVERED`, `HOLD FOR LOAD` | the driver is on the road right now (the last two: the board service, November 2026 — the next load is booked / waiting for one; the owner: both mean working) |
 | **neutral** | `READY`, `RESERVED`, `REST`, `SHOP` | **neither may be concluded** |
 
-`boardEndsHomeStay` (READY, RESERVED, DISPATCHED, ENROUTE) is a separate
+`boardEndsHomeStay` (READY, RESERVED, DISPATCHED, ENROUTE, COVERED, HOLD FOR LOAD) is a separate
 question, asked only of a driver Wenze already has at home. REST and SHOP end
 nothing: a driver can rest at home, and a truck can sit in a shop while its
 driver is on their couch. An unknown status is never a conclusion. These

@@ -77,7 +77,7 @@ async function runBoardPoll({ deps = defaultDeps() } = {}) {
 
   let payload;
   try {
-    const answer = await deps.client.fetchBoard({ baseUrl: config.baseUrl, token: config.token });
+    const answer = await deps.client.fetchBoard({ baseUrl: config.baseUrl, token: config.token, auth: config.auth });
     payload = answer.json;
   } catch (err) {
     // Already URL-stripped at construction; stripped again on the way out
