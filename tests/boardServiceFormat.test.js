@@ -129,3 +129,29 @@ test('the connection comes from Settings → Secrets when DISPATCH_BOARD_API_KEY
   assert.equal(boardApiFromEnv({ DISPATCH_BOARD_API_KEY: 'k', DISPATCH_BOARD_API_URL: 'https://b.example.com/api' }).baseUrl, 'https://b.example.com/api');
   assert.equal(DEFAULT_BOARD_API_URL, 'https://board.wenzellc.com/api/public/v1/board');
 });
+
+test('on the spreadsheet `team` is still the crew flag; on the board service it is not', () => {
+  const sheet = parseBoardPayload({ rows: [{ driver_name: 'ONE PERSON', truck: '27', status: 'HOME', team: true }] });
+  assert.equal(sheet.rows[0].isTeam, true);
+  const api = parseBoardPayload({ trucks: [{ truck: '027 CMP', driver: 'One Person', team: 'true', status: 'HOME' }] });
+  assert.equal(api.rows[0].isTeam, false);
+});
+
+test('a line with only the second seat filled is that one driver, not an empty line', () => {
+  const parsed = parseBoardPayload({ trucks: [{ truck: '127 L', driver: null, team_driver: 'Cal Hill', status: 'HOME' }] });
+  assert.equal(parsed.rows[0].driverNameRaw, 'Cal Hill');
+  assert.equal(parsed.rows[0].isTeam, false);
+  assert.ok(!parsed.problems.some((p) => p.kind === 'row_without_driver'));
+});
+
+test('the key is never sent to an http:// address', async () => {
+  assert.equal(boardApiFromEnv({ DISPATCH_BOARD_API_KEY: 'k', DISPATCH_BOARD_API_URL: 'http://b.example.com/api' }).baseUrl, null);
+  let called = false;
+  await assert.rejects(
+    fetchBoard({ baseUrl: 'http://b.example.com/api', token: 'k-secret-0000', auth: 'header' }, {
+      fetchImpl: async () => { called = true; return answer({}); },
+    }),
+    (err) => err.kind === 'bad_url' && !err.message.includes('k-secret-0000'),
+  );
+  assert.equal(called, false);
+});

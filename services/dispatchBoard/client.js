@@ -127,6 +127,9 @@ async function fetchBoard({ baseUrl, token, auth = 'query' } = {}, {
   } catch (_) {
     throw new BoardFetchError('the saved board URL is not a URL', { kind: 'bad_url' });
   }
+  if (byHeader && !url.startsWith('https://')) {
+    throw new BoardFetchError('the board service address must be https — its key is never sent in clear', { kind: 'bad_url' });
+  }
 
   let response;
   let redirects = 0;

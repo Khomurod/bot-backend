@@ -45,7 +45,11 @@ function boardApiFromEnv(env = process.env) {
   const key = String(env.DISPATCH_BOARD_API_KEY || '').trim();
   if (!key) return null;
   const url = usableBaseUrl(String(env.DISPATCH_BOARD_API_URL || '').trim() || DEFAULT_BOARD_API_URL);
-  return { baseUrl: url, token: key, auth: 'header', source: 'secrets' };
+  // The key rides in a header: an http:// address would send it in clear on the
+  // very first request, so only https is accepted (and the board stays "not
+  // configured" rather than falling back to anything else).
+  const httpsUrl = url && url.startsWith('https://') ? url : null;
+  return { baseUrl: httpsUrl, token: key, auth: 'header', source: 'secrets' };
 }
 const DEFAULT_POLL_INTERVAL_SECONDS = 300;
 const MIN_POLL_INTERVAL_SECONDS = 60;

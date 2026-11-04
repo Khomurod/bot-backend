@@ -18,7 +18,8 @@ for what changed; the rules below hold for both.
   Settings → Dispatcher Board are not used, and that screen says so. The ON/OFF
   switch there still decides whether the board is read
   (`database/dispatchBoardSettings.js` `boardApiFromEnv`).
-- **The key travels in `Authorization: Bearer`, never in the URL**, and **no
+- **The key travels in `Authorization: Bearer`, never in the URL**, only to an
+  **https** address (an `http://` one is refused before anything is sent), and **no
   redirect is followed** — a request holding a key goes nowhere it was not sent
   (`services/dispatchBoard/client.js`, `auth: 'header'`). The Apps Script rules
   below (query-string token, one redirect) apply only to the old connection.
@@ -33,9 +34,11 @@ for what changed; the rules below hold for both.
     more. A line's key is its unit and person, so a corrected suffix is not a
     new line.
   - a team is `driver` + `team_driver` (both seats named), read through the
-    same rule as the sheet's `A / B`.
+    same rule as the sheet's `A / B`; a line with only `team_driver` filled is
+    that one driver.
   - **`team` is the DISPATCHER's team** ("Tim's Team"), not a two-driver crew —
-    it is no longer read as the crew flag.
+    on the board service it is not read as the crew flag (the old sheet's `team`
+    still is).
   - `row_updated_at` changes with ANY edit of the line, so it is not when the
     status changed: the poller still stamps that itself. `location*`,
     `appointment`, `speed_mph`, `load_*` are not read.
