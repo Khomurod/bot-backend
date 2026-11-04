@@ -108,6 +108,8 @@ function normalizeOptionalEnv(value) {
 
 module.exports = {
   assertRequiredConfig,
+  // The names the app cannot start without — Settings → Secrets checks a save against them.
+  requiredEnv: Object.freeze([...requiredEnv]),
   /** Read-only copy for diagnostics/tests; never contains secret values. */
   configProblems: Object.freeze([...configProblems]),
   botToken: process.env.BOT_TOKEN || '',

@@ -60,6 +60,18 @@ function requireAllPermissions(...needed) {
   };
 }
 
+/**
+ * Only a super administrator — by ROLE, not by permission. Used where a
+ * permission could be granted to a lesser role by mistake and the cost of that
+ * is every credential the deployment has (Settings → Secrets).
+ */
+function requireSuperAdmin(req, res, next) {
+  if (!(req.admin?.role_keys || []).includes('super_admin')) {
+    return res.status(403).json({ error: 'Only a super administrator may do this' });
+  }
+  return next();
+}
+
 /** Shared-secret guard for server-to-server calls from the leads engine. */
 function createInternalSharedSecretGuard(config) {
   return function internalSharedSecretGuard(req, res, next) {
@@ -76,4 +88,5 @@ module.exports = {
   createInternalSharedSecretGuard,
   requirePermission,
   requireAllPermissions,
+  requireSuperAdmin,
 };

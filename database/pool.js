@@ -10,6 +10,7 @@ const { Pool } = require('pg');
 const config = require('../config/config');
 const transferMeter = require('./transferMeter');
 const { classifyDatabaseError } = require('../lib/database/failureClassification');
+const { sslForUrl } = require('../lib/database/sslForUrl');
 
 const pool = new Pool({
   connectionString: config.databaseUrl,
@@ -35,11 +36,7 @@ const pool = new Pool({
   // Free-tier databases can be slow to open a fresh connection (cold start +
   // SSL handshake), so allow a generous window. Set 0 to wait indefinitely.
   connectionTimeoutMillis: Number.parseInt(process.env.PG_CONNECTION_TIMEOUT_MS || '30000', 10),
-  ssl: config.databaseUrl && config.databaseUrl.includes('sslmode=require')
-    ? { rejectUnauthorized: false }
-    : (config.databaseUrl && (config.databaseUrl.includes('supabase') || config.databaseUrl.includes('neon'))
-      ? { rejectUnauthorized: false }
-      : false),
+  ssl: sslForUrl(config.databaseUrl),
 });
 
 pool.on('error', (err) => {

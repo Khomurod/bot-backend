@@ -66,6 +66,12 @@ enough to benefit, and never let their absence block or delay work:
 - Never expose production credentials (Telegram bot tokens, Google API keys,
   database URLs, ELD/RingCentral/Facebook secrets) in code, logs, commits, or
   chat output.
+- Since November 2026 the deployment's settings live in the app, encrypted
+  (Settings → System → Secrets); Coolify holds only `DATABASE_URL` and
+  `INTEGRATION_SECRET_KEY`. A new setting is uploaded there, not added to
+  Coolify, and no code path may return, log or audit a stored value. Read
+  [`docs/architecture/app-secrets.md`](docs/architecture/app-secrets.md) before
+  touching `config/appSecrets*`, `lib/appSecrets/` or the boot order.
 - Never make destructive database changes without explicit approval and a
   backup. Schema changes must be additive and idempotent. The database is
   managed by the migration system in `database/migrate/`:
@@ -253,6 +259,7 @@ that area**, and run the tests it names.
 | Home-time violation alerts to accounting: why Bitrix pipeline 33 decides (never the app's own home time), exactly once per violation per home stay, the go-live baseline, and who may press Charged / Not charging | [`docs/architecture/home-time-violation-alerts.md`](docs/architecture/home-time-violation-alerts.md) |
 | Employee birthday cards: one card per employee in the owner's template, the owner's fixed caption (never a model's), the Telegram tag, Birthdays → Employees, and why a Telegram suggestion never overwrites a person | [`docs/architecture/employee-birthday-cards.md`](docs/architecture/employee-birthday-cards.md) |
 | Samsara settings, the shared-secret envelope for its API key, missing-video recovery | [`docs/architecture/samsara-settings-and-video-recovery.md`](docs/architecture/samsara-settings-and-video-recovery.md) |
+| The deployment's settings stored in the app (Settings → Secrets): only `DATABASE_URL` and `INTEGRATION_SECRET_KEY` in Coolify, encrypted only under `INTEGRATION_SECRET_KEY`, never a value returned or logged, super admins only, versions and the Coolify rollback switches, the boot read before `config/config.js` | [`docs/architecture/app-secrets.md`](docs/architecture/app-secrets.md) |
 | Every place a Samsara alert is posted, and the per-driver switch that stops the copy in one driver's own group — default ON, OFF touches nothing else, never guessed when unreadable | [`docs/architecture/samsara-driver-group-alerts.md`](docs/architecture/samsara-driver-group-alerts.md) |
 | The Bitrix assignee lookup, recruiter↔Bitrix mapping, Bitrix connection settings | [`docs/architecture/recruiter-sms-bitrix.md`](docs/architecture/recruiter-sms-bitrix.md) |
 | The Dispatcher Board ↔ Bitrix24 check: the Board is the source of truth, Bitrix only read, nothing decided from an incomplete read, one situation one question, one question out at a time, only an operator's "done" re-checks | [`docs/architecture/board-bitrix-check.md`](docs/architecture/board-bitrix-check.md) |

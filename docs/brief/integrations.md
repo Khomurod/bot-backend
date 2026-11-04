@@ -59,6 +59,13 @@ Monitor's `documentReader` with the Finance Monitor (2026-10-23). Do not add a n
 
 ### Configuration model
 
+**Where the values live (November 2026):** Coolify holds only `DATABASE_URL`
+and `INTEGRATION_SECRET_KEY`; every other setting — the required secrets below
+included — is uploaded as a `.env` in **Settings → System → Secrets**, stored
+encrypted in the database and put into `process.env` by
+`config/appSecretsBoot.js` before `config/config.js` loads. A stored value
+overrides Coolify's. The rules: `docs/architecture/app-secrets.md`.
+
 Only **five** environment variables are required (`config/config.js`
 `requiredEnv`): `DATABASE_URL`, `JWT_SECRET`, `BOT_TOKEN`, `TELEGRAM_BOT_TOKEN`,
 `FACEBOOK_TOKEN_ENCRYPTION_KEY`. **Most other settings carry a hardcoded default

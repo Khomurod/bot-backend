@@ -312,12 +312,45 @@ async function updateSamsaraSettings(payload = {}, { updatedBy = null } = {}) {
   return getSamsaraSettingsForAdmin();
 }
 
+/**
+ * Re-encrypt the stored API key under INTEGRATION_SECRET_KEY, once.
+ *
+ * Until November 2026 neither service had INTEGRATION_SECRET_KEY, so the key
+ * was stored under the key derived from DATABASE_URL. The moment both are
+ * given INTEGRATION_SECRET_KEY, neither could open it any more — and the next
+ * step of the plan, a new database password, would make that permanent. So at
+ * boot, when the explicit key is set and the stored value carries the
+ * DATABASE_URL-derived fingerprint, it is opened with that and written back
+ * under the explicit key (docs/architecture/app-secrets.md, "the trap").
+ *
+ * Never throws into boot and never logs the key: it answers with a status.
+ */
+async function moveApiKeyToExplicitKey(env = process.env, run = query) {
+  if (!String(env.INTEGRATION_SECRET_KEY || '').trim()) return { status: 'no-explicit-key' };
+  const row = (await run('SELECT api_key_encrypted, api_key_fingerprint FROM samsara_settings WHERE id = 1')).rows[0];
+  if (!row || !row.api_key_encrypted) return { status: 'nothing-stored' };
+  const explicitFingerprint = sharedCrypto.fingerprint(env);
+  if (row.api_key_fingerprint === explicitFingerprint) return { status: 'already' };
+  const derivedEnv = { DATABASE_URL: env.DATABASE_URL };
+  if (row.api_key_fingerprint !== sharedCrypto.fingerprint(derivedEnv)) return { status: 'unknown-key' };
+  const plain = sharedCrypto.safeDecryptShared(row.api_key_encrypted, derivedEnv);
+  if (!plain) return { status: 'unreadable' };
+  const res = await run(
+    `UPDATE samsara_settings SET api_key_encrypted = $1, api_key_fingerprint = $2, updated_at = NOW()
+      WHERE id = 1 AND api_key_fingerprint = $3`,
+    [sharedCrypto.encryptShared(plain, env), explicitFingerprint, row.api_key_fingerprint],
+  );
+  invalidateCache();
+  return { status: res.rowCount ? 'moved' : 'already' };
+}
+
 module.exports = {
   DEFAULTS,
   DEFAULT_API_BASE,
   getSamsaraConfig,
   getSamsaraSettingsForAdmin,
   updateSamsaraSettings,
+  moveApiKeyToExplicitKey,
   invalidateCache,
   maskKey,
 };

@@ -57,6 +57,7 @@ const RetiredLeftoversTab = lazy(() => import("./settings/RetiredLeftoversTab"))
 const GrossRaceTab = lazy(() => import("./settings/GrossRaceTab"));
 const MetaCrmTab = lazy(() => import("./settings/MetaCrmTab"));
 const AdminAccountsTab = lazy(() => import("./settings/admins/AdminAccountsTab"));
+const SecretsTab = lazy(() => import("./settings/secrets/SecretsTab"));
 
 /**
  * `tab` is the section named in the address (`#settings/board`) and
@@ -103,6 +104,7 @@ export default function SettingsPage({ tab: routeTab, onTabChange }) {
             {tab === "access" && <GroupAccessPanel />}
             {tab === "grossrace" && <GrossRaceTab />}
             {tab === "admins" && <AdminAccountsTab />}
+            {tab === "secrets" && <SecretsTab />}
             {tab === "leftovers" && <RetiredLeftoversTab />}
           </Suspense>
           </PageErrorBoundary>

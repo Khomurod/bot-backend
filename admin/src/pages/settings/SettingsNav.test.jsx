@@ -11,14 +11,14 @@ import SettingsNav, { itemIsVisible } from "./SettingsNav";
 import { SETTINGS_GROUPS, SETTINGS_SECTION_KEYS, settingsSectionLabel } from "./sections";
 
 describe("Settings sections", () => {
-  test("five groups, nineteen sections, each key once, in this order", () => {
+  test("five groups, twenty sections, each key once, in this order", () => {
     expect(SETTINGS_GROUPS.map((g) => g.label)).toEqual(["Fleet", "Recruiting", "AI", "Telegram", "System"]);
     expect(SETTINGS_SECTION_KEYS).toEqual([
       "location", "samsara", "samsara_video", "board",
       "ringcentral", "rc_connection", "bitrix", "metacrm", "safety",
       "ai", "ai_tasks", "ai_questions", "ai_terms",
       "notifications", "access", "reactions",
-      "admins", "grossrace", "leftovers",
+      "admins", "secrets", "grossrace", "leftovers",
     ]);
     expect(new Set(SETTINGS_SECTION_KEYS).size).toBe(SETTINGS_SECTION_KEYS.length);
   });
