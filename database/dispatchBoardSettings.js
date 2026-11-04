@@ -16,7 +16,10 @@
  *     credential. A URL in an error message is the normal case here, not an
  *     exotic one: Node quotes the request in its own failures.
  *
- * UNLIKE THE OTHER INTEGRATIONS, there is no environment fallback and `enabled`
+ * SINCE NOVEMBER 2026 the board is a service of its own, read with a key from
+ * Settings → Secrets (DISPATCH_BOARD_API_KEY — `boardApiFromEnv` below); when
+ * that key is set it replaces the address and token saved here. Otherwise,
+ * unlike the other integrations, there is no environment fallback, and `enabled`
  * defaults to FALSE. There is nothing to inherit — no `DISPATCH_BOARD_URL` has
  * ever existed — and an integration that switches itself on at deploy is how
  * unreviewed requests start being made to somebody else's spreadsheet.
@@ -27,6 +30,23 @@ const { maskKey, createSafeDecrypt } = require('../lib/security/secretMasking');
 const { stripUrls, splitCredentialsFromUrl } = require('../lib/security/redactUrls');
 
 const CACHE_TTL_MS = 30_000;
+/** The board service that replaced the spreadsheet (November 2026). */
+const DEFAULT_BOARD_API_URL = 'https://board.wenzellc.com/api/public/v1/board';
+
+/**
+ * The board service's key, from Settings → Secrets (DISPATCH_BOARD_API_KEY,
+ * optionally DISPATCH_BOARD_API_URL). When it is set it IS the connection — the
+ * saved Apps Script address and token are not used — and the request carries
+ * the key in a header, never in the URL. The ON/OFF switch below still decides
+ * whether the board is read at all. Read at call time: the secrets are loaded
+ * at boot, and a test sets them per case.
+ */
+function boardApiFromEnv(env = process.env) {
+  const key = String(env.DISPATCH_BOARD_API_KEY || '').trim();
+  if (!key) return null;
+  const url = usableBaseUrl(String(env.DISPATCH_BOARD_API_URL || '').trim() || DEFAULT_BOARD_API_URL);
+  return { baseUrl: url, token: key, auth: 'header', source: 'secrets' };
+}
 const DEFAULT_POLL_INTERVAL_SECONDS = 300;
 const MIN_POLL_INTERVAL_SECONDS = 60;
 const MAX_POLL_INTERVAL_SECONDS = 3600;
@@ -87,14 +107,17 @@ async function getBoardConfig() {
   if (cache && now < cacheExpiresAt) return cache;
 
   const row = await getSettingsRow();
-  const baseUrl = usableBaseUrl(row?.base_url);
-  const token = safeDecrypt(row?.token_encrypted) || '';
+  const api = boardApiFromEnv();
+  const baseUrl = api ? api.baseUrl : usableBaseUrl(row?.base_url);
+  const token = api ? api.token : (safeDecrypt(row?.token_encrypted) || '');
 
   const effective = {
     enabled: row ? row.enabled === true : false,
     baseUrl,
     token,
     configured: Boolean(baseUrl && token),
+    auth: api ? 'header' : 'query',
+    source: api ? 'secrets' : 'settings',
     pollIntervalSeconds: clampInterval(row?.poll_interval_seconds ?? DEFAULT_POLL_INTERVAL_SECONDS),
     lastPollAt: row?.last_poll_at || null,
     lastPollOk: row?.last_poll_ok ?? null,
@@ -120,6 +143,7 @@ async function getBoardSettingsForAdmin() {
     tokenSet: Boolean(cfg.token),
     tokenMasked: maskKey(cfg.token),
     configured: cfg.configured,
+    source: cfg.source,
     pollIntervalSeconds: cfg.pollIntervalSeconds,
     lastPollAt: cfg.lastPollAt,
     lastPollOk: cfg.lastPollOk,
@@ -228,6 +252,8 @@ module.exports = {
   recordPollOutcome,
   invalidateCache,
   usableBaseUrl,
+  boardApiFromEnv,
+  DEFAULT_BOARD_API_URL,
   clampInterval,
   DEFAULT_POLL_INTERVAL_SECONDS,
   MIN_POLL_INTERVAL_SECONDS,

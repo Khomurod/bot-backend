@@ -113,6 +113,14 @@ function createDispatchBoardSettingsRouter({ authMiddleware }) {
   router.post('/dispatch-board/test', authMiddleware, async (req, res) => {
     try {
       const stored = await board.getBoardConfig();
+      // The board service's key from Settings → Secrets IS the connection while
+      // it is set: the test reads exactly what the poller reads, and a typed
+      // address is never sent that key.
+      if (stored.source === 'secrets') {
+        const { json } = await fetchBoard({ baseUrl: stored.baseUrl, token: stored.token, auth: 'header' });
+        res.json(describeTest(json));
+        return;
+      }
       // A credential pasted inside the candidate URL is separated the same way
       // it would be on save, so testing "the link" works and never puts the
       // token in a log line.
@@ -141,23 +149,7 @@ function createDispatchBoardSettingsRouter({ authMiddleware }) {
       }
 
       const { json } = await fetchBoard({ baseUrl, token });
-      const parsed = parseBoardPayload(json);
-      const summary = summariseBoardPayload(parsed);
-
-      res.json({
-        connected: parsed.ok,
-        message: parsed.ok
-          ? `Read ${summary.count} row(s) from the board.`
-          : 'The board answered, but no rows could be found in its reply.',
-        boardDate: parsed.boardDate,
-        generatedAt: parsed.generatedAt,
-        ...summary,
-        // Names only — this is how an unfamiliar column is discovered without
-        // putting the fleet's data on a screen.
-        unknownFields: [...new Set(
-          parsed.problems.filter((p) => p.kind === 'unknown_field').map((p) => p.field)
-        )],
-      });
+      res.json(describeTest(json));
     } catch (err) {
       // `BoardFetchError` messages are URL-stripped at construction; anything
       // else goes through the same door on the way out.
@@ -166,6 +158,26 @@ function createDispatchBoardSettingsRouter({ authMiddleware }) {
   });
 
   return router;
+}
+
+/** Counts and column names only — never a row. */
+function describeTest(json) {
+  const parsed = parseBoardPayload(json);
+  const summary = summariseBoardPayload(parsed);
+  return {
+    connected: parsed.ok,
+    message: parsed.ok
+      ? `Read ${summary.count} row(s) from the board.`
+      : 'The board answered, but no rows could be found in its reply.',
+    boardDate: parsed.boardDate,
+    generatedAt: parsed.generatedAt,
+    ...summary,
+    // Names only — this is how an unfamiliar column is discovered without
+    // putting the fleet's data on a screen.
+    unknownFields: [...new Set(
+      parsed.problems.filter((p) => p.kind === 'unknown_field').map((p) => p.field)
+    )],
+  };
 }
 
 module.exports = { createDispatchBoardSettingsRouter };

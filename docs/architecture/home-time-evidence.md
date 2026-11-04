@@ -103,12 +103,15 @@ watch has the ability to do it.
 different questions:
 
 * `boardSaysHome` — HOME, VACATION
-* `boardSaysWorking` — DISPATCHED, ENROUTE. **READY is deliberately not here**:
+* `boardSaysWorking` — DISPATCHED, ENROUTE, COVERED, HOLD FOR LOAD (the last
+  two came with the board service in November 2026; the owner: both mean
+  working). **READY is deliberately not here**:
   a truck marked available proves nothing about whether its driver is driving,
   and folding it in would make Wenze accuse a resting driver of contradicting
   their own home-time record. The contradiction checks that read this one were
   removed in October 2026; nothing reads it today.
-* `boardEndsHomeStay` — READY, RESERVED, DISPATCHED, ENROUTE. Asked **only** of
+* `boardEndsHomeStay` — READY, RESERVED, DISPATCHED, ENROUTE, COVERED, HOLD FOR
+  LOAD. Asked **only** of
   a driver Wenze already has at home: dispatch has put the truck back in the
   pool, so the stay is over.
 

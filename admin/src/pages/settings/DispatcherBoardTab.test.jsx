@@ -211,3 +211,19 @@ test("the automatic ETA updates card is gone with the ETA feature", async () => 
   expect(screen.queryByText(/📋 Details/)).not.toBeInTheDocument();
   expect(screen.queryByText(/Live Status/)).not.toBeInTheDocument();
 });
+
+test("connected from Settings → Secrets: no address or token fields, and Save leaves the saved address alone", async () => {
+  getDispatchBoardSettings.mockResolvedValue(stored({
+    source: "secrets", baseUrl: "https://board.example.com/api/public/v1/board", enabled: true,
+  }));
+  updateDispatchBoardSettings.mockResolvedValue(stored({ source: "secrets", enabled: true }));
+  render(<DispatcherBoardTab />);
+  expect(await screen.findByText(/Connected to the board service/)).toBeTruthy();
+  expect(screen.queryByPlaceholderText(/script.google.com/)).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  await waitFor(() => expect(updateDispatchBoardSettings).toHaveBeenCalled());
+  const payload = updateDispatchBoardSettings.mock.calls[0][0];
+  expect(payload).not.toHaveProperty("baseUrl");
+  expect(payload).not.toHaveProperty("token");
+  expect(payload.enabled).toBe(true);
+});

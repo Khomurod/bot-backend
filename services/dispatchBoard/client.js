@@ -103,20 +103,27 @@ async function readCappedText(response, maxBytes) {
 /**
  * Fetch the Board once.
  *
- * @param {{baseUrl: string, token: string}} connection
+ * `auth` is `query` for the old Apps Script (the token in the query string, one
+ * redirect followed without it) or `header` for the board service that
+ * replaced it in November 2026 (`Authorization: Bearer`, the URL carries no
+ * credential, and NO redirect is followed — a request holding a key in a header
+ * does not go anywhere it was not sent).
+ *
+ * @param {{baseUrl: string, token: string, auth?: 'query'|'header'}} connection
  * @param {{fetchImpl?: Function, timeoutMs?: number, maxBytes?: number}} [options]
  * @returns {Promise<{status: number, json: *}>}
  * @throws {BoardFetchError} always with a URL-free message
  */
-async function fetchBoard({ baseUrl, token } = {}, {
+async function fetchBoard({ baseUrl, token, auth = 'query' } = {}, {
   fetchImpl = fetch, timeoutMs = REQUEST_TIMEOUT_MS, maxBytes = MAX_BODY_BYTES,
 } = {}) {
   if (!baseUrl) throw new BoardFetchError('no board URL is saved', { kind: 'not_configured' });
   if (!token) throw new BoardFetchError('no board token is saved', { kind: 'not_configured' });
 
+  const byHeader = auth === 'header';
   let url;
   try {
-    url = buildBoardUrl(baseUrl, token);
+    url = byHeader ? new URL(String(baseUrl)).toString() : buildBoardUrl(baseUrl, token);
   } catch (_) {
     throw new BoardFetchError('the saved board URL is not a URL', { kind: 'bad_url' });
   }
@@ -129,7 +136,9 @@ async function fetchBoard({ baseUrl, token } = {}, {
       response = await fetchImpl(url, {
         method: 'GET',
         redirect: 'manual',
-        headers: { accept: 'application/json' },
+        headers: byHeader
+          ? { accept: 'application/json', authorization: `Bearer ${token}` }
+          : { accept: 'application/json' },
         signal: AbortSignal.timeout(timeoutMs),
       });
     } catch (err) {
@@ -146,9 +155,11 @@ async function fetchBoard({ baseUrl, token } = {}, {
       ? response.headers?.get?.('location')
       : null;
     if (!location) break;
-    if (redirects >= MAX_REDIRECTS) {
+    if (byHeader || redirects >= MAX_REDIRECTS) {
       throw new BoardFetchError(
-        'the board redirected more than once, which a credentialled request must not follow',
+        byHeader
+          ? 'the board redirected, which a request carrying its key must not follow'
+          : 'the board redirected more than once, which a credentialled request must not follow',
         { status: response.status, kind: 'too_many_redirects' }
       );
     }
