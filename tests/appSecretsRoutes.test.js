@@ -105,3 +105,14 @@ test('a refused save is a 400 with the preview; an unexpected error is a plain 5
   assert.equal(broken.status, 500);
   assert.ok(!(await broken.text()).includes(SECRET));
 });
+
+test('a preview never carries the internal plan, even if the service handed it over', async (t) => {
+  const base = serve(t, {
+    service: { preview: async () => ({ target: 'bot', added: [], _plan: { items: [{ name: 'BOT_TOKEN', value: SECRET }] } }) },
+  });
+  const res = await send(`${base}/preview`, 'POST', { target: 'bot', text: 'A=1' });
+  const text = await res.text();
+  assert.equal(res.status, 200);
+  assert.ok(!text.includes(SECRET));
+  assert.ok(!text.includes('_plan'));
+});

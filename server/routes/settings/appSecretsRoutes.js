@@ -83,7 +83,10 @@ function createAppSecretsRouter({
 
   router.post('/app-secrets/preview', ...guard, limitPreviews, async (req, res) => {
     try {
-      return res.json({ preview: await secretsService.preview({ target: req.body?.target, text: req.body?.text }) });
+      // The service already leaves out its internal plan (which holds values);
+      // dropped here again so no service change can ever send it.
+      const { _plan, ...preview } = await secretsService.preview({ target: req.body?.target, text: req.body?.text });
+      return res.json({ preview });
     } catch (err) {
       return failed(res, err, 'preview');
     }

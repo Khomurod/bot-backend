@@ -39,6 +39,13 @@ test('plain, quoted, exported and commented lines', () => {
   assert.equal(r.problems.length, 1);
 });
 
+test('only \\n, \\" and \\\\ are escapes; any other backslash is kept as written', () => {
+  const m = asMap(parseEnvText('A="a\\sb"\nB="C:\\tmp\\x"\nC="x\\\\y"\n'));
+  assert.equal(m.A, 'a\\sb');
+  assert.equal(m.B, 'C:\\tmp\\x');
+  assert.equal(m.C, 'x\\y');
+});
+
 test('Windows line endings and a byte-order mark', () => {
   const m = asMap(parseEnvText('﻿A=1\r\nB=2\r\n'));
   assert.deepEqual(m, { A: '1', B: '2' });

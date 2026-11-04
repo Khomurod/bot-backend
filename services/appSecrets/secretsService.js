@@ -164,15 +164,20 @@ function createSecretsService(deps = {}) {
     });
   }
 
-  async function writeVersion({ env, items, currentItems, by, note, restoredFrom = null }) {
-    const versionId = await db.insertVersion({
-      createdBy: by || null,
-      note: note || null,
-      keyFingerprint: sharedCrypto.fingerprint(env),
-      restoredFrom,
-      values: toRows(items, currentItems, env),
-    });
-    return versionId;
+  async function writeVersion({ env, items, currentItems, by, note, restoredFrom = null, expectedHead }) {
+    try {
+      return await db.insertVersion({
+        createdBy: by || null,
+        note: note || null,
+        keyFingerprint: sharedCrypto.fingerprint(env),
+        restoredFrom,
+        values: toRows(items, currentItems, env),
+        expectedHead: expectedHead == null ? null : Number(expectedHead),
+      });
+    } catch (err) {
+      if (err && err.code === 'STALE_HEAD') throw conflict('The secrets changed meanwhile. Reload the page and try again.');
+      throw err;
+    }
   }
 
   async function save({ target, text, baseVersion = null, by = null }) {
@@ -187,6 +192,7 @@ function createSecretsService(deps = {}) {
     const { items: currentItems } = await loadCurrent(env);
     const versionId = await writeVersion({
       env, items: result._plan.items, currentItems, by, note: `upload for ${target}`,
+      expectedHead: result.baseVersion,
     });
     return { versionId, preview: strip(result) };
   }
@@ -198,12 +204,15 @@ function createSecretsService(deps = {}) {
     const nextItems = items.filter((i) => !(i.scope === scope && i.name === name));
     const checks = rules.checkVersion({ items: nextItems, hostEnv: getHostEnv() });
     if (checks.blocking.length) throw badRequest(checks.blocking[0]);
-    const versionId = await writeVersion({ env, items: nextItems, currentItems: items, by, note: `removed ${name}` });
+    const versionId = await writeVersion({
+      env, items: nextItems, currentItems: items, by, note: `removed ${name}`, expectedHead: latest.id,
+    });
     return { versionId, restartsThisApp: scope !== 'samsara' };
   }
 
   async function restore({ versionId, by = null }) {
     const env = requireKey();
+    const head = await db.getLatestVersion();
     const target = await db.getVersion(versionId);
     if (!target) throw badRequest(`Version ${versionId} does not exist.`);
     if (target.key_fingerprint !== sharedCrypto.fingerprint(env)) {
@@ -217,6 +226,7 @@ function createSecretsService(deps = {}) {
     if (checks.blocking.length) throw badRequest(checks.blocking[0]);
     const newId = await writeVersion({
       env, items, currentItems: items, by, note: `restored version ${versionId}`, restoredFrom: Number(versionId),
+      expectedHead: head ? head.id : null,
     });
     return { versionId: newId, restoredFrom: Number(versionId) };
   }

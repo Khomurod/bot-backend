@@ -65,12 +65,21 @@ async function listVersions(limit = 20, run = query) {
  * @param {string} input.keyFingerprint
  * @param {number|null} [input.restoredFrom]
  * @param {{scope: string, name: string, ciphertext: string, last4: string}[]} input.values
+ * @param {number|null} input.expectedHead  the newest version id the caller's snapshot was
+ *   read from (null: nothing stored). Checked under a lock: a version written by
+ *   somebody else in between makes this throw `STALE_HEAD`, so a save, a removal
+ *   and a restore can never silently overwrite one another.
  * @returns {Promise<number>} the new version id
  */
-async function insertVersion({ createdBy, note, keyFingerprint, restoredFrom = null, values }, db = pool) {
+async function insertVersion({ createdBy, note, keyFingerprint, restoredFrom = null, values, expectedHead }, db = pool) {
   const client = await db.connect();
   try {
     await client.query('BEGIN');
+    await client.query("SELECT pg_advisory_xact_lock(hashtext('app_secret_versions'))");
+    const currentHead = (await client.query('SELECT COALESCE(MAX(id), 0)::bigint AS head FROM app_secret_versions')).rows[0].head;
+    if (Number(currentHead) !== Number(expectedHead || 0)) {
+      throw Object.assign(new Error('The secrets changed meanwhile'), { code: 'STALE_HEAD' });
+    }
     const head = await client.query(
       `INSERT INTO app_secret_versions (created_by, note, key_fingerprint, restored_from)
        VALUES ($1, $2, $3, $4) RETURNING id`,

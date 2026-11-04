@@ -113,3 +113,16 @@ test('the stored Samsara key moves under INTEGRATION_SECRET_KEY once, and only f
   await h.query("UPDATE samsara_settings SET api_key_fingerprint = 'someone-else' WHERE id = 1");
   assert.deepEqual(await samsaraSettings.moveApiKeyToExplicitKey(env, run), { status: 'unknown-key' });
 });
+
+test('a version written on a stale snapshot is refused under the lock', { skip: skipWithoutPg() }, async (t) => {
+  const { h, svc } = await setup(t);
+  const { appSecrets: store } = h.loadDataLayer(['appSecrets']);
+  await svc.save({ target: 'bot', text: `BOT_TOKEN=${T1}\nTELEGRAM_BOT_TOKEN=${T2}\n`, baseVersion: null });
+  const row = { scope: 'bot', name: 'A', ciphertext: 'x', last4: '' };
+  await assert.rejects(
+    store.insertVersion({ createdBy: null, note: null, keyFingerprint: 'f', values: [row], expectedHead: null }),
+    (err) => err.code === 'STALE_HEAD',
+  );
+  assert.equal(await store.insertVersion({ createdBy: null, note: null, keyFingerprint: 'f', values: [row], expectedHead: 1 }), 2);
+  assert.equal(Number((await h.query('SELECT COUNT(*) FROM app_secret_versions')).rows[0].count), 2);
+});

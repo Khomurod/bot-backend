@@ -29,7 +29,10 @@ function memoryStore() {
     async listVersions() {
       return [...versions].reverse().map((v) => ({ ...v, value_count: (values.get(v.id) || []).length }));
     },
-    async insertVersion({ createdBy, note, keyFingerprint, restoredFrom, values: rows }) {
+    async insertVersion({ createdBy, note, keyFingerprint, restoredFrom, values: rows, expectedHead }) {
+      if (Number(expectedHead || 0) !== versions.length) {
+        throw Object.assign(new Error('stale'), { code: 'STALE_HEAD' });
+      }
       const id = versions.length + 1;
       versions.push({ id, created_at: new Date(0), created_by: createdBy, note, key_fingerprint: keyFingerprint, restored_from: restoredFrom });
       values.set(id, rows.map((r) => ({ ...r })));
@@ -155,4 +158,17 @@ test('removing a value this app needs is refused', async () => {
   const { svc } = service({ host: { FACEBOOK_TOKEN_ENCRYPTION_KEY: 'f' } });
   await svc.save({ target: 'bot', text: `${BOT_FILE}JWT_SECRET=jwt-secret-value-long\n`, baseVersion: null });
   await assert.rejects(svc.removeValue({ scope: 'bot', name: 'JWT_SECRET' }), /JWT_SECRET is missing/);
+});
+
+test('a removal or restore read before somebody else\'s save is refused, not written over it', async () => {
+  const { svc, store } = service();
+  await svc.save({ target: 'bot', text: `${BOT_FILE}EXTRA=extra-value-long-1\n`, baseVersion: null });
+  await svc.save({ target: 'bot', text: `${BOT_FILE}EXTRA=extra-value-long-2\n`, baseVersion: 1 });
+  // Both read their snapshot when version 1 was still the newest.
+  const realLatest = store.getLatestVersion;
+  store.getLatestVersion = async () => store.versions[0];
+  await assert.rejects(svc.removeValue({ scope: 'bot', name: 'EXTRA' }), (e) => e.statusCode === 409);
+  await assert.rejects(svc.restore({ versionId: 1 }), (e) => e.statusCode === 409);
+  store.getLatestVersion = realLatest;
+  assert.equal(store.versions.length, 2, 'nothing was written over version 2');
 });
