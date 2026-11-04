@@ -58,19 +58,29 @@ test('everyone but a super administrator is refused, on every route', async (t) 
   assert.equal((await send(`${base}/versions/1/restore`, 'POST')).status, 403);
 });
 
-test('a save is audited by name, and restarts the app when its own values changed', async (t) => {
-  const audits = [];
+test('a save hands the service who did it (audited in the same transaction), and restarts when this app\'s values changed', async (t) => {
+  const calls = [];
   const restarts = [];
-  const base = serve(t, { audits, restarts });
+  const base = serve(t, {
+    restarts,
+    service: { save: async (input) => { calls.push(input); return { versionId: 2, preview: { target: 'bot', added: [], changed: [], removed: [], restartsThisApp: true } }; } },
+  });
   const res = await send(base, 'PUT', { target: 'bot', text: `BOT_TOKEN=${SECRET}`, baseVersion: 1 });
   assert.equal(res.status, 200);
   const body = await res.json();
   assert.equal(body.restarting, true);
   assert.equal(restarts.length, 1);
-  assert.equal(audits[0].action, 'app_secrets.save');
-  assert.deepEqual(audits[0].newValues.added, ['both:BOT_TOKEN']);
-  assert.ok(!JSON.stringify(audits).includes(SECRET));
+  assert.deepEqual(calls[0].actor, { adminId: 1, roleKeys: ['super_admin'], ipAddress: calls[0].actor.ipAddress });
+  assert.equal(calls[0].by, 'owner');
   assert.ok(!JSON.stringify(body).includes(SECRET));
+});
+
+test('a change that could not be audited is a failure, not a success', async (t) => {
+  const restarts = [];
+  const base = serve(t, { restarts, service: { save: async () => { throw Object.assign(new Error('audit insert failed'), { code: '23502' }); } } });
+  const res = await send(base, 'PUT', { target: 'bot', text: 'A=1' });
+  assert.equal(res.status, 500);
+  assert.equal(restarts.length, 0);
 });
 
 test('a change only the Samsara service reads does not restart this app', async (t) => {

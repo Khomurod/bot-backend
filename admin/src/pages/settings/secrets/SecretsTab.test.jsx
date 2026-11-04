@@ -112,3 +112,11 @@ test("an older version can be restored; the one in use cannot", async () => {
   expect(await screen.findByText(/Version 1 restored as version 3/)).toBeTruthy();
   expect(api.restoreAppSecretsVersion).toHaveBeenCalledWith(1);
 });
+
+test("pinned by APP_SECRETS_VERSION: a warning, and 'in use' marks the version actually loaded", async () => {
+  api.getAppSecrets.mockResolvedValue({ ...VIEW, boot: { status: "loaded", version: 1, names: [], overridden: [], pinned: true } });
+  render(<SecretsTab />);
+  expect(await screen.findByText(/so every start loads that version/)).toBeTruthy();
+  expect(screen.getByText(/1\s*\(in use\)/)).toBeTruthy();
+  expect(screen.getByText(/2\s*\(newest\)/)).toBeTruthy();
+});

@@ -12,6 +12,7 @@
  * the latest version is the one in use.
  */
 const { pool, query } = require('./pool');
+const { insertAdminAudit } = require('./adminAudit');
 
 /** The newest version's header, or null when nothing has been stored. */
 async function getLatestVersion(run = query) {
@@ -69,9 +70,11 @@ async function listVersions(limit = 20, run = query) {
  *   read from (null: nothing stored). Checked under a lock: a version written by
  *   somebody else in between makes this throw `STALE_HEAD`, so a save, a removal
  *   and a restore can never silently overwrite one another.
+ * @param {object|null} [input.audit]  the admin-audit entry for this change (names only),
+ *   written in the SAME transaction: a change that cannot be audited is not saved
  * @returns {Promise<number>} the new version id
  */
-async function insertVersion({ createdBy, note, keyFingerprint, restoredFrom = null, values, expectedHead }, db = pool) {
+async function insertVersion({ createdBy, note, keyFingerprint, restoredFrom = null, values, expectedHead, audit = null }, db = pool) {
   const client = await db.connect();
   try {
     await client.query('BEGIN');
@@ -93,6 +96,9 @@ async function insertVersion({ createdBy, note, keyFingerprint, restoredFrom = n
          VALUES ($1, $2, $3, $4, $5)`,
         [versionId, v.scope, v.name, v.ciphertext, v.last4 || ''],
       );
+    }
+    if (audit) {
+      await insertAdminAudit({ ...audit, entityType: 'app_secrets', entityId: String(versionId) }, client);
     }
     await client.query('COMMIT');
     return Number(versionId);

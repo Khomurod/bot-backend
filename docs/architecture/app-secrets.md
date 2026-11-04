@@ -35,7 +35,11 @@ this feature. (Investigation and owner decisions: the handoff of 4 November.)
    characters. Values are not logged; errors and the audit name names only.
 4. **Super administrators only, by role** (`requireSuperAdmin`, not a
    permission that could be granted to a lesser role). Every save, removal and
-   restore is in the admin audit with names, never values.
+   restore is in the admin audit with names, never values — written in the
+   SAME transaction as the version: a change that cannot be audited is not
+   saved. Concurrent changes cannot overwrite one another: a version is written
+   only if the newest version is still the one its snapshot was read from
+   (checked under a lock; otherwise a 409).
 5. **Every change is a new version; nothing is edited in place.** The newest
    version is the one in use. A value that did not change keeps its exact
    ciphertext, so a reader can tell whether ITS values changed.
@@ -98,7 +102,10 @@ against it (rule 7). The leads bot (Python) gets the result through
 - **When the app will not start** (so the page is unreachable): in Coolify set
   `APP_SECRETS_VERSION=<an earlier number>` and redeploy — that version is loaded
   instead of the newest — or `APP_SECRETS_OFF=true` to use only Coolify's
-  values. Remove the switch once the page is reachable again.
+  values. Remove the switch once the page is reachable again — while
+  `APP_SECRETS_VERSION` is set, every start loads that version and nothing
+  saved on the page takes effect; the page says so, and marks the version
+  actually loaded as "in use".
 - There is no automatic rollback after failed starts: the explicit switches
   are predictable, and a crash loop is already bounded by Docker.
 

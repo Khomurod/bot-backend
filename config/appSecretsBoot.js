@@ -119,6 +119,8 @@ function getBootState() {
     version: state.version,
     names: [...state.names],
     overridden: [...state.overridden],
+    // APP_SECRETS_VERSION in Coolify: every start loads THAT version, not the newest.
+    pinned: Boolean(String((state.hostEnv || {}).APP_SECRETS_VERSION || '').trim()),
   };
 }
 

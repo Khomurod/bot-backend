@@ -11,7 +11,7 @@ function when(value) {
  * history is never rewritten. If a saved version keeps the app from starting,
  * this page is not reachable: set APP_SECRETS_VERSION=<number> in Coolify instead.
  */
-export default function VersionsCard({ versions, latestId, busy, onRestore }) {
+export default function VersionsCard({ versions, latestId, inUseId = null, busy, onRestore }) {
   if (!versions.length) return null;
   return (
     <div className="card">
@@ -29,7 +29,11 @@ export default function VersionsCard({ versions, latestId, busy, onRestore }) {
           <tbody>
             {versions.map((v) => (
               <tr key={v.id}>
-                <td>{v.id}{v.id === latestId ? " (in use)" : ""}</td>
+                <td>
+                  {v.id}
+                  {v.id === inUseId ? " (in use)" : ""}
+                  {v.id === latestId && v.id !== inUseId ? " (newest)" : ""}
+                </td>
                 <td>{when(v.createdAt)}</td>
                 <td>{v.createdBy || "—"}</td>
                 <td>{v.note || "—"}</td>

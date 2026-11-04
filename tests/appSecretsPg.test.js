@@ -126,3 +126,21 @@ test('a version written on a stale snapshot is refused under the lock', { skip: 
   assert.equal(await store.insertVersion({ createdBy: null, note: null, keyFingerprint: 'f', values: [row], expectedHead: 1 }), 2);
   assert.equal(Number((await h.query('SELECT COUNT(*) FROM app_secret_versions')).rows[0].count), 2);
 });
+
+test('the audit row is written with the version, and a version whose audit fails is not saved', { skip: skipWithoutPg() }, async (t) => {
+  const { h } = await setup(t);
+  const { appSecrets: store } = h.loadDataLayer(['appSecrets']);
+  const row = { scope: 'bot', name: 'A', ciphertext: 'x', last4: '' };
+  const id = await store.insertVersion({
+    createdBy: 'owner', note: null, keyFingerprint: 'f', values: [row], expectedHead: null,
+    audit: { adminId: null, roleKeys: ['super_admin'], action: 'app_secrets.save', newValues: { added: ['bot:A'] } },
+  });
+  const audits = (await h.query("SELECT entity_type, entity_id, action FROM admin_audit_log WHERE entity_type = 'app_secrets'")).rows;
+  assert.deepEqual(audits, [{ entity_type: 'app_secrets', entity_id: String(id), action: 'app_secrets.save' }]);
+
+  await assert.rejects(store.insertVersion({
+    createdBy: 'owner', note: null, keyFingerprint: 'f', values: [row], expectedHead: id,
+    audit: { adminId: null, roleKeys: [], action: null, newValues: {} },
+  }));
+  assert.equal(Number((await h.query('SELECT COUNT(*) FROM app_secret_versions')).rows[0].count), 1, 'rolled back with its audit');
+});

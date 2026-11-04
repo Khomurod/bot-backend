@@ -29,7 +29,9 @@ function memoryStore() {
     async listVersions() {
       return [...versions].reverse().map((v) => ({ ...v, value_count: (values.get(v.id) || []).length }));
     },
-    async insertVersion({ createdBy, note, keyFingerprint, restoredFrom, values: rows, expectedHead }) {
+    audits: [],
+    async insertVersion({ createdBy, note, keyFingerprint, restoredFrom, values: rows, expectedHead, audit }) {
+      if (audit) this.audits.push(audit);
       if (Number(expectedHead || 0) !== versions.length) {
         throw Object.assign(new Error('stale'), { code: 'STALE_HEAD' });
       }
@@ -171,4 +173,17 @@ test('a removal or restore read before somebody else\'s save is refused, not wri
   await assert.rejects(svc.restore({ versionId: 1 }), (e) => e.statusCode === 409);
   store.getLatestVersion = realLatest;
   assert.equal(store.versions.length, 2, 'nothing was written over version 2');
+});
+
+test('every change carries its audit entry into the same write — names only, never a value', async () => {
+  const { svc, store } = service();
+  const actor = { adminId: 7, roleKeys: ['super_admin'], ipAddress: '10.0.0.1' };
+  await svc.save({ target: 'bot', text: `${BOT_FILE}EXTRA=extra-value-long-1\n`, baseVersion: null, actor });
+  await svc.removeValue({ scope: 'bot', name: 'EXTRA', actor });
+  await svc.restore({ versionId: 1, actor });
+  assert.deepEqual(store.audits.map((a) => a.action), ['app_secrets.save', 'app_secrets.remove', 'app_secrets.restore']);
+  assert.deepEqual(store.audits[0].newValues.added.sort(), ['bot:EXTRA', 'bot:TELEGRAM_BOT_TOKEN', 'both:BOT_TOKEN', 'both:GROQ_API_KEY']);
+  assert.equal(store.audits[0].adminId, 7);
+  const json = JSON.stringify(store.audits);
+  for (const secret of [T1, T2, 'gsk_live_value_0000', 'extra-value-long-1']) assert.ok(!json.includes(secret), secret);
 });

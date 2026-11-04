@@ -108,10 +108,22 @@ export default function SecretsTab() {
           </div>
         )}
         {bootText && <p style={{ marginBottom: 0 }}>{bootText}</p>}
+        {view.boot?.pinned && (
+          <div className="alert alert-warning" style={{ marginTop: 8, marginBottom: 0 }}>
+            <code>APP_SECRETS_VERSION</code> is set in Coolify, so every start loads that version — what you save here
+            takes effect only after you remove it from Coolify and redeploy.
+          </div>
+        )}
       </div>
       <UploadCard disabled={!view.keyConfigured || busy} onSaved={() => load()} />
       <StoredValuesCard values={view.values} busy={busy || !view.keyConfigured} onRemove={remove} />
-      <VersionsCard versions={view.versions} latestId={view.latest?.id ?? null} busy={busy || !view.keyConfigured} onRestore={restore} />
+      <VersionsCard
+        versions={view.versions}
+        latestId={view.latest?.id ?? null}
+        inUseId={view.boot?.status === "loaded" ? view.boot.version : null}
+        busy={busy || !view.keyConfigured}
+        onRestore={restore}
+      />
     </div>
   );
 }

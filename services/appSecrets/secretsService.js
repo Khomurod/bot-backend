@@ -164,9 +164,16 @@ function createSecretsService(deps = {}) {
     });
   }
 
-  async function writeVersion({ env, items, currentItems, by, note, restoredFrom = null, expectedHead }) {
+  /** The audit row of a change: who, and the NAMES that changed — never a value. */
+  function auditOf(actor, action, newValues) {
+    if (!actor) return null;
+    return { adminId: actor.adminId ?? null, roleKeys: actor.roleKeys || [], action, oldValues: null, newValues, ipAddress: actor.ipAddress || null };
+  }
+
+  async function writeVersion({ env, items, currentItems, by, note, restoredFrom = null, expectedHead, audit = null }) {
     try {
       return await db.insertVersion({
+        audit,
         createdBy: by || null,
         note: note || null,
         keyFingerprint: sharedCrypto.fingerprint(env),
@@ -180,7 +187,7 @@ function createSecretsService(deps = {}) {
     }
   }
 
-  async function save({ target, text, baseVersion = null, by = null }) {
+  async function save({ target, text, baseVersion = null, by = null, actor = null }) {
     const result = await preview({ target, text });
     if (result.baseVersion !== (baseVersion == null ? null : Number(baseVersion))) {
       throw conflict('The secrets changed since this preview. Preview the file again.');
@@ -193,11 +200,17 @@ function createSecretsService(deps = {}) {
     const versionId = await writeVersion({
       env, items: result._plan.items, currentItems, by, note: `upload for ${target}`,
       expectedHead: result.baseVersion,
+      audit: auditOf(actor, 'app_secrets.save', {
+        target,
+        added: result.added.map((c) => `${c.scope}:${c.name}`),
+        changed: result.changed.map((c) => `${c.scope}:${c.name}`),
+        removed: result.removed.map((c) => `${c.scope}:${c.name}`),
+      }),
     });
     return { versionId, preview: strip(result) };
   }
 
-  async function removeValue({ scope, name, by = null }) {
+  async function removeValue({ scope, name, by = null, actor = null }) {
     const env = requireKey();
     const { latest, items } = await loadCurrent(env);
     if (!latest || !items.some((i) => i.scope === scope && i.name === name)) throw badRequest(`${name} is not stored.`);
@@ -206,11 +219,12 @@ function createSecretsService(deps = {}) {
     if (checks.blocking.length) throw badRequest(checks.blocking[0]);
     const versionId = await writeVersion({
       env, items: nextItems, currentItems: items, by, note: `removed ${name}`, expectedHead: latest.id,
+      audit: auditOf(actor, 'app_secrets.remove', { removed: [`${scope}:${name}`] }),
     });
     return { versionId, restartsThisApp: scope !== 'samsara' };
   }
 
-  async function restore({ versionId, by = null }) {
+  async function restore({ versionId, by = null, actor = null }) {
     const env = requireKey();
     const head = await db.getLatestVersion();
     const target = await db.getVersion(versionId);
@@ -227,6 +241,7 @@ function createSecretsService(deps = {}) {
     const newId = await writeVersion({
       env, items, currentItems: items, by, note: `restored version ${versionId}`, restoredFrom: Number(versionId),
       expectedHead: head ? head.id : null,
+      audit: auditOf(actor, 'app_secrets.restore', { restoredFrom: Number(versionId) }),
     });
     return { versionId: newId, restoredFrom: Number(versionId) };
   }

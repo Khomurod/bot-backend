@@ -11,7 +11,9 @@
  *   POST   /app-secrets/versions/:id/restore  a new version equal to an older one, then restart
  *
  * SUPER ADMINISTRATORS ONLY, by role. A value travels only in a request body
- * (the uploaded file), is never in a response and never in a log line.
+ * (the uploaded file), is never in a response and never in a log line. Every
+ * change is audited (names only) in the SAME transaction as the version it
+ * writes (database/appSecrets.insertVersion): unaudited, it is not saved.
  *
  * A save that touches what THIS app reads ends with the app restarting itself:
  * the answer goes out first, then SIGTERM runs the normal graceful shutdown
@@ -23,7 +25,6 @@ const express = require('express');
 const service = require('../../../services/appSecrets/secretsService');
 const { requireSuperAdmin } = require('../../middleware/auth');
 const { createRateLimiter } = require('../../middleware/rateLimit');
-const { insertAdminAudit: defaultInsertAdminAudit } = require('../../../database/adminAudit');
 
 const PREVIEW_WINDOW_MS = 5 * 60 * 1000;
 const PREVIEW_MAX_PER_WINDOW = 20;
@@ -48,7 +49,6 @@ function failed(res, err, what) {
 function createAppSecretsRouter({
   authMiddleware,
   secretsService = service,
-  insertAdminAudit = defaultInsertAdminAudit,
   restart = defaultRestart,
   previewLimiter = null,
 }) {
@@ -60,16 +60,11 @@ function createAppSecretsRouter({
     message: 'Too many previews in a few minutes — each one asks Telegram about the bot tokens. Wait a little.',
   });
 
-  const audit = (req, action, newValues) => insertAdminAudit({
+  const actor = (req) => ({
     adminId: req.admin?.id ?? null,
     roleKeys: req.admin?.role_keys || [],
-    action,
-    entityType: 'app_secrets',
-    entityId: newValues.versionId == null ? null : String(newValues.versionId),
-    oldValues: null,
-    newValues,
     ipAddress: req.ip || null,
-  }).catch((err) => console.warn('[SETTINGS API] Could not audit a secrets change:', err.message));
+  });
 
   const who = (req) => (req.admin && req.admin.username) || null;
 
@@ -95,17 +90,9 @@ function createAppSecretsRouter({
   router.put('/app-secrets', ...guard, limitPreviews, async (req, res) => {
     try {
       const out = await secretsService.save({
-        target: req.body?.target, text: req.body?.text, baseVersion: req.body?.baseVersion ?? null, by: who(req),
+        target: req.body?.target, text: req.body?.text, baseVersion: req.body?.baseVersion ?? null, by: who(req), actor: actor(req),
       });
       const p = out.preview;
-      // Names only: what changed, never a value.
-      await audit(req, 'app_secrets.save', {
-        versionId: out.versionId,
-        target: p.target,
-        added: p.added.map((c) => `${c.scope}:${c.name}`),
-        changed: p.changed.map((c) => `${c.scope}:${c.name}`),
-        removed: p.removed.map((c) => `${c.scope}:${c.name}`),
-      });
       if (p.restartsThisApp) restart();
       return res.json({ versionId: out.versionId, restarting: p.restartsThisApp, preview: p });
     } catch (err) {
@@ -115,8 +102,7 @@ function createAppSecretsRouter({
 
   router.delete('/app-secrets/:scope/:name', ...guard, async (req, res) => {
     try {
-      const out = await secretsService.removeValue({ scope: req.params.scope, name: req.params.name, by: who(req) });
-      await audit(req, 'app_secrets.remove', { versionId: out.versionId, removed: [`${req.params.scope}:${req.params.name}`] });
+      const out = await secretsService.removeValue({ scope: req.params.scope, name: req.params.name, by: who(req), actor: actor(req) });
       if (out.restartsThisApp) restart();
       return res.json({ versionId: out.versionId, restarting: out.restartsThisApp });
     } catch (err) {
@@ -128,8 +114,7 @@ function createAppSecretsRouter({
     const id = Number.parseInt(req.params.id, 10);
     if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'Unknown version' });
     try {
-      const out = await secretsService.restore({ versionId: id, by: who(req) });
-      await audit(req, 'app_secrets.restore', { versionId: out.versionId, restoredFrom: out.restoredFrom });
+      const out = await secretsService.restore({ versionId: id, by: who(req), actor: actor(req) });
       restart();
       return res.json({ ...out, restarting: true });
     } catch (err) {
