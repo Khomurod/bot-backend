@@ -26,13 +26,27 @@ for what changed; the rules below hold for both.
 - **Shape.** `{generated_at, count, trucks: [...]}`, about 105 rows, no paging.
   `lib/board/parse.js` reads rows under `trucks` as the `board_api` format:
   - `truck` is the unit AND the fleet: `021 CMP`. The unit is the number with
-    its leading zeros (`021` — what Wenze's groups and people carry); the suffix
-    is the fleet, read by `lib/board/truckSuffix.js` as the owner decided:
-    `COMP`, `CPM`, `CMP`, `V`, `R` (rental) and a driver's name → company; `L`
-    → lease; nothing after the number → owner-operator; anything that does not
-    start with a number → `unknown`. Names carry no `(COMPANY DRIVER)` label any
-    more. A line's key is its unit and person, so a corrected suffix is not a
-    new line.
+    its leading zeros, plus one letter written straight onto it (`021`, `001A`
+    — what Wenze's groups and people carry); the suffix after a space is the
+    fleet, read by `lib/board/truckSuffix.js` as the owner decided on
+    5 November 2026:
+
+    | Suffix | Who | Fleet | Shown as |
+    |---|---|---|---|
+    | `COMP` | company driver, the company's truck | company | company truck |
+    | `CMP` (`CPM` is the same) | company driver, an investor's truck | company | investor's truck |
+    | `V` | company driver, a vendor's truck | company | vendor's truck |
+    | `R` | lease operator | lease | lease to rent |
+    | `L` | bought the truck from us with a down payment — counted as an owner-operator, as gross is | owner-operator | lease to own |
+    | a driver's name (`310 JAVLON`, `077 (Polvan)`) or nothing (`045`) | owner-operator in his own truck | owner-operator | own truck |
+
+    Anything that does not start with a number, or a suffix with a digit in
+    it, is `unknown`. The "shown as" shade is counted on the Test result and
+    never matched on — Wenze has three fleets. The first reading (4 November:
+    a name and `R` → company, `L` → lease) disagreed with Wenze's own records
+    for 41 of 102 lines and was replaced. Names carry no `(COMPANY DRIVER)`
+    label any more. A line's key is its unit and person, so a corrected suffix
+    is not a new line.
   - a team is `driver` + `team_driver` (both seats named), read through the
     same rule as the sheet's `A / B`; a line with only `team_driver` filled is
     that one driver.
@@ -41,7 +55,7 @@ for what changed; the rules below hold for both.
     still is).
   - `row_updated_at` changes with ANY edit of the line, so it is not when the
     status changed: the poller still stamps that itself. `location*`,
-    `appointment`, `speed_mph`, `load_*` are not read.
+    `appointment`, `speed_mph`, `next_stop`, `load_*` are not read.
 
 ## What it is for now: Home Time's home-in and home-out
 

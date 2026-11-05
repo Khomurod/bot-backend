@@ -119,6 +119,7 @@ test("a successful test renders counts, and the fleet counts it was given", asyn
     boardDate: "2026-09-12",
     count: 102,
     fleet: { company: 50, lease: 2, owner_operator: 50, unknown: 0 },
+    fleetDetail: { company_truck: 30, investor_truck: 15, vendor_truck: 5, lease_to_rent: 2, lease_to_own: 3, own_truck: 47 },
     status: { HOME: 17, DISPATCHED: 60 },
     teams: 11,
     normalisedLabels: 1,
@@ -127,7 +128,10 @@ test("a successful test renders counts, and the fleet counts it was given", asyn
   await open();
   fireEvent.click(screen.getByText("Test connection"));
   await waitFor(() => expect(screen.getByText(/Read 102 row/)).toBeInTheDocument());
-  expect(screen.getByText("Company drivers").nextSibling).toHaveTextContent("50");
+  expect(screen.getByText("Company drivers").nextSibling)
+    .toHaveTextContent("50 (company truck 30 · investor's truck 15 · vendor's truck 5)");
+  expect(screen.getByText("Lease drivers").nextSibling).toHaveTextContent("2 (lease to rent 2)");
+  expect(screen.getByText("Owner operators").nextSibling).toHaveTextContent("50 (lease to own 3 · own truck 47)");
   expect(screen.getByText("Team rows").nextSibling).toHaveTextContent("11");
   expect(screen.getByText(/Misspelled labels accepted/)).toBeInTheDocument();
   expect(screen.getByText(/HOME 17/)).toBeInTheDocument();
