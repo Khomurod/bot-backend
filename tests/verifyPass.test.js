@@ -272,6 +272,7 @@ test('A VERIFIER THAT READS THE WRONG COLUMNS WOULD CONFIRM EVERYTHING', () => {
   const WRITES = {
     'identity.ensure_person': ['personId'],
     'identity.sync_unit': ['unitNumber', 'personId'],
+    'identity.sync_unit_fleet': ['fleetType'],
     'home_time.mark_returned_to_road': ['state', 'state_since'],
     'home_time.abandon_exhausted_alerts': ['state', 'requestIds'],
     'home_time.close_cycle': ['return_to_road_at', 'home_days'],

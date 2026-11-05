@@ -19,6 +19,7 @@ const SERVICE_PATHS = [
   '../services/identity/personResolver', '../services/identity/personBackfillService',
   '../services/operations/consistencyService', '../services/operations/corrections/actions',
   '../services/operations/corrections/identityActions', '../services/operations/corrections/alertActions',
+  '../services/operations/corrections/unitFleetActions',
   '../services/operations/corrections/apply', '../services/operations/corrections/autoApply',
 ].map((p) => path.resolve(__dirname, `${p}.js`));
 
@@ -260,4 +261,59 @@ test('the unit sync records the fleet, and a different fleet does not block it',
   );
   assert.deepEqual(rows.rows.map((r) => r.fleet_type), ['company', 'owner_operator'],
     'two fleets, two trucks, two assignments — the old rule refused this outright');
+});
+
+test("a truck row behind the profile's fleet is brought to it by itself, refuses when another driver holds that truck, and reverts", {
+  skip: skipWithoutPg(),
+}, async (t) => {
+  const harness = await harnessWith(t);
+  const { sweep, autoApply, applyCorrection, revertCorrection, resolver } = bind(harness);
+  const a = await seedGroup(harness, {
+    telegramId: -41, name: 'WENZE UNIT # 121 SHERZAD DIZAII ( COMPANY )', first: 'SHERZAD', last: 'DIZAII', unit: '121',
+  });
+  await harness.query(`UPDATE driver_profiles SET driver_type = 'company_driver' WHERE group_id = $1`, [a.id]);
+  const pa = (await resolver.ensurePersonForGroup(a)).personId;
+  // The record kept the fleet it was opened with, before the profile changed.
+  await harness.query('UPDATE driver_units SET ended_at = NOW() WHERE person_id = $1 AND ended_at IS NULL', [pa]);
+  await harness.query(
+    `INSERT INTO driver_units (person_id, unit_number, source, fleet_type) VALUES ($1, '121', 'profile', 'owner_operator')`, [pa]
+  );
+
+  const { findings } = await sweep();
+  const behind = findings.filter((f) => f.checkKey === 'identity.unit_fleet_behind_profile');
+  assert.deepEqual(behind.map((f) => [f.subjectId, f.proposedChange.from, f.proposedChange.to]), [[a.id, 'owner_operator', 'company']]);
+
+  // Migration 0092 is the owner's instruction: the background loop does it.
+  const run = await autoApply({ apply: true });
+  assert.ok(run.summary.applied >= 1);
+  const open = async () => (await harness.query(
+    `SELECT unit_number, fleet_type FROM driver_units WHERE person_id = $1 AND ended_at IS NULL`, [pa]
+  )).rows.map((r) => [r.unit_number, r.fleet_type]);
+  assert.deepEqual(await open(), [['121', 'company']]);
+  const closed = await harness.query(
+    `SELECT fleet_type FROM driver_units WHERE person_id = $1 AND ended_at IS NOT NULL AND unit_number = '121'`, [pa]
+  );
+  assert.ok(closed.rows.some((r) => r.fleet_type === 'owner_operator'), 'the old row is closed, never edited');
+  assert.equal((await sweep()).findings.filter((f) => f.checkKey === 'identity.unit_fleet_behind_profile').length, 0);
+
+  const correction = (await harness.query(
+    `SELECT id FROM operational_corrections WHERE action_key = 'identity.sync_unit_fleet' ORDER BY id DESC LIMIT 1`
+  )).rows[0];
+  await revertCorrection({ correctionId: correction.id, admin: ADMIN, reason: 'undo' });
+  assert.deepEqual(await open(), [['121', 'owner_operator']], 'the old fleet is reopened as a new row');
+
+  // Somebody else now holds COMPANY 121: two people in one truck is a decision.
+  const other = await harness.query(`INSERT INTO driver_people (display_name, normalized_key) VALUES ('C THREE','cthree') RETURNING id`);
+  await harness.query(
+    `INSERT INTO driver_units (person_id, unit_number, source, fleet_type) VALUES ($1, '121', 'backfill', 'company')`, [other.rows[0].id]
+  );
+  await assert.rejects(
+    applyCorrection({
+      finding: null, actionKey: 'identity.sync_unit_fleet',
+      payload: { personId: pa, groupId: a.id, unitNumber: '121', fleetType: 'company' }, initiator: 'admin', admin: ADMIN,
+    }),
+    (err) => err.stale === true || err.name === 'StaleCorrectionError'
+  );
+  assert.equal((await sweep()).findings.filter((f) => f.checkKey === 'identity.unit_fleet_behind_profile').length, 0,
+    'and the sweep does not propose it either');
 });

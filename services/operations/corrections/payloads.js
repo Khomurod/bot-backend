@@ -46,6 +46,13 @@ function payloadFor(finding) {
       ? { personId: change.personId, unitNumber: change.to, groupId: change.groupId }
       : null;
   }
+  if (finding.checkKey === 'identity.unit_fleet_behind_profile') {
+    return change.personId && change.groupId && change.unitNumber && change.to
+      ? {
+        personId: change.personId, groupId: change.groupId, unitNumber: change.unitNumber, fleetType: change.to,
+      }
+      : null;
+  }
   if (finding.checkKey === 'identity.unit_handover') {
     return change.personId && change.unitNumber && change.groupId
       ? {

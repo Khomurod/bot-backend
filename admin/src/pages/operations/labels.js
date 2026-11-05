@@ -65,6 +65,7 @@ const CHECK_LABELS = {
   'identity.unit_contested': 'Profile claims a truck recorded to someone else',
   'identity.unit_handover': 'Truck still recorded to a driver who left',
   'identity.stale_unit_assignment': "Driver's recorded truck is behind the profile",
+  'identity.unit_fleet_behind_profile': "Driver's recorded fleet is behind the profile",
   'samsara.vehicle_on_two_active_groups': 'One Samsara vehicle on two active groups',
   'samsara.vehicle_link_disagrees': "Group's Samsara vehicle differs from the driver's truck",
   'samsara.driver_name_mismatch': 'Samsara lists a different driver for this truck',

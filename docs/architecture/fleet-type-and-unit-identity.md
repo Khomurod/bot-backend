@@ -85,6 +85,28 @@ unlabelled default would quietly file admin chats and mislabelled groups as owne
 operators. A title with no parentheses at all — including one with a status word
 appended, `... GOCHYYEV INACTIVE` — is still the owner-operator default.
 
+## A truck row's fleet follows the profile (November 2026)
+
+A `driver_units` row copies its fleet from the profile's `driver_type` (or the
+chat title) **when it is opened**. A person who later changes the profile —
+Owner → Company driver — used to leave the row behind, and every reader that
+compares fleets then saw a different truck. On 5 November 2026 production held
+eleven: 077, 121, 124, 182, 322, 4135, 7777 and 25438 (Company driver,
+recorded Owner-Operator — most in chats titled with the bare `( COMPANY )` the
+title parser learned only in October) and 266116, 311 and 319 (Lease, recorded
+Owner-Operator or Company). The Dispatcher Board could not recognise the ones
+on it, because it matches a driver by truck **and** fleet.
+
+The owner's decision of that day: **the row follows the profile.**
+`identity.unit_fleet_behind_profile` (`services/operations/checks/identityLayer.js`)
+finds an active chat whose person holds the profile's truck under another
+fleet, and `identity.sync_unit_fleet` (`corrections/unitFleetActions.js`)
+closes that row and opens a new one under the profile's fleet — history kept,
+the revert reopens the old fleet. It does nothing when the profile cannot say
+which fleet, when the person is on two active chats, or when somebody else
+already holds that truck in the profile's fleet (two people in one truck is a
+question for a person). Auto since migration 0092, cap 20.
+
 ## The one destructive step in this programme
 
 Migration 0047 **drops `uniq_driver_units_open_unit`** and replaces it with
@@ -182,6 +204,10 @@ unless somebody decided otherwise.
   stored decision beating the title, and two fleets on one number coexisting.
 - `tests/identityActionsPg.test.js` — the correction records the fleet and is
   not blocked by a holder in another one.
+- `tests/unitFleetSyncCheck.test.js` and `tests/identityActionsPg.test.js` — a
+  truck row behind the profile's fleet is brought to it by the background loop,
+  never onto a truck another driver holds in that fleet, and the revert reopens
+  the old fleet.
 - `tests/unitHandoverCheck.test.js` and `tests/fleetDecisionsPg.test.js` — a
   same-fleet holder with **no active chat** is a handover (`identity.unit_handover`,
   auto since migration 0078); a holder who still drives, or who comes back

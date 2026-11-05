@@ -113,6 +113,24 @@ const SUBJECTS = Object.freeze({
     read: readGroupDriversUnit,
   },
 
+  // Is the chat's driver recorded in that truck, under the fleet it wrote?
+  'identity.sync_unit_fleet': {
+    impact: 'operational',
+    autoRevert: false,
+    table: 'driver_units',
+    async read(client, subjectId) {
+      const res = await client.query(
+        `SELECT u.unit_number AS "unitNumber", u.person_id AS "personId", u.fleet_type AS "fleetType"
+           FROM driver_units u
+           JOIN driver_person_groups g
+             ON g.person_id = u.person_id AND g.ended_at IS NULL
+          WHERE g.group_id = $1 AND u.ended_at IS NULL`,
+        [Number(subjectId)]
+      );
+      return res.rows[0] || null;
+    },
+  },
+
   // The same question as a sync: is the chat's driver recorded in that truck?
   'identity.hand_over_unit': {
     impact: 'operational',
