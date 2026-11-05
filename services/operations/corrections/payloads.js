@@ -54,6 +54,9 @@ function payloadFor(finding) {
       }
       : null;
   }
+  if (finding.checkKey === 'fleet.driver_type_differs_datatruck') {
+    return change.groupId && change.to ? { groupId: change.groupId, from: change.from ?? null, to: change.to } : null;
+  }
   if (finding.checkKey === 'identity.truck_from_board') {
     return change.groupId && change.unitNumber && change.boardTruck && change.toFleet
       ? {

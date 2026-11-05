@@ -87,6 +87,16 @@ const CASES = {
     },
     shows: ['WENZE UNIT # 1 ROGER ALCIDE', '1 ROGER', 'Roger Alcide', 'truck of ROGER'],
   },
+  'fleet.driver_type_differs_datatruck': {
+    finding: {
+      title: 't',
+      evidence: {
+        groupId: 4401, groupName: 'WENZE UNIT # 077 DAVID ONOBUN OLUGBENGA', driverName: 'DAVID ONOBUN OLUGBENGA', boardTruck: '077 (Polvan)',
+        wenzeType: 'owner', datatruckType: 'company_driver', toDriverType: 'company_driver', boardType: 'company_driver',
+      },
+    },
+    shows: ['DAVID ONOBUN OLUGBENGA', 'WENZE UNIT # 077 DAVID ONOBUN OLUGBENGA', 'Owner-operator', 'Company driver', '077 (Polvan)'],
+  },
   'home_time.clock_reset_on_group_change': {
     finding: {
       title: 't',
