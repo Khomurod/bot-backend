@@ -40,15 +40,21 @@ function defaultDeps() {
 /** Wenze's open truck records, with who holds them and their chat. */
 async function readWenze(db) {
   const res = await db.query(
-    `SELECT u.unit_number, u.fleet_type, p.display_name, g.group_name
+    `SELECT DISTINCT ON (u.id) u.unit_number, u.fleet_type, p.display_name, g.group_name, dp.driver_type
        FROM driver_units u
        JOIN driver_people p ON p.id = u.person_id
        LEFT JOIN driver_person_groups pg ON pg.person_id = u.person_id AND pg.ended_at IS NULL
        LEFT JOIN groups g ON g.id = pg.group_id AND g.active = TRUE
-      WHERE u.ended_at IS NULL`
+       LEFT JOIN driver_profiles dp ON dp.group_id = g.id
+      WHERE u.ended_at IS NULL
+      ORDER BY u.id, g.id NULLS LAST`
   );
   return res.rows.map((r) => ({
-    unitNumber: r.unit_number, fleetType: r.fleet_type || 'unknown', displayName: r.display_name, groupName: r.group_name || null,
+    unitNumber: r.unit_number,
+    fleetType: r.fleet_type || 'unknown',
+    displayName: r.display_name,
+    groupName: r.group_name || null,
+    driverType: r.driver_type || null,
   }));
 }
 

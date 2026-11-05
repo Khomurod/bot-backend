@@ -233,9 +233,14 @@ function registerGroupCaptureHandlers(bot) {
         // a driver's message must be processed whether or not the identity
         // layer could place them.
         if (group?.group_type === 'driver' && group.active !== false) {
-          ensurePersonForGroup(group).catch((err) => {
-            console.error('[BOT] ensurePersonForGroup failed:', err.message);
-          });
+          // Its starting profile first — the unit the person layer and Home
+          // Time read comes from it — then the person behind the chat.
+          db.ensureDefaultProfileForGroup(group)
+            .catch((err) => { console.error('[BOT] ensureDefaultProfileForGroup failed:', err.message); })
+            .then(() => ensurePersonForGroup(group))
+            .catch((err) => {
+              console.error('[BOT] ensurePersonForGroup failed:', err.message);
+            });
         }
       }
       // Register every user this update touched — the sender, plus any
