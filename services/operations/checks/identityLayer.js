@@ -289,6 +289,7 @@ function checkStaleUnitAssignment({ groups, profiles, personGroups, units }) {
       confidence: 90,
       evidence: {
         groupId: g.id,
+        groupName: g.group_name,
         personId: association.person_id,
         profileUnit: unit,
         recordedUnit: recorded ? recorded.unit_number : null,
@@ -347,6 +348,7 @@ function checkUnitFleetBehindProfile({ groups, profiles, personGroups, units }) 
       confidence: 90,
       evidence: {
         groupId: g.id,
+        groupName: g.group_name,
         personId: association.person_id,
         unitNumber: unit,
         profileFleet: fleet,

@@ -235,9 +235,19 @@ with the group muted:
 - `repeat_after_hours` (default 72) — the same question is not re-asked inside
   the window. A **failed** suppression read means silence, not a second
   question;
-- a wording entry in `lib/control/askable.js` is required. A check with none
-  never asks — so a new check cannot start questioning the owner merely because
-  somebody registered an action for it;
+- a wording entry is required (`lib/control/questionWording.js`, built by
+  `lib/control/askable.js`). A check with none never asks — so a new check
+  cannot start questioning the owner merely because somebody registered an
+  action for it;
+- **every question can be answered without opening anything** (owner, 5
+  November 2026, after "Record it as theirs anyway?" was asked without the
+  Telegram name): it names WHO (the driver or the chat, never "this driver"),
+  BOTH sides of what disagrees (the profile's value and the record's, the
+  Telegram name and the driver's), and **what Yes does** in a line starting
+  "Yes →", sent before "Why I'm asking". `tests/controlQuestionPrecise.test.js`
+  holds a realistic finding per askable check and fails on a missing name or
+  value, a leaked id, or no "Yes →" line — and on a new askable check with no
+  case there;
 - one question per finding at a time.
 
 **The ask is journalled as a suggestion before it is sent.** This is what
@@ -348,10 +358,18 @@ first"; answered "Driver is active" and was told to reply yes or no. Six fixes:
    fenced, above the choices. An older notice falls back to its own text.
 5. **A reason per kind of question.** `WHY_BY_CHECK` in `lib/control/priority.js`
    replaced "it changes a driver's pay or records" on every approval question.
-6. **Unclear → the question again.** "I don't know which driver" is unclear,
-   never "no", and the follow-up restates the question ("Sorry, I did not
-   follow. Is TEST DRIVER (Unit 7777) working for us right now?") with the same
-   buttons, carrying `prompt` down the chain.
+6. **Unclear → the question again.** A reply nothing understands is never
+   "no"; the follow-up restates the question ("Sorry, I did not follow. Is TEST
+   DRIVER (Unit 7777) working for us right now?") with the same buttons,
+   carrying `prompt` down the chain.
+7. **Asking back → the details, then the question again** (5 November 2026).
+   "Tell me that person's Telegram name", "who is it?", "I don't know", "кто
+   это", "kim bu" are the `details` intent, read deterministically BEFORE
+   yes/no (so "no idea" is not a refusal) and before a choice's words.
+   `detailsFor` answers from the finding's stored evidence only — the
+   question's facts untrimmed, the entry's extra `details`, and the "Yes →"
+   line — changes nothing, and re-asks under the owner's message in the same
+   chain, so their next "yes" is read against the same question.
 
 A tap on a choice is read as its LABEL through the same parser
 (`wordFor(action, offered)`); `tests/controlChoiceQuestions.test.js` asserts

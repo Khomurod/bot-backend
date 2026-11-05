@@ -24,7 +24,7 @@
  * busy group shows the answer under the question rather than at the bottom.
  */
 const { shouldRemember } = require('./memory');
-const { replyHintFor } = require('../../lib/control/askable');
+const { replyHintFor, detailsFor } = require('../../lib/control/askable');
 
 /**
  * @param {object} args
@@ -68,6 +68,21 @@ async function answerQuestion({
   if (intent.intent === 'unclear') {
     const fromAi = await deps.readReplyWithAi(text, { offered, question: promptOf(notice) });
     intent = { ...fromAi, remember: intent.remember || fromAi.remember };
+  }
+
+  // THE OWNER ASKED BACK. Answer from the stored evidence, change nothing, and
+  // put the question to them again under their own message — the same chain,
+  // so their next "yes" is read against the question they were asked.
+  if (intent.intent === 'details') {
+    await deps.replies.finaliseReply(claim.id, { outcome: 'clarified', intent });
+    const facts = detailsFor(finding) || [];
+    const prompt = promptOf(notice);
+    return askAgain(deps, { reply, notice, settings, offered }, {
+      message: prompt?.ask ? `Here is what I have. ${prompt.ask}` : 'Here is what I have.',
+      lines: facts,
+      exhausted: ['Here is what I have:', ...facts].join('\n'),
+      pending: notice.question?.pending || null,
+    });
   }
 
   if (intent.intent === 'engineering_request') {
@@ -214,7 +229,9 @@ async function answerQuestion({
  * `exhausted: null` means "no third message" — used for the "why?" follow-up,
  * where the ordinary path takes the default reason on the next reply.
  */
-async function askAgain(deps, { reply, notice, settings, offered }, { message, exhausted, pending = null }) {
+async function askAgain(deps, { reply, notice, settings, offered }, {
+  message, exhausted, pending = null, lines = [],
+}) {
   const round = Number(notice.clarifyRound || 0);
   if (round >= Math.max(0, Number(settings.clarifyLimit) || 0)) {
     if (exhausted) await say(deps, reply, exhausted);
@@ -225,7 +242,7 @@ async function askAgain(deps, { reply, notice, settings, offered }, { message, e
   const sent = await Promise.resolve(deps.notify({
     category: 'needs_attention',
     title: message,
-    lines: [replyHintFor(offered)],
+    lines: [...lines, replyHintFor(offered)],
     // THE SUBJECT IS THE REPLY, NOT THE DRIVER — the same choice the
     // acknowledgement makes, for the same reason. The burst suppressor groups by
     // subject, and a follow-up question held for an hour behind the question it
