@@ -99,8 +99,9 @@ test('every person-layer check runs over one snapshot and declares its keys', ()
   // list declares, so a check that files under an undeclared key leaves rows
   // open for ever. Adding a check means adding it here on purpose.
   // Five since 20 October 2026: `identity.unit_handover`, filed by the same
-  // function as `unit_contested` when the holder has left.
-  assert.equal(layer.CHECK_KEYS.length, 5);
+  // function as `unit_contested` when the holder has left. Six since 5
+  // November 2026: `identity.unit_fleet_behind_profile`.
+  assert.equal(layer.CHECK_KEYS.length, 6);
 });
 
 // ─── the systems around it ───────────────────────────────────────────────────

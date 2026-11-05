@@ -5,7 +5,7 @@
  * These checks are what keeps it HONEST: every one compares the person layer
  * with the chat/profile layer beside it and reports where they disagree.
  *
- * Three of them are auto-correctable, and all pass the registry's test — the
+ * Four of them are auto-correctable, and all pass the registry's test — the
  * corrected value is already recorded somewhere else:
  *
  *   A driver group with no person. The resolver places a group when the bot
@@ -21,6 +21,10 @@
  *   is the stale one; the truck passes to the active chat's driver. The owner's
  *   decision of 20 October 2026 (ten such trucks, every one a new hire in a
  *   departed driver's truck).
+ *
+ *   The right truck recorded under the wrong fleet — the profile says Company
+ *   driver, the truck row still says Owner-Operator. The profile is the record;
+ *   the row follows it (the owner's decision of 5 November 2026).
  *
  * The other two are for a human: the same person on two active chats, and a
  * truck the profile claims that another person, still working, holds.
@@ -298,11 +302,71 @@ function checkStaleUnitAssignment({ groups, profiles, personGroups, units }) {
   return findings;
 }
 
+/**
+ * The right truck, recorded under the wrong fleet: the profile says Company
+ * driver, the truck row still says Owner-Operator. The profile is the record
+ * (a person changed it); the row kept the fleet it was opened with, and nothing
+ * ever brought it along. The owner's decision of 5 November 2026: the row
+ * follows the profile.
+ *
+ * Not when the profile's fleet is unknown (nothing to follow), when the person
+ * is on two active chats, or when somebody else already holds that truck in the
+ * profile's fleet — two people in one truck is a question for a person.
+ */
+function checkUnitFleetBehindProfile({ groups, profiles, personGroups, units }) {
+  const open = openByGroup(personGroups);
+  const byGroup = profilesByGroup(profiles);
+  const holders = unitsByNumber(units);
+  const current = unitsByPerson(units);
+  const activeIds = new Set(activeDriverGroups(groups).map((g) => g.id));
+  const activeChatsOf = new Map();
+  for (const a of personGroups || []) {
+    if (activeIds.has(a.group_id)) activeChatsOf.set(a.person_id, (activeChatsOf.get(a.person_id) || 0) + 1);
+  }
+  const findings = [];
+  for (const g of activeDriverGroups(groups)) {
+    const association = open.get(g.id);
+    const unit = String(byGroup.get(g.id)?.unit_number || '').trim();
+    if (!association || !unit) continue;
+    if ((activeChatsOf.get(association.person_id) || 0) > 1) continue;
+    const recorded = current.get(association.person_id);
+    if (!recorded || String(recorded.unit_number).trim() !== unit) continue; // the truck itself is behind — the check above
+    const fleet = resolveDriverType({ column: byGroup.get(g.id)?.driver_type, title: g.group_name }).fleetType;
+    const recordedFleet = recorded.fleet_type || FLEET_TYPES.UNKNOWN;
+    if (fleet === FLEET_TYPES.UNKNOWN || recordedFleet === fleet) continue;
+    const blocking = holdersInWay(holders.get(unit), fleet).filter((h) => h.person_id !== association.person_id);
+    if (blocking.length) continue;
+
+    findings.push({
+      checkKey: 'identity.unit_fleet_behind_profile',
+      subjectType: 'group',
+      subjectId: g.id,
+      title: `${label(g)}: profile says ${fleet} for unit ${unit}, the driver's record says ${recordedFleet}`,
+      severity: 'info',
+      tier: 'auto',
+      confidence: 90,
+      evidence: {
+        groupId: g.id,
+        personId: association.person_id,
+        unitNumber: unit,
+        profileFleet: fleet,
+        recordedFleet,
+      },
+      proposedChange: {
+        table: 'driver_units', personId: association.person_id, groupId: g.id,
+        unitNumber: unit, from: recordedFleet, to: fleet,
+      },
+    });
+  }
+  return findings;
+}
+
 const CHECKS = [
   checkGroupWithoutPerson,
   checkPersonOnTwoActiveGroups,
   checkUnitContested,
   checkStaleUnitAssignment,
+  checkUnitFleetBehindProfile,
 ];
 
 const CHECK_KEYS = [
@@ -311,6 +375,7 @@ const CHECK_KEYS = [
   'identity.unit_contested',
   'identity.unit_handover',
   'identity.stale_unit_assignment',
+  'identity.unit_fleet_behind_profile',
 ];
 
 function runIdentityLayerChecks(snapshot) {
@@ -324,4 +389,5 @@ module.exports = {
   checkPersonOnTwoActiveGroups,
   checkUnitContested,
   checkStaleUnitAssignment,
+  checkUnitFleetBehindProfile,
 };

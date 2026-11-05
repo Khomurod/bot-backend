@@ -60,7 +60,12 @@ feature it belongs to.
   decision of 20 October 2026: a truck still recorded to a driver with NO active
   chat passes to the one active chat whose profile claims it —
   `corrections/unitHandoverActions.js`, re-checked under lock, switched on by
-  migration 0078), `identity.person_on_two_active_groups` and
+  migration 0078), `identity.unit_fleet_behind_profile` (**auto**, owner's
+  decision of 5 November 2026: the right truck recorded under the wrong fleet —
+  the profile says Company driver, the truck row still says Owner-Operator —
+  is closed and reopened under the profile's fleet, only when nobody else holds
+  that truck in it; `corrections/unitFleetActions.js`, switched on by migration
+  0092, cap 20), `identity.person_on_two_active_groups` and
   `identity.unit_contested` (a human decides — the holder still drives). `checks/systems.js` reads across
   features: `samsara.vehicle_on_two_active_groups`,
   `samsara.vehicle_link_disagrees` and `raise.progress_without_person` (one
