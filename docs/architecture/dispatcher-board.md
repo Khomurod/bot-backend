@@ -283,10 +283,21 @@ driver or a differently spelled name in Wenze, no load in Datatruck this week,
 a different driver or driver type in Datatruck. The owner's request of
 5 November 2026: two sources only say one of them is wrong; a third says which.
 
-- **A truck is (fleet, number)** on all three sides. Datatruck writes its truck
-  label the board's way (`771 JAFAR`), so it is read by the same rule
-  (`lib/board/truckSuffix.js`); its driver type comes from its driver list,
-  matched by name; an unknown driver-type word is shown, never mapped.
+- **A truck is (fleet, number) — and, after a name, its owner.** Datatruck
+  writes its truck label the board's way (`771 JAFAR`), and the label is
+  matched WHOLE (`1 ERNST`, `1 ROGER` and `1 RUDOLPH` are three trucks: the name
+  after the number is the truck's owner, not its driver; CPM is CMP); a
+  fleet-word label may also be found by fleet and number when only one
+  Datatruck truck has them.
+- **Datatruck's driver type describes the DRIVER**, and is compared with the
+  driver type on the Wenze profile, never with the truck's fleet:
+  `company_owner` is a driver who owns or co-owns the truck he drives (an
+  owner-operator, or a vendor or investor at his own wheel) → `owner`;
+  `company_driver` → `company_driver`, including a driver hired by an owner
+  (owner, 5 November 2026: "by the truck an owner-operator, by the driver a
+  company driver"). An unknown word is shown, never mapped.
+- **No load this week is a disagreement only for a working truck** — not for a
+  board status of HOME, VACATION, SHOP or REST.
 - **Read-only, and names only on request.** The comparison is pure
   (`lib/fleetCrossCheck/compare.js`); the reads (`services/fleetCrossCheck/report.js`,
   `GET /api/settings/fleet-crosscheck`) are two SELECTs and two Datatruck GETs.

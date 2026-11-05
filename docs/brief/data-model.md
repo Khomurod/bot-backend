@@ -43,7 +43,11 @@ Every driver and staff Telegram group is a `groups` row: `telegram_group_id`,
 `group_type` (`driver` / `employee` / other), `language` (en/ru/uz), `active`,
 plus unit and driver parsed from the Telegram title (convention
 `WENZE UNIT # <unit> <NAME> (COMPANY DRIVER)`, parsed by
-`lib/drivers/driverGroupTitle.js`). `driver_profiles` hangs off it one-to-one.
+`lib/drivers/driverGroupTitle.js`). `driver_profiles` hangs off it one-to-one,
+and a driver chat gets its starting profile (unit, name and type read from the
+title) **the first time the bot sees it** (`ensureDefaultProfileForGroup`,
+November 2026) — before that, only opening Driver Groups created it, and a new
+chat had no truck for Home Time or the person layer until somebody did.
 The profile's type and status **follow the title**: `( COMPANY )` / `LEASE`
 set the fleet and an appended `INACTIVE` the status, on every rename (followed
 even over a manual setting, for what the rename changed) and in one reconcile

@@ -120,6 +120,33 @@ async function getDriverProfileById(id) {
   return mapDriverProfileRow(res.rows[0] || null);
 }
 
+/** Groups already known to have a profile — so a busy chat costs one SELECT per process, not one per message. */
+const groupsWithProfile = new Set();
+
+/**
+ * A driver chat seen for the first time gets its starting profile at once —
+ * unit, name and driver type read from its title, exactly the seed
+ * `listDriverProfiles` writes — instead of waiting for somebody to open Driver
+ * Groups. Until it has one, the chat has no truck, and Home Time, the
+ * Dispatcher Board match and the consistency checks cannot see the driver (six
+ * new chats on 5 November 2026). Never overwrites: a group that has a profile is
+ * left exactly as it is.
+ *
+ * @returns {Promise<boolean>} true when a profile was created
+ */
+async function ensureDefaultProfileForGroup(group) {
+  const id = Number(group?.id);
+  if (!id || group.group_type !== 'driver' || groupsWithProfile.has(id)) return false;
+  const existing = await query('SELECT 1 FROM driver_profiles WHERE group_id = $1', [id]);
+  if (existing.rows.length) {
+    groupsWithProfile.add(id);
+    return false;
+  }
+  await upsertDriverProfileByGroupId(buildDefaultProfileFromGroup(group), { syncGroup: false });
+  groupsWithProfile.add(id);
+  return true;
+}
+
 async function listDriverProfiles(filters = {}) {
   const includeInactive = filters.includeInactive === true;
   const needsReviewOnly = filters.needsReviewOnly === true;
@@ -387,6 +414,7 @@ async function backfillDriverProfileTelegramUserId({ groupId, telegramUserId, us
 }
 
 module.exports = {
+  ensureDefaultProfileForGroup,
   setProfileSavedHook,
   whenProfileHookSettled,
   syncGroupFromDriverProfile,
