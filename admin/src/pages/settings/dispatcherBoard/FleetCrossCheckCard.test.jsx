@@ -17,7 +17,7 @@ function report(over = {}) {
     datatruck: { read: true, orderDays: 7 },
     summary: {
       boardRows: 2, allAgree: 1, notInWenze: 1, fleetDiffersWenze: 0, nameDiffersWenze: 0, nameCloseWenze: 0,
-      datatruckRead: true, notInDatatruck: 1, fleetDiffersDatatruck: 0, nameDiffersDatatruck: 0,
+      datatruckRead: true, notInDatatruck: 1, driverTypeDiffersDatatruck: 0, nameDiffersDatatruck: 0,
     },
     rows: [
       {
