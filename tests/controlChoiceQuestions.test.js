@@ -98,7 +98,10 @@ test('2. the status question names the driver and truck, with value buttons', ()
   const f = aiStatusFinding();
   const q = questionFor(f);
   assert.strictEqual(q.ask, 'Is TEST DRIVER (Unit 7777) working for us right now?');
-  assert.deepStrictEqual(q.lines, ['The chat says not working, the profile says working.']);
+  assert.deepStrictEqual(q.lines, [
+    'The chat says not working, the profile says working.',
+    'Chat "WENZE UNIT # 7777 TEST DRIVER"',
+  ]);
   const offered = offeredActionsFor({ hasAction: true, choices: q.choices });
   const row = keyboardFor(40, offered).inline_keyboard[0];
   assert.deepStrictEqual(row.map((b) => b.text), ['✅ Working', '🚫 Not working', '⏰ Later']);
@@ -142,8 +145,10 @@ test('2. the owner\'s own words for a status pick the right answer', () => {
     assert.strictEqual(value(t), 'inactive', t);
   }
   // Not knowing is not "no".
-  assert.strictEqual(parseIntent("I don't know which driver this is", { offered }).intent, 'unclear');
-  assert.strictEqual(parseIntent('не знаю кто это', { offered }).intent, 'unclear');
+  // Not a "no", and not unclear: the owner is asking for what the question
+  // should have said, and gets it (5 November 2026).
+  assert.strictEqual(parseIntent("I don't know which driver this is", { offered }).intent, 'details');
+  assert.strictEqual(parseIntent('не знаю кто это', { offered }).intent, 'details');
   assert.strictEqual(parseIntent('later', { offered }).action, 'snooze');
 });
 
@@ -221,7 +226,7 @@ test('4. the AI is shown the question the owner is answering', async () => {
 
 // ── 6. an unclear reply gets the question again ────────────────────────────
 
-test('6. "I don\'t know which driver" is answered with the question again, naming the driver', async () => {
+test('6. "I don\'t know which driver" is answered with what Wenze knows, and the question again', async () => {
   const f = aiStatusFinding();
   const q = questionFor(f);
   const offered = offeredActionsFor({ hasAction: true, choices: q.choices });
@@ -246,10 +251,13 @@ test('6. "I don\'t know which driver" is answered with the question again, namin
     notice, claim: { id: 8 }, settings: { clarifyLimit: 1 }, text: "I don't know which driver this is",
   }, deps);
 
-  assert.deepStrictEqual(seen.ai[0].question, { ask: q.ask, lines: q.lines }, 'the AI saw the question');
+  assert.strictEqual(seen.ai.length, 0, 'asking back is understood without a model');
   const again = seen.notices[0];
-  assert.strictEqual(again.title, 'Sorry, I did not follow. Is TEST DRIVER (Unit 7777) working for us right now?');
-  assert.match(again.lines[0], /working · not working · later/);
+  assert.strictEqual(again.title, 'Here is what I have. Is TEST DRIVER (Unit 7777) working for us right now?');
+  assert.strictEqual(again.lines[0], 'The chat says not working, the profile says working.');
+  assert.ok(again.lines.includes('Chat "WENZE UNIT # 7777 TEST DRIVER"'));
+  assert.match(again.lines[again.lines.length - 1], /working · not working · later/);
+  assert.deepStrictEqual(seen.finalised[0].outcome, 'clarified', 'nothing was changed');
   assert.deepStrictEqual(again.question.prompt, notice.question.prompt, 'the follow-up keeps the question');
   assert.doesNotMatch(again.title, /yes, no/);
 });

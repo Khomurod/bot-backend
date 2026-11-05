@@ -32,7 +32,8 @@ test('the question reads like a person asking, and names the trip', () => {
   const [f] = runRoadBonusChecks({ roadBonusReviews: [HELD] });
   const q = questionFor(f);
   assert.ok(q, 'there is wording for it');
-  assert.match(JSON.stringify(q), /117 days on the road, \$1200 bonus/);
+  assert.match(q.ask, /\$1200 road bonus for 117 days on the road/);
+  assert.match(q.yes, /^Yes → /);
 });
 
 test('nothing held, nothing filed', () => {

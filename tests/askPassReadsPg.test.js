@@ -226,5 +226,8 @@ test('A FULL TICK on the real schema asks with the hold\'s reason, from the narr
   assert.equal(got.considered, 1);
   assert.equal(notified[0].findingId, bonusId);
   assert.match(notified[0].lines.join(' '), /not sure enough/i, 'the hold, read in five columns, still explains it');
-  assert.match(notified[0].lines.join(' '), /45 days on the road, \$1200 bonus/);
+  // The amount and the days are in the question itself now (5 November 2026),
+  // and what Yes does is a line of its own.
+  assert.match(notified[0].title, /\$1200 road bonus for 45 days on the road/);
+  assert.ok(notified[0].lines.some((l) => /^Yes → /.test(l)), 'the question says what Yes does');
 });

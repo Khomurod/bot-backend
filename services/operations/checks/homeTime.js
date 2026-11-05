@@ -158,6 +158,9 @@ function checkClosableCycles({ roadHistory = [], homeStatus = [], groupsById = n
       evidence: {
         cycleId: cycle.id,
         groupId: cycle.group_id,
+        // For the question: which chat, and how long the stay it closes was.
+        groupName: groupsById.get(cycle.group_id)?.group_name || null,
+        homeDays: daysBetween(cycle.home_arrived_at, returnAt),
         evidenceClass,
         source,
         roadStartedAt: cycle.road_started_at,

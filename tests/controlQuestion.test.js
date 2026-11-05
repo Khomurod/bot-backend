@@ -101,7 +101,7 @@ test('a driver with no truck on record reads as that, not as a blank', () => {
     title: 'x',
     evidence: { profileUnit: '322', recordedUnit: null },
   });
-  assert.match(got.lines[0], /No truck on record/i);
+  assert.match(got.lines[0], /no truck/i);
   assert.match(got.lines[0], /322/);
 });
 

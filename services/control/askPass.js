@@ -350,6 +350,9 @@ async function runAskPass(_options = {}, deps = defaultDeps()) {
       title: wording.ask,
       lines: [
         ...wording.lines,
+        // WHAT YES DOES, before why and how to answer: it is the consequence
+        // the owner is agreeing to, and a question without it is a guess.
+        ...(wording.yes ? [wording.yes] : []),
         whyAsking(finding, { held: Boolean(heldDecision) }),
         replyHintFor(offeredActions),
       ],
@@ -370,7 +373,7 @@ async function runAskPass(_options = {}, deps = defaultDeps()) {
         parentNoticeId: null,
         // THE QUESTION AS ASKED. The reply path shows it to the AI reader and
         // restates it when a reply is unclear (`answerQuestion.js`).
-        prompt: { ask: wording.ask, lines: wording.lines },
+        prompt: { ask: wording.ask, lines: [...wording.lines, ...(wording.yes ? [wording.yes] : [])] },
       },
     }).catch(() => null);
 
