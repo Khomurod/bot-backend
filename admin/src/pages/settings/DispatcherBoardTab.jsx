@@ -31,20 +31,37 @@ function Row({ label, value }) {
   );
 }
 
+// The board service's shade of each fleet — lib/board/truckSuffix.js. R and L
+// are both told apart here, because Wenze has only three fleets.
+const FLEET_DETAILS = {
+  company: [["company_truck", "company truck"], ["investor_truck", "investor's truck"], ["vendor_truck", "vendor's truck"]],
+  lease: [["lease_to_rent", "lease to rent"]],
+  owner_operator: [["lease_to_own", "lease to own"], ["own_truck", "own truck"]],
+};
+
+function fleetValue(fleet, details, key) {
+  const parts = (FLEET_DETAILS[key] || [])
+    .filter(([detail]) => details[detail] > 0)
+    .map(([detail, label]) => `${label} ${details[detail]}`);
+  const total = fleet[key] ?? 0;
+  return parts.length ? `${total} (${parts.join(" · ")})` : total;
+}
+
 function TestResult({ result }) {
   if (!result) return null;
   if (!result.connected) {
     return <div className="alert alert-error" style={{ marginTop: 12 }}>{result.message}</div>;
   }
   const fleet = result.fleet || {};
+  const details = result.fleetDetail || {};
   const status = result.status || {};
   return (
     <div className="ios-glass" style={{ padding: 14, marginTop: 12 }}>
       <div style={{ fontWeight: 600, marginBottom: 8 }}>✅ {result.message}</div>
       <Row label="Board date" value={result.boardDate || "not given"} />
-      <Row label="Company drivers" value={fleet.company ?? 0} />
-      <Row label="Lease drivers" value={fleet.lease ?? 0} />
-      <Row label="Owner operators" value={fleet.owner_operator ?? 0} />
+      <Row label="Company drivers" value={fleetValue(fleet, details, "company")} />
+      <Row label="Lease drivers" value={fleetValue(fleet, details, "lease")} />
+      <Row label="Owner operators" value={fleetValue(fleet, details, "owner_operator")} />
       <Row label="Fleet not recognised" value={fleet.unknown ?? 0} />
       <Row label="Team rows" value={result.teams ?? 0} />
       {result.normalisedLabels > 0 && (

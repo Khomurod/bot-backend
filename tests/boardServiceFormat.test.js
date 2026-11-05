@@ -9,8 +9,10 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { splitBoardTruck, fleetTypeFromTruckSuffix, readBoardTruck } = require('../lib/board/truckSuffix');
-const { parseBoardPayload } = require('../lib/board/parse');
+const {
+  splitBoardTruck, fleetTypeFromTruckSuffix, readBoardTruck, describeTruckSuffix,
+} = require('../lib/board/truckSuffix');
+const { parseBoardPayload, summariseBoardPayload } = require('../lib/board/parse');
 const semantics = require('../lib/board/statusSemantics');
 const { fetchBoard } = require('../services/dispatchBoard/client');
 const { boardApiFromEnv, DEFAULT_BOARD_API_URL } = require('../database/dispatchBoardSettings');
@@ -20,16 +22,30 @@ test('the truck column splits into a unit (leading zeros kept) and a suffix', ()
   assert.deepEqual(splitBoardTruck('  310   javlon '), { unit: '310', suffix: 'JAVLON' });
   assert.deepEqual(splitBoardTruck('045'), { unit: '045', suffix: null });
   assert.deepEqual(splitBoardTruck('#127 L'), { unit: '127', suffix: 'L' });
+  assert.deepEqual(splitBoardTruck('001A RALPH'), { unit: '001A', suffix: 'RALPH' }, 'a letter written onto the number is the unit');
+  assert.deepEqual(splitBoardTruck('001a'), { unit: '001A', suffix: null });
+  assert.deepEqual(splitBoardTruck('021CMP'), { unit: '021', suffix: 'CMP' }, 'a fleet word is never part of the unit');
+  assert.deepEqual(splitBoardTruck('077 (Polvan)'), { unit: '077', suffix: '(POLVAN)' });
   assert.deepEqual(splitBoardTruck('OFFICE'), { unit: 'OFFICE', suffix: null });
   assert.deepEqual(splitBoardTruck(''), { unit: null, suffix: null });
 });
 
-test("the owner's fleet reading of the suffix", () => {
-  for (const s of ['COMP', 'CPM', 'CMP', 'V', 'R', 'JAVLON']) assert.equal(fleetTypeFromTruckSuffix(s), 'company', s);
-  assert.equal(fleetTypeFromTruckSuffix('L'), 'lease');
-  assert.equal(fleetTypeFromTruckSuffix(null), 'owner_operator');
+test("the owner's fleet reading of the suffix (5 November 2026)", () => {
+  // Company drivers: the company's, an investor's or a vendor's truck.
+  assert.deepEqual(describeTruckSuffix('COMP'), { fleetType: 'company', detail: 'company_truck' });
+  assert.deepEqual(describeTruckSuffix('CMP'), { fleetType: 'company', detail: 'investor_truck' });
+  assert.deepEqual(describeTruckSuffix('CPM'), { fleetType: 'company', detail: 'investor_truck' }, 'CPM is CMP');
+  assert.deepEqual(describeTruckSuffix('V'), { fleetType: 'company', detail: 'vendor_truck' });
+  // R is lease to rent; L bought the truck from us and counts as an owner-operator.
+  assert.deepEqual(describeTruckSuffix('R'), { fleetType: 'lease', detail: 'lease_to_rent' });
+  assert.deepEqual(describeTruckSuffix('L'), { fleetType: 'owner_operator', detail: 'lease_to_own' });
+  // A driver's name, bracketed or not, and no suffix at all: an owner-operator.
+  for (const s of ['JAVLON', '(POLVAN)', 'A RALPH', null, '']) {
+    assert.deepEqual(describeTruckSuffix(s), { fleetType: 'owner_operator', detail: 'own_truck' }, String(s));
+  }
   assert.equal(fleetTypeFromTruckSuffix('2B'), 'unknown');
   assert.equal(readBoardTruck('OFFICE').fleetType, 'unknown', 'no number, no fleet');
+  assert.deepEqual(readBoardTruck('001A RALPH'), { unit: '001A', suffix: 'RALPH', fleetType: 'owner_operator', detail: 'own_truck' });
 });
 
 const ANSWER = {
@@ -58,14 +74,17 @@ test('rows under `trucks` are read as the board service: unit, fleet, team, stat
   assert.equal(home.isTeam, false, "the dispatcher's team is not a two-driver crew");
   assert.equal(home.dispatcher, null);
 
-  assert.equal(team.fleetType, 'lease');
+  assert.equal(team.fleetType, 'owner_operator', 'L: lease to own');
+  assert.equal(team.fleetDetail, 'lease_to_own');
   assert.equal(team.isTeam, true);
   assert.deepEqual(team.teamMembers, ['Dan Hill', 'Cal Hill']);
   assert.equal(team.teamFlagMismatch, false);
 
   assert.equal(owner.fleetType, 'owner_operator');
   assert.equal(owner.status, 'HOLD FOR LOAD');
-  assert.equal(covered.fleetType, 'company');
+  assert.equal(covered.fleetType, 'owner_operator', "a driver's name after the number");
+  assert.equal(empty.fleetType, 'company');
+  assert.equal(empty.fleetDetail, 'vendor_truck');
   assert.equal(empty.driverNameRaw, null);
 
   const kinds = parsed.problems.map((p) => p.kind);
@@ -73,6 +92,24 @@ test('rows under `trucks` are read as the board service: unit, fleet, team, stat
   assert.ok(!kinds.includes('unknown_status'));
   assert.ok(!kinds.includes('team_flag_mismatch'));
   assert.deepEqual(kinds, ['row_without_driver']);
+});
+
+test('the summary counts each fleet and its shade, and next_stop is not an unknown column', () => {
+  const parsed = parseBoardPayload({
+    trucks: [
+      { truck: '021 CMP', driver: 'A', status: 'HOME', next_stop: 'Dallas, TX' },
+      { truck: '022 COMP', driver: 'B', status: 'HOME' },
+      { truck: '266116 R', driver: 'C', team_driver: 'D', status: 'ENROUTE' },
+      { truck: '2614 L', driver: 'E', status: 'SHOP' },
+      { truck: '757 AKBAR', driver: 'F', status: 'DISPATCHED' },
+    ],
+  });
+  const summary = summariseBoardPayload(parsed);
+  assert.deepEqual(summary.fleet, { company: 2, lease: 1, owner_operator: 2, unknown: 0 });
+  assert.deepEqual(summary.fleetDetail, {
+    investor_truck: 1, company_truck: 1, lease_to_rent: 1, lease_to_own: 1, own_truck: 1,
+  });
+  assert.ok(!parsed.problems.some((p) => p.kind === 'unknown_field'), JSON.stringify(parsed.problems));
 });
 
 test('a corrected suffix does not make a line look new', () => {
