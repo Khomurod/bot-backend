@@ -40,7 +40,7 @@ function defaultDeps() {
 /** Wenze's open truck records, with who holds them and their chat. */
 async function readWenze(db) {
   const res = await db.query(
-    `SELECT DISTINCT ON (u.id) u.unit_number, u.fleet_type, p.display_name, g.group_name, dp.driver_type
+    `SELECT DISTINCT ON (u.id) u.unit_number, u.fleet_type, u.truck_owner, p.display_name, g.group_name, dp.driver_type
        FROM driver_units u
        JOIN driver_people p ON p.id = u.person_id
        LEFT JOIN driver_person_groups pg ON pg.person_id = u.person_id AND pg.ended_at IS NULL
@@ -52,6 +52,7 @@ async function readWenze(db) {
   return res.rows.map((r) => ({
     unitNumber: r.unit_number,
     fleetType: r.fleet_type || 'unknown',
+    truckOwner: r.truck_owner || null,
     displayName: r.display_name,
     groupName: r.group_name || null,
     driverType: r.driver_type || null,
@@ -98,7 +99,7 @@ function createFleetCrossCheck(deps = defaultDeps()) {
     ];
     const result = compareFleet({
       board: board.map((r) => ({
-        truckRaw: r.truckRaw, truckNorm: r.truckNorm, fleetType: r.fleetType,
+        truckRaw: r.truckRaw, truckNorm: r.truckNorm, fleetType: r.fleetType, fleetLabelRaw: r.fleetLabelRaw,
         driverName: r.cleanName, teamMembers: r.teamMembers, status: r.status,
       })),
       wenze,

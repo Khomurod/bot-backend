@@ -65,7 +65,7 @@ test('each kind of disagreement is named', () => {
   });
   assert.deepEqual(rows[0].problems, ['not_in_wenze', 'not_in_datatruck'], 'working, and no load');
   assert.deepEqual(rows[1].problems, ['fleet_differs_wenze']);
-  assert.deepEqual(rows[1].wenze.otherFleets, [{ fleetType: 'owner_operator', name: 'SHERZAD DIZAII' }]);
+  assert.deepEqual(rows[1].wenze.otherFleets, [{ fleetType: 'owner_operator', truckOwner: null, name: 'SHERZAD DIZAII' }]);
   assert.deepEqual(rows[2].problems, ['name_differs_wenze']);
   assert.deepEqual(rows[3].problems, ['name_close_wenze'], 'in the shop: no load this week is expected');
   // A driver hired by an owner: the truck is an owner's, the driver a company driver.
@@ -141,4 +141,30 @@ test('names and Datatruck types', () => {
   assert.equal(driverTypeFromDatatruck('company_owner'), 'owner');
   assert.equal(driverTypeFromDatatruck('Owner_Operator'), 'owner');
   assert.equal(driverTypeFromDatatruck('something_new'), null, 'an unknown word is shown, never guessed');
+});
+
+test('1 ERNST and 1 ROGER: each board truck is compared with its own owner\'s truck in Wenze', () => {
+  const { rows } = compareFleet({
+    board: [
+      boardRow('1 ERNST', '1', 'owner_operator', 'JEROME JOYNER', { fleetLabelRaw: 'ERNST' }),
+      boardRow('1 ROGER', '1', 'owner_operator', 'ROGER ALCIDE', { fleetLabelRaw: 'ROGER' }),
+      boardRow('1 RUDOLPH', '1', 'owner_operator', 'JOHN ELISEE', { fleetLabelRaw: 'RUDOLPH' }),
+    ],
+    wenze: [
+      { unitNumber: '1', fleetType: 'owner_operator', truckOwner: 'ERNST', displayName: 'JEROME JOYNER' },
+      { unitNumber: '1', fleetType: 'owner_operator', truckOwner: 'ROGER', displayName: 'ROGER ALCIDE' },
+      // Owner not recorded yet: it rules nobody out.
+      { unitNumber: '1', fleetType: 'owner_operator', truckOwner: null, displayName: 'JOHN ELISEE' },
+    ],
+  });
+  assert.deepEqual(rows[0].wenze.holders.map((h) => h.name), ['JEROME JOYNER', 'JOHN ELISEE']);
+  assert.deepEqual(rows[1].wenze.holders.map((h) => h.name), ['ROGER ALCIDE', 'JOHN ELISEE']);
+  assert.deepEqual(rows[1].wenze.otherFleets, [{ fleetType: 'owner_operator', truckOwner: 'ERNST', name: 'JEROME JOYNER' }]);
+  assert.deepEqual(rows.map((r) => r.problems), [[], [], []], 'each line finds its own driver');
+
+  const only = compareFleet({
+    board: [boardRow('1 ROGER', '1', 'owner_operator', 'ROGER ALCIDE', { fleetLabelRaw: 'ROGER' })],
+    wenze: [{ unitNumber: '1', fleetType: 'owner_operator', truckOwner: 'ERNST', displayName: 'JEROME JOYNER' }],
+  }).rows[0];
+  assert.deepEqual(only.problems, ['fleet_differs_wenze'], 'another owner\'s 1 is another truck, not a different driver in this one');
 });

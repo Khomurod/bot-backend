@@ -278,7 +278,8 @@ before October 2026.
 
 Settings → Dispatcher Board → **Compare with Wenze and Datatruck** puts each
 board truck beside what Wenze and Datatruck hold for the same truck, and names
-what disagrees: not in Wenze, Wenze has it under another fleet, a different
+what disagrees: not in Wenze, Wenze has the number only as another truck
+(another fleet, or another owner's — "1 ERNST" is not "1 ROGER"), a different
 driver or a differently spelled name in Wenze, no load in Datatruck this week,
 a different driver or driver type in Datatruck. The owner's request of
 5 November 2026: two sources only say one of them is wrong; a third says which.
