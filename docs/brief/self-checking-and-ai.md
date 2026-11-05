@@ -69,7 +69,8 @@ feature it belongs to.
   `identity.truck_from_board` (**auto**, owner's decision of 5 November 2026:
   the board's truck — its fleet and, for an owner's truck, its owner — is
   copied onto the profile when the board has the same person on the same
-  number; `corrections/truckFromBoardActions.js`, migration 0093, cap 60 (measured) —
+  number — a bare number on a company or lease driver is asked instead, as a
+  likely lost suffix; `corrections/truckFromBoardActions.js`, migration 0093, cap 60 (measured) —
   `docs/architecture/fleet-type-and-unit-identity.md`),
   `identity.person_on_two_active_groups` and
   `identity.unit_contested` (a human decides — the holder still drives). `checks/systems.js` reads across

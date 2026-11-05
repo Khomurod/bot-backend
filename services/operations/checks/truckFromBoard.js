@@ -23,9 +23,19 @@
  * Nothing is filed when the profile already means that truck — the same fleet
  * and owner, whether recorded or implied by the driver's type — so a company
  * driver in a company truck costs nothing.
+ *
+ * A LINE WITH NO SUFFIX IS ASKED, NOT COPIED, WHEN IT CONTRADICTS THE DRIVER.
+ * The board reads a number with nothing after it as an owner-operator truck —
+ * the owner-operator driving his own truck. A COMPANY or LEASE driver on such a
+ * line is far more likely a suffix the dispatcher lost than an owner's truck:
+ * an owner's truck a company driver is hired into carries the owner's name
+ * ("077 (Polvan)"). On 5 November 2026 "888" lost its "CMP" and the first pass
+ * copied owner-operator onto a company driver's profile. So that one shape is
+ * filed as an approval-tier question naming the missing suffix, and only a
+ * person's Yes copies it.
  */
-const { FLEET_TYPES } = require('../../../lib/drivers/fleetType');
-const { truckFromBoardRow, truckOfProfile } = require('../../../lib/drivers/truckIdentity');
+const { FLEET_TYPES, resolveDriverType } = require('../../../lib/drivers/fleetType');
+const { truckFromBoardRow, truckOfProfile, normaliseOwner } = require('../../../lib/drivers/truckIdentity');
 const { namesAgreeStrictly } = require('../../../lib/identity/boardResolution');
 
 const CHECK_KEYS = ['identity.truck_from_board'];
@@ -80,15 +90,21 @@ function runTruckFromBoardChecks({
     if (board.fleetType === FLEET_TYPES.UNKNOWN) continue;
     const now = truckOfProfile(profile, g.group_name);
     if (now.fleetType === board.fleetType && now.owner === board.owner) continue;
+    const driverFleet = resolveDriverType({ column: profile.driver_type ?? null, title: g.group_name }).fleetType;
+    const suffixMissing = !normaliseOwner(row.fleet_label_raw)
+      && board.fleetType === FLEET_TYPES.OWNER_OPERATOR
+      && (driverFleet === FLEET_TYPES.COMPANY || driverFleet === FLEET_TYPES.LEASE);
 
     findings.push({
       checkKey: 'identity.truck_from_board',
       subjectType: 'group',
       subjectId: g.id,
-      title: `${g.group_name || `Group ${g.id}`}: the board has this driver in ${row.truck_raw}`,
+      title: suffixMissing
+        ? `${g.group_name || `Group ${g.id}`}: the board writes ${row.truck_raw} with no suffix, but the driver is not an owner-operator`
+        : `${g.group_name || `Group ${g.id}`}: the board has this driver in ${row.truck_raw}`,
       severity: 'info',
-      tier: 'auto',
-      confidence: 90,
+      tier: suffixMissing ? 'approval' : 'auto',
+      confidence: suffixMissing ? 60 : 90,
       evidence: {
         groupId: g.id,
         groupName: g.group_name,
@@ -100,6 +116,8 @@ function runTruckFromBoardChecks({
         profileOwner: now.owner,
         boardFleet: board.fleetType,
         boardOwner: board.owner,
+        driverFleet,
+        boardSuffixMissing: suffixMissing,
       },
       proposedChange: {
         table: 'driver_profiles',
