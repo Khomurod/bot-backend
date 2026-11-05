@@ -115,6 +115,7 @@ confidences suggest, because each single-source decision loses 10 to
 | `identity.group_without_person` | 90 | 80 |
 | `identity.stale_unit_assignment` | 90 | 80 |
 | `identity.unit_fleet_behind_profile` | 90 | 80 |
+| `identity.truck_from_board` | 90 | 80 |
 | `home_time.ghost_home_status` (retired October 2026) | 90 | 80 |
 | `home_time.closable_open_cycle` | 90 / 95 | 80 / 85 |
 | `identity.status_disagreement` | 95 | 85 |

@@ -131,6 +131,20 @@ const SUBJECTS = Object.freeze({
     },
   },
 
+  // Does the profile hold the truck it was given?
+  'identity.set_truck_from_board': {
+    impact: 'operational',
+    autoRevert: false,
+    table: 'driver_profiles',
+    async read(client, subjectId) {
+      const res = await client.query(
+        'SELECT truck_fleet AS "truckFleet", truck_owner AS "truckOwner" FROM driver_profiles WHERE group_id = $1',
+        [Number(subjectId)]
+      );
+      return res.rows[0] || null;
+    },
+  },
+
   // The same question as a sync: is the chat's driver recorded in that truck?
   'identity.hand_over_unit': {
     impact: 'operational',

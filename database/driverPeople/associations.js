@@ -17,6 +17,7 @@
  * four people at once), and the caller's job is to report it, not to force it.
  */
 const { isFleetType } = require('../../lib/drivers/fleetType');
+const { normaliseOwner } = require('../../lib/drivers/truckIdentity');
 const { query } = require('../pool');
 
 function mapAssociation(row) {
@@ -40,6 +41,7 @@ function mapUnit(row) {
     unitNumber: row.unit_number,
     samsaraVehicleId: row.samsara_vehicle_id,
     fleetType: row.fleet_type || 'unknown',
+    truckOwner: row.truck_owner || null,
     seat: row.seat == null ? 1 : Number(row.seat),
     startedAt: row.started_at,
     endedAt: row.ended_at,
@@ -112,17 +114,20 @@ async function getPersonIdForGroup(groupId) {
  */
 async function openUnitAssignment({
   personId, unitNumber, samsaraVehicleId = null, source = 'backfill', startedAt = null,
-  fleetType = null, seat = null,
+  fleetType = null, seat = null, truckOwner = null,
 }, client = null) {
   const run = client ? client.query.bind(client) : query;
+  // The owner is part of the truck's name for an owner's truck ("1 ROGER") —
+  // `lib/drivers/truckIdentity.js`. Written normalised, or not at all.
+  const owner = normaliseOwner(truckOwner);
   const res = await run(
     `INSERT INTO driver_units
-       (person_id, unit_number, samsara_vehicle_id, source, started_at, fleet_type, seat)
+       (person_id, unit_number, samsara_vehicle_id, source, started_at, fleet_type, seat, truck_owner)
      VALUES ($1, $2, $3, $4, COALESCE($5::timestamptz, NOW()),
-             COALESCE($6::text, 'unknown'), COALESCE($7::smallint, 1))
+             COALESCE($6::text, 'unknown'), COALESCE($7::smallint, 1), $8)
      RETURNING *`,
     [personId, unitNumber, samsaraVehicleId, source, startedAt,
-      isFleetType(fleetType) ? fleetType : null, seat === 2 ? 2 : null]
+      isFleetType(fleetType) ? fleetType : null, seat === 2 ? 2 : null, owner]
   );
   return mapUnit(res.rows[0]);
 }

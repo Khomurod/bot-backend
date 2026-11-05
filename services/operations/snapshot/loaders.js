@@ -70,8 +70,11 @@ async function loadSnapshot(db = defaultDb) {
       // administrator had recorded, and the contest check then compared it
       // against a unit row that held the real value and found two different
       // fleets where there was one.
+      // The TRUCK beside the driver (migration 0093): its own fleet and owner,
+      // when the board has told us — `lib/drivers/truckIdentity.js`.
       `SELECT group_id, first_name, last_name, secondary_first_name, secondary_last_name,
-              unit_number, status, telegram_user_id, driver_type
+              unit_number, status, telegram_user_id, driver_type,
+              truck_fleet, truck_owner, truck_source
          FROM driver_profiles`
     ),
     // Open cycles, plus every cycle of any group that has one — the class-B rule
@@ -141,6 +144,17 @@ async function loadSnapshot(db = defaultDb) {
     return null;
   });
 
+  // The board's present lines, for the truck each one names (owner, fleet).
+  // A failed read is null — the check that needs it stands down rather than
+  // reading "no board" as "no trucks".
+  const boardRows = await db.query(
+    `SELECT truck_raw, truck_norm, fleet_type, fleet_label_raw, driver_name_clean, team_members, is_team, status
+       FROM dispatch_board_rows WHERE present = TRUE`
+  ).then((r) => r.rows).catch((err) => {
+    console.warn('[SNAPSHOT] could not read the Dispatcher Board rows:', err.message);
+    return null;
+  });
+
   return {
     now: new Date(),
     groups: groups.rows,
@@ -158,6 +172,7 @@ async function loadSnapshot(db = defaultDb) {
     engineeringRequests,
     roadBonusReviews,
     vehicleMatchReports,
+    boardRows,
     ...layer,
   };
 }
@@ -179,7 +194,7 @@ async function loadLayerSnapshot(db) {
     // number, so every check reading it saw Company 001 and Lease 001 as one
     // truck — the exact confusion 0047 exists to remove.
     db.query(
-      `SELECT person_id, unit_number, samsara_vehicle_id, fleet_type, seat
+      `SELECT person_id, unit_number, samsara_vehicle_id, fleet_type, seat, truck_owner
          FROM driver_units WHERE ended_at IS NULL`
     ),
     // Who the bot has seen in each chat, what role it guessed for them, and

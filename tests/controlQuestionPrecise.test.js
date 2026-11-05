@@ -77,6 +77,16 @@ const CASES = {
     },
     shows: [CHAT, 'unit 121', 'Company driver', 'Owner-operator'],
   },
+  'identity.truck_from_board': {
+    finding: {
+      title: 't',
+      evidence: {
+        groupId: 4401, groupName: 'WENZE UNIT # 1 ROGER ALCIDE', personId: 3301, unitNumber: '1', boardTruck: '1 ROGER',
+        boardDriver: 'Roger Alcide', profileFleet: 'owner_operator', profileOwner: null, boardFleet: 'owner_operator', boardOwner: 'ROGER',
+      },
+    },
+    shows: ['WENZE UNIT # 1 ROGER ALCIDE', '1 ROGER', 'Roger Alcide', 'truck of ROGER'],
+  },
   'home_time.clock_reset_on_group_change': {
     finding: {
       title: 't',

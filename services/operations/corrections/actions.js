@@ -39,6 +39,7 @@ const {
 const { abandonExhaustedInternalAlerts } = require('./alertActions');
 const { ensurePerson, syncUnit } = require('./identityActions');
 const { syncUnitFleet } = require('./unitFleetActions');
+const { setTruckFromBoard } = require('./truckFromBoardActions');
 const { handOverUnit } = require('./unitHandoverActions');
 const { setGroupType } = require('./groupActions');
 const { setDriverStatus, choiceActionFor } = require('./statusActions');
@@ -320,6 +321,7 @@ const ACTIONS = new Map([
   [ensurePerson.key, ensurePerson],
   [syncUnit.key, syncUnit],
   [syncUnitFleet.key, syncUnitFleet],
+  [setTruckFromBoard.key, setTruckFromBoard],
   [handOverUnit.key, handOverUnit],
   [carryRoadClock.key, carryRoadClock],
   [markReturnedToRoad.key, markReturnedToRoad],
@@ -339,6 +341,7 @@ const CHECK_TO_ACTION = new Map([
   ['identity.group_without_person', ensurePerson.key],
   ['identity.stale_unit_assignment', syncUnit.key],
   ['identity.unit_fleet_behind_profile', syncUnitFleet.key],
+  ['identity.truck_from_board', setTruckFromBoard.key],
   ['identity.unit_handover', handOverUnit.key],
   ['home_time.clock_reset_on_group_change', carryRoadClock.key],
   ['home_time.returned_to_road', markReturnedToRoad.key],

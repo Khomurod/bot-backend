@@ -65,7 +65,13 @@ feature it belongs to.
   the profile says Company driver, the truck row still says Owner-Operator —
   is closed and reopened under the profile's fleet, only when nobody else holds
   that truck in it; `corrections/unitFleetActions.js`, switched on by migration
-  0092, cap 20), `identity.person_on_two_active_groups` and
+  0092; since migration 0093 it compares the truck's owner too, cap 60),
+  `identity.truck_from_board` (**auto**, owner's decision of 5 November 2026:
+  the board's truck — its fleet and, for an owner's truck, its owner — is
+  copied onto the profile when the board has the same person on the same
+  number; `corrections/truckFromBoardActions.js`, migration 0093, cap 60 (measured) —
+  `docs/architecture/fleet-type-and-unit-identity.md`),
+  `identity.person_on_two_active_groups` and
   `identity.unit_contested` (a human decides — the holder still drives). `checks/systems.js` reads across
   features: `samsara.vehicle_on_two_active_groups`,
   `samsara.vehicle_link_disagrees` and `raise.progress_without_person` (one

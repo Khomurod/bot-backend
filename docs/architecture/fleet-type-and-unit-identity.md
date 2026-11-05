@@ -20,7 +20,10 @@ than one active driver group — `001` on four of them — and to anything that
 compares bare numbers, those look like one truck being fought over by four
 drivers.
 
-A truck's name is `(fleet_type, unit_number, seat)`. Nothing less identifies one.
+A truck's name is `(fleet_type, unit_number, truck_owner, seat)`. Nothing less
+identifies one. The owner joined in November 2026 (below): on the board the name
+after a number is the truck's **owner**, and several owners reuse the same
+number.
 
 ## `unknown` is a real answer, and it never wins a match
 
@@ -85,6 +88,47 @@ unlabelled default would quietly file admin chats and mislabelled groups as owne
 operators. A title with no parentheses at all — including one with a status word
 appended, `... GOCHYYEV INACTIVE` — is still the owner-operator default.
 
+## The owner is part of the truck, and the truck's fleet is not the driver's type (November 2026)
+
+The owner's decisions of 5 November 2026, from the board ↔ Wenze ↔ Datatruck
+comparison:
+
+- **The name after a board number is the truck's OWNER, not its driver.**
+  `1 ERNST` is driven by Jerome Joyner and `562 ERNST` by Ernst Brutus;
+  `1 ERNST`, `1 ROGER` and `1 RUDOLPH` are three trucks; four owners each have
+  an `001`. Under `(fleet, number, seat)` all three "1"s were one truck, so one
+  driver held it and the others had no truck at all. Migration 0093 adds
+  `driver_units.truck_owner` (NULL for a truck with no owner in its label —
+  company, lease, lease-to-own) and replaces the open-truck index with one on
+  `(fleet_type, unit_number, COALESCE(truck_owner, ''), seat)`. **Two known,
+  different owners are two trucks; an unknown owner proves nothing** and still
+  contests (`holderContests`, `lib/identity/personResolution.js`) — the same
+  rule as an unknown fleet.
+- **"By the truck an owner-operator, by the driver a company driver."** A driver
+  hired by an owner drives an owner's truck as a company driver. The profile
+  keeps the DRIVER's type in `driver_type` and may record the TRUCK beside it:
+  `truck_fleet`, `truck_owner`, `truck_source` (`board` / `manual`).
+  `lib/drivers/truckIdentity.js` `truckOfProfile` is the one reading: the
+  truck's own fleet and owner when recorded, otherwise the driver's type (then
+  the chat title) and no owner — so a profile the board has never named behaves
+  exactly as before.
+- **Where the truck comes from: the board** (`identity.truck_from_board`,
+  `services/operations/checks/truckFromBoard.js`, auto since migration 0093, cap
+  60 — the measured first pass: 46 of the board's 104 lines name an owner).
+  Only for the same person on the same number — the profile's unit exactly
+  equals the board line's, the names agree by the board match's strict rule, and
+  exactly one present line does — and never over a truck a person set by hand.
+  Nothing is filed when the profile already means that truck (a company driver
+  in a COMP truck). The truck record then follows through
+  `identity.unit_fleet_behind_profile`, which now compares fleet AND owner.
+  A different number (John Elisee's chat says 01, the board 1 RUDOLPH) is a
+  question for a person, not a copy.
+- **Readers.** Every place that picks a truck's fleet reads `truckOfProfile`:
+  the profile-save hook (`personResolver`), the stale-unit / contested /
+  fleet-behind checks and their corrections, and the hand-over. The board match
+  Home Time uses (`lib/identity/boardResolution.js` `holderInRowTruck`) rules
+  out a holder in another owner's truck of the same number.
+
 ## A truck row's fleet follows the profile (November 2026)
 
 A `driver_units` row copies its fleet from the profile's `driver_type` (or the
@@ -105,7 +149,9 @@ closes that row and opens a new one under the profile's fleet — history kept,
 the revert reopens the old fleet. It does nothing when the profile cannot say
 which fleet, when the person is on two active chats, or when somebody else
 already holds that truck in the profile's fleet (two people in one truck is a
-question for a person). Auto since migration 0092, cap 20.
+question for a person). Auto since migration 0092; cap 20, raised by 0093 to 60
+(only while still 0092's own value) because every profile the board fills is
+one more truck row to bring along, and a check over its cap applies nothing.
 
 ## The one destructive step in this programme
 
@@ -204,6 +250,12 @@ unless somebody decided otherwise.
   stored decision beating the title, and two fleets on one number coexisting.
 - `tests/identityActionsPg.test.js` — the correction records the fleet and is
   not blocked by a holder in another one.
+- `tests/truckIdentity.test.js`, `tests/truckFromBoardCheck.test.js` and
+  `tests/truckOwnerIdentityPg.test.js` — two owners' trucks on one number
+  coexist and one truck still cannot be held twice; the board's truck reaches
+  the profile only for the same person on the same number; Wenze records
+  `1 ERNST` and `1 ROGER` as two trucks by itself; a hired driver keeps his type
+  while his truck becomes the owner's; the copy reverts.
 - `tests/unitFleetSyncCheck.test.js` and `tests/identityActionsPg.test.js` — a
   truck row behind the profile's fleet is brought to it by the background loop,
   never onto a truck another driver holds in that fleet, and the revert reopens

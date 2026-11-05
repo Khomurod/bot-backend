@@ -115,12 +115,14 @@ test('the schema seeds no rows — only the migrations\' switches exist, each sa
       'home_time.returned_to_road',
       'identity.group_without_person',
       'identity.stale_unit_assignment',
+      // 0093: the owner's decision of 5 November 2026 (the board's truck onto the profile).
+      'identity.truck_from_board',
       // 0092: the owner's decision of 5 November 2026 (a truck row's fleet follows the profile).
       'identity.unit_fleet_behind_profile',
       // 0078: the owner's decision of 20 October 2026 (a departed driver's truck).
       'identity.unit_handover',
     ]);
-    for (const r of rows) assert.match(r.updatedBy, /^migration 00(27|30|78|92)/);
+    for (const r of rows) assert.match(r.updatedBy, /^migration 00(27|30|78|92|93)/);
   });
 
 test('granting and revoking auto-apply records who did it', { skip: skipWithoutPg() }, async (t) => {
@@ -143,7 +145,7 @@ test('granting and revoking auto-apply records who did it', { skip: skipWithoutP
 
   const rows = await store.listCheckSettings();
   assert.equal(rows.filter((r) => r.checkKey === 'home_time.closable_open_cycle').length, 1, 'upsert, not insert');
-  assert.equal(rows.length, 6, 'the other seeded rows are untouched');
+  assert.equal(rows.length, 7, 'the other seeded rows are untouched');
 });
 
 test('a cap outside the permitted range is corrected, not rejected by a constraint',

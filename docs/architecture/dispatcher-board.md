@@ -304,6 +304,13 @@ a different driver or driver type in Datatruck. The owner's request of
 
 ## Which person a row is about — decided at read time
 
+Since November 2026 a board line's truck includes its **owner** when the suffix
+is a name (`1 ROGER`): a holder recorded in another owner's truck of the same
+number is not this line's driver (`holderInRowTruck`), and the board's truck is
+copied onto the driver's profile by `identity.truck_from_board`
+([`fleet-type-and-unit-identity.md`](fleet-type-and-unit-identity.md)).
+
+
 `services/dispatchBoard/rowPeople.js` answers it for the home-time watch, on
 every pass, and **writes nothing**. It indexes the person layer once
 (`indexLayer`, `holdersFor` — moved here from the deleted

@@ -57,6 +57,7 @@ function indexLayer(layer) {
       personId: u.person_id,
       displayName: nameOf.get(u.person_id) || '',
       fleetType: u.fleet_type || 'unknown',
+      truckOwner: u.truck_owner || null,
       seat: u.seat == null ? 1 : Number(u.seat),
       exact,
     };
@@ -91,7 +92,7 @@ function holdersFor(row, index) {
 async function loadPersonLayer(db) {
   const [people, units] = await Promise.all([
     db.query('SELECT id, display_name, merged_into_person_id FROM driver_people'),
-    db.query('SELECT person_id, unit_number, fleet_type, seat FROM driver_units WHERE ended_at IS NULL'),
+    db.query('SELECT person_id, unit_number, fleet_type, seat, truck_owner FROM driver_units WHERE ended_at IS NULL'),
   ]);
   return { people: people.rows, units: units.rows };
 }
