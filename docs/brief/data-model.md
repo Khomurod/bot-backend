@@ -115,7 +115,12 @@ join. Three rules are worth knowing before touching it:
   are zero collisions before taking it — otherwise the old index stays and a
   `serious` finding is filed. Unit `001` currently sits on four active groups; that is now
   unrepresentable, so the backfill leaves contested units unclaimed and reports
-  them rather than picking a winner.
+  them rather than picking a winner. Migration 0093 widened the truck to
+  **`(fleet_type, unit_number, COALESCE(truck_owner, ''), seat)`** — several
+  owners reuse one number (`1 ERNST`, `1 ROGER`); the new index only admits
+  more, so no collision proof was needed — and gave `driver_profiles` the
+  truck's own `truck_fleet` / `truck_owner` / `truck_source` beside the
+  driver's `driver_type`.
 
 Unit numbers are stored **exactly as written** — `001`, `01` and `1` are three
 different trucks in this fleet, and normalizing the zeros away would fabricate

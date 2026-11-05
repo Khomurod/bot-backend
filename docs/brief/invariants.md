@@ -276,10 +276,16 @@ repository-wide working rules. The highest-consequence items:
   integrations updating at different speeds from flapping a driver HOME → ROAD →
   HOME; only a disagreement standing twelve hours reaches a person. Each side of
   a cycle records who said it. See `docs/architecture/home-time-evidence.md`.
-- **A truck is `(fleet_type, unit_number, seat)`, never a number.** Wenze runs
-  three fleets that number independently, so Company 001, Owner-Operator 001 and
-  Lease 001 are three trucks; ten numbers sit on more than one active group
-  today. A team is two people on one truck in seats 1 and 2, not a duplicate.
+- **A truck is `(fleet_type, unit_number, truck_owner, seat)`, never a number.**
+  Wenze runs three fleets that number independently, so Company 001,
+  Owner-Operator 001 and Lease 001 are three trucks; ten numbers sit on more
+  than one active group today. Since migration 0093 the owner is part of it too:
+  on the board the name after a number is the truck's OWNER, so `1 ERNST` and
+  `1 ROGER` are two trucks — two known, different owners separate, an unknown
+  owner proves nothing. The truck's fleet is not the driver's type: a driver
+  hired by an owner is a company driver in an owner-operator truck
+  (`driver_profiles.truck_fleet` beside `driver_type`).
+  A team is two people on one truck in seats 1 and 2, not a duplicate.
   `unknown` is a real fleet type and never wins a match — it cannot be used to
   wave another driver's assignment aside, and it is never written as a guess.
   `lib/drivers/fleetType.js` is the one place the profile's vocabulary

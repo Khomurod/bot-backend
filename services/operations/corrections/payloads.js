@@ -50,6 +50,15 @@ function payloadFor(finding) {
     return change.personId && change.groupId && change.unitNumber && change.to
       ? {
         personId: change.personId, groupId: change.groupId, unitNumber: change.unitNumber, fleetType: change.to,
+        truckOwner: change.toOwner ?? null,
+      }
+      : null;
+  }
+  if (finding.checkKey === 'identity.truck_from_board') {
+    return change.groupId && change.unitNumber && change.boardTruck && change.toFleet
+      ? {
+        groupId: change.groupId, unitNumber: change.unitNumber, boardTruck: change.boardTruck,
+        fleetType: change.toFleet, truckOwner: change.toOwner ?? null,
       }
       : null;
   }

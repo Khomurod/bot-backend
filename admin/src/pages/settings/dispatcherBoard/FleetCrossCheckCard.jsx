@@ -19,7 +19,7 @@ const DRIVER_TYPE = { company_driver: "company driver", owner: "owner", lease: "
 
 const PROBLEM = {
   not_in_wenze: "Not in Wenze",
-  fleet_differs_wenze: "Wenze has it under another fleet",
+  fleet_differs_wenze: "Wenze has this number only as another truck (fleet or owner)",
   name_differs_wenze: "Different driver in Wenze",
   name_close_wenze: "Name spelled differently in Wenze",
   not_in_datatruck: "No load in Datatruck this week",
@@ -39,7 +39,7 @@ function Stat({ label, value, warn }) {
 function wenzeCell(w) {
   if (!w.holders.length && !w.otherFleets.length) return "—";
   const same = w.holders.map((h) => `${FLEET[h.fleetType] || h.fleetType} · ${h.name}${h.driverType ? ` (${DRIVER_TYPE[h.driverType] || h.driverType})` : ""}`);
-  const other = w.otherFleets.map((h) => `(${FLEET[h.fleetType] || h.fleetType} · ${h.name})`);
+  const other = w.otherFleets.map((h) => `(${FLEET[h.fleetType] || h.fleetType}${h.truckOwner ? ` of ${h.truckOwner}` : ""} · ${h.name})`);
   return [...same, ...other].join("; ");
 }
 
@@ -96,7 +96,7 @@ export default function FleetCrossCheckCard() {
           <Stat label="Board trucks" value={s.boardRows ?? 0} />
           <Stat label="All sources agree" value={s.allAgree ?? 0} />
           <Stat label="Not in Wenze" value={s.notInWenze ?? 0} warn />
-          <Stat label="Wenze has another fleet" value={s.fleetDiffersWenze ?? 0} warn />
+          <Stat label="Wenze has another truck on the number" value={s.fleetDiffersWenze ?? 0} warn />
           <Stat label="Different driver in Wenze" value={s.nameDiffersWenze ?? 0} warn />
           <Stat label="Name spelled differently in Wenze" value={s.nameCloseWenze ?? 0} warn />
           {s.datatruckRead && (

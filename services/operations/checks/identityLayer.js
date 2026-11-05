@@ -29,7 +29,9 @@
  * The other two are for a human: the same person on two active chats, and a
  * truck the profile claims that another person, still working, holds.
  */
-const { resolveDriverType, FLEET_TYPES } = require('../../../lib/drivers/fleetType');
+const { FLEET_TYPES } = require('../../../lib/drivers/fleetType');
+const { truckOfProfile, normaliseOwner } = require('../../../lib/drivers/truckIdentity');
+const { holderContests } = require('../../../lib/identity/personResolution');
 
 function activeDriverGroups(groups) {
   return groups.filter((g) => g.group_type === 'driver' && g.active === true);
@@ -67,18 +69,20 @@ function unitsByNumber(units) {
 }
 
 /**
- * The holders of `unit` that a claimant in `fleet` would actually collide with.
+ * The holders of `unit` that a claimant in `fleet` (and, for an owner's truck,
+ * of `owner`) would actually collide with.
  *
- * Two known, different fleets are two different trucks. `unknown` on either side
- * collides, because it cannot be used to prove they are different either.
+ * Two known, different fleets are two different trucks; so are two known,
+ * different owners — "1 ERNST" and "1 ROGER" (owner, 5 November 2026).
+ * `unknown` on either side collides, because it cannot prove they differ.
  */
-function holdersInWay(holders, fleet) {
-  const target = fleet || FLEET_TYPES.UNKNOWN;
-  return (holders || []).filter((h) => {
-    const held = h.fleet_type || FLEET_TYPES.UNKNOWN;
-    if (target === FLEET_TYPES.UNKNOWN || held === FLEET_TYPES.UNKNOWN) return true;
-    return target === held;
-  });
+function holdersInWay(holders, fleet, owner = null) {
+  return (holders || []).filter((h) => holderContests(fleet, h.fleet_type, owner, h.truck_owner));
+}
+
+/** The truck a chat's profile names — its fleet and owner (`lib/drivers/truckIdentity.js`). */
+function truckOf(profile, group) {
+  return truckOfProfile(profile || {}, group?.group_name || null);
 }
 
 function label(group) {
@@ -155,14 +159,14 @@ function checkUnitContested({ groups, profiles, personGroups, units, people }) {
   const byGroup = profilesByGroup(profiles);
   const holders = unitsByNumber(units);
   const names = new Map((people || []).map((p) => [p.id, p.display_name]));
-  const live = activeDriverGroups(groups).map((g) => ({
-    g,
-    unit: String(byGroup.get(g.id)?.unit_number || '').trim(),
-    fleet: resolveDriverType({ column: byGroup.get(g.id)?.driver_type, title: g.group_name }).fleetType,
-  }));
-  const compatible = (a, b) => a === b || a === FLEET_TYPES.UNKNOWN || b === FLEET_TYPES.UNKNOWN;
-  const claimedTwice = ({ unit, fleet }) => live
-    .filter((other) => other.unit === unit && compatible(other.fleet || FLEET_TYPES.UNKNOWN, fleet || FLEET_TYPES.UNKNOWN))
+  const live = activeDriverGroups(groups).map((g) => {
+    const truck = truckOf(byGroup.get(g.id), g);
+    return {
+      g, unit: String(byGroup.get(g.id)?.unit_number || '').trim(), fleet: truck.fleetType, owner: truck.owner,
+    };
+  });
+  const claimedTwice = ({ unit, fleet, owner }) => live
+    .filter((other) => other.unit === unit && holderContests(other.fleet, fleet, other.owner, owner))
     .length > 1;
   const activeIds = new Set(live.map(({ g }) => g.id));
   const liveChats = new Map();
@@ -170,11 +174,13 @@ function checkUnitContested({ groups, profiles, personGroups, units, people }) {
     if (activeIds.has(a.group_id)) liveChats.set(a.person_id, (liveChats.get(a.person_id) || 0) + 1);
   }
   const findings = [];
-  for (const { g, unit, fleet } of live) {
+  for (const {
+    g, unit, fleet, owner,
+  } of live) {
     const association = open.get(g.id);
     if (!association || !unit) continue;
-    if (claimedTwice({ unit, fleet })) continue;
-    const contenders = holdersInWay(holders.get(unit), fleet)
+    if (claimedTwice({ unit, fleet, owner })) continue;
+    const contenders = holdersInWay(holders.get(unit), fleet, owner)
       .filter((h) => h.person_id !== association.person_id);
     const holder = contenders[0];
     if (!holder) continue;
@@ -183,7 +189,9 @@ function checkUnitContested({ groups, profiles, personGroups, units, people }) {
     // question (person_on_two_active_groups) and is not handed anything.
     const holdersGone = contenders.every((h) => !liveChats.get(h.person_id));
     if (holdersGone && liveChats.get(association.person_id) === 1) {
-      findings.push(handoverFinding({ g, unit, fleet, association, contenders, names }));
+      findings.push(handoverFinding({
+        g, unit, fleet, association, contenders, names,
+      }));
       continue;
     }
     findings.push({
@@ -269,13 +277,11 @@ function checkStaleUnitAssignment({ groups, profiles, personGroups, units }) {
     if ((activeChatsOf.get(association.person_id) || 0) > 1) continue;
     const recorded = current.get(association.person_id);
     if (recorded && String(recorded.unit_number).trim() === unit) continue;
-    const staleFleet = resolveDriverType({
-      column: byGroup.get(g.id)?.driver_type, title: g.group_name,
-    }).fleetType;
-    // Only a holder in the SAME truck blocks the sync. One in another fleet is
-    // in another truck, and leaving the assignment stale because of them would
-    // be the bare-number mistake in a new place.
-    const blocking = holdersInWay(holders.get(unit), staleFleet)
+    const truck = truckOf(byGroup.get(g.id), g);
+    // Only a holder in the SAME truck blocks the sync. One in another fleet, or
+    // another owner's truck, is in another truck, and leaving the assignment
+    // stale because of them would be the bare-number mistake in a new place.
+    const blocking = holdersInWay(holders.get(unit), truck.fleetType, truck.owner)
       .filter((h) => h.person_id !== association.person_id);
     if (blocking.length) continue; // contested — the check above
 
@@ -332,17 +338,21 @@ function checkUnitFleetBehindProfile({ groups, profiles, personGroups, units }) 
     if ((activeChatsOf.get(association.person_id) || 0) > 1) continue;
     const recorded = current.get(association.person_id);
     if (!recorded || String(recorded.unit_number).trim() !== unit) continue; // the truck itself is behind — the check above
-    const fleet = resolveDriverType({ column: byGroup.get(g.id)?.driver_type, title: g.group_name }).fleetType;
+    const truck = truckOf(byGroup.get(g.id), g);
+    const fleet = truck.fleetType;
     const recordedFleet = recorded.fleet_type || FLEET_TYPES.UNKNOWN;
-    if (fleet === FLEET_TYPES.UNKNOWN || recordedFleet === fleet) continue;
-    const blocking = holdersInWay(holders.get(unit), fleet).filter((h) => h.person_id !== association.person_id);
+    const recordedOwner = normaliseOwner(recorded.truck_owner);
+    if (fleet === FLEET_TYPES.UNKNOWN) continue;
+    if (recordedFleet === fleet && recordedOwner === truck.owner) continue;
+    const blocking = holdersInWay(holders.get(unit), fleet, truck.owner).filter((h) => h.person_id !== association.person_id);
     if (blocking.length) continue;
+    const ownerPart = (o) => (o ? ` (owner ${o})` : '');
 
     findings.push({
       checkKey: 'identity.unit_fleet_behind_profile',
       subjectType: 'group',
       subjectId: g.id,
-      title: `${label(g)}: profile says ${fleet} for unit ${unit}, the driver's record says ${recordedFleet}`,
+      title: `${label(g)}: profile says ${fleet}${ownerPart(truck.owner)} for unit ${unit}, the driver's record says ${recordedFleet}${ownerPart(recordedOwner)}`,
       severity: 'info',
       tier: 'auto',
       confidence: 90,
@@ -353,10 +363,12 @@ function checkUnitFleetBehindProfile({ groups, profiles, personGroups, units }) 
         unitNumber: unit,
         profileFleet: fleet,
         recordedFleet,
+        profileOwner: truck.owner,
+        recordedOwner,
       },
       proposedChange: {
         table: 'driver_units', personId: association.person_id, groupId: g.id,
-        unitNumber: unit, from: recordedFleet, to: fleet,
+        unitNumber: unit, from: recordedFleet, to: fleet, fromOwner: recordedOwner, toOwner: truck.owner,
       },
     });
   }

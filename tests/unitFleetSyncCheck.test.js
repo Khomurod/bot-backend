@@ -32,7 +32,7 @@ test("a truck row behind the profile's fleet: an auto finding that names both fl
   assert.equal(found.checkKey, 'identity.unit_fleet_behind_profile');
   assert.equal(found.tier, 'auto');
   assert.deepEqual(found.proposedChange, {
-    table: 'driver_units', personId: 7, groupId: 10, unitNumber: '121', from: 'owner_operator', to: 'company',
+    table: 'driver_units', personId: 7, groupId: 10, unitNumber: '121', from: 'owner_operator', to: 'company', fromOwner: null, toOwner: null,
   });
   assert.ok(layer.CHECK_KEYS.includes('identity.unit_fleet_behind_profile'));
   assert.ok(layer.runIdentityLayerChecks(fleet()).some((f) => f.checkKey === 'identity.unit_fleet_behind_profile'));
@@ -81,4 +81,42 @@ test('nothing for a person on two active chats, or a chat that is not active', (
   assert.deepEqual(layer.checkUnitFleetBehindProfile(fleet({
     groups: [group(10, 'WENZE UNIT # 121 SHERZAD DIZAII ( COMPANY ) INACTIVE', { active: false })],
   })), []);
+});
+
+test("the TRUCK the profile names wins over the driver's type: a hired driver in an owner's truck", () => {
+  // 077 (Polvan): the driver is a company driver, the truck is Polvan's (owner, 5 November 2026).
+  const [found] = layer.checkUnitFleetBehindProfile(fleet({
+    groups: [group(10, 'WENZE UNIT # 077 DAVID ONOBUN OLUGBENGA ( COMPANY )')],
+    profiles: [{ ...profile(10, '077', 'company_driver'), truck_fleet: 'owner_operator', truck_owner: 'POLVAN' }],
+    units: [{ person_id: 7, unit_number: '077', fleet_type: 'company', seat: 1, truck_owner: null }],
+  }));
+  assert.equal(found.proposedChange.to, 'owner_operator');
+  assert.equal(found.proposedChange.toOwner, 'POLVAN');
+  assert.match(found.title, /owner POLVAN/);
+});
+
+test('an owner the record lacks is brought to the profile; one it already has is left alone', () => {
+  const base = {
+    groups: [group(10, 'WENZE UNIT # 1 ROGER ALCIDE')],
+    profiles: [{ ...profile(10, '1', 'owner'), truck_fleet: 'owner_operator', truck_owner: 'ROGER' }],
+  };
+  const [found] = layer.checkUnitFleetBehindProfile(fleet({
+    ...base, units: [{ person_id: 7, unit_number: '1', fleet_type: 'owner_operator', seat: 1, truck_owner: null }],
+  }));
+  assert.equal(found.proposedChange.toOwner, 'ROGER');
+  assert.deepEqual(layer.checkUnitFleetBehindProfile(fleet({
+    ...base, units: [{ person_id: 7, unit_number: '1', fleet_type: 'owner_operator', seat: 1, truck_owner: 'ROGER' }],
+  })), []);
+});
+
+test("another owner's truck with the same number is not in the way: 1 ERNST does not block 1 ROGER", () => {
+  const [found] = layer.checkUnitFleetBehindProfile(fleet({
+    groups: [group(10, 'WENZE UNIT # 1 ROGER ALCIDE')],
+    profiles: [{ ...profile(10, '1', 'owner'), truck_fleet: 'owner_operator', truck_owner: 'ROGER' }],
+    units: [
+      { person_id: 7, unit_number: '1', fleet_type: 'owner_operator', seat: 1, truck_owner: null },
+      { person_id: 8, unit_number: '1', fleet_type: 'owner_operator', seat: 1, truck_owner: 'ERNST' },
+    ],
+  }));
+  assert.ok(found, 'Ernst holds his own 1, not Roger\'s');
 });

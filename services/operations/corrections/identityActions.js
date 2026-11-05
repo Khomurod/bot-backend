@@ -16,7 +16,7 @@
  * associations are the evidence, and both actions re-derive from the LIVE rows
  * under lock rather than trusting the sweep's payload.
  */
-const { resolveDriverType } = require('../../../lib/drivers/fleetType');
+const { truckOfProfile } = require('../../../lib/drivers/truckIdentity');
 const { holderContests } = require('../../../lib/identity/personResolution');
 const { StaleCorrectionError } = require('./evidence');
 const people = require('../../../database/driverPeople');
@@ -106,7 +106,7 @@ const syncUnit = {
     // The evidence, locked: the profile that names the truck, and every open
     // unit row that could contradict the move.
     const profile = await client.query(
-      'SELECT unit_number, driver_type FROM driver_profiles WHERE group_id = $1 FOR UPDATE', [groupId]
+      'SELECT unit_number, driver_type, truck_fleet, truck_owner FROM driver_profiles WHERE group_id = $1 FOR UPDATE', [groupId]
     );
     if (String(profile.rows[0]?.unit_number || '').trim() !== unit) {
       throw new StaleCorrectionError(`Group ${groupId}'s profile no longer says unit ${unit}.`);
@@ -136,11 +136,9 @@ const syncUnit = {
     // second. Recorded on the row, because a `(fleet_type, unit_number, seat)`
     // is what identifies a truck and a correction that wrote `unknown` would
     // create a row that contests every same-numbered truck in the fleet.
-    const fleetType = resolveDriverType({
-      column: profile.rows[0]?.driver_type, title: groupRow.rows[0]?.group_name,
-    }).fleetType;
+    const { fleetType, owner: truckOwner } = truckOfProfile(profile.rows[0] || {}, groupRow.rows[0]?.group_name);
     const openRows = await client.query(
-      `SELECT id, person_id, unit_number, samsara_vehicle_id, fleet_type, seat
+      `SELECT id, person_id, unit_number, samsara_vehicle_id, fleet_type, seat, truck_owner
          FROM driver_units
         WHERE ended_at IS NULL AND (person_id = $1 OR unit_number = $2)
         ORDER BY id FOR UPDATE`,
@@ -151,7 +149,7 @@ const syncUnit = {
     // because it cannot prove they are different either.
     const holder = openRows.rows.find((r) => String(r.unit_number).trim() === unit
       && Number(r.person_id) !== Number(personId)
-      && holderContests(fleetType, r.fleet_type));
+      && holderContests(fleetType, r.fleet_type, truckOwner, r.truck_owner));
     if (holder) {
       throw new StaleCorrectionError(`Unit ${unit} is now held by person ${holder.person_id} — not reassigning.`);
     }
@@ -162,7 +160,7 @@ const syncUnit = {
 
     if (current) await people.closeUnitAssignment({ personId }, client);
     const opened = await people.openUnitAssignment({
-      personId, unitNumber: unit, samsaraVehicleId, source: 'profile', fleetType,
+      personId, unitNumber: unit, samsaraVehicleId, source: 'profile', fleetType, truckOwner,
     }, client);
 
     return {

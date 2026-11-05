@@ -22,14 +22,15 @@
  * edited in place — so what the record said before is still there to read and
  * the revert has something to reopen.
  */
-const { resolveDriverType, FLEET_TYPES } = require('../../../lib/drivers/fleetType');
+const { FLEET_TYPES } = require('../../../lib/drivers/fleetType');
+const { truckOfProfile, normaliseOwner } = require('../../../lib/drivers/truckIdentity');
 const { holderContests } = require('../../../lib/identity/personResolution');
 const { StaleCorrectionError } = require('./evidence');
 const people = require('../../../database/driverPeople');
 
 async function openRowsFor(client, personId, unit) {
   const res = await client.query(
-    `SELECT id, person_id, unit_number, samsara_vehicle_id, fleet_type, seat
+    `SELECT id, person_id, unit_number, samsara_vehicle_id, fleet_type, seat, truck_owner
        FROM driver_units
       WHERE ended_at IS NULL AND (person_id = $1 OR unit_number = $2)
       ORDER BY id FOR UPDATE`,
@@ -38,7 +39,7 @@ async function openRowsFor(client, personId, unit) {
   return res.rows;
 }
 
-async function reopen(client, row, { personId, fleetType }) {
+async function reopen(client, row, { personId, fleetType, truckOwner = null }) {
   await client.query('UPDATE driver_units SET ended_at = NOW() WHERE id = $1', [row.id]);
   return people.openUnitAssignment({
     personId,
@@ -47,6 +48,7 @@ async function reopen(client, row, { personId, fleetType }) {
     source: 'profile',
     fleetType,
     seat: Number(row.seat) === 2 ? 2 : 1,
+    truckOwner,
   }, client);
 }
 
@@ -54,16 +56,16 @@ const syncUnitFleet = {
   key: 'identity.sync_unit_fleet',
   tier: 'auto',
   subjectType: 'group',
-  describe: (p) => `Record unit ${p.unitNumber} as ${p.fleetType} for person ${p.personId}, as the profile says`,
+  describe: (p) => `Record unit ${p.unitNumber} as ${p.fleetType}${p.truckOwner ? ` (owner ${p.truckOwner})` : ''} for person ${p.personId}, as the profile says`,
 
   async apply({
-    personId, groupId, unitNumber, fleetType,
+    personId, groupId, unitNumber, fleetType, truckOwner,
   }, client) {
     const unit = String(unitNumber || '').trim();
     if (!unit || !personId || !groupId) throw new StaleCorrectionError('A person, a group and a unit are all required.');
 
     const profile = await client.query(
-      'SELECT unit_number, driver_type FROM driver_profiles WHERE group_id = $1 FOR UPDATE', [groupId]
+      'SELECT unit_number, driver_type, truck_fleet, truck_owner FROM driver_profiles WHERE group_id = $1 FOR UPDATE', [groupId]
     );
     if (String(profile.rows[0]?.unit_number || '').trim() !== unit) {
       throw new StaleCorrectionError(`Group ${groupId}'s profile no longer says unit ${unit}.`);
@@ -74,12 +76,14 @@ const syncUnitFleet = {
     if (group.rows[0]?.active !== true || group.rows[0]?.group_type !== 'driver') {
       throw new StaleCorrectionError(`Group ${groupId} is no longer an active driver group.`);
     }
-    const fleet = resolveDriverType({
-      column: profile.rows[0]?.driver_type, title: group.rows[0]?.group_name,
-    }).fleetType;
+    const truck = truckOfProfile(profile.rows[0] || {}, group.rows[0]?.group_name);
+    const fleet = truck.fleetType;
     if (fleet === FLEET_TYPES.UNKNOWN) throw new StaleCorrectionError(`Group ${groupId}'s profile no longer says which fleet.`);
     if (fleetType && fleet !== fleetType) {
       throw new StaleCorrectionError(`Group ${groupId}'s profile now says ${fleet}, not ${fleetType}.`);
+    }
+    if (truckOwner !== undefined && normaliseOwner(truckOwner) !== truck.owner) {
+      throw new StaleCorrectionError(`Group ${groupId}'s profile now names owner ${truck.owner || 'none'}.`);
     }
     const association = await people.getOpenAssociationForGroup(groupId, client);
     if (!association || association.personId !== Number(personId)) {
@@ -97,19 +101,23 @@ const syncUnitFleet = {
     const rows = await openRowsFor(client, personId, unit);
     const current = rows.find((r) => Number(r.person_id) === Number(personId) && String(r.unit_number).trim() === unit);
     if (!current) throw new StaleCorrectionError(`Person ${personId} is no longer recorded in unit ${unit}.`);
-    if ((current.fleet_type || FLEET_TYPES.UNKNOWN) === fleet) {
-      throw new StaleCorrectionError(`Unit ${unit} is already recorded as ${fleet}.`);
+    if ((current.fleet_type || FLEET_TYPES.UNKNOWN) === fleet && normaliseOwner(current.truck_owner) === truck.owner) {
+      throw new StaleCorrectionError(`Unit ${unit} is already recorded as ${fleet}${truck.owner ? ` (owner ${truck.owner})` : ''}.`);
     }
     const holder = rows.find((r) => Number(r.person_id) !== Number(personId)
-      && String(r.unit_number).trim() === unit && holderContests(fleet, r.fleet_type));
+      && String(r.unit_number).trim() === unit && holderContests(fleet, r.fleet_type, truck.owner, r.truck_owner));
     if (holder) {
       throw new StaleCorrectionError(`Person ${holder.person_id} holds ${fleet} unit ${unit} — two people in one truck is a decision.`);
     }
 
-    const opened = await reopen(client, current, { personId: Number(personId), fleetType: fleet });
+    const opened = await reopen(client, current, { personId: Number(personId), fleetType: fleet, truckOwner: truck.owner });
     return {
-      oldValues: { unitRowId: current.id, unitNumber: unit, fleetType: current.fleet_type || FLEET_TYPES.UNKNOWN },
-      newValues: { unitRowId: opened.id, unitNumber: unit, fleetType: fleet, personId: Number(personId) },
+      oldValues: {
+        unitRowId: current.id, unitNumber: unit, fleetType: current.fleet_type || FLEET_TYPES.UNKNOWN, truckOwner: current.truck_owner || null,
+      },
+      newValues: {
+        unitRowId: opened.id, unitNumber: unit, fleetType: fleet, truckOwner: truck.owner, personId: Number(personId),
+      },
       affectedRecords: [
         { table: 'driver_units', id: current.id, personId: Number(personId) },
         { table: 'driver_units', id: opened.id, personId: Number(personId) },
@@ -121,17 +129,19 @@ const syncUnitFleet = {
   async revert(correction, client) {
     const openedId = correction.new_values?.unitRowId;
     const oldFleet = correction.old_values?.fleetType;
+    const oldOwner = correction.old_values?.truckOwner || null;
     const res = await client.query(
-      'SELECT id, person_id, unit_number, samsara_vehicle_id, fleet_type, seat FROM driver_units WHERE id = $1 AND ended_at IS NULL FOR UPDATE',
+      'SELECT id, person_id, unit_number, samsara_vehicle_id, fleet_type, seat, truck_owner FROM driver_units WHERE id = $1 AND ended_at IS NULL FOR UPDATE',
       [openedId]
     );
     const row = res.rows[0];
     if (!row) throw new StaleCorrectionError('The unit row this correction opened is no longer open.');
     const others = await openRowsFor(client, row.person_id, row.unit_number);
     const inWay = others.find((r) => Number(r.id) !== Number(row.id) && Number(r.person_id) !== Number(row.person_id)
-      && String(r.unit_number).trim() === String(row.unit_number).trim() && holderContests(oldFleet, r.fleet_type));
+      && String(r.unit_number).trim() === String(row.unit_number).trim()
+      && holderContests(oldFleet, r.fleet_type, oldOwner, r.truck_owner));
     if (inWay) throw new StaleCorrectionError(`Person ${inWay.person_id} now holds that truck in the old fleet.`);
-    await reopen(client, row, { personId: Number(row.person_id), fleetType: oldFleet });
+    await reopen(client, row, { personId: Number(row.person_id), fleetType: oldFleet, truckOwner: oldOwner });
   },
 };
 

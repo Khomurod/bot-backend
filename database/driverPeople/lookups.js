@@ -256,6 +256,7 @@ async function getPersonIdentity(personId) {
       unitNumber: r.unit_number,
       samsaraVehicleId: r.samsara_vehicle_id,
       fleetType: r.fleet_type,
+      truckOwner: r.truck_owner || null,
       seat: r.seat,
       startedAt: r.started_at,
       endedAt: r.ended_at,

@@ -23,7 +23,7 @@
  * new driver's assignment is closed, the old holders' trucks are reopened, and
  * the new driver's previous truck (if any) is reopened.
  */
-const { resolveDriverType } = require('../../../lib/drivers/fleetType');
+const { truckOfProfile } = require('../../../lib/drivers/truckIdentity');
 const { holderContests } = require('../../../lib/identity/personResolution');
 const { StaleCorrectionError } = require('./evidence');
 const people = require('../../../database/driverPeople');
@@ -50,7 +50,8 @@ const handOverUnit = {
     if (!unit || !personId || !groupId) throw new StaleCorrectionError('A person, a chat and a unit are all required.');
 
     const groupRow = await client.query(
-      `SELECT g.group_name, g.group_type, g.active, g.samsara_vehicle_id, dp.unit_number, dp.driver_type
+      `SELECT g.group_name, g.group_type, g.active, g.samsara_vehicle_id, dp.unit_number, dp.driver_type,
+              dp.truck_fleet, dp.truck_owner
          FROM groups g LEFT JOIN driver_profiles dp ON dp.group_id = g.id
         WHERE g.id = $1 FOR UPDATE OF g`,
       [groupId]
@@ -70,9 +71,9 @@ const handOverUnit = {
       throw new StaleCorrectionError(`Person ${personId} is not on exactly one active chat — which truck is a decision.`);
     }
 
-    const fleetType = resolveDriverType({ column: group.driver_type, title: group.group_name }).fleetType;
+    const { fleetType, owner: truckOwner } = truckOfProfile(group, group.group_name);
     const openRows = await client.query(
-      `SELECT id, person_id, unit_number, samsara_vehicle_id, fleet_type, seat, started_at
+      `SELECT id, person_id, unit_number, samsara_vehicle_id, fleet_type, seat, started_at, truck_owner
          FROM driver_units
         WHERE ended_at IS NULL AND (person_id = $1 OR unit_number = $2)
         ORDER BY id FOR UPDATE`,
@@ -80,7 +81,7 @@ const handOverUnit = {
     );
     const inWay = openRows.rows.filter((r) => String(r.unit_number).trim() === unit
       && Number(r.person_id) !== Number(personId)
-      && holderContests(fleetType, r.fleet_type));
+      && holderContests(fleetType, r.fleet_type, truckOwner, r.truck_owner));
     if (!inWay.length) throw new StaleCorrectionError(`Nobody else holds unit ${unit} any more.`);
     const expected = new Set(holderPersonIds.map(Number));
     for (const row of inWay) {
@@ -101,7 +102,7 @@ const handOverUnit = {
     await client.query('UPDATE driver_units SET ended_at = NOW() WHERE id = ANY($1::bigint[])', [inWay.map((r) => r.id)]);
     if (current) await client.query('UPDATE driver_units SET ended_at = NOW() WHERE id = $1', [current.id]);
     const opened = await people.openUnitAssignment({
-      personId, unitNumber: unit, samsaraVehicleId: group.samsara_vehicle_id || null, source: 'profile', fleetType,
+      personId, unitNumber: unit, samsaraVehicleId: group.samsara_vehicle_id || null, source: 'profile', fleetType, truckOwner,
     }, client);
 
     return {
@@ -110,9 +111,10 @@ const handOverUnit = {
         unitRowId: current ? current.id : null,
         samsaraVehicleId: current ? current.samsara_vehicle_id : null,
         fleetType: current ? current.fleet_type : null,
+        truckOwner: current ? current.truck_owner || null : null,
         holders: inWay.map((r) => ({
           personId: r.person_id, unitRowId: r.id, unitNumber: r.unit_number,
-          samsaraVehicleId: r.samsara_vehicle_id, fleetType: r.fleet_type, seat: r.seat,
+          samsaraVehicleId: r.samsara_vehicle_id, fleetType: r.fleet_type, seat: r.seat, truckOwner: r.truck_owner || null,
         })),
       },
       newValues: {
@@ -137,13 +139,13 @@ const handOverUnit = {
       // eslint-disable-next-line no-await-in-loop
       await people.openUnitAssignment({
         personId: h.personId, unitNumber: h.unitNumber, samsaraVehicleId: h.samsaraVehicleId || null,
-        source: 'manual', fleetType: h.fleetType, seat: h.seat,
+        source: 'manual', fleetType: h.fleetType, seat: h.seat, truckOwner: h.truckOwner || null,
       }, client);
     }
     if (ov.unitNumber) {
       await people.openUnitAssignment({
         personId: nv.personId, unitNumber: ov.unitNumber, samsaraVehicleId: ov.samsaraVehicleId || null,
-        source: 'manual', fleetType: ov.fleetType,
+        source: 'manual', fleetType: ov.fleetType, truckOwner: ov.truckOwner || null,
       }, client);
     }
   },
