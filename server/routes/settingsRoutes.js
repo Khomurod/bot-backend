@@ -27,6 +27,7 @@ const { createEldSettingsRouter } = require('./settings/eldRoutes');
 const { createRingCentralSettingsRouter } = require('./settings/ringcentralRoutes');
 const { createMessageGroupSettingsRouter } = require('./settings/messageGroupRoutes');
 const { createDispatchBoardSettingsRouter } = require('./settings/dispatchBoardRoutes');
+const { createFleetCrossCheckRouter } = require('./settings/fleetCrossCheckRoutes');
 const { createSamsaraSettingsRouter } = require('./settings/samsaraRoutes');
 const { createSafetyEventSettingsRouter } = require('./settings/safetyEventRoutes');
 const { createBitrixSettingsRouter } = require('./settings/bitrixRoutes');
@@ -50,6 +51,7 @@ function createSettingsRouter({ authMiddleware, telegram = null }) {
   router.use(createRingCentralSettingsRouter(deps));
   router.use(createMessageGroupSettingsRouter(deps));
   router.use(createDispatchBoardSettingsRouter(deps));
+  router.use(createFleetCrossCheckRouter(deps));
   router.use(createSamsaraSettingsRouter(deps));
   router.use(createSafetyEventSettingsRouter(deps));
   router.use(createBitrixSettingsRouter(deps));

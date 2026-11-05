@@ -73,7 +73,10 @@ Chicago) is read and then placed on its day by `stopDate()`.
 ## What it costs Datatruck
 
 Datatruck allows 20 requests a minute at 25 orders a page, and the rest of the
-app spends the same allowance. So, as the design did:
+app spends the same allowance (one of those, since November 2026, is the
+Board ↔ Wenze ↔ Datatruck comparison: a driver list and a week of orders, only
+when a person presses Compare, at most once per ten minutes —
+[`dispatcher-board.md`](dispatcher-board.md)). So, as the design did:
 
 - the whole week (about five pages) is read at most every **20 minutes**;
 - in between, only the orders modified since the last read, re-reading 3
