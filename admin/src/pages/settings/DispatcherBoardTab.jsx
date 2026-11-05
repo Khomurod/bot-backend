@@ -3,6 +3,7 @@ import * as api from "../../api";
 import { KeyField, NumField, Banner } from "./fields";
 import FeedCard from "./dispatcherBoard/FeedCard";
 import BoardBitrixCard from "./dispatcherBoard/BoardBitrixCard";
+import FleetCrossCheckCard from "./dispatcherBoard/FleetCrossCheckCard";
 
 /**
  * Settings → Dispatcher Board.
@@ -211,6 +212,8 @@ export default function DispatcherBoardTab() {
       <TestResult result={test} />
 
       <FeedCard />
+
+      <FleetCrossCheckCard />
 
       <BoardBitrixCard />
 

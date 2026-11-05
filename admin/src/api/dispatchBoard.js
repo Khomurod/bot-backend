@@ -50,3 +50,14 @@ export async function getDispatchBoardFeed() {
   if (!res.ok) { await handleApiError(res); }
   return res.json();
 }
+
+/**
+ * The Board ↔ Wenze ↔ Datatruck comparison (read-only). Built at most once
+ * every ten minutes on the server, because Datatruck's allowance is shared;
+ * `refresh` asks for a new build and is answered from memory inside that window.
+ */
+export async function getFleetCrossCheck({ refresh = false } = {}) {
+  const res = await fetch(`${API_BASE}/settings/fleet-crosscheck${refresh ? '?refresh=1' : ''}`, { headers: getHeaders() });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}

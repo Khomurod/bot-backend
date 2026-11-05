@@ -274,6 +274,34 @@ into "other". Its "Matched to a person" count is rows whose `person_id` is set;
 nothing sets that column any more (see below), so it only counts links made
 before October 2026.
 
+## Comparing the board with Wenze and Datatruck (November 2026)
+
+Settings → Dispatcher Board → **Compare with Wenze and Datatruck** puts each
+board truck beside what Wenze and Datatruck hold for the same truck, and names
+what disagrees: not in Wenze, Wenze has it under another fleet, a different
+driver or a differently spelled name in Wenze, no load in Datatruck this week,
+a different driver or driver type in Datatruck. The owner's request of
+5 November 2026: two sources only say one of them is wrong; a third says which.
+
+- **A truck is (fleet, number)** on all three sides. Datatruck writes its truck
+  label the board's way (`771 JAFAR`), so it is read by the same rule
+  (`lib/board/truckSuffix.js`); its driver type comes from its driver list,
+  matched by name; an unknown driver-type word is shown, never mapped.
+- **Read-only, and names only on request.** The comparison is pure
+  (`lib/fleetCrossCheck/compare.js`); the reads (`services/fleetCrossCheck/report.js`,
+  `GET /api/settings/fleet-crosscheck`) are two SELECTs and two Datatruck GETs.
+  Unlike the Feed card, this card must show drivers' names — a differing name is
+  the finding — so nothing is read until Compare is pressed. No phone number.
+- **Datatruck's allowance is shared** with the Gross Grand Prix
+  ([`gross-race.md`](gross-race.md)), so a report is built at most once every
+  ten minutes and kept in memory; a press inside the window gets the stored one
+  with a note. A Datatruck with no token, or one that refuses, is said ("not
+  read", with the HTTP status) and the Wenze half still stands — never a blank
+  that reads as agreement.
+- Names: "same" is the board match's strict rule (a double surname or the other
+  word order still agree); "close" is a one-letter typo or a space moved
+  ("MC LEAN" / "MCLEAN") — for a person to look at, never acted on.
+
 ## Which person a row is about — decided at read time
 
 `services/dispatchBoard/rowPeople.js` answers it for the home-time watch, on
