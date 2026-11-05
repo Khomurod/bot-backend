@@ -122,7 +122,14 @@ comparison:
   in a COMP truck). The truck record then follows through
   `identity.unit_fleet_behind_profile`, which now compares fleet AND owner.
   A different number (John Elisee's chat says 01, the board 1 RUDOLPH) is a
-  question for a person, not a copy.
+  question for a person, not a copy. **A bare number is asked, not copied, when
+  it contradicts the driver**: the board reads a number with no suffix as an
+  owner-operator truck, so a company or lease driver on one is far more likely
+  a lost suffix than an owner's truck (a hired driver's owner's truck carries
+  the owner's name, `077 (Polvan)`). On 5 November 2026 `888` lost its `CMP` and
+  the first pass copied owner-operator onto a company driver; that shape is now
+  an approval-tier question that names the missing suffix, and only a person's
+  Yes copies it.
 - **Readers.** Every place that picks a truck's fleet reads `truckOfProfile`:
   the profile-save hook (`personResolver`), the stale-unit / contested /
   fleet-behind checks and their corrections, and the hand-over. The board match

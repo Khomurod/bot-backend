@@ -85,3 +85,39 @@ test('never on a different number, a looser name, two candidate lines, a hand-se
 
   assert.deepEqual(runTruckFromBoardChecks(snapshot({ boardRows: null })), []);
 });
+
+test('a line with no suffix on a company driver is ASKED, not copied — the 888 that lost its CMP', () => {
+  const { questionFor } = require('../lib/control/askable');
+  const only = (profile, title) => runTruckFromBoardChecks(snapshot({
+    groups: [group(5, title)],
+    profiles: [{ group_id: 5, first_name: 'ANTOINE', last_name: 'CAMPBELL', unit_number: '888', ...profile }],
+    personGroups: [{ group_id: 5, person_id: 2 }],
+    people: [{ id: 2, display_name: 'ANTOINE CAMPBELL' }],
+    boardRows: [board('888', '888', 'owner_operator', null, 'ANTOINE CAMPBELL')],
+  }));
+
+  const [asked] = only({ driver_type: 'company_driver' }, 'WENZE UNIT # 888 ANTOINE CAMPBELL (COMPANY DRIVER)');
+  assert.equal(asked.tier, 'approval', 'only a person\'s Yes copies it');
+  assert.equal(asked.evidence.boardSuffixMissing, true);
+  assert.equal(asked.evidence.driverFleet, 'company');
+  const q = questionFor(asked);
+  assert.match(q.ask, /888 .*really an owner-operator truck\? The board writes it with no suffix, and the driver is a Company driver/);
+  assert.ok(q.lines.some((l) => /answer No — the dispatcher adds the suffix/.test(l)), q.lines.join(' | '));
+
+  // A lease driver on a bare number is the same shape.
+  assert.equal(only({ driver_type: 'lease' }, 'WENZE UNIT # 888 ANTOINE CAMPBELL')[0].tier, 'approval');
+  // An owner-operator on a bare number is his own truck — nothing to ask, nothing to copy.
+  assert.deepEqual(only({ driver_type: 'owner' }, 'WENZE UNIT # 888 ANTOINE CAMPBELL'), []);
+});
+
+test('a company driver in a NAMED owner\'s truck is still copied: the owner\'s name is the suffix', () => {
+  const [f] = runTruckFromBoardChecks(snapshot({
+    groups: [group(9, 'WENZE UNIT # 077 DAVID ONOBUN OLUGBENGA ( COMPANY )')],
+    profiles: [{ group_id: 9, first_name: 'DAVID ONOBUN', last_name: 'OLUGBENGA', unit_number: '077', driver_type: 'company_driver' }],
+    personGroups: [{ group_id: 9, person_id: 1 }],
+    people: [{ id: 1, display_name: 'DAVID ONOBUN OLUGBENGA' }],
+    boardRows: [board('077 (Polvan)', '077', 'owner_operator', '(POLVAN)', 'OLUGBENGA DAVID ONOBUN')],
+  }));
+  assert.equal(f.tier, 'auto');
+  assert.equal(f.evidence.boardSuffixMissing, false);
+});
