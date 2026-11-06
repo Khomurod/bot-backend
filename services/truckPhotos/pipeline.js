@@ -6,8 +6,10 @@
  * (services/truckPhotos/triggerHandler.js), one report at a time.
  *
  *   1. which photos   lib/truckPhotos/selectPhotos.js — the reply's album and
- *                     its neighbours, or the last `lookback_hours`; never one
- *                     already in a PDF, never one sent after the word
+ *                     its neighbours (`lookback_hours` either side of it), or
+ *                     the last `lookback_hours`; never one already in a PDF,
+ *                     never one sent after the word. Videos are chosen the same
+ *                     way and listed as links, never downloaded
  *   2. the words      a message that is more than the bare word is checked by a
  *                     model (aiCheck.readHandover); "not about the truck" is
  *                     recorded and nothing is sent; "could not tell" — or no
@@ -21,19 +23,23 @@
  *   6. delivery       to the recipient; then 👍 on the word; then the photos
  *                     are marked as sent and the report finished
  *
+ * A PHOTO SEEN LATE (`job.anchorSeenLate`, services/truckPhotos/triggerHandler.js):
+ * the word replied to a photo Wenze had not seen when it was sent, so the rest
+ * of its album may be missing. The cover and the caption say so.
+ *
  * WHEN NO PDF CAN BE MADE the recipient is told privately, in fixed words
  * (lib/truckPhotos/failureText.js). NOTHING IS EVER WRITTEN IN THE DRIVER'S
  * GROUP. `ai_assisted` records whether a model's answer shaped the report.
  */
 
-const { selectPhotos, windowStart } = require('../../lib/truckPhotos/selectPhotos');
+const { selectPhotos, windowStart, windowEnd } = require('../../lib/truckPhotos/selectPhotos');
 const { chunk } = require('../../lib/truckPhotos/chunk');
 const {
-  coverLines, photoCaption, fileName, deliveryCaption, truckOf,
+  coverLines, photoCaption, fileName, deliveryCaption, truckOf, videoEntry, chicagoTime,
 } = require('../../lib/truckPhotos/pdfLayout');
 const { reasonText, failureMessage } = require('../../lib/truckPhotos/failureText');
 const { senderName, replyTarget } = require('../../lib/telegram/messageParts');
-const { hasPicture } = require('./capture');
+const { hasMedia } = require('./capture');
 
 /**
  * Downloads and model calls stop here (what was not reached is counted, or
@@ -50,6 +56,8 @@ const MAX_PDF_BYTES = 49 * 1024 * 1024;
  * closest to the word are kept, and the cover says how many were left out.
  */
 const MAX_PHOTOS_PER_REPORT = 240;
+/** Videos are links on a page of their own; more than this in one hand-over is not a hand-over. */
+const MAX_VIDEOS_PER_REPORT = 60;
 
 function defaultDeps() {
   /* eslint-disable global-require */
@@ -68,6 +76,7 @@ function defaultDeps() {
     readHandover: ai.readHandover,
     filterPhotos: ai.filterPhotos,
     preparePhotos: pdf.preparePhotos,
+    prepareThumbnails: pdf.prepareThumbnails,
     buildPdf: pdf.buildPdf,
     sendPdf: deliver.sendPdf,
     reactDelivered: deliver.reactDelivered,
@@ -77,9 +86,9 @@ function defaultDeps() {
   /* eslint-enable global-require */
 }
 
-/** The photo this word is about: itself when it carries one, else the photo it replies to. */
+/** The photo or video this word is about: itself when it carries one, else the one it replies to. */
 async function findAnchor({ message, chatId, triggerAt }, deps) {
-  if (hasPicture(message)) {
+  if (hasMedia(message)) {
     return { messageId: message.message_id, mediaGroupId: message.media_group_id ?? null, sentAt: triggerAt };
   }
   const replied = replyTarget(message);
@@ -98,7 +107,9 @@ async function findAnchor({ message, chatId, triggerAt }, deps) {
  * @returns {Promise<object>} a summary for the run ledger
  */
 async function produceReport(job, deps = defaultDeps()) {
-  const { reportId, message, trigger, group, profile = null, telegram } = job;
+  const {
+    reportId, message, trigger, group, profile = null, telegram, anchorSeenLate = false,
+  } = job;
   const chatId = String(message.chat.id);
   const triggerAt = Number.isFinite(message.date) ? new Date(message.date * 1000) : new Date(deps.now());
   const markedBy = senderName(message.from);
@@ -138,11 +149,15 @@ async function produceReport(job, deps = defaultDeps()) {
   // 1. Which photos.
   const anchor = await findAnchor({ message, chatId, triggerAt }, deps);
   const window = { trigger: { messageId: message.message_id, sentAt: triggerAt }, anchor, lookbackHours: settings.lookbackHours };
-  const candidates = await deps.listPhotosSince(chatId, windowStart(window));
+  const candidates = await deps.listPhotosSince(chatId, windowStart(window), undefined, windowEnd(window));
   const selection = selectPhotos({ photos: candidates, ...window });
   if (!selection.photos.length) {
     return fail(selection.alreadySent ? 'already_sent' : 'no_photos', 'no_photos');
   }
+  // The reply's own photo, when Wenze first saw it with the reply: its album may be incomplete.
+  const anchorNote = anchorSeenLate && anchor
+    ? { kind: anchor.kind === 'video' ? 'video' : 'photo', sentAt: anchor.sentAt }
+    : null;
 
   // 2. The words — only when they are more than the word itself.
   if (!trigger.bare) {
@@ -161,25 +176,42 @@ async function produceReport(job, deps = defaultDeps()) {
   }
 
   // 3. The photos, one at a time — at most MAX_PHOTOS_PER_REPORT, the latest.
-  const chosen = selection.photos.slice(-MAX_PHOTOS_PER_REPORT);
-  const omitted = selection.photos.length - chosen.length;
-  const { ready, unreadable } = await deps.preparePhotos(chosen, { telegram, deadlineAt });
-  if (!ready.length) return fail('download_failed', 'failed');
+  // Videos are never downloaded: only their small previews, for the videos page.
+  const allPhotos = selection.photos.filter((p) => p.kind !== 'video');
+  const videos = selection.photos.filter((p) => p.kind === 'video').slice(-MAX_VIDEOS_PER_REPORT);
+  const chosen = allPhotos.slice(-MAX_PHOTOS_PER_REPORT);
+  const omitted = allPhotos.length - chosen.length;
+  const { ready, unreadable } = chosen.length
+    ? await deps.preparePhotos(chosen, { telegram, deadlineAt })
+    : { ready: [], unreadable: 0 };
+  if (!ready.length && !videos.length) return fail('download_failed', 'failed');
 
-  // 4. A model may only LEAVE OUT a photo that is clearly not the truck.
-  const filter = await deps.filterPhotos(ready.map((r) => r.jpeg), { deadlineAt });
+  // 4. A model may only LEAVE OUT a photo that is clearly not the truck. Videos are not judged.
+  const filter = ready.length
+    ? await deps.filterPhotos(ready.map((r) => r.jpeg), { deadlineAt })
+    : { excluded: new Set(), answered: 0, providers: [] };
   if (filter.answered) { ai.assisted = true; filter.providers.forEach((p) => ai.providers.add(p)); }
   const kept = ready.filter((_, i) => !filter.excluded.has(i));
   const excludedCount = ready.length - kept.length;
-  if (!kept.length) {
+  if (!kept.length && !videos.length) {
     return fail('all_excluded', 'no_photos', { ctx: { photoCount: ready.length }, counts: { excludedCount } });
   }
+  const thumbs = videos.length ? await deps.prepareThumbnails(videos, { telegram, deadlineAt }) : [];
+  const videoPages = videos.map((video, i) => ({
+    ...videoEntry({
+      number: i + 1, total: videos.length, sentAt: video.sentAt, fromName: video.fromName,
+      durationSeconds: video.durationSeconds, chatId, messageId: video.messageId,
+    }),
+    thumb: thumbs[i] || null,
+  }));
 
-  // 5. The PDFs.
+  // 5. The PDFs. The videos page is in part 1; a hand-over of videos alone is one PDF.
   const outbound = kind === 'inbound' ? await deps.lastSentOutbound(group.id, triggerAt) : null;
-  const parts = chunk(kept, settings.maxPhotosPerPdf);
+  const parts = kept.length ? chunk(kept, settings.maxPhotosPerPdf) : [[]];
   const unit = truckOf(profile, group.group_name).unit;
-  const counts = { photoCount: kept.length, excludedCount, parts: parts.length };
+  const counts = {
+    photoCount: kept.length, excludedCount, parts: parts.length, videoCount: videos.length,
+  };
   const delivered = [];
   for (let p = 0; p < parts.length; p += 1) {
     const first = delivered.length + 1;
@@ -193,16 +225,17 @@ async function produceReport(job, deps = defaultDeps()) {
     });
     const shared = {
       kind, profile, groupName: group.group_name, triggerAt, photoCount: kept.length, excludedCount,
-      part: p + 1, parts: parts.length, outbound,
+      part: p + 1, parts: parts.length, outbound, videoCount: videos.length, anchorNote,
     };
     // eslint-disable-next-line no-await-in-loop
     const buffer = await deps.buildPdf({
       title: `${kind} ${unit || ''}`.trim(),
       coverLines: coverLines({
         ...shared, markedBy, unreadableCount: unreadable, omittedCount: omitted,
-        firstNumber: first, lastNumber: first + parts[p].length - 1,
+        firstNumber: first, lastNumber: first + parts[p].length - 1, videosHere: p === 0,
       }),
       pages: parts[p].map(pageOf),
+      videos: p === 0 ? videoPages : [],
     });
     if (buffer.length > MAX_PDF_BYTES) {
       return finishPartial(fail('too_large', 'failed', { counts }), delivered, reportId, deps);
@@ -224,6 +257,7 @@ async function produceReport(job, deps = defaultDeps()) {
       );
     }
     delivered.push(...parts[p]);
+    if (p === 0) delivered.push(...videos.map((video) => ({ photo: video })));
   }
 
   // 6. Delivered: the 👍 first — it is what the group sees — then the records.
@@ -238,6 +272,9 @@ async function produceReport(job, deps = defaultDeps()) {
       reason: [
         unreadable ? `${unreadable} photo(s) could not be downloaded from Telegram.` : null,
         omitted ? `${omitted} earlier photo(s) were left out (at most ${MAX_PHOTOS_PER_REPORT}).` : null,
+        anchorNote
+          ? `The ${anchorNote.kind} replied to was sent ${chicagoTime(anchorNote.sentAt)}, before Wenze saw it; photos sent with it may be missing.`
+          : null,
       ].filter(Boolean).join(' ') || null,
       ...counts,
       ...aiFields(),
@@ -289,5 +326,5 @@ async function runTruckPhotoReport(job, deps = defaultDeps()) {
 }
 
 module.exports = {
-  PIPELINE_DEADLINE_MS, MAX_PDF_BYTES, MAX_PHOTOS_PER_REPORT, produceReport, runTruckPhotoReport,
+  PIPELINE_DEADLINE_MS, MAX_PDF_BYTES, MAX_PHOTOS_PER_REPORT, MAX_VIDEOS_PER_REPORT, produceReport, runTruckPhotoReport,
 };

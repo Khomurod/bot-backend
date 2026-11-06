@@ -164,3 +164,26 @@ test('nothing it does can throw at the bot', async () => {
   assert.deepEqual(await ran.done, { error: 'boom' }, 'a report that throws settles, and the queue keeps going');
   assert.equal((await noticeTruckPhotoTrigger(undefined, {}, failing.deps)).reason, 'no_trigger');
 });
+
+test('a reply to a photo Wenze had not seen — sent before it was looking — tells the report its album may be incomplete', async () => {
+  __resetForTests();
+  const { deps, calls } = harness();
+  deps.capture = async (m) => { calls.captured.push(m.message_id); return { captured: true, isNew: true }; };
+  const old = { message_id: 33, chat: { id: CHAT, type: 'supergroup' }, from: { id: DRIVER }, date: 1762444800 - 10 * 86400, photo: [{ file_id: 'p' }] };
+  const out = await noticeTruckPhotoTrigger(word({ reply_to_message: old }), { telegram: {} }, deps);
+  await out.done;
+  assert.deepEqual(calls.captured, [33]);
+  assert.equal(calls.runs[0].anchorSeenLate, true);
+});
+
+test('a reply to a photo already remembered, or to one sent a moment before the word, is not "seen late"', async () => {
+  for (const [isNew, ageSeconds] of [[false, 10 * 86400], [true, 30]]) {
+    __resetForTests();
+    const { deps, calls } = harness();
+    deps.capture = async () => ({ captured: true, isNew });
+    const replied = { message_id: 33, chat: { id: CHAT, type: 'supergroup' }, from: { id: DRIVER }, date: 1762444800 - ageSeconds, photo: [{ file_id: 'p' }] };
+    const out = await noticeTruckPhotoTrigger(word({ reply_to_message: replied }), { telegram: {} }, deps);
+    await out.done;
+    assert.equal(calls.runs[0].anchorSeenLate, false, `isNew ${isNew}, ${ageSeconds}s old`);
+  }
+});

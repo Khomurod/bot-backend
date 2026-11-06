@@ -41,8 +41,11 @@ test message has reached them.
    is not a trigger. An edited message is not read.
 3. **Which photos** (`lib/truckPhotos/selectPhotos.js`):
    - a **reply to a photo** takes that photo's album and the photos around it,
-     from `lookback_hours` before the photo up to the word; a photo whose
+     from `lookback_hours` before the photo to `lookback_hours` after it, and
+     never past the word (the owner, 6 November 2026: a reply to a week-old
+     photo is about that day, not the whole week since); a photo whose
      caption *is* the word anchors itself, so the rest of its album counts;
+   - **videos** are chosen by the same rules (see "Videos" below);
    - a **plain word** takes the last `lookback_hours` (3 by default, 1–24);
    - from any sender — driver and fleet manager alike — never the bot;
    - **photos after the word are ignored**, by Telegram's message order; a new
@@ -87,13 +90,45 @@ test message has reached them.
    it — no link, no token, no message text. The same "why" is stored in
    `truck_photo_reports.reason` and shown in Settings. "Not about the truck"
    and "switched off meanwhile" are recorded and told to nobody.
-9. **A claim a stopped process left behind** is closed by the hourly pass on
+9. **A photo Wenze saw late.** A bot cannot read a chat's history: it knows a
+   photo only from the moment it arrives while Truck Photos is on. A reply to a
+   photo sent before that — the first test, a reply to an album from 27
+   October, gave a PDF of one photo out of four — hands over THAT photo with
+   the reply, never the rest of its album. When the replied-to photo enters
+   the buffer only with the reply and is at least two minutes older than the
+   word (`LATE_AFTER_SECONDS`: a photo sent seconds earlier may simply be
+   handled a moment later), the PDF still goes out, and its **cover and
+   caption say** that the photo was sent before Wenze saw it, that photos sent
+   with it may be missing, and to forward them to the group and write the word
+   again. The same sentence is in `truck_photo_reports.reason`.
+10. **A claim a stopped process left behind** is closed by the hourly pass on
    the scheduler's retention tick (`services/truckPhotos/sweep.js`): still
    `pending` after 30 minutes and not among the reports this process has queued
    or running (they wait behind each other), it becomes `failed` and the
    recipient is told. A report's downloads and model calls stop after 12
    minutes (what was not reached is counted, or stays unfiltered); each send
    has its own three.
+
+## Videos (the owner, 6 November 2026)
+
+A video of the truck — a video, a round video note, or a video sent as a file;
+not a GIF — is remembered like a photo (file id, length, and the file id of the
+small preview Telegram made) and listed in the PDF as a **link to its message**
+(`https://t.me/c/<chat>/<message>`, `lib/truckPhotos/videoLinks.js`). The
+person who receives the PDFs is in every driver group (the owner's answer), so
+the link opens for them; a basic group, which has no message links, gets the
+chat and the time instead.
+
+- **No video is downloaded or stored.** The videos page
+  (`services/truckPhotos/pdfVideos.js`, right after the cover, in part 1) shows
+  each video's preview — downloaded once, a few dozen KB, at most 2 MB — its
+  number, length, time and sender, and the link as a real link annotation.
+- The cover says "Videos: N", the caption and an inbound's "Outbound on" count
+  photos and videos, and `truck_photo_reports.video_count` keeps the number.
+- **The model never sees a video**; the photo filter is unchanged.
+- **Videos alone make a PDF** (a cover and the videos page). Photos that could
+  not be downloaded do not cost the videos their PDF.
+- At most 60 videos per word.
 
 ## What the AI does, and does not
 
@@ -141,12 +176,14 @@ with 200.
 
 ## Data
 
-Migration `0096_truck_photo_reports.sql`:
+Migrations `0096_truck_photo_reports.sql` and `0097_truck_photo_videos.sql`
+(videos: `kind = 'video'`, `duration_seconds`, `thumb_file_id`, and
+`truck_photo_reports.video_count`):
 
 | Table | What it holds |
 |---|---|
 | `truck_photo_settings` | the single settings row; `enabled` cannot be TRUE without a recipient and `recipient_verified_at` (CHECK) |
-| `driver_group_photos` | the photo buffer: file ids, sender, album, time, `report_id` once sent — **deleted after 30 days** |
+| `driver_group_photos` | the buffer of photos and videos: file ids, sender, album, time, a video's length and preview, `report_id` once sent — **deleted after 30 days** |
 | `truck_photo_reports` | one row per word: the claim, then `sent` / `failed` / `no_photos` / `not_a_handover` / `unclear`, counts, the reason, `ai_assisted`. Kept |
 
 Run ledger key `truck_photo_reports` (`configurable`, not critical): each report
@@ -157,6 +194,8 @@ and the hourly pass; `blocked` while switched off.
 `tests/truckPhotoTrigger.test.js`, `truckPhotoWhoMayMark`, `truckPhotoSelect`,
 `truckPhotoChunk`, `truckPhotoLayout`, `truckPhotoCapture`,
 `truckPhotoTriggerHandler`, `truckPhotoAiCheck`, `truckPhotoPipeline`,
-`truckPhotoPdf` (real pdf-lib and sharp), `truckPhotoSweep`,
-`truckPhotoHandlers`, `truckPhotoSettingsRoute`, `truckPhotoStorePg` (requires
-`TEST_DATABASE_URL`) and `admin/src/pages/settings/TruckPhotosTab.test.jsx`.
+`truckPhotoPipelineVideos`, `truckPhotoVideoLinks`, `truckPhotoPdf` and
+`truckPhotoPdfVideos` (real pdf-lib and sharp), `truckPhotoSweep`,
+`truckPhotoHandlers`, `truckPhotoSettingsRoute`, `truckPhotoStorePg` and
+`truckPhotoVideosPg` (require `TEST_DATABASE_URL`) and
+`admin/src/pages/settings/TruckPhotosTab.test.jsx`.

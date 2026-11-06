@@ -32,6 +32,7 @@ function mapReport(row) {
     triggeredBy: row.triggered_by === null || row.triggered_by === undefined ? null : String(row.triggered_by),
     triggeredByName: row.triggered_by_name || null,
     photoCount: Number(row.photo_count) || 0,
+    videoCount: Number(row.video_count) || 0,
     excludedCount: Number(row.excluded_count) || 0,
     parts: Number(row.parts) || 0,
     status: row.status,
@@ -70,31 +71,34 @@ async function claimReport({
  */
 async function finishReport(id, {
   status, reason = null, photoCount = 0, excludedCount = 0, parts = 0,
-  aiAssisted = false, aiProvider = null, sent = false,
+  aiAssisted = false, aiProvider = null, sent = false, videoCount = 0,
 }) {
   if (!STATUSES.includes(status) || status === 'pending') throw new Error(`not a finished status: ${status}`);
   const result = await query(
     `UPDATE truck_photo_reports
         SET status = $2, reason = $3, photo_count = $4, excluded_count = $5, parts = $6,
-            ai_assisted = $7, ai_provider = $8, sent_at = CASE WHEN $9 THEN NOW() ELSE sent_at END
+            ai_assisted = $7, ai_provider = $8, sent_at = CASE WHEN $9 THEN NOW() ELSE sent_at END,
+            video_count = $10
       WHERE id = $1 AND status = 'pending'`,
-    [id, status, reason, photoCount, excludedCount, parts, Boolean(aiAssisted), aiProvider, Boolean(sent)],
+    [id, status, reason, photoCount, excludedCount, parts, Boolean(aiAssisted), aiProvider, Boolean(sent), videoCount],
   );
   return (result.rowCount || 0) > 0;
 }
 
-/** The group's last delivered outbound before `before`: `{at, photoCount}` or null. */
+/** The group's last delivered outbound before `before`: `{at, photoCount, videoCount}` or null. */
 async function lastSentOutbound(groupId, before) {
   if (groupId === null || groupId === undefined) return null;
   const { rows } = await query(
-    `SELECT created_at, sent_at, photo_count FROM truck_photo_reports
+    `SELECT created_at, sent_at, photo_count, video_count FROM truck_photo_reports
       WHERE group_id = $1 AND kind = 'outbound' AND status = 'sent' AND created_at < $2
       ORDER BY created_at DESC
       LIMIT 1`,
     [groupId, before],
   );
   if (!rows[0]) return null;
-  return { at: rows[0].created_at, photoCount: Number(rows[0].photo_count) || 0 };
+  return {
+    at: rows[0].created_at, photoCount: Number(rows[0].photo_count) || 0, videoCount: Number(rows[0].video_count) || 0,
+  };
 }
 
 /** The latest reports, for Settings → Truck Photos. No message text exists to show. */

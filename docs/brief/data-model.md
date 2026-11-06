@@ -237,13 +237,15 @@ not `facebookCrypto` — the poller holds none of this app's secrets.
   referenced by its id only; nothing is copied from Bitrix but its title and
   stage names. Closed proposals are deleted after 60 days
   (`docs/architecture/hiring-stage-proposals.md`).
-- **The Truck Photos tables** (migration 0096): `truck_photo_settings` (one
+- **The Truck Photos tables** (migrations 0096, 0097): `truck_photo_settings` (one
   row; `enabled` cannot be TRUE without a recipient a test message reached —
-  a CHECK), `driver_group_photos` (the photos seen in driver groups while the
-  feature is on: **Telegram file ids only, never bytes**, `group_id` CASCADE,
+  a CHECK), `driver_group_photos` (the photos and videos seen in driver groups
+  while the feature is on: **Telegram file ids only, never bytes** — a video
+  also its length and its preview's file id — `group_id` CASCADE,
   `report_id` once sent, **deleted after 30 days** by the retention pass) and
   `truck_photo_reports` (one row per `outbound` / `inbound` word, UNIQUE on
-  `(chat_id, trigger_message_id)` — the claim; `group_id` SET NULL; kept). The
+  `(chat_id, trigger_message_id)` — the claim; `group_id` SET NULL;
+  `video_count`; kept). The
   PDFs are never stored anywhere. Who may mark reads the person's open
   `driver_person_telegram_identities` and the profile's `telegram_user_id`
   (`docs/architecture/truck-photo-reports.md`).

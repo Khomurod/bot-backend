@@ -80,6 +80,7 @@ function shapeReport(r) {
     groupName: r.groupName,
     triggeredByName: r.triggeredByName,
     photoCount: r.photoCount,
+    videoCount: r.videoCount,
     excludedCount: r.excludedCount,
     parts: r.parts,
     reason: r.reason,

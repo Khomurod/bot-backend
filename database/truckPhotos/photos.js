@@ -5,8 +5,10 @@
  *
  * WHY A BUFFER AT ALL. A bot cannot read a chat's history: when somebody
  * writes `outbound`, the photos before it are only available if the bot kept
- * them as they arrived. So while Truck Photos is on, every photo (and every
- * picture sent "as a file") in a driver group is remembered here.
+ * them as they arrived. So while Truck Photos is on, every photo, every
+ * picture sent "as a file" and every video (`kind = 'video'`, with its length
+ * and its preview's file id — the PDF lists videos as links) in a driver group
+ * is remembered here.
  *
  * TELEGRAM FILE IDS ONLY, NEVER BYTES. A file id is a few dozen characters and
  * lets this bot download the picture again when a PDF is made; the bytes stay
@@ -38,13 +40,15 @@ function mapRow(row) {
     width: row.width === null || row.width === undefined ? null : Number(row.width),
     height: row.height === null || row.height === undefined ? null : Number(row.height),
     fileSize: row.file_size === null || row.file_size === undefined ? null : Number(row.file_size),
+    durationSeconds: row.duration_seconds === null || row.duration_seconds === undefined ? null : Number(row.duration_seconds),
+    thumbFileId: row.thumb_file_id || null,
     sentAt: row.sent_at instanceof Date ? row.sent_at : new Date(row.sent_at),
     reportId: row.report_id === null || row.report_id === undefined ? null : Number(row.report_id),
   };
 }
 
 const COLUMNS = `id, chat_id, group_id, message_id, media_group_id, from_user_id, from_name, file_id,
-  file_unique_id, kind, width, height, file_size, sent_at, report_id`;
+  file_unique_id, kind, width, height, file_size, duration_seconds, thumb_file_id, sent_at, report_id`;
 
 /**
  * Remember one photo. Telegram redelivers updates, so a second sighting of the
@@ -56,13 +60,14 @@ async function upsertPhoto(photo) {
   const result = await query(
     `INSERT INTO driver_group_photos
        (chat_id, group_id, message_id, media_group_id, from_user_id, from_name, file_id,
-        file_unique_id, kind, width, height, file_size, sent_at)
-     VALUES ($1::bigint, $2, $3, $4, $5::bigint, $6, $7, $8, $9, $10, $11, $12, $13)
+        file_unique_id, kind, width, height, file_size, sent_at, duration_seconds, thumb_file_id)
+     VALUES ($1::bigint, $2, $3, $4, $5::bigint, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
      ON CONFLICT (chat_id, message_id) DO NOTHING`,
     [
       photo.chatId, photo.groupId, photo.messageId, photo.mediaGroupId ?? null, photo.fromUserId ?? null,
       photo.fromName ?? null, photo.fileId, photo.fileUniqueId ?? null, photo.kind,
       photo.width ?? null, photo.height ?? null, photo.fileSize ?? null, photo.sentAt,
+      photo.durationSeconds ?? null, photo.thumbFileId ?? null,
     ],
   );
   return (result.rowCount || 0) > 0;
@@ -77,14 +82,19 @@ async function getPhotoByMessage(chatId, messageId) {
   return rows[0] ? mapRow(rows[0]) : null;
 }
 
-/** One chat's photos sent at or after `since`, oldest first. */
-async function listPhotosSince(chatId, since, limit = MAX_ROWS) {
+/**
+ * One chat's photos and videos sent at or after `since` — and, when `until`
+ * is given, no later than it (a reply to an old photo looks around that photo,
+ * not at everything since) — oldest first.
+ */
+async function listPhotosSince(chatId, since, limit = MAX_ROWS, until = null) {
   const { rows } = await query(
     `SELECT ${COLUMNS} FROM driver_group_photos
       WHERE chat_id = $1::bigint AND sent_at >= $2
+        AND ($4::timestamptz IS NULL OR sent_at <= $4::timestamptz)
       ORDER BY sent_at, message_id
       LIMIT $3`,
-    [String(chatId), since, Math.min(Math.max(Number(limit) || MAX_ROWS, 1), MAX_ROWS)],
+    [String(chatId), since, Math.min(Math.max(Number(limit) || MAX_ROWS, 1), MAX_ROWS), until],
   );
   return rows.map(mapRow);
 }
