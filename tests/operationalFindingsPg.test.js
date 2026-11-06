@@ -190,3 +190,69 @@ test('the legacy duplicate-unit history is carried across with its state', { ski
     'the fleet\'s existing detection history is not reset to zero');
   assert.equal(rows.rows.find((r) => r.subject_id === '313').status, 'resolved');
 });
+
+test('an APPLIED finding reported again after a gap is a recurrence: open again, so its repair can run', { skip: skipWithoutPg() }, async (t) => {
+  const harness = await harnessWithFindings(t);
+  const store = loadStore(harness);
+
+  const filed = await store.upsertFinding(BASE);
+  // Applied, and then — the repair worked — not reported for an hour.
+  await harness.query(
+    "UPDATE operational_findings SET status = 'applied', last_seen_at = NOW() - INTERVAL '1 hour' WHERE id = $1", [filed.id]
+  );
+  assert.equal(await store.resolveClearedFindings([BASE.checkKey], []), 0, 'an applied finding is never resolved — its history stays');
+
+  // The same condition on the same subject again (unit 077, November 2026).
+  const again = await store.getFindingById((await store.upsertFinding(BASE)).id);
+  assert.equal(again.id, filed.id, 'one row per condition, first_seen_at kept');
+  assert.equal(again.status, 'open');
+});
+
+test('an APPLIED finding reported on the very next sweep stays applied — a repair that did not work is not retried', { skip: skipWithoutPg() }, async (t) => {
+  const harness = await harnessWithFindings(t);
+  const store = loadStore(harness);
+
+  const filed = await store.upsertFinding(BASE);
+  await harness.query(
+    "UPDATE operational_findings SET status = 'applied', last_seen_at = NOW() - INTERVAL '15 minutes' WHERE id = $1", [filed.id]
+  );
+  await store.upsertFinding(BASE);
+  assert.equal((await store.getFindingById(filed.id)).status, 'applied');
+  // A dismissal is a person's answer and is never reopened by a gap.
+  await harness.query(
+    "UPDATE operational_findings SET status = 'dismissed', dismissed_by = 'admin', dismiss_reason = 'known', last_seen_at = NOW() - INTERVAL '2 days' WHERE id = $1", [filed.id]
+  );
+  await store.upsertFinding(BASE);
+  assert.equal((await store.getFindingById(filed.id)).status, 'dismissed');
+});
+
+test('migration 0094 reopens only the applied findings a sweep kept reporting after their correction', { skip: skipWithoutPg() }, async (t) => {
+  const before = allMigrationsSql((name) => !name.startsWith('0094_'));
+  const harness = await createPgHarness(t, { extraDdl: before });
+  const m0094 = fs.readFileSync(path.resolve(__dirname, '..', 'database', 'migrations', '0094_reopen_applied_findings_still_reported.sql'), 'utf8');
+  const insert = async (subjectId, lastSeen, appliedAt) => {
+    const f = (await harness.query(
+      `INSERT INTO operational_findings (check_key, subject_type, subject_id, title, severity, tier, status, last_seen_at)
+       VALUES ('identity.unit_fleet_behind_profile', 'group', $1, 't', 'info', 'auto', 'applied', $2) RETURNING id`,
+      [subjectId, lastSeen]
+    )).rows[0].id;
+    await harness.query(
+      `INSERT INTO operational_corrections (finding_id, action_key, tier, subject_type, subject_id, initiator, applied_at)
+       VALUES ($1, 'identity.sync_unit_fleet', 'auto', 'group', $2, 'system', $3)`,
+      [f, subjectId, appliedAt]
+    );
+    return f;
+  };
+  const hour = 3600 * 1000;
+  const iso = (ms) => new Date(Date.now() - ms).toISOString();
+  const stuck = await insert('860440', iso(0.1 * hour), iso(14 * hour));   // re-reported long after its correction
+  const fresh = await insert('70', iso(0.1 * hour), iso(0.15 * hour));     // corrected minutes ago
+  const gone = await insert('130', iso(30 * hour), iso(60 * 24 * hour));   // not reported for a day
+
+  await harness.query(m0094);
+  await harness.query(m0094); // idempotent
+  const status = async (id) => (await harness.query('SELECT status FROM operational_findings WHERE id = $1', [id])).rows[0].status;
+  assert.equal(await status(stuck), 'open');
+  assert.equal(await status(fresh), 'applied', 'a correction minutes old has not had a sweep to prove it yet');
+  assert.equal(await status(gone), 'applied', 'not seen for a day: the next sweep resolves it');
+});

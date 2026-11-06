@@ -160,6 +160,16 @@ feature it belongs to.
   redactor along — and mark the finding `applied`. **Revert is the same path in
   reverse**, is itself audited, stamps the original row rather than deleting it,
   and re-opens the finding.
+- **An applied finding reported again after a gap reopens.** Not reported for
+  more than 30 minutes (two sweeps) and then reported again is the condition
+  coming back, so it is `open` again and its repair can run
+  (`RECURRENCE_GAP_MINUTES`, `database/operationalFindings.js`). Reported on the
+  very next sweep is a repair that did not fix it: it stays `applied` and is not
+  retried. Until 6 November 2026 only `resolved` findings reopened, and an
+  applied one is never resolved, so a recurrence refreshed a stale `applied` row
+  for ever and nothing acted on it (unit 077, Javlon Turaev's 011, Felicien
+  Vernet's 023 — migration 0094 reopened those). Applied findings keep their
+  status and history; a dismissal is never reopened.
 - **The timer applies what the admin permitted.** `runGuardedSweep` runs
   `runAutoCorrections({ apply: true })` right after a real sweep files its
   findings — inside the same guard, because corrections change the rows the next

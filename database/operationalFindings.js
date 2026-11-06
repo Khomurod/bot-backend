@@ -50,10 +50,29 @@ function mapFinding(row) {
 }
 
 /**
+ * How long an APPLIED finding must have gone unreported before a new report of
+ * it counts as the condition COMING BACK — two missed sweeps.
+ *
+ * Why (6 November 2026): an applied finding was never reopened, because only a
+ * `resolved` one was, and an applied one is never resolved. So the same
+ * condition returning on the same subject weeks later refreshed the old
+ * `applied` row on every sweep and its repair never ran again — unit 077 stayed
+ * Company after the board named it POLVAN's, Javlon Turaev's record kept 555
+ * after his profile said 011, Felicien Vernet's chat had no truck after his
+ * profile said 023 (migration 0094 reopened those). A report after a gap is a
+ * recurrence and reopens it; a report on the very next sweep is the same
+ * condition the repair did not fix, which stays `applied` and is never retried
+ * in a loop. Applied findings are not resolved and their history is untouched.
+ */
+const RECURRENCE_GAP_MINUTES = 30;
+
+/**
  * File a finding, or refresh the one that already describes this condition.
  *
  * The UPDATE deliberately leaves `first_seen_at` alone — "this has been true
- * since June" is the most useful thing a recurring finding knows.
+ * since June" is the most useful thing a recurring finding knows. It reopens a
+ * `resolved` finding, and an `applied` one reported again after a gap
+ * (`RECURRENCE_GAP_MINUTES`); a dismissal stays a dismissal.
  *
  * RETURNS `{ id }` ONLY — every caller wants the id for its keep-list and
  * nothing else. October 2026: `RETURNING *` echoed each finding back whole,
@@ -83,6 +102,8 @@ async function upsertFinding(finding, client = null) {
            last_seen_at = NOW(),
            updated_at = NOW(),
            status = CASE WHEN operational_findings.status = 'resolved'
+                           OR (operational_findings.status = 'applied'
+                               AND operational_findings.last_seen_at < NOW() - INTERVAL '${RECURRENCE_GAP_MINUTES} minutes')
                          THEN 'open' ELSE operational_findings.status END,
            resolved_at = CASE WHEN operational_findings.status = 'resolved'
                               THEN NULL ELSE operational_findings.resolved_at END
