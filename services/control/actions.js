@@ -26,7 +26,8 @@
 const defaultApply = require('../operations/corrections/apply');
 const defaultFindings = require('../../database/operationalFindings');
 const { payloadFor } = require('../operations/corrections/autoApply');
-const { actionForCheck, choiceActionFor } = require('../operations/corrections/actions');
+const { actionForCheck, choiceActionFor, getAction } = require('../operations/corrections/actions');
+const { correctionFor, describeChange } = require('../../lib/control/changeCatalogue');
 const { sourcesFor, MIN_CONFIDENCE } = require('../operations/corrections/decisionSeam');
 const { takeDecision } = require('../decisions/journal');
 
@@ -50,8 +51,12 @@ function defaultDeps() {
     payloadFor,
     actionForCheck,
     choiceActionFor,
+    getAction,
   };
 }
+
+/** How long a finding answered by a typed change waits for the sweep to say whether the change settled it. */
+const SETTLE_HOURS = 2;
 
 function offeredEntry(question, actionKey) {
   const offered = Array.isArray(question?.offeredActions) ? question.offeredActions : [];
@@ -70,6 +75,17 @@ function isOffered(question, actionKey) {
  * action registered for that check's choices, which validates it again.
  */
 function resolveChange(deps, finding, actionKey, chosen) {
+  // A CHANGE THE OWNER TYPED AND THEN CONFIRMED (`confirmChange.js`). The change
+  // is the one stored on the question's own Yes — what the owner read — and it
+  // is validated against the catalogue again here, not trusted.
+  if (chosen && chosen.change) {
+    const correction = correctionFor(chosen.change);
+    const action = correction ? deps.getAction?.(correction.actionKey) : null;
+    if (!action) return { refused: 'I can no longer make that change.' };
+    return {
+      action, payload: correction.payload, typed: true, said: describeChange(chosen.change),
+    };
+  }
   if (chosen && chosen.value != null) {
     const choice = deps.choiceActionFor?.(finding.checkKey);
     if (!choice) return { refused: 'There is nothing for me to change on that one.' };
@@ -118,6 +134,15 @@ async function executeOffered({
     };
   }
 
+  // "No" TO "DID I UNDERSTAND YOU RIGHT?" — nothing changes and the original
+  // question stays open. It is not a dismissal of the finding.
+  if (actionKey === 'dismiss' && chosen.rejectsChange) {
+    return {
+      outcome: 'no_op',
+      message: 'Then I change nothing. The question stays open — tell me again in other words, or answer it in the admin.',
+    };
+  }
+
   if (actionKey === 'dismiss') {
     const reason = intent.reason || chosen.reason || DEFAULT_DISMISS_REASON;
     const dismissed = await deps.findings.dismissFinding(finding.id, {
@@ -133,7 +158,7 @@ async function executeOffered({
   // ── approve, or another offered answer ────────────────────────────────────
   const change = resolveChange(deps, finding, actionKey, chosen);
   if (change.refused) return { outcome: 'refused', message: change.refused };
-  const { action, payload } = change;
+  const { action, payload, typed } = change;
 
   // THE JOURNAL FIRST, THE CHANGE SECOND. A decision records what was decided
   // and on what evidence, and it must exist whether or not the change then
@@ -157,6 +182,7 @@ async function executeOffered({
       severity: finding.severity,
       approvedVia: 'telegram',
       ...(chosen.value != null ? { chosenValue: chosen.value } : {}),
+      ...(typed ? { typedChange: chosen.change } : {}),
     },
   });
 
@@ -169,9 +195,21 @@ async function executeOffered({
       // `telegram:<id>`, which is what lets an approval-tier action past the
       // schema's system-is-auto-only CHECK.
       admin: { telegramUserId: String(telegramUserId) },
-      reason: 'Approved in the notification group.',
+      reason: typed ? `Confirmed in the notification group: ${change.said}` : 'Approved in the notification group.',
+      // A typed change answers the finding but may not settle it: the next sweep
+      // says, so the finding is put aside for a while rather than marked applied.
+      markFinding: !typed,
     });
     await decision?.acted?.(action.key, correction?.id ?? null);
+    if (typed) {
+      await deps.findings.snoozeFinding(finding.id, new Date(Date.now() + SETTLE_HOURS * 3600_000)).catch(() => {});
+      return {
+        outcome: 'applied',
+        message: `Done — ${change.said}. If that does not settle it, I will ask again after the next check.`,
+        correctionId: correction?.id ?? null,
+        decisionId: decision?.id ?? null,
+      };
+    }
     return {
       outcome: 'applied',
       message: chosen.value != null && chosen.label ? `Done — recorded as ${chosen.label}.` : 'Done.',

@@ -32,7 +32,7 @@ test('the board and Datatruck have a driver Wenze has nobody for: a notice that 
   assert.equal(f.checkKey, 'fleet.driver_not_in_wenze');
   assert.equal(f.tier, 'warning', 'only a person can add a chat or a unit');
   assert.equal(f.subjectType, 'board_truck');
-  assert.deepEqual(f.evidence.wenzeElsewhere, [{ unitNumber: '01', groupName: 'WENZE UNIT # 01 JOHN / MARK' }]);
+  assert.deepEqual(f.evidence.wenzeElsewhere, [{ unitNumber: '01', groupName: 'WENZE UNIT # 01 JOHN / MARK', groupId: 347484 }]);
   assert.match(f.title, /Wenze has this driver on 01/);
 });
 
@@ -47,7 +47,7 @@ test('only other owners\' trucks on the number (1 ERNST, 1 ROGER) is still nobod
     orders: [{ label: '1 RUDOLPH', drivers: ['John Elisee'], at: '2026-11-04' }],
   });
   assert.equal(f.checkKey, 'fleet.driver_not_in_wenze');
-  assert.deepEqual(f.evidence.wenzeElsewhere, [{ unitNumber: '01', groupName: 'WENZE UNIT # 01 JOHN / MARK' }]);
+  assert.deepEqual(f.evidence.wenzeElsewhere, [{ unitNumber: '01', groupName: 'WENZE UNIT # 01 JOHN / MARK', groupId: 347484 }]);
 
   // The same driver under another fleet is a stale truck, not a missing driver.
   assert.deepEqual(run({

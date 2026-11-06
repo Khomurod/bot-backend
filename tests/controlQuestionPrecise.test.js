@@ -87,6 +87,26 @@ const CASES = {
     },
     shows: ['WENZE UNIT # 1 ROGER ALCIDE', '1 ROGER', 'Roger Alcide', 'truck of ROGER'],
   },
+  'fleet.driver_not_in_wenze': {
+    finding: {
+      title: 't',
+      evidence: {
+        boardTruck: '1 RUDOLPH', boardDriver: 'JOHN ELISEE', boardStatus: 'ENROUTE', datatruckLabel: '1 RUDOLPH', lastLoadAt: '2026-11-05',
+        wenzeElsewhere: [{ unitNumber: '01', groupName: 'WENZE UNIT # 01 JOHN / MARK', groupId: 4401 }],
+      },
+    },
+    shows: ['1 RUDOLPH', 'JOHN ELISEE', 'Wenze has this driver on 01 (WENZE UNIT # 01 JOHN / MARK)', 'in your own words'],
+  },
+  'fleet.board_suffix_missing': {
+    finding: {
+      title: 't',
+      evidence: {
+        boardTruck: '888', boardDriver: 'ANTOINE CAMPBELL', datatruckLabel: '888 CMP', datatruckFleet: 'company',
+        wenzeElsewhere: [{ unitNumber: '888', groupName: 'WENZE UNIT # 888 ANTOINE CAMPBELL', groupId: 4401 }],
+      },
+    },
+    shows: ['888 CMP', 'ANTOINE CAMPBELL', 'no suffix', 'Company'],
+  },
   'fleet.driver_type_differs_datatruck': {
     finding: {
       title: 't',
