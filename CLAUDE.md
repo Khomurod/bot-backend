@@ -269,6 +269,7 @@ that area**, and run the tests it names.
 | How a decision is reached, why `hold` and `unknown` are opposites, and what a mode may never do | [`docs/architecture/decisions.md`](docs/architecture/decisions.md) |
 | Where an operational notice goes, and what it may never say | [`docs/architecture/operational-notifications.md`](docs/architecture/operational-notifications.md) |
 | Answering Wenze in Telegram: who may be obeyed, what a reply may choose, and why the bot never touches source code | [`docs/architecture/control-channel.md`](docs/architecture/control-channel.md) |
+| Answering in your own words: a model may propose a profile change from a closed list, and only the owner's Yes to the exact change makes it | [`docs/architecture/control-channel-typed-changes.md`](docs/architecture/control-channel-typed-changes.md) |
 | What Wenze may tell a candidate, and how a person teaches it | [`docs/architecture/recruiting-knowledge.md`](docs/architecture/recruiting-knowledge.md) |
 | Answering a candidate outside working hours, the reply guard, the SMS transcript | [`docs/architecture/recruiting-after-hours.md`](docs/architecture/recruiting-after-hours.md) |
 | The Finance Monitor's removal (money-code capture, its AI reading, the document reader, the weekly report, the Finance page and Settings → Finance), the Telegram file download that moved for Safety Approvals, and the money-code tables it left | [`docs/architecture/retired-finance-monitor.md`](docs/architecture/retired-finance-monitor.md) |

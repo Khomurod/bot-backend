@@ -351,6 +351,15 @@ feature it belongs to.
   twice, it supplies no value that could land in a driver's record, and a
   provider outage means "I did not follow that" rather than a guess. Nearly every
   reply is still decided with no model involved at all.
+- **An answer in your own words can change a driver's profile — after you
+  confirm it** (owner, 6 November 2026). "It is 1, not 01" or "he is a company
+  driver" is read into one change from a closed list (truck number, driver type,
+  truck, status) on a chat the question was about; Wenze asks "Did I understand
+  you right? …" with that exact change, and only your Yes makes it, as an
+  audited, undoable correction. "No" changes nothing and leaves the question
+  open. Some notices with nothing for Yes to do are now answerable this way
+  (`answerable` in `lib/control/questionWording.js`). "да" / "нет" are read with
+  no model. See `docs/architecture/control-channel-typed-changes.md`.
 - **Wenze remembers what it was told, and stops asking.** An answer is stored
   against the SITUATION it answered, not against the driver: "he is a team
   driver, that is why the truck looks shared" settles that shared truck, and a

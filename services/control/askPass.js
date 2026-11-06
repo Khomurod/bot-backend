@@ -13,9 +13,13 @@
  * WHAT IS ASKABLE, and nothing else:
  *   - tier `auto` whose check is in `suggest` mode — Wenze could do it, the
  *     owner has not said it may, so asking is exactly right;
- *   - tier `approval` with a registered action — a person was always required.
- * A `warning`-tier finding is NOT askable: there is nothing to approve, and a
- * question with no action behind it is a notification wearing a question mark.
+ *   - tier `approval` with a registered action — a person was always required;
+ *   - tier `warning` ONLY when its wording says `answerable` (6 November 2026):
+ *     nothing to approve, so no Yes is offered — the owner answers in their own
+ *     words, Wenze shows the exact change and makes it on their Yes
+ *     (`confirmChange.js`), or "no, because …" closes it. Any other warning is
+ *     NOT askable: a question with nothing behind it is a notification wearing
+ *     a question mark.
  *
  * FIVE THINGS KEEP IT FROM BECOMING NOISE, which is the failure mode that would
  * end with the group muted and every question unanswered:
@@ -35,7 +39,9 @@ const defaultDecisions = require('../../database/operationalDecisions');
 const defaultSend = require('../notifications/send');
 const { actionForCheck } = require('../operations/corrections/actions');
 const { payloadFor, loadCheckSettings } = require('../operations/corrections/autoApply');
-const { questionFor, offeredActionsFor, replyHintFor } = require('../../lib/control/askable');
+const {
+  questionFor, offeredActionsFor, replyHintFor, isAnswerableNotice,
+} = require('../../lib/control/askable');
 const { sourcesFor, MIN_CONFIDENCE } = require('../operations/corrections/decisionSeam');
 const { takeDecision } = require('../decisions/journal');
 const { memoryApplies, actsFromMemory } = require('../../lib/control/fingerprint');
@@ -105,9 +111,13 @@ function askRoundFor(finding, repeatAfterHours, now = Date.now()) {
  * PURE given its inputs, so the rule can be read in one place and tested
  * without a database.
  */
-function isAskableFinding(finding, { mode, hasAction, held = false }) {
+function isAskableFinding(finding, {
+  mode, hasAction, held = false, answerable = false,
+}) {
   if (!finding || finding.status !== 'open') return false;
   if (finding.tier === 'approval') return hasAction;
+  // A notice the owner may answer in their own words (no Yes to offer).
+  if (finding.tier === 'warning') return answerable;
   if (finding.tier === 'auto') {
     // ON AUTOPILOT AND IT DID NOT ACT — the case that used to fall through
     // every gap. A check the owner has permitted decides `hold` or `unknown`,
@@ -299,7 +309,7 @@ async function runAskPass(_options = {}, deps = defaultDeps()) {
       `${finding.checkKey}|${finding.subjectType}|${finding.subjectId}`
     ) || null;
     if (!isAskableFinding(finding, {
-      mode, hasAction: Boolean(action), held: Boolean(heldDecision),
+      mode, hasAction: Boolean(action), held: Boolean(heldDecision), answerable: isAnswerableNotice(finding.checkKey),
     })) {
       skipped.notAskable += 1;
       continue;
@@ -308,8 +318,9 @@ async function runAskPass(_options = {}, deps = defaultDeps()) {
     const wording = questionFor(finding, { heldDecision });
     if (!wording) { skipped.noWording += 1; continue; }
 
-    const payload = deps.payloadFor(finding);
-    if (!payload) { skipped.noPayload += 1; continue; }
+    // An answerable notice has no action, so no payload: its answer is a
+    // typed change the owner confirms, or a "no" with why.
+    if (action && !deps.payloadFor(finding)) { skipped.noPayload += 1; continue; }
 
     const key = questionKeyFor(finding.id);
     // eslint-disable-next-line no-await-in-loop
@@ -317,14 +328,15 @@ async function runAskPass(_options = {}, deps = defaultDeps()) {
       .catch(() => true); // A read that failed must not become a second question.
     if (recently) { skipped.recentlyAsked += 1; continue; }
 
-    const offeredActions = offeredActionsFor({ hasAction: true, choices: wording.choices });
+    const offeredActions = offeredActionsFor({ hasAction: Boolean(action), choices: wording.choices });
 
     // THE SUGGESTION IS JOURNALLED BEFORE IT IS ASKED. This is what finally
     // writes `suggest` rows: the pass is saying "I would do this", and that is
     // a decision whether or not anybody answers. `shadow: false` because the
     // question is real; `mode: 'suggest'` because it is, honestly, a suggestion.
+    // Nothing to suggest for a notice with no action, so nothing to journal.
     // eslint-disable-next-line no-await-in-loop
-    const decision = await deps.takeDecision({
+    const decision = !action ? null : await deps.takeDecision({
       checkKey: finding.checkKey,
       subjectType: finding.subjectType,
       subjectId: finding.subjectId,

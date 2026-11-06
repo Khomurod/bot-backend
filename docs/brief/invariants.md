@@ -329,7 +329,12 @@ repository-wide working rules. The highest-consequence items:
   becomes a note for a person. Telegram redelivers, so `control_replies` claims
   `(chat_id, reply_message_id)` BEFORE acting. A model reads only a reply the
   fixed rules could not, picks from the same offered keys, supplies no value that
-  lands in a record, and fails to "unclear" rather than a guess. An answer is
+  lands in a record, and fails to "unclear" rather than a guess. The one
+  exception, the owner's decision of 6 November 2026: an answer in the owner's
+  own words may be read into ONE profile change from a closed list
+  (`lib/control/changeCatalogue.js`), and it is written only after the owner
+  answers Yes to that exact change, put back to them as a new question
+  (`docs/architecture/control-channel-typed-changes.md`). An answer is
   remembered against the CONDITION, not the driver, so a changed situation is
   asked again — and a remembered "yes" is never re-applied, because a standing
   permission belongs on the Automation screen. See

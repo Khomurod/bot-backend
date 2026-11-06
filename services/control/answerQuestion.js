@@ -125,6 +125,28 @@ async function answerQuestion({
       message: noted,
     };
   }
+  // A CHANGE IN THE OWNER'S OWN WORDS (6 November 2026). A reply the readers
+  // above could not turn into a plain answer — or a "no" that carries words of
+  // its own, or anything but yes / later to a "did I understand you right?" —
+  // may state a correction: "it is 1, not 01". When it does, Wenze puts the
+  // exact change back as a question whose Yes makes it (`confirmChange.js`),
+  // and changes nothing until then. When it does not, this is skipped and the
+  // reply goes on exactly as before.
+  const confirming = notice.question?.pending?.kind === 'confirm_change';
+  const mayStateChange = intent.intent === 'unclear' || !intent.action
+    || (intent.action === 'dismiss' && Boolean(intent.reason));
+  if (mayStateChange && typeof deps.proposeChange === 'function') {
+    const proposed = await deps.proposeChange({
+      reply, notice, finding, text, prompt: promptOf(notice),
+    }, deps).catch(() => null);
+    if (proposed) {
+      await deps.replies.finaliseReply(claim.id, { outcome: 'clarified', intent });
+      return {
+        handled: true, outcome: 'clarified', proposed: true, message: proposed.message,
+      };
+    }
+  }
+
   // THIS REPLY IS THE REASON WE ASKED FOR. When the question they are
   // answering was Wenze's own "why?", their sentence IS the answer — it is not
   // a yes, a no or a later, and running it through a parser that only knows
@@ -158,7 +180,9 @@ async function answerQuestion({
   // A BARE "NO" IS NOT A REASON, and a finding closed with no reason recorded
   // is a decision nobody can review later. One "why?" — and only one, bounded
   // by `clarify_limit` — then the default reason is used rather than nagging.
-  if (intent.action === 'dismiss' && !intent.reason
+  // Not for a "did I understand you right?": there "no" means "you misread
+  // me", which needs no reason and closes nothing (`actions.js`).
+  if (intent.action === 'dismiss' && !intent.reason && !confirming
       && (notice.clarifyRound || 0) < settings.clarifyLimit) {
     await deps.replies.finaliseReply(claim.id, { outcome: 'clarified', intent });
     return askAgain(deps, { reply, notice, settings, offered }, {

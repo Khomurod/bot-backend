@@ -52,6 +52,9 @@ const { readReplyWithAi } = require('./aiIntent');
 const { rememberAnswerFor } = require('./memory');
 const defaultEngineering = require('../../database/engineeringRequests');
 const { answerQuestion } = require('./answerQuestion');
+const { readChangeWithAi } = require('./aiChange');
+const { proposeChange, changeTargets } = require('./confirmChange');
+const defaultPool = require('../../database/pool');
 
 function defaultDeps() {
   return {
@@ -66,6 +69,10 @@ function defaultDeps() {
     rememberAnswerFor,
     fileRequest: defaultEngineering.fileRequest,
     notify: defaultSend.notify,
+    // A change typed in the owner's own words, confirmed before it is made.
+    readChangeWithAi,
+    proposeChange,
+    changeTargets: (finding) => changeTargets(finding, defaultPool),
     // Injected rather than imported so a test never reaches the outbox, and so
     // this module has no opinion about how a message is sent.
     ack: null,

@@ -179,6 +179,9 @@ stranger's answer is consumed and never kept.
 A correction applied this way is attributed `telegram:<id>`, a third initiator
 form beside `admin:<id>` and `system`. It counts as a person, which is what
 gets an approval-tier correction past the schema's system-is-auto-only CHECK.
+Since 6 November 2026 that includes a change an operator typed in their own
+words — but only once they answered Yes to the exact change Wenze put back to
+them ([`control-channel-typed-changes.md`](../architecture/control-channel-typed-changes.md)).
 
 **An answer an operator gives can outlive the reply, and it is still not a
 permission.** A "no" is stored in `control_knowledge` and re-applied to the same

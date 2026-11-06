@@ -41,6 +41,7 @@ const { ensurePerson, syncUnit } = require('./identityActions');
 const { syncUnitFleet } = require('./unitFleetActions');
 const { setTruckFromBoard } = require('./truckFromBoardActions');
 const { setDriverType } = require('./driverTypeActions');
+const { setUnit, setTruck } = require('./profileEditActions');
 const { handOverUnit } = require('./unitHandoverActions');
 const { setGroupType } = require('./groupActions');
 const { setDriverStatus, choiceActionFor } = require('./statusActions');
@@ -324,6 +325,10 @@ const ACTIONS = new Map([
   [syncUnitFleet.key, syncUnitFleet],
   [setTruckFromBoard.key, setTruckFromBoard],
   [setDriverType.key, setDriverType],
+  // No check of their own: reached only through a change the owner confirmed
+  // in their own words (lib/control/changeCatalogue.js).
+  [setUnit.key, setUnit],
+  [setTruck.key, setTruck],
   [handOverUnit.key, handOverUnit],
   [carryRoadClock.key, carryRoadClock],
   [markReturnedToRoad.key, markReturnedToRoad],

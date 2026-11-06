@@ -96,6 +96,9 @@ test('the executor reaches only a closed set of dependencies', () => {
     '../operations/corrections/actions',
     '../operations/corrections/decisionSeam',
     '../decisions/journal',
+    // 6 November 2026: a change the owner typed and then confirmed. Pure — the
+    // catalogue validates the change stored on the question's Yes again here.
+    '../../lib/control/changeCatalogue',
   ]);
   for (const mod of requiresIn(source)) {
     assert.ok(allowed.has(mod), `services/control/actions.js now imports "${mod}" — was that deliberate?`);

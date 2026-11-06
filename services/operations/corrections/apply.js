@@ -54,6 +54,11 @@ function initiatorFor(admin) {
  */
 async function applyCorrection({
   actionKey, payload, finding = null, admin = null, reason = null, db = defaultDb,
+  // FALSE for a change a person typed in their own words (the control
+  // channel's confirmed change): the finding is the reason for it, but whether
+  // the change cleared the condition is the next sweep's to say — marking it
+  // `applied` here would silence it even if it did not.
+  markFinding = true,
 }) {
   const action = getAction(actionKey);
   if (!action) throw new Error(`Unknown correction action: ${actionKey}`);
@@ -122,7 +127,7 @@ async function applyCorrection({
       ipAddress: admin?.ip ?? null,
     }, client);
 
-    if (finding?.id) {
+    if (finding?.id && markFinding) {
       await client.query(
         `UPDATE operational_findings
             SET status = 'applied', updated_at = NOW()

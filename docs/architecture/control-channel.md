@@ -67,6 +67,14 @@ closed allow-list of what `services/control/actions.js` may import at all.
 
 ### 5. A model may read a sentence; it may never decide or write
 
+**Changed by the owner on 6 November 2026, in one bounded way:** a model may
+now PROPOSE a value — a truck number, a driver type, a truck, a status — when
+the owner answers in their own words, and it still writes nothing. The change is
+put back to the owner as a new question with the exact change on its Yes, and
+only that Yes makes it. Everything below still holds for `aiIntent.js`; the new
+reader and its own bounds are in
+[`control-channel-typed-changes.md`](control-channel-typed-changes.md).
+
 The deterministic reader runs first, always. `parseIntent` is pure, has no
 parameter through which a model could arrive, and a test asserts its signature —
 so nearly every reply is decided with no model involved at all.
@@ -85,9 +93,10 @@ so nearly every reply is decided with no model involved at all.
 
 `tests/controlNoCodeAccess.test.js` asserts structurally that the deterministic
 parser, the fingerprint, the writer and the memory contain no AI seam at all,
-and that the reply handler reaches a model only through that one module — never a
-provider client directly, which would route around the capability switch, the
-cooldowns and the call log.
+and that the reply handler reaches a model only through its readers
+(`aiIntent.js`, and since November 2026 `aiChange.js`) — never a provider client
+directly, which would route around the capability switch, the cooldowns and the
+call log.
 
 ### 6. A remembered answer is bound to the CONDITION, and a remembered yes never acts
 
