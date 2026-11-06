@@ -27,6 +27,7 @@ const engineering = require('./checks/engineering');
 const roadBonus = require('./checks/roadBonus');
 const vehicleMatch = require('./checks/vehicleMatch');
 const truckFromBoard = require('./checks/truckFromBoard');
+const fleetCrossCheck = require('./checks/fleetCrossCheck');
 const retired = require('./checks/retired');
 const { runAutoCorrections } = require('./corrections/autoApply');
 const { withRunRecord } = require('./runLedger');
@@ -46,6 +47,9 @@ const CHECK_MODULES = [
   { name: 'roadBonus', keys: roadBonus.CHECK_KEYS, run: roadBonus.runRoadBonusChecks },
   { name: 'vehicleMatch', keys: vehicleMatch.CHECK_KEYS, run: vehicleMatch.runVehicleMatchChecks },
   { name: 'truckFromBoard', keys: truckFromBoard.CHECK_KEYS, run: truckFromBoard.runTruckFromBoardChecks },
+  // The day's Datatruck read against the live board and Wenze; refuses to run
+  // (and so resolves nothing) without that read.
+  { name: 'fleetCrossCheck', keys: fleetCrossCheck.CHECK_KEYS, run: fleetCrossCheck.runFleetCrossCheckChecks },
   // Removed features' keys: finds nothing, so the sweep resolves what they left open.
   { name: 'retired', keys: retired.CHECK_KEYS, run: retired.runRetiredChecks },
 ];

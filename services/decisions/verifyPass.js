@@ -131,6 +131,20 @@ const SUBJECTS = Object.freeze({
     },
   },
 
+  // Does the profile hold the driver type it was given?
+  'fleet.set_driver_type': {
+    impact: 'operational',
+    autoRevert: false,
+    table: 'driver_profiles',
+    async read(client, subjectId) {
+      const res = await client.query(
+        'SELECT driver_type AS "driverType" FROM driver_profiles WHERE group_id = $1',
+        [Number(subjectId)]
+      );
+      return res.rows[0] || null;
+    },
+  },
+
   // Does the profile hold the truck it was given?
   'identity.set_truck_from_board': {
     impact: 'operational',

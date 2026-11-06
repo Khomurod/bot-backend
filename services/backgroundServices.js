@@ -123,6 +123,7 @@ const {
 } = require('./ai/discovery/modelMaintenance');
 const { setModelRefusalListener } = require('./ai/router');
 const { onProfileSaved } = require('./identity/personResolver');
+const { dailyRead: fleetCrossCheckDailyRead } = require('./fleetCrossCheck/daily');
 const { startTelegramDestinationProbe, stopTelegramDestinationProbe } = require('./telegramDestinationProbe');
 const { setProfileSavedHook } = require('../database/driverProfiles');
 const {
@@ -231,6 +232,10 @@ function startBackgroundServices({ telegram }) {
   // which has its own evidence rules. Does nothing at all until an
   // administrator saves an address and a token in Settings.
   startDispatchBoardPoller();
+  // Datatruck's driver list and last week of loads, read soon after boot and
+  // then once a day, for the sweep's Board ↔ Wenze ↔ Datatruck check
+  // (checks/fleetCrossCheck.js). GET only; nothing is written.
+  fleetCrossCheckDailyRead().start();
   // Reads Safety's replies in the recruiting group and posts each decision in
   // the approvals topic. `blocked` until Safety Approvals is switched on.
   startSafetyApprovalWorker({ telegram: telegram || null });
@@ -287,6 +292,7 @@ function stopBackgroundServices() {
   try { stopDuplicateUnitCheckService(); } catch (err) { console.error('[SHUTDOWN] stopDuplicateUnitCheckService failed:', err.message); }
   try { stopConsistencyService(); } catch (err) { console.error('[SHUTDOWN] stopConsistencyService failed:', err.message); }
   try { stopDispatchBoardPoller(); } catch (err) { console.error('[SHUTDOWN] stopDispatchBoardPoller failed:', err.message); }
+  try { fleetCrossCheckDailyRead().stop(); } catch (err) { console.error('[SHUTDOWN] fleet cross-check daily read stop failed:', err.message); }
   try { stopSafetyApprovalWorker(); } catch (err) { console.error('[SHUTDOWN] stopSafetyApprovalWorker failed:', err.message); }
   try { stopHiringStageWorker(); } catch (err) { console.error('[SHUTDOWN] stopHiringStageWorker failed:', err.message); }
   try { stopPolicyWatcher(); } catch (err) { console.error('[SHUTDOWN] stopPolicyWatcher failed:', err.message); }

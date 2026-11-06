@@ -70,7 +70,9 @@ test('each kind of disagreement is named', () => {
   assert.deepEqual(rows[3].problems, ['name_close_wenze'], 'in the shop: no load this week is expected');
   // A driver hired by an owner: the truck is an owner's, the driver a company driver.
   assert.deepEqual(rows[4].problems, ['driver_type_differs_datatruck']);
-  assert.deepEqual(rows[4].datatruck.driverTypeConflict, { wenze: 'owner', datatruck: 'company_driver' });
+  assert.deepEqual(rows[4].datatruck.driverTypeConflict, {
+    wenze: 'owner', datatruck: 'company_driver', datatruckDriverType: 'company_driver', name: 'DAVID ONOBUN OLUGBENGA', datatruckName: 'Olugbenga David Onobun', groupId: null,
+  });
   assert.equal(summary.allAgree, 0);
   assert.equal(summary.notInWenze, 1);
   assert.equal(summary.driverTypeDiffersDatatruck, 1);

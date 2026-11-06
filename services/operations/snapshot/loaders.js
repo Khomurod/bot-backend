@@ -155,6 +155,17 @@ async function loadSnapshot(db = defaultDb) {
     return null;
   });
 
+  // Datatruck as the daily read last saw it (services/fleetCrossCheck/daily.js)
+  // — memory, not the database, and null until a read has succeeded, which
+  // the Board ↔ Wenze ↔ Datatruck check refuses to run on.
+  let datatruckFleet = null;
+  try {
+    // eslint-disable-next-line global-require
+    datatruckFleet = require('../../fleetCrossCheck/daily').dailyRead().latest();
+  } catch (err) {
+    console.warn('[SNAPSHOT] could not take the daily Datatruck read:', err.message);
+  }
+
   return {
     now: new Date(),
     groups: groups.rows,
@@ -173,6 +184,7 @@ async function loadSnapshot(db = defaultDb) {
     roadBonusReviews,
     vehicleMatchReports,
     boardRows,
+    datatruckFleet,
     ...layer,
   };
 }

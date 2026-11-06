@@ -72,6 +72,12 @@ feature it belongs to.
   number — a bare number on a company or lease driver is asked instead, as a
   likely lost suffix; `corrections/truckFromBoardActions.js`, migration 0093, cap 60 (measured) —
   `docs/architecture/fleet-type-and-unit-identity.md`),
+  the daily Board ↔ Wenze ↔ Datatruck check (`checks/fleetCrossCheck.js`,
+  November 2026 — two sources against one, against the day's Datatruck read held
+  in memory; refuses to run without it): `fleet.driver_not_in_wenze` and
+  `fleet.board_suffix_missing` are notices, `fleet.driver_type_differs_datatruck`
+  is a question whose Yes (`fleet.set_driver_type`, **approval only**) records
+  Datatruck's driver type — `docs/architecture/dispatcher-board.md`),
   `identity.person_on_two_active_groups` and
   `identity.unit_contested` (a human decides — the holder still drives). `checks/systems.js` reads across
   features: `samsara.vehicle_on_two_active_groups`,

@@ -22,9 +22,9 @@
  * the board ↔ Wenze half still stands — never a blank that reads as "agrees".
  */
 const { compareFleet } = require('../../lib/fleetCrossCheck/compare');
+const { readDatatruck, ORDER_DAYS } = require('./datatruckRead');
 
 const TTL_MS = 10 * 60 * 1000;
-const ORDER_DAYS = 7;
 
 function defaultDeps() {
   /* eslint-disable global-require */
@@ -57,33 +57,6 @@ async function readWenze(db) {
     groupName: r.group_name || null,
     driverType: r.driver_type || null,
   }));
-}
-
-function fullName(account = {}) {
-  return account.full_name || [account.first_name, account.last_name].filter(Boolean).join(' ') || null;
-}
-
-/** Datatruck: who is which type, and which truck each recent load ran on. */
-async function readDatatruck(datatruck, nowMs) {
-  if (!datatruck.isConfigured()) return { read: false, reason: 'Datatruck is not connected (no token in Settings → Secrets).' };
-  try {
-    const startIso = new Date(nowMs - ORDER_DAYS * 86_400_000).toISOString();
-    const endIso = new Date(nowMs + 86_400_000).toISOString();
-    const [drivers, orders] = [await datatruck.fetchAllDrivers(), await datatruck.fetchOrdersByPickupWindow(startIso, endIso)];
-    return {
-      read: true,
-      drivers: (drivers || []).map((d) => ({ name: fullName(d.account), driverType: d.driver_type || null })).filter((d) => d.name),
-      orders: (orders || []).map((o) => ({
-        label: o?.trip?.truck__unit_number || o?.assigned_driver_n_truck?.truck_unit_number || null,
-        drivers: [o?.trip?.driver__full_name, o?.trip?.team_driver__full_name].filter(Boolean),
-        at: o?.pickup_time || o?.pickup_appointment_time || null,
-      })).filter((o) => o.label),
-    };
-  } catch (err) {
-    // The reason in words a page may show: a status code, never the URL or the token.
-    const status = err && (err.status || err.statusCode);
-    return { read: false, reason: `Datatruck could not be read${status ? ` (HTTP ${status})` : ''}.` };
-  }
 }
 
 function createFleetCrossCheck(deps = defaultDeps()) {

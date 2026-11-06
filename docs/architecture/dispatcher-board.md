@@ -314,6 +314,38 @@ a different driver or driver type in Datatruck. The owner's request of
   word order still agree); "close" is a one-letter typo or a space moved
   ("MC LEAN" / "MCLEAN") — for a person to look at, never acted on.
 
+### The daily check (November 2026)
+
+The same comparison runs by itself inside the sweep, every fifteen minutes,
+against the live board and live Wenze and **the day's Datatruck read**
+(`services/fleetCrossCheck/daily.js`: a driver list and a week of loads, read
+30 seconds after boot and then every 24 hours, held in memory, never written).
+Every finding needs **two sources** on the side it would have a person change
+(`lib/fleetCrossCheck/findings.js`):
+
+| Key | When | What happens |
+|---|---|---|
+| `fleet.driver_not_in_wenze` | the board AND Datatruck have this driver in this truck; Wenze has nobody in it | a notice (`warning`) in Needs Attention, naming any other number Wenze has the driver on (John Elisee: `1 RUDOLPH` on the board, `01` in Wenze) — a chat or a unit only a person can add |
+| `fleet.board_suffix_missing` | the board writes a bare number (read as owner-operator); Datatruck writes the same driver's truck with a fleet word (`888` / `888 CMP`) | a notice for the dispatcher, who keeps the board |
+| `fleet.driver_type_differs_datatruck` | Wenze's driver type is not Datatruck's for the same person in the same truck, and the board's label does not side with Wenze | a **question** (`approval`); Yes (`fleet.set_driver_type`) records Datatruck's type on the profile, revertible; the truck is untouched |
+
+- **Nothing changes without a person.** Datatruck and the board are other
+  people's systems: what they say is a reason to ask, never a write. The one
+  action is approval-tier, which the system cannot apply by itself.
+- **The board's vote on a driver's type** comes from its label: COMP, CMP, V →
+  company driver; R → lease; L → owner; a bare number → the owner at his own
+  wheel; an owner's name → the owner when it is the driver's own name,
+  otherwise a driver he hired. When the board sides with Wenze, Datatruck is the
+  odd one out and nothing is asked of Wenze.
+- **No day's read, no check.** Not yet read after a restart, Datatruck not
+  connected, or the last good read older than two days: the module throws, and
+  the sweep leaves its open findings where they are rather than resolving them
+  as though the sources had come to agree. An unreadable board does the same.
+- **Not here, because another check owns it:** a truck Wenze holds under
+  another fleet or owner (`identity.truck_from_board`), a truck still recorded
+  to a driver who left (`identity.unit_handover`), two people on one truck
+  (`identity.unit_contested`).
+
 ## Which person a row is about — decided at read time
 
 Since November 2026 a board line's truck includes its **owner** when the suffix
