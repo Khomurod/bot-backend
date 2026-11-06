@@ -341,6 +341,11 @@ Every finding needs **two sources** on the side it would have a person change
   connected, or the last good read older than two days: the module throws, and
   the sweep leaves its open findings where they are rather than resolving them
   as though the sources had come to agree. An unreadable board does the same.
+- **The read is on Health, and a failed one is retried.** Each read is a run
+  of `fleet_crosscheck_datatruck_read` (ok, `blocked` while Datatruck has no
+  token, or an error with its reason); a failed read is tried again after 30
+  minutes, not a day later. The first deploy (6 November 2026) ran four hours
+  with no question filed and nothing anywhere to say why.
 - **Not here, because another check owns it:** a truck Wenze holds under
   another fleet or owner (`identity.truck_from_board`), a truck still recorded
   to a driver who left (`identity.unit_handover`), two people on one truck

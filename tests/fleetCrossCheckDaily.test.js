@@ -8,7 +8,20 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { createDailyRead, STALE_AFTER_MS } = require('../services/fleetCrossCheck/daily');
+const { createDailyRead, STALE_AFTER_MS, SERVICE_KEY } = require('../services/fleetCrossCheck/daily');
+
+/** The run ledger, as Health would see it. */
+function ledger() {
+  const runs = [];
+  return {
+    runs,
+    async withRunRecord(key, pass) {
+      const summary = await pass();
+      runs.push({ key, summary });
+      return summary;
+    },
+  };
+}
 const { runFleetCrossCheckChecks, wenzeFromSnapshot, CHECK_KEYS } = require('../services/operations/checks/fleetCrossCheck');
 
 function fakeDatatruck({ configured = true, fail = false } = {}) {
@@ -28,17 +41,22 @@ function fakeDatatruck({ configured = true, fail = false } = {}) {
   };
 }
 
-test('nothing until a read has succeeded; then the read; a failed read keeps the last good one', async () => {
+test('nothing until a read has succeeded; then the read; a failed read keeps the last good one', async (t) => {
   let now = Date.parse('2026-11-05T12:00:00Z');
   const dt = fakeDatatruck();
-  const daily = createDailyRead({ datatruck: dt, now: () => now });
+  const seen = ledger();
+  const daily = createDailyRead({ datatruck: dt, now: () => now, withRunRecord: seen.withRunRecord });
   assert.equal(daily.latest(), null);
   assert.equal(await daily.refresh(), true);
   assert.deepEqual(daily.latest().drivers, [{ name: 'Antoine Campbell', driverType: 'company_driver' }]);
   assert.equal(daily.latest().orders[0].label, '888 CMP');
+  assert.deepEqual(seen.runs, [{ key: SERVICE_KEY, summary: { read: true, drivers: 1, orders: 1 } }], 'Health sees the read');
 
-  const failing = createDailyRead({ datatruck: fakeDatatruck({ fail: true }), now: () => now });
+  const failedLedger = ledger();
+  const failing = createDailyRead({ datatruck: fakeDatatruck({ fail: true }), now: () => now, withRunRecord: failedLedger.withRunRecord });
+  t.after(() => failing.stop());
   assert.equal(await failing.refresh(), false);
+  assert.match(failedLedger.runs[0].summary.error, /HTTP 503/, 'a failed read is an error on Health, with the reason');
   assert.equal(failing.latest(), null);
   assert.match(failing.status().lastFailure.reason, /HTTP 503/);
   assert.doesNotMatch(failing.status().lastFailure.reason, /https?:\/\//i, 'a status code, never a URL');
@@ -50,15 +68,17 @@ test('nothing until a read has succeeded; then the read; a failed read keeps the
 
 test('one read at a time: two callers, one request', async () => {
   const dt = fakeDatatruck();
-  const daily = createDailyRead({ datatruck: dt, now: () => Date.now() });
+  const daily = createDailyRead({ datatruck: dt, now: () => Date.now(), withRunRecord: ledger().withRunRecord });
   await Promise.all([daily.refresh(), daily.refresh()]);
   assert.deepEqual(dt.calls, { drivers: 1, orders: 1 });
 });
 
 test('not connected is said, and nothing is read', async () => {
   const dt = fakeDatatruck({ configured: false });
-  const daily = createDailyRead({ datatruck: dt, now: () => Date.now() });
+  const seen = ledger();
+  const daily = createDailyRead({ datatruck: dt, now: () => Date.now(), withRunRecord: seen.withRunRecord });
   assert.equal(await daily.refresh(), false);
+  assert.match(seen.runs[0].summary.blocked, /not connected/, 'waiting on configuration, not a failure');
   assert.deepEqual(dt.calls, { drivers: 0, orders: 0 });
   assert.match(daily.status().lastFailure.reason, /not connected/);
 });
@@ -73,6 +93,22 @@ const SNAPSHOT = {
     truck_raw: '888', truck_norm: '888', fleet_type: 'owner_operator', fleet_label_raw: null, driver_name_clean: 'ANTOINE CAMPBELL', team_members: null, status: 'ENROUTE',
   }],
 };
+
+test('a failed read is tried again after half an hour, not a day later', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  let fail = true;
+  const dt = fakeDatatruck();
+  const original = dt.fetchAllDrivers;
+  dt.fetchAllDrivers = async () => { if (fail) { const e = new Error('x'); e.status = 429; throw e; } return original(); };
+  const daily = createDailyRead({ datatruck: dt, now: () => Date.now(), withRunRecord: ledger().withRunRecord });
+  t.after(() => daily.stop());
+  assert.equal(await daily.refresh(), false);
+  fail = false;
+  t.mock.timers.tick(30 * 60 * 1000);
+  await new Promise((r) => setImmediate(r));
+  await daily.refresh(); // joins the retry if it is still running
+  assert.ok(daily.latest(), 'the retry read it');
+});
 
 test('the sweep check refuses to run without the day\'s Datatruck read, and without the board', () => {
   assert.throws(() => runFleetCrossCheckChecks({ ...SNAPSHOT, datatruckFleet: null }), /not been read today/);
