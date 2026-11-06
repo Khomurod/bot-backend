@@ -22,6 +22,7 @@ describe("raceEvents", () => {
     expect(change.events.map((e) => e.type)).toEqual(["overtake", "gain"]);
     expect(eventText(change.events[0])).toBe("Cy passes Bo for 2nd");
     expect(eventText(change.events[1])).toBe("Cy +$2,500");
+    expect(change.events[0]).toMatchObject({ rank: 2, from: 3, passed: "Bo" }); // the climb card's "3rd → 2nd"
     expect(change.banner).toMatchObject({ type: "overtake", until: AT + BANNER_MS });
     expect(bannerView(change.banner)).toEqual({ type: "overtake", kicker: "Overtake", text: "Cy passes Bo · 2nd" });
   });

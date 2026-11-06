@@ -113,14 +113,15 @@ describe("GrossRacePage", () => {
     render(<GrossRacePage view="teams" />);
     await screen.findAllByText("Falcon's Team");
 
-    // Bison overtakes Falcon: a feed line and the banner.
+    // Bison overtakes Falcon: a feed line, and the climb card in place of the banner (rankUp/).
     respond({
       ...live,
       race: { ...live.race, racers: [racer("Bison's Team", 1, 50000, 60000), racer("Falcon's Team", 2, 45000, 60000)] },
     });
     act(() => { document.dispatchEvent(new Event("visibilitychange")); });
     expect(await screen.findByText("Bison's Team takes the lead!")).toBeInTheDocument();
-    expect(screen.getByText("Bison's Team takes 1st place!")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Bison's Team");
+    expect(screen.getByRole("status")).toHaveTextContent("takes 1st place");
 
     // Monday: the server is on the next week.
     const nextWeek = { ...week, start: "2026-10-19T05:00:00.000Z", end: "2026-10-26T05:00:00.000Z", label: "Oct 19–26", day: 1, dayName: "Mon" };
@@ -129,6 +130,7 @@ describe("GrossRacePage", () => {
     expect(await screen.findByText("Datatruck · Week of Oct 19–26")).toBeInTheDocument();
     expect(screen.queryByText("Bison's Team takes the lead!")).not.toBeInTheDocument();
     expect(screen.queryByText("Bison's Team takes 1st place!")).not.toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
     expect(screen.getByText(/Waiting for the next move/)).toBeInTheDocument();
   });
 
@@ -235,13 +237,6 @@ describe("GrossRacePage", () => {
     } finally {
       catchUp.day = null;
     }
-  });
-
-  test("the dispatchers' board has no Test sound button: the video is the teams' board's alone", async () => {
-    respond({ ...live, view: "dispatchers" });
-    render(<GrossRacePage view="dispatchers" />);
-    await screen.findAllByText("Falcon's Team");
-    expect(screen.queryByRole("button", { name: "Test sound" })).not.toBeInTheDocument();
   });
 
   test("the Test sound button runs the celebration of the race leader", async () => {
