@@ -20,6 +20,8 @@ export const SETTINGS_GROUPS = Object.freeze([
       // Its own section since November 2026: it has its own Save.
       { key: "samsara_video", label: "Samsara Video & Music" },
       { key: "board", label: "Dispatcher Board" },
+      // November 2026: hand-over / return photos → a PDF to one person.
+      { key: "truck_photos", label: "Truck Photos" },
     ],
   },
   {

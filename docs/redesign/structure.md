@@ -60,7 +60,7 @@ desktop, a single picker on a phone. Every section has its own address.
 
 | Settings group | Sections (address) |
 |---|---|
-| Fleet | Location Providers (`location`) · Samsara (`samsara`) · Samsara Video & Music (`samsara_video`) · Dispatcher Board (`board`) |
+| Fleet | Location Providers (`location`) · Samsara (`samsara`) · Samsara Video & Music (`samsara_video`) · Dispatcher Board (`board`) · Truck Photos (`truck_photos`, November 2026 — `docs/architecture/truck-photo-reports.md`) |
 | Recruiting | Recruiters & Numbers (`ringcentral`) · RingCentral Connection (`rc_connection`) · Bitrix24 (`bitrix`) · Facebook ↔ Bitrix (`metacrm`) · Safety Approvals (`safety`) |
 | AI | AI Providers (`ai`) · AI Tasks (`ai_tasks`) · Wenze's Questions (`ai_questions`) · Provider Terms (`ai_terms`) |
 | Telegram | Where the Bot Posts (`notifications`; `#settings/groups` lands here) · Group Access (`access`) · Auto Reactions (`reactions`) |

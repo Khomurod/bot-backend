@@ -28,6 +28,7 @@ const { isAiAvailable } = require('./ai/registry');
 const {
   KEYWORD_SKIP_VERSION, splitByLeavingCue, unreadAnnotation,
 } = require('./retention/leavingCue');
+const { sanitizeForPrompt: sanitizeUntrusted } = require('../lib/ai/untrustedText');
 
 const MODEL_VERSION = 'groq-v1-annotator';
 const ANNOTATOR_GROQ_MODELS = parseModelList(
@@ -91,12 +92,10 @@ function clampInt(value, min, max, fallback) {
 
 function sanitizeForPrompt(text) {
   // Neutralize anything that looks like a fence or meta instruction inside
-  // the transcript so it can't steer the classifier.
-  return String(text || '')
-    .replace(/<\/?driver_transcript>/gi, '')
-    .replace(/<\/?model_draft>/gi, '')
-    .replace(/```/g, '` ` `')
-    .slice(0, MAX_MESSAGE_CHARS);
+  // the transcript so it can't steer the classifier (lib/ai/untrustedText.js).
+  return sanitizeUntrusted(text, {
+    maxChars: MAX_MESSAGE_CHARS, fences: ['driver_transcript', 'model_draft'],
+  });
 }
 
 function buildAnnotationPrompt(batch) {

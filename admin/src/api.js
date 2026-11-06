@@ -28,6 +28,7 @@ export * from './api/bot';
 export * from './api/settings';
 export * from './api/dispatchBoard';
 export * from './api/safetyApprovals';
+export * from './api/truckPhotos';
 export * from './api/samsara';
 export * from './api/notifications';
 export * from './api/control';

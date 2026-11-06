@@ -1,5 +1,5 @@
 /**
- * Settings' own navigation: nineteen sections under five groups, every one of
+ * Settings' own navigation: twenty-one sections under five groups, every one of
  * them reachable, and the choice is the PAGE's (and so the address's) — the
  * navigation only reports it.
  */
@@ -11,10 +11,10 @@ import SettingsNav, { itemIsVisible } from "./SettingsNav";
 import { SETTINGS_GROUPS, SETTINGS_SECTION_KEYS, settingsSectionLabel } from "./sections";
 
 describe("Settings sections", () => {
-  test("five groups, twenty sections, each key once, in this order", () => {
+  test("five groups, twenty-one sections, each key once, in this order", () => {
     expect(SETTINGS_GROUPS.map((g) => g.label)).toEqual(["Fleet", "Recruiting", "AI", "Telegram", "System"]);
     expect(SETTINGS_SECTION_KEYS).toEqual([
-      "location", "samsara", "samsara_video", "board",
+      "location", "samsara", "samsara_video", "board", "truck_photos",
       "ringcentral", "rc_connection", "bitrix", "metacrm", "safety",
       "ai", "ai_tasks", "ai_questions", "ai_terms",
       "notifications", "access", "reactions",

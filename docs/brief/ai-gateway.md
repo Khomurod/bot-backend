@@ -142,6 +142,15 @@ stay in §4a. The provider terms watcher is
   images is never offered one: it would answer about a picture it never saw.
   `services/geminiClient.js` `callGeminiText` / `callGeminiJson` now go to the
   whole roster; only Gemini-native `contents` stay on Gemini.
+- **Truck Photos (`truck_photo_handover`, November 2026) is one pass in the
+  operator's order, not escalated to Claude.** It may only check whether a
+  message that says more than `outbound` / `inbound` is about the truck (a yes
+  needs confidence ≥ 70; anything less is "could not tell", no PDF) and leave
+  out photos that are clearly not the truck (≥ 80; unsure keeps the photo).
+  Photos go eight at a time through `services/aiImagePrep.js` at 768 px, to a
+  model that can see. With no model a bare word still makes a PDF of every
+  photo and anything else makes none
+  (`docs/architecture/truck-photo-reports.md`).
 - **Claude's system prompt is marked for prompt caching** (`cache_control`
   `ephemeral`), so the stable instructions of a capability are reused cheaply.
 - **Adding a known provider is: pick it, paste the key, Connect.**
