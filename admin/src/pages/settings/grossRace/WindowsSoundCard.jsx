@@ -13,12 +13,19 @@ import React, { useState } from "react";
  * reloads. `--user-data-dir` gives that window a profile of its own, so the
  * switch applies even while another Chrome window is already open — Chrome
  * ignores switches handed to a profile that is already running.
+ *
+ * The dispatchers' board needs the same switch for its climb chime
+ * (grossRace/rankUp/; the owner, 6 November 2026), so it has its own command,
+ * with a profile of its own for a computer that shows both boards.
  */
+
+const CHROME = `"C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe" --kiosk --autoplay-policy=no-user-gesture-required`;
 
 export function boardCommands(origin) {
   const board = `${origin}/dispatchteam`;
   return {
-    chrome: `"C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe" --kiosk --autoplay-policy=no-user-gesture-required --user-data-dir="C:\\WenzeBoard" ${board}`,
+    chrome: `${CHROME} --user-data-dir="C:\\WenzeBoard" ${board}`,
+    chromeDispatch: `${CHROME} --user-data-dir="C:\\WenzeBoardDispatch" ${origin}/dispatch`,
     edge: `"C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe" --kiosk --edge-kiosk-type=fullscreen --autoplay-policy=no-user-gesture-required --user-data-dir="C:\\WenzeBoardEdge" ${board}`,
   };
 }
@@ -51,17 +58,20 @@ export default function WindowsSoundCard({ origin = window.location.origin }) {
     <div className="ios-glass" style={{ padding: 20 }}>
       <h3 style={{ marginTop: 0 }}>Always with sound: set up the office computer (Windows)</h3>
       <p style={{ color: "var(--text-muted)", fontSize: 13, marginTop: 0 }}>
-        A browser does not let a page start sound by itself, so without this the video plays muted.
-        Opening the board with the shortcut below allows it, full screen, every time.
+        A browser does not let a page start sound by itself, so without this the video plays muted and
+        the chime for a racer moving up stays silent. Opening the board with the shortcut below allows it,
+        full screen, every time.
       </p>
       <ol style={{ fontSize: 14, lineHeight: 1.6, paddingLeft: 20 }}>
         <li>On the computer that shows the board, right-click the desktop → <strong>New</strong> → <strong>Shortcut</strong>.</li>
         <li>Paste this as the location, press <strong>Next</strong>, name it <strong>Wenze Board</strong>, press <strong>Finish</strong>:
           <Command label="Google Chrome (recommended)" text={commands.chrome} />
+          For the dispatchers' board (/dispatch), make a second shortcut the same way with this one, named <strong>Wenze Dispatch Board</strong>:
+          <Command label="Google Chrome — dispatchers' board" text={commands.chromeDispatch} />
         </li>
         <li>Double-click the shortcut. The board opens full screen; sound is now allowed. To leave full screen press <strong>Alt + F4</strong>.</li>
         <li>To open it by itself whenever the computer starts: press <strong>Win + R</strong>, type <code>shell:startup</code>, press Enter, and copy the shortcut into the folder that opens.</li>
-        <li>Check it: on the board press <strong>Test sound</strong>. It should say sound may start by itself. Keep the Windows volume up and the TV not muted.</li>
+        <li>Check it: on the board press <strong>Test sound</strong>. It should say sound may start by itself (on /dispatch: the chime plays by itself). Keep the Windows volume up and the TV not muted.</li>
       </ol>
       <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
         If Chrome is installed somewhere else (for example <code>C:\Program Files (x86)\Google\Chrome\Application\chrome.exe</code>),

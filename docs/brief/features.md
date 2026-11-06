@@ -459,9 +459,12 @@ created the loads, by gross alone, five to a screen. At 4:00 PM Chicago, every
 day, each board celebrates its leader for twelve seconds over a 3D car
 (`?celebrate` previews it); on `/dispatchteam` only, the company's video kept
 on the server follows the car, and a **Test sound** button shows what the
-screen can do. **Settings → Gross Grand Prix** shows that video and pauses,
+screen can do. When a racer climbs, both boards chime and show a big card for
+seven seconds — at most one a minute, never over the celebration; `/dispatch`
+turns to the climber's five, and its own **Test sound** shows that card.
+**Settings → Gross Grand Prix** shows that video and pauses,
 replaces or deletes it (pausing stands down the video only, never the car),
-and gives the Windows shortcut command that opens the board full screen with
+and gives the Windows shortcut commands that open the boards full screen with
 sound allowed. A screen reloads itself within about a minute
 of an admin-panel deploy; on the office screens use the browser's own full
 screen (F11, or that shortcut's kiosk mode), because a reload ends the page's.

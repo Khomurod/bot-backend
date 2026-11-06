@@ -38,7 +38,7 @@ export function raceEvents(previous, current, at) {
     if (racer.rank < old.rank) {
       const passed = holderOf.get(racer.rank);
       events.push({
-        type: racer.rank === 1 ? "leader" : "overtake", name: racer.name, rank: racer.rank,
+        type: racer.rank === 1 ? "leader" : "overtake", name: racer.name, rank: racer.rank, from: old.rank,
         passed: passed && passed.id !== racer.id ? passed.name : "", at,
       });
     }

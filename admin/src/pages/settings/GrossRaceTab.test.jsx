@@ -113,3 +113,11 @@ test("the Windows command opens THIS server's /dispatchteam, full screen, with s
   }
   expect(chrome.startsWith('"C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"')).toBe(true);
 });
+
+test("the dispatchers' board has its own command, for its climb chime, in a profile of its own", () => {
+  const { chrome, chromeDispatch } = boardCommands("https://hub.example.com");
+  expect(chromeDispatch).toMatch(/ --kiosk --autoplay-policy=no-user-gesture-required /);
+  expect(chromeDispatch).toMatch(/ --user-data-dir="C:\\WenzeBoardDispatch" /);
+  expect(chromeDispatch.endsWith(" https://hub.example.com/dispatch")).toBe(true);
+  expect(chrome).not.toMatch(/WenzeBoardDispatch/);
+});

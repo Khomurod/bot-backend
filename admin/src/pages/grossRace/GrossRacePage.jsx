@@ -17,6 +17,8 @@ import { catchUpDay, caughtUp, markCaughtUp } from "./celebration/catchUp";
 import { chunkOf, lastReloadAt, markBooted, markReload, noteServed, shouldReload, tabStorage } from "./pageVersion";
 import SoundTestOverlay from "./soundTest/SoundTestOverlay";
 import useSoundTest from "./soundTest/useSoundTest";
+import RankUpOverlay from "./rankUp/RankUpOverlay";
+import useRankUp from "./rankUp/useRankUp";
 import "./grossRace.css";
 
 /**
@@ -41,6 +43,11 @@ import "./grossRace.css";
  * CelebrationVideo), and the "Test sound" button runs the celebration and then
  * a clip with sound, and says what the screen can do (soundTest/).
  *
+ * A racer who climbs gets a chime and a big card in the middle of the screen
+ * for seven seconds, on both boards (rankUp/; the owner, 6 November 2026); on
+ * /dispatch the board turns to the climber's five and waits there, and its
+ * "Test sound" button shows the card with the chime.
+ *
  * Every answer also names the build of this page the server hands out; a
  * screen running an older one reloads itself (pageVersion.js), so a code
  * update reaches the office screens without anyone touching them.
@@ -52,6 +59,7 @@ const WARMING_POLL_MS = 5_000;
 const OFFLINE = "No connection to the server";
 export const PAGE_SIZE = { dispatchers: 5, teams: Infinity };
 export const PAGE_MS = 10_000;
+const NO_BANNER = { current: null, shown: null };
 // The build this screen is running: the chunk Vite put this module in.
 const OWN_CHUNK = chunkOf(import.meta.url);
 const reloadPage = () => window.location.reload();
@@ -79,12 +87,18 @@ export default function GrossRacePage({ view, pageMs = PAGE_MS, ownChunk = OWN_C
   const last = useRef(null);
   const fullscreen = useFullscreen();
   // The video after the celebration is the teams' board's alone (the owner,
-  // 16 October 2026): /dispatch keeps the car only, so it has no sound test.
+  // 16 October 2026): /dispatch keeps the car only; its Test sound is the climb chime (rankUp/).
   const withVideo = view === "teams";
   const sound = useSoundTest({ race: data && data.race, celebration, setCelebration, enabled: withVideo });
   const video = useCelebrationVideo({ enabled: withVideo, available: Boolean(data && data.video), celebration, testing: sound.active });
   const pageSize = PAGE_SIZE[view] || Infinity;
   const pages = pageCount(data && data.race, pageSize);
+  // A climb: never over the celebration, the video or the sound test, which hold the screen.
+  const rankUp = useRankUp({
+    isBusy: () => celebrating.current || sound.active.current || video.active.current,
+    pageSize, setPage, probeOnLoad: !withVideo,
+  });
+  const { offer: offerRankUp, clear: clearRankUp } = rankUp;
 
   const load = useCallback(async () => {
     let next;
@@ -105,6 +119,7 @@ export default function GrossRacePage({ view, pageMs = PAGE_MS, ownChunk = OWN_C
       setEvents([]);
       setFlashUntil({});
       setBanner({ current: null, shown: null });
+      clearRankUp();
     }
     if (!next.race) return;
     const order = ranked(next.race);
@@ -117,7 +132,8 @@ export default function GrossRacePage({ view, pageMs = PAGE_MS, ownChunk = OWN_C
       setFlashUntil((held) => ({ ...held, ...Object.fromEntries(change.flashed.map((id) => [id, at + FLASH_MS])) }));
     }
     if (change.banner) setBanner({ current: change.banner, shown: bannerView(change.banner) });
-  }, [view, ownChunk]);
+    offerRankUp(change.events, at);
+  }, [view, ownChunk, offerRankUp, clearRankUp]);
 
   // Mounted: the page's boot watchdog (admin/index.html) stands down.
   useEffect(() => { markBooted(); }, []);
@@ -173,6 +189,9 @@ export default function GrossRacePage({ view, pageMs = PAGE_MS, ownChunk = OWN_C
     if (celebration && now >= celebration.until) setCelebration(null);
   }, [now, celebration, setCelebration]);
 
+  const endRankUp = rankUp.tick;
+  useEffect(() => { endRankUp(now); }, [now, endRankUp]);
+
   // A newer build of this page is out: reload, unless now is a bad moment.
   useEffect(() => {
     if (reloading.current || !data || !data.page) return;
@@ -180,30 +199,33 @@ export default function GrossRacePage({ view, pageMs = PAGE_MS, ownChunk = OWN_C
     const storage = tabStorage();
     const due = shouldReload({
       own: ownChunk, served: data.page, confirmations: otherBuild.current && otherBuild.current.name === data.page ? otherBuild.current.count : 0,
-      now, tz, celebrating: celebrating.current || sound.active.current || video.active.current, lastReloadAt: lastReloadAt(storage),
+      now, tz, celebrating: celebrating.current || sound.active.current || video.active.current || rankUp.showing.current,
+      lastReloadAt: lastReloadAt(storage),
     });
     if (!due) return;
     reloading.current = true;
     markReload(storage, now);
     reload();
-  }, [data, now, ownChunk, reload, sound.active, video.active]);
+  }, [data, now, ownChunk, reload, sound.active, video.active, rankUp.showing]);
 
   useEffect(() => {
     setPage((held) => (held < pages ? held : 0));
     if (pages <= 1) return undefined;
-    const turn = setInterval(() => setPage((held) => (held + 1) % pages), pageMs);
+    // A climb card holds the board on the climber's page until it is gone.
+    const turn = setInterval(() => setPage((held) => (rankUp.showing.current ? held : (held + 1) % pages)), pageMs);
     return () => clearInterval(turn);
-  }, [pages, pageMs]);
+  }, [pages, pageMs, rankUp.showing]);
 
   return (
     <div className="gross-race">
-      <RaceHeader view={view} data={data} now={now} fullscreen={fullscreen} onSoundTest={withVideo ? sound.start : undefined} />
+      <RaceHeader view={view} data={data} now={now} fullscreen={fullscreen} onSoundTest={withVideo ? sound.start : rankUp.test} />
       <RaceRules view={view} data={data} />
       <div className="gr-body">
-        <RaceTrack view={view} data={data} now={now} flashUntil={flashUntil} banner={banner}
+        <RaceTrack view={view} data={data} now={now} flashUntil={flashUntil} banner={rankUp.card ? NO_BANNER : banner}
           page={Math.min(page, pages - 1)} pages={pages} pageSize={pageSize} />
         <RaceSidebar data={data} now={now} events={events} />
       </div>
+      {rankUp.card && !celebration && !video.stage && !sound.test && <RankUpOverlay card={rankUp.card} />}
       {celebration && <CelebrationOverlay winner={celebration.winner} view={view} onCar={sound.noteCar} />}
       {video.stage && <CelebrationVideo playing={video.stage === "playing"} onDone={video.done} />}
       {sound.test && sound.test.stage === "video" && (

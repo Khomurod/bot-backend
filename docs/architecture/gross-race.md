@@ -179,6 +179,41 @@ celebration while nobody has any gross.
   - The lit floor disc and the contact shadows are what make the floor visible
     at all. Without them the car reads as floating.
 
+## A racer moves up: the chime and the big card
+
+The owner (6 November 2026): when somebody climbs, an airport-style
+"ding-dong" and a big card in the middle of the screen, on both boards
+(`admin/src/pages/grossRace/rankUp/`).
+
+- **What counts as a climb** (`pickRankUp.js`, pure): an overtake or a new
+  leader from the race feed (`raceEvents.js`, which now carries the place the
+  racer came `from`). A gain, 100% of target or a driver on target is not a
+  climb, and neither is a racer appearing for the first time. When several
+  climbed in one reading, a new leader wins, then the most places gained, then
+  the better place reached.
+- **At most one card a minute.** A climb inside the pause is not queued — it is
+  in the feed already, and the bottom banner announces it as before.
+- **The card**: seven seconds; the name very large, "↑ 5th → 3rd" and "passed
+  X"; a new leader gets the accent colour and "takes 1st place". While it shows,
+  the bottom banner stays down (they would say the same thing twice). The
+  page's own colour tokens only.
+- **The chime** (`chime.js`): three soft tones made with Web Audio, no sound
+  file. Best effort: a browser that does not allow sound without a click
+  refuses it quietly and the card shows alone. It never waits on an unanswered
+  `resume()`, so a click later cannot release a chime at a random moment. The
+  same Chrome shortcut as the video's lets it play by itself; Settings → Gross
+  Grand Prix gives one for `/dispatch` too.
+- **Never over something that holds the screen**: the 4 PM celebration, the
+  video, the sound test. A climb then stays in the feed only. A new week clears
+  the card with the rest of last week's race.
+- **On `/dispatch`** the board turns to the climber's five
+  (`floor((rank − 1) / 5)`) and does not turn on until the card is gone.
+- The page does not reload itself for a new build while the card shows.
+- **`/dispatch`'s Test sound** shows the card with the chime and says whether
+  the chime played and whether sound may start by itself (the same
+  `autoplayProbe.js`, asked when the page opens). It runs no celebration and no
+  video — those stay `/dispatchteam`'s.
+
 ## The screens update themselves
 
 The owner (12 October 2026): after a code update the office screens should
@@ -201,8 +236,8 @@ pick it up without anyone reloading them.
     which is newer, and while a deploy switches over, a screen already on the
     new page can get one answer from the old server (Codex, #280). The new
     build is still there a poll later; a stray answer is not;
-  - while the celebration is on screen, or during the 4:00 PM minute, when a
-    fresh page would celebrate a second time;
+  - while the celebration or a climb card is on screen, or during the 4:00 PM
+    minute, when a fresh page would celebrate a second time;
   - a second time within five minutes. A deploy in progress answers from the
     old and the new server for a while, and must not set a screen reloading
     over and over. The time is kept in the tab's `sessionStorage`.
@@ -255,6 +290,7 @@ the owner, 2 November 2026), while `/dispatch/` still meets the server's 410.
 | `admin/src/pages/settings/GrossRaceTab.jsx`, `settings/grossRace/` | Settings → Gross Grand Prix: the video console and the Windows sound set-up |
 | `admin/src/pages/grossRace/` | the page, its stylesheet and fonts (Archivo, SIL OFL), the race feed; `pageVersion.js` decides when a screen reloads itself |
 | `admin/src/pages/grossRace/celebration/` | the 4 PM celebration: when and whom (pure), the three.js scene, the overlay, the car and its credits |
+| `admin/src/pages/grossRace/rankUp/` | a racer moves up: which climb (pure), the chime, the card, and its timing (`useRankUp.js`) |
 
 ## Tests
 
@@ -272,8 +308,8 @@ October 2026; this page said Smart TVs before), and a browser decides for
 itself whether a page may start sound without a click, so the board
 that will play it carries a **Test sound** button that finds out
 (`admin/src/pages/grossRace/soundTest/`). **The video is `/dispatchteam`'s
-alone** (the owner, 16 October 2026): `/dispatch` keeps the car only, has no
-button and asks nothing about sound.
+alone** (the owner, 16 October 2026): `/dispatch` keeps the car only. Its own
+**Test sound** (since 6 November 2026) is the climb chime and card, above.
 
 - **When the page opens**, before anybody presses anything, it tries to start
   a quarter of a second of silence with sound on (`autoplayProbe.js`). Whether
@@ -342,5 +378,6 @@ how to make a screen always play it with sound.
   `--autoplay-policy=no-user-gesture-required` (sound may start by itself) and
   `--user-data-dir` (a profile of its own, because Chrome ignores switches
   handed to a profile that is already running), plus `shell:startup` to open
-  it when the computer starts. Edge takes the same switches. **Test sound** on
-  the board confirms it.
+  it when the computer starts. Edge takes the same switches. A second Chrome
+  command opens `/dispatch` the same way, in a profile of its own, for the
+  climb chime. **Test sound** on the board confirms it.

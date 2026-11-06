@@ -1,0 +1,66 @@
+/* The climb card (rankUp/RankUpOverlay.jsx). Tokens only — the race page's own. */
+.gross-race .gr-rankup {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 40;
+  pointer-events: none;
+  background: color-mix(in srgb, var(--color-bg) 45%, transparent);
+  animation: gr-rankup-in 280ms ease-out both;
+}
+.gross-race .gr-rankup-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: clamp(8px, 1vw, 18px);
+  max-width: 86vw;
+  padding: clamp(28px, 3.4vw, 64px) clamp(36px, 5vw, 96px);
+  border-radius: 28px;
+  background: var(--color-text);
+  color: var(--color-bg);
+  box-shadow: var(--shadow-lg);
+  border: 3px solid var(--color-neutral-700);
+  text-align: center;
+  animation: gr-rankup-pop 520ms cubic-bezier(0.2, 1.4, 0.4, 1) both;
+}
+.gross-race .gr-rankup-leader .gr-rankup-card {
+  border-color: var(--color-accent-700);
+  background: var(--color-accent);
+  color: var(--color-accent-100);
+}
+.gross-race .gr-rankup-kicker {
+  font-size: clamp(18px, 1.8vw, 34px);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--color-neutral-400);
+}
+.gross-race .gr-rankup-leader .gr-rankup-kicker { color: var(--color-accent-100); }
+.gross-race .gr-rankup-name {
+  font-size: clamp(48px, 7vw, 150px);
+  font-weight: 800;
+  line-height: 1.02;
+  overflow-wrap: anywhere;
+}
+.gross-race .gr-rankup-move {
+  font-size: clamp(30px, 3.6vw, 72px);
+  font-weight: 700;
+  color: var(--color-accent-400);
+}
+.gross-race .gr-rankup-leader .gr-rankup-move,
+.gross-race .gr-rankup-leader .gr-rankup-passed { color: var(--color-accent-100); }
+.gross-race .gr-rankup-passed {
+  font-size: clamp(20px, 2vw, 38px);
+  color: var(--color-neutral-300);
+}
+.gross-race .gr-rankup-test {
+  margin-top: 8px;
+  font-size: clamp(14px, 1.2vw, 22px);
+  color: var(--color-neutral-400);
+}
+@keyframes gr-rankup-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes gr-rankup-pop { from { opacity: 0; transform: scale(0.82); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .gross-race .gr-rankup, .gross-race .gr-rankup-card { animation: none; }
+}
