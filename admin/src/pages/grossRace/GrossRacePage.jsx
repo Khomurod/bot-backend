@@ -19,6 +19,8 @@ import SoundTestOverlay from "./soundTest/SoundTestOverlay";
 import useSoundTest from "./soundTest/useSoundTest";
 import RankUpOverlay from "./rankUp/RankUpOverlay";
 import useRankUp from "./rankUp/useRankUp";
+import BirthdayOverlay from "./birthday/BirthdayOverlay";
+import useBirthdays from "./birthday/useBirthdays";
 import "./grossRace.css";
 
 /**
@@ -47,6 +49,11 @@ import "./grossRace.css";
  * for seven seconds, on both boards (rankUp/; the owner, 6 November 2026); on
  * /dispatch the board turns to the climber's five and waits there, and its
  * "Test sound" button shows the card with the chime.
+ *
+ * Today's birthdays — an employee with the card that went to Telegram, a driver
+ * with their truck — follow the Telegram post within one poll, fifteen seconds
+ * each, once per tab (birthday/). The 4 PM celebration, the video, the sound
+ * test and a climb card go first; a climb waits while a birthday is on.
  *
  * Every answer also names the build of this page the server hands out; a
  * screen running an older one reloads itself (pageVersion.js), so a code
@@ -93,9 +100,13 @@ export default function GrossRacePage({ view, pageMs = PAGE_MS, ownChunk = OWN_C
   const video = useCelebrationVideo({ enabled: withVideo, available: Boolean(data && data.video), celebration, testing: sound.active });
   const pageSize = PAGE_SIZE[view] || Infinity;
   const pages = pageCount(data && data.race, pageSize);
-  // A climb: never over the celebration, the video or the sound test, which hold the screen.
+  // Birthdays wait for anything else that holds the screen; a climb waits for a birthday.
+  const birthday = useBirthdays({
+    isBusy: () => celebrating.current || sound.active.current || video.active.current || rankUp.showing.current,
+  });
+  // A climb: never over the celebration, the video, the sound test or a birthday, which hold the screen.
   const rankUp = useRankUp({
-    isBusy: () => celebrating.current || sound.active.current || video.active.current,
+    isBusy: () => celebrating.current || sound.active.current || video.active.current || birthday.active.current,
     pageSize, setPage, probeOnLoad: !withVideo,
   });
   const { offer: offerRankUp, clear: clearRankUp } = rankUp;
@@ -192,6 +203,10 @@ export default function GrossRacePage({ view, pageMs = PAGE_MS, ownChunk = OWN_C
   const endRankUp = rankUp.tick;
   useEffect(() => { endRankUp(now); }, [now, endRankUp]);
 
+  const nextBirthday = birthday.tick;
+  const birthdays = data && data.birthdays;
+  useEffect(() => { nextBirthday(birthdays, now); }, [now, birthdays, nextBirthday]);
+
   // A newer build of this page is out: reload, unless now is a bad moment.
   useEffect(() => {
     if (reloading.current || !data || !data.page) return;
@@ -199,14 +214,15 @@ export default function GrossRacePage({ view, pageMs = PAGE_MS, ownChunk = OWN_C
     const storage = tabStorage();
     const due = shouldReload({
       own: ownChunk, served: data.page, confirmations: otherBuild.current && otherBuild.current.name === data.page ? otherBuild.current.count : 0,
-      now, tz, celebrating: celebrating.current || sound.active.current || video.active.current || rankUp.showing.current,
+      now, tz,
+      celebrating: celebrating.current || sound.active.current || video.active.current || rankUp.showing.current || birthday.active.current,
       lastReloadAt: lastReloadAt(storage),
     });
     if (!due) return;
     reloading.current = true;
     markReload(storage, now);
     reload();
-  }, [data, now, ownChunk, reload, sound.active, video.active, rankUp.showing]);
+  }, [data, now, ownChunk, reload, sound.active, video.active, rankUp.showing, birthday.active]);
 
   useEffect(() => {
     setPage((held) => (held < pages ? held : 0));
@@ -226,6 +242,9 @@ export default function GrossRacePage({ view, pageMs = PAGE_MS, ownChunk = OWN_C
         <RaceSidebar data={data} now={now} events={events} />
       </div>
       {rankUp.card && !celebration && !video.stage && !sound.test && <RankUpOverlay card={rankUp.card} />}
+      {birthday.current && !celebration && !video.stage && !sound.test && (
+        <BirthdayOverlay key={birthday.current.key} birthday={birthday.current} />
+      )}
       {celebration && <CelebrationOverlay winner={celebration.winner} view={view} onCar={sound.noteCar} />}
       {video.stage && <CelebrationVideo playing={video.stage === "playing"} onDone={video.done} />}
       {sound.test && sound.test.stage === "video" && (

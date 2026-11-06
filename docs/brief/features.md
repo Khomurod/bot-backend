@@ -381,7 +381,8 @@ October 2026, and before that the always-empty "Dispatchers" filter); names
 and dates on the page's first tab, Birthdays. Telegram accounts can be
 *suggested* from the accounts the bot has seen — by display name, never by
 username — and a suggestion never overwrites one a person typed or confirmed.
-Exactly one card per employee per day. See
+Exactly one card per employee per day. The same card shows on the race boards
+for a day once it is out. See
 [`docs/architecture/employee-birthday-cards.md`](../architecture/employee-birthday-cards.md).
 
 ### Recruiting and leads
@@ -462,6 +463,10 @@ on the server follows the car, and a **Test sound** button shows what the
 screen can do. When a racer climbs, both boards chime and show a big card for
 seven seconds — at most one a minute, never over the celebration; `/dispatch`
 turns to the climber's five, and its own **Test sound** shows that card.
+Today's birthdays follow the Telegram post on both boards — an employee with
+the card that went to the employee group, a driver with their name and truck —
+fifteen seconds each, once per screen, after the celebration and before a
+climb card.
 **Settings → Gross Grand Prix** shows that video and pauses,
 replaces or deletes it (pausing stands down the video only, never the car),
 and gives the Windows shortcut commands that open the boards full screen with

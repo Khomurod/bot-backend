@@ -1,0 +1,111 @@
+/* A birthday on the race board (birthday/BirthdayOverlay.jsx). The page's tokens only. */
+.gross-race .gr-bday {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--color-text) 94%, transparent);
+  animation: gr-bday-in 400ms ease-out both;
+}
+.gross-race .gr-bday-card {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: clamp(8px, 1.4vh, 24px);
+  max-width: 88vw;
+  text-align: center;
+  color: var(--color-bg);
+}
+.gross-race .gr-bday-title {
+  font-size: clamp(40px, 6vw, 120px);
+  font-weight: 800;
+  line-height: 1;
+  color: var(--color-accent-400);
+  animation: gr-bday-pop 700ms cubic-bezier(0.2, 1.4, 0.4, 1) both;
+}
+.gross-race .gr-bday-card--photo .gr-bday-title { font-size: clamp(32px, 4vw, 80px); }
+.gross-race .gr-bday-photo {
+  display: block;
+  width: min(68vh, 80vw);
+  height: auto;
+  aspect-ratio: 1;
+  border-radius: 18px;
+  box-shadow: var(--shadow-lg);
+  animation: gr-bday-pop 700ms 150ms cubic-bezier(0.2, 1.4, 0.4, 1) both;
+}
+.gross-race .gr-bday-name {
+  font-size: clamp(56px, 8vw, 170px);
+  font-weight: 800;
+  line-height: 1.02;
+  overflow-wrap: anywhere;
+  animation: gr-bday-pop 700ms 150ms cubic-bezier(0.2, 1.4, 0.4, 1) both;
+}
+.gross-race .gr-bday-sub,
+.gross-race .gr-bday-truck {
+  font-size: clamp(28px, 3.4vw, 68px);
+  font-weight: 700;
+  color: var(--color-neutral-300);
+}
+.gross-race .gr-bday-truck { color: var(--color-accent-100); }
+
+/* confetti: falling squares in the page's colours */
+.gross-race .gr-bday-confetti, .gross-race .gr-bday-balloons { position: absolute; inset: 0; pointer-events: none; }
+.gross-race .gr-bday-confetti span {
+  position: absolute;
+  top: -4vh;
+  left: var(--x);
+  width: 14px;
+  height: 22px;
+  border-radius: 3px;
+  background: var(--color-accent);
+  animation: gr-bday-fall 4.5s var(--d) linear infinite;
+}
+.gross-race .gr-bday-confetti span:nth-child(4n+1) { background: var(--color-accent-400); width: 18px; height: 12px; }
+.gross-race .gr-bday-confetti span:nth-child(4n+2) { background: var(--color-neutral-200); }
+.gross-race .gr-bday-confetti span:nth-child(4n+3) { background: var(--color-accent-100); border-radius: 50%; width: 14px; height: 14px; }
+
+/* balloons: rising ovals with a string */
+.gross-race .gr-bday-balloons span {
+  position: absolute;
+  bottom: -30vh;
+  left: var(--x);
+  width: clamp(60px, 6vw, 120px);
+  aspect-ratio: 0.82;
+  border-radius: 50% 50% 48% 48%;
+  background: var(--color-accent);
+  opacity: 0.9;
+  animation: gr-bday-rise 9s var(--d) ease-in infinite;
+}
+.gross-race .gr-bday-balloons span:nth-child(3n+1) { background: var(--color-accent-400); }
+.gross-race .gr-bday-balloons span:nth-child(3n+2) { background: var(--color-neutral-300); }
+.gross-race .gr-bday-balloons span::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  width: 2px;
+  height: 18vh;
+  background: var(--color-neutral-400);
+}
+
+@keyframes gr-bday-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes gr-bday-pop { from { opacity: 0; transform: scale(0.8); } to { opacity: 1; transform: none; } }
+@keyframes gr-bday-fall {
+  from { transform: translateY(0) rotate(0deg); }
+  to { transform: translateY(112vh) rotate(720deg); }
+}
+@keyframes gr-bday-rise {
+  from { transform: translateY(0) rotate(-4deg); }
+  50% { transform: translateY(-70vh) rotate(4deg); }
+  to { transform: translateY(-140vh) rotate(-4deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .gross-race .gr-bday, .gross-race .gr-bday-title, .gross-race .gr-bday-photo, .gross-race .gr-bday-name,
+  .gross-race .gr-bday-confetti span, .gross-race .gr-bday-balloons span { animation: none; }
+  .gross-race .gr-bday-confetti, .gross-race .gr-bday-balloons { display: none; }
+}

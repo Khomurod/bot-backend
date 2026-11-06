@@ -14,15 +14,19 @@
  * process that stopped mid-post is taken over after STALE_CLAIM_MINUTES; and
  * an employee added with today's birthday later in the day still gets a card,
  * because nothing marks the whole day as done.
+ *
+ * THE RACE BOARDS show the same card once it is out (services/grossRace/
+ * birthdays.js): noted after `:sent` is written, by a hook that can never
+ * cost the Telegram post anything.
  */
 const { DateTime } = require('luxon');
 const db = require('../database/db');
-const employeesDb = require('../database/companyEmployees');
 const config = require('../config/config');
 const { bot } = require('../bot/bot');
 const { safeSend } = require('./telegramHtml');
-const { renderBirthdayCard } = require('./employees/birthdayCard');
-const { birthdayCaption } = require('./employees/birthdayText');
+const { prepareCard } = require('./employees/cardForEmployee');
+const { birthdayCaption, cardFirstName, cardAmericanName } = require('./employees/birthdayText');
+const raceBirthdays = require('./grossRace/birthdays');
 const { createDailyWakeTimer } = require('./dailyWakeSchedule');
 
 const DEFAULT_TZ = 'Asia/Tashkent';
@@ -49,17 +53,14 @@ function formatNamesList(employees) {
   return employees.map((e) => `${e.first_name} ${e.last_name}`.trim()).join(', ');
 }
 
-/** The card for `employee`, drawn with their stored photo when it still decodes. */
-async function prepareCard(employee) {
-  const photo = await employeesDb.getPhoto(employee.id);
+/** The race boards show the posted card too. Never throws. */
+function showOnRaceBoards(employee, card) {
   try {
-    return await renderBirthdayCard(employee, photo);
+    raceBirthdays.board.noteBirthday({
+      kind: 'employee', id: employee.id, name: cardFirstName(employee), subtitle: cardAmericanName(employee), card,
+    });
   } catch (err) {
-    // A stored photo that no longer decodes must not cost anyone their
-    // birthday: the card goes out with the initials instead.
-    if (!photo) throw err;
-    console.warn(`[EMP-BIRTHDAY] Photo for employee ${employee.id} unreadable, posting without it:`, err.message);
-    return renderBirthdayCard(employee, null);
+    console.warn(`[EMP-BIRTHDAY] Could not put employee ${employee.id}'s card on the race boards:`, err.message);
   }
 }
 
@@ -84,6 +85,8 @@ function untilAborted(promise, signal) {
  * included (the Telegram client has no request timeout of its own). So a pass
  * whose claim could have been taken over (STALE_CLAIM_MINUTES) can never post
  * after the takeover's card.
+ *
+ * Resolves the card that was posted.
  */
 async function postBirthdayCard(employee) {
   const controller = new AbortController();
@@ -100,6 +103,7 @@ async function postBirthdayCard(employee) {
       caption: birthdayCaption(employee),
       parse_mode: 'HTML',
     }, { signal: controller.signal }));
+    return card;
   } finally {
     clearTimeout(timer);
   }
@@ -152,8 +156,9 @@ async function runEmployeeBirthdayWishes({ claimDailyRun = false, employeeIds = 
   for (const employee of employees) {
     const key = `${dayKey}:${employee.id}`;
     if (claimDailyRun && !(await claimEmployeeCard(key))) continue;
+    let card;
     try {
-      await postBirthdayCard(employee);
+      card = await postBirthdayCard(employee);
       posted.push(employee);
     } catch (err) {
       if (claimDailyRun) await db.unclaimServiceRun('birthday', key).catch(() => {});
@@ -165,6 +170,9 @@ async function runEmployeeBirthdayWishes({ claimDailyRun = false, employeeIds = 
       await db.claimServiceRun('birthday', `${key}:sent`).catch((err) => {
         console.warn(`[EMP-BIRTHDAY] Could not mark employee ${employee.id}'s card as sent:`, err.message);
       });
+      // The day's card only: a card re-sent by hand for chosen people
+      // (claimDailyRun false) may not be their birthday.
+      showOnRaceBoards(employee, card);
     }
   }
 

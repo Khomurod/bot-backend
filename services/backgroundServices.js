@@ -26,6 +26,7 @@
  */
 const { startScheduler, stopScheduler } = require('./schedulerService');
 const { startBirthdayService, stopBirthdayService } = require('./birthdayService');
+const { restoreRaceBirthdays } = require('./grossRace/birthdayRestore');
 const {
   startGroupStatusAiService,
   stopGroupStatusAiService,
@@ -166,6 +167,8 @@ function startBackgroundServices({ telegram }) {
   startScheduler();
   startBirthdayService();
   startEmployeeBirthdayWishService();
+  // The race boards' birthdays after a restart: one read of the last day's sends.
+  restoreRaceBirthdays();
   launchUnlessPaused(['group_status_ai'], () => startGroupStatusAiService());
   startMileageBonusService();
   startRecruiterCallSyncService();
