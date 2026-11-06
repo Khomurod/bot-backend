@@ -18,35 +18,7 @@ const { fingerprintFor } = require('../lib/control/fingerprint');
 const { noticeKeyFor } = require('../lib/notifications/compose');
 const { whyAsking: whyFor, WHY_BY_CHECK } = require('../lib/control/priority');
 
-function finding(over = {}) {
-  return {
-    id: 11, checkKey: 'identity.stale_unit_assignment', status: 'open', tier: 'auto',
-    subjectType: 'group', subjectId: '49', confidence: 90, severity: 'warning',
-    title: 'Truck on the profile does not match', evidence: { personId: 5 },
-    firstSeenAt: new Date(Date.now() - 3600_000).toISOString(),
-    ...over,
-  };
-}
-
-function makeDeps(over = {}) {
-  const calls = { notified: [], decisions: [] };
-  return {
-    calls,
-    findings: { listAskCandidates: async () => [finding()] },
-    notices: { noticeSentWithin: async () => false, countUnansweredQuestions: async () => 0 },
-    settings: {
-      getControlSettings: async () => ({
-        enabled: true, maxQuestionsPerPass: 5, repeatAfterHours: 72, clarifyLimit: 1,
-      }),
-    },
-    notify: async (n) => { calls.notified.push(n); return { recorded: true }; },
-    actionForCheck: () => ({ key: 'identity.sync_unit', tier: 'auto' }),
-    payloadFor: () => ({ personId: 5, unitNumber: '322' }),
-    loadCheckSettings: async () => new Map([['identity.stale_unit_assignment', { mode: 'suggest' }]]),
-    takeDecision: async (d) => { calls.decisions.push(d); return { id: 44 }; },
-    ...over,
-  };
-}
+const { finding, makeDeps } = require('./helpers/askPassFixtures');
 
 test('a suggest-mode auto finding with an action is asked about', async () => {
   const deps = makeDeps();
@@ -473,3 +445,4 @@ test('every question says WHY it is being asked', async () => {
   await runAskPass({}, deps);
   assert.ok(deps.calls.notified[0].lines.some((l) => /^Why I'm asking: /.test(l)));
 });
+

@@ -54,6 +54,7 @@ const defaultEngineering = require('../../database/engineeringRequests');
 const { answerQuestion } = require('./answerQuestion');
 const { readChangeWithAi } = require('./aiChange');
 const { proposeChange, changeTargets } = require('./confirmChange');
+const { askNextSoon } = require('./askNext');
 const defaultPool = require('../../database/pool');
 
 function defaultDeps() {
@@ -73,6 +74,8 @@ function defaultDeps() {
     readChangeWithAi,
     proposeChange,
     changeTargets: (finding) => changeTargets(finding, defaultPool),
+    // The next question shortly after this one is answered.
+    askNextSoon,
     // Injected rather than imported so a test never reaches the outbox, and so
     // this module has no opinion about how a message is sent.
     ack: null,

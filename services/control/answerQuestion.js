@@ -218,6 +218,11 @@ async function answerQuestion({
   if (root !== notice.id) {
     await deps.notices.markNoticeAnswered(root, claim.id).catch(() => {});
   }
+  // THE NEXT QUESTION NOW, not on the next sweep — one at a time moves at the
+  // speed the owner answers (`askNext.js`). Every gate of the ask pass still holds.
+  if (typeof deps.askNextSoon === 'function') {
+    try { deps.askNextSoon(); } catch (_) { /* a missed early ask waits for the sweep */ }
+  }
 
   // ── remember it ─────────────────────────────────────────────────────────
   //

@@ -1,0 +1,15 @@
+-- Migration 0095: "Most questions a day" may be left empty — no daily limit
+-- migrate:kind: schema
+--
+-- Keep it additive and idempotent (IF NOT EXISTS / ON CONFLICT). Review the
+-- full diff before pushing — this repo can auto-deploy. See
+-- database/migrations/README.md.
+--
+-- THE OWNER, 6 November 2026: "no limit — one at a time to Telegram". One at a
+-- time is `max_questions_per_pass = 1` (the standing cap: nothing new while a
+-- question is unanswered). No limit needs a value the column could not hold:
+-- 0067 made it NOT NULL with 0..20, and 0 already means "ask me nothing". NULL
+-- now means no daily limit (`database/controlSettings.js`,
+-- `services/control/askPass.js`). The CHECK is unchanged — NULL passes it — and
+-- no row is changed here: the setting is the owner's to make.
+ALTER TABLE control_settings ALTER COLUMN max_questions_per_day DROP NOT NULL;

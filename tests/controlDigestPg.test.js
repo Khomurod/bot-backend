@@ -131,6 +131,11 @@ test('the daily limit is a setting, default 2, and 0 is a real answer', { skip: 
     () => h.query('UPDATE control_settings SET max_questions_per_day = 99 WHERE id = 1'),
     /violates check constraint/
   );
+  // Empty is "no daily limit" (owner, 6 November 2026; migration 0095) — not 0.
+  assert.equal((await controlSettings.updateControlSettings({ maxQuestionsPerDay: null })).maxQuestionsPerDay, null);
+  assert.equal((await controlSettings.updateControlSettings({ maxQuestionsPerDay: '' })).maxQuestionsPerDay, null);
+  assert.equal((await controlSettings.getControlSettings({ force: true })).maxQuestionsPerDay, null);
+  assert.equal((await controlSettings.updateControlSettings({ maxQuestionsPerDay: 3 })).maxQuestionsPerDay, 3);
 });
 
 test('findings in QUESTION order: money, serious, then oldest — before the limit (review, #263)', { skip: skipWithoutPg() }, async (t) => {

@@ -53,8 +53,10 @@ function mapRow(row) {
     maxQuestionsPerPass: Number(row.max_questions_per_pass) || DEFAULTS.maxQuestionsPerPass,
     repeatAfterHours: Number(row.repeat_after_hours) || DEFAULTS.repeatAfterHours,
     clarifyLimit: Number(row.clarify_limit ?? DEFAULTS.clarifyLimit),
-    // `??`, not `||`: zero is a real answer here — "ask me nothing".
-    maxQuestionsPerDay: Number(row.max_questions_per_day ?? DEFAULTS.maxQuestionsPerDay),
+    // Zero is a real answer here — "ask me nothing" — and NULL is another: no
+    // daily limit (owner, 6 November 2026; migration 0095).
+    maxQuestionsPerDay: row.max_questions_per_day === null ? null
+      : Number(row.max_questions_per_day ?? DEFAULTS.maxQuestionsPerDay),
     updatedAt: row.updated_at || null,
     updatedBy: row.updated_by || null,
   };
@@ -96,7 +98,9 @@ async function updateControlSettings(patch = {}, { updatedBy = null } = {}) {
     push('repeat_after_hours', clampInt(patch.repeatAfterHours, 1, 720, DEFAULTS.repeatAfterHours));
   }
   if (patch.maxQuestionsPerDay !== undefined) {
-    push('max_questions_per_day', clampInt(patch.maxQuestionsPerDay, 0, 20, DEFAULTS.maxQuestionsPerDay));
+    // Empty (null or "") is "no daily limit"; anything else is clamped to 0..20.
+    const none = patch.maxQuestionsPerDay === null || String(patch.maxQuestionsPerDay).trim() === '';
+    push('max_questions_per_day', none ? null : clampInt(patch.maxQuestionsPerDay, 0, 20, DEFAULTS.maxQuestionsPerDay));
   }
   if (patch.clarifyLimit !== undefined) {
     push('clarify_limit', clampInt(patch.clarifyLimit, 0, 3, DEFAULTS.clarifyLimit));
