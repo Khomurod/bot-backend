@@ -338,6 +338,12 @@ async function retentionTick() {
     console.error('[SCHEDULER] Verification pass error:', err.message);
   }
 
+  // TRUCK PHOTOS: a claim a stopped process left unfinished is closed and its
+  // recipient told; and the ledger hears from the feature between hand-overs.
+  // Rides this timer for the same reason as the passes above. Never throws.
+  // eslint-disable-next-line global-require
+  await require('./truckPhotos/sweep').runTruckPhotoSweep();
+
   // A QUESTION FOR THE OWNER THAT COULD NOT GO OUT when it was queued — no
   // group set yet, the switch off, Telegram down. Rides this timer for the
   // same reason as the passes above. One at a time, so this sends at most one

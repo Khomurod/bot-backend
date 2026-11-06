@@ -51,6 +51,7 @@ const WenzeQuestionsTab = lazy(() => import("./settings/WenzeQuestionsTab"));
 const ProviderTermsTab = lazy(() => import("./settings/ProviderTermsTab"));
 const NotificationsTab = lazy(() => import("./settings/NotificationsTab"));
 const SafetyApprovalsTab = lazy(() => import("./settings/SafetyApprovalsTab"));
+const TruckPhotosTab = lazy(() => import("./settings/TruckPhotosTab"));
 const AutoReactionsPanel = lazy(() => import("./settings/bot/AutoReactionsPanel"));
 const GroupAccessPanel = lazy(() => import("./settings/bot/GroupAccessPanel"));
 const RetiredLeftoversTab = lazy(() => import("./settings/RetiredLeftoversTab"));
@@ -94,6 +95,7 @@ export default function SettingsPage({ tab: routeTab, onTabChange }) {
             {tab === "samsara" && <SamsaraTab />}
             {tab === "samsara_video" && <SafetyEventsTab />}
             {tab === "board" && <DispatcherBoardTab />}
+            {tab === "truck_photos" && <TruckPhotosTab />}
             {tab === "safety" && <SafetyApprovalsTab />}
             {tab === "ai" && <AiTab />}
             {tab === "ai_tasks" && <AiTasksTab />}

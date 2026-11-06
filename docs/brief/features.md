@@ -9,7 +9,7 @@ The admin panel has five sidebar groups — **Drivers · Recruiting ·
 Communications · Monitoring · Administration** — with one entry per page (14),
 and no collapsed "Admin" drawer: every section needs the same permission, so a
 section named after the permission said nothing about what was in it. Settings
-is ONE entry; its 14 sections sit under seven groups in the page's own list.
+is ONE entry; its 21 sections sit under five groups in the page's own list.
 Where each function lives, and why: `docs/redesign/structure.md`.
 
 **Every admin page and every page-level tab has a URL.** The page is the hash
@@ -384,6 +384,18 @@ username — and a suggestion never overwrites one a person typed or confirmed.
 Exactly one card per employee per day. The same card shows on the race boards
 for a day once it is out. See
 [`docs/architecture/employee-birthday-cards.md`](../architecture/employee-birthday-cards.md).
+
+### Truck Photos: hand-over and return photos as a PDF (November 2026)
+
+In a driver group, after the truck photos are sent, somebody other than that
+group's own driver writes `outbound` (hand-over) or `inbound` (return) — as a
+reply or on its own. Wenze puts the photos (the reply's album and neighbours,
+or the last 3 hours) into an English PDF and sends it privately to **one
+person** set in Settings → Truck Photos, then puts a 👍 on the word. Nothing is
+ever written in the group; a failure is told to that person. A model may only
+check a message that says more than the word and leave out photos that are not
+the truck. Off by default; the PDF is never stored. See
+[`truck-photo-reports.md`](../architecture/truck-photo-reports.md).
 
 ### Recruiting and leads
 

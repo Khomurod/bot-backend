@@ -4,7 +4,8 @@
  * Getting one attachment's bytes out of Telegram, safely.
  *
  * Used by Safety Approvals (services/safetyApprovals/worker.js) to read the
- * photo or document a post carries. MOVED here from
+ * photo or document a post carries, and by Truck Photos
+ * (services/truckPhotos/pdf.js) to put a driver group's photos into a PDF. MOVED here from
  * services/finance/telegramFileDownload.js when the Finance Monitor was
  * removed (October 2026, docs/architecture/retired-finance-monitor.md); it was
  * never finance-specific.

@@ -19,6 +19,7 @@ const { registerCreatorControlPanel } = require('./creatorBroadcastHandlers');
 const { registerAnonymousFeedbackHandlers } = require('./anonymousFeedbackHandlers');
 const { registerGroupCaptureHandlers } = require('./handlers/groupCaptureHandlers');
 const { registerSafetyApprovalHandlers } = require('./handlers/safetyApprovalHandlers');
+const { registerTruckPhotoHandlers } = require('./handlers/truckPhotoHandlers');
 const { registerHiringStageHandlers } = require('./handlers/hiringStageHandlers');
 const { registerControlReplyHandlers } = require('./controlReplyHandlers');
 const { registerHomeTimeViolationHandlers } = require('./handlers/homeTimeViolationHandlers');
@@ -173,6 +174,13 @@ async function startBot() {
     // saw. Answers no for every chat until Safety Approvals is switched on and
     // pointed at one. See services/safetyApprovals/captureService.js.
     registerSafetyApprovalHandlers(bot);
+
+    // Right after it, and an OBSERVER for driver groups in the same way: it
+    // remembers the photos and notices `outbound` / `inbound`, never consumes
+    // a message and never writes in the group (the PDF goes to one person,
+    // privately). Answers no for every chat until Truck Photos is switched on.
+    // See services/truckPhotos/.
+    registerTruckPhotoHandlers(bot);
 
     // AFTER the capture pipeline, so an operator's reply is still recorded as
     // group activity, and BEFORE everything else, so an answer to one of

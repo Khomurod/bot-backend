@@ -159,7 +159,7 @@ organization should converge toward.
 | Concern | Current files |
 |---|---|
 | **Retired** | The Finance Monitor (23 October 2026): money-code capture from the finance group, `lib/finance/*`, `services/finance/*`, `database/finance*`, `bot/handlers/financeCaptureHandlers.js`, the workers `finance_document_reader`, `finance_weekly_report` and `finance_reparse`, the capabilities `finance_message_reading` and `finance_document_extraction`, `/api/finance`, `/api/settings/finance*`, the Finance page and Settings → Finance. `services/documents/pdfTextExtraction.js`, `lib/telegram/fileDescriptor.js` and `tesseract.js` went with their last caller. The six `finance_*` tables remain, unread, droppable in Settings → Retired Leftovers (group `finance`). `docs/architecture/retired-finance-monitor.md` |
-| Getting one attachment's bytes out of Telegram (the token-bearing URL never logged or stored; the size refused before and during the transfer) | `services/telegram/fileDownload.js` (`downloadTelegramFile`) — moved out of `services/finance/`; its one caller is Safety Approvals' worker |
+| Getting one attachment's bytes out of Telegram (the token-bearing URL never logged or stored; the size refused before and during the transfer) | `services/telegram/fileDownload.js` (`downloadTelegramFile`) — moved out of `services/finance/`; its callers are Safety Approvals' worker and Truck Photos' PDF builder |
 
 ### 5b. Safety Approvals Module
 
@@ -190,6 +190,21 @@ organization should converge toward.
 | Queueing from capture; reading and proposing | `services/hiringStages/{conversationQueue,reviewer,aiReading,groupMessages}.js`; worker `services/hiringStages/worker.js`, key `hiring_stage_proposals`, capability `hiring_stage_reading` |
 | The buttons | `bot/handlers/hiringStageHandlers.js` (thin) → `services/hiringStages/actions.js` |
 | The switch and history | `admin/src/pages/settings/HiringStagesCard.jsx` inside Settings → Safety Approvals |
+
+### 5d. Truck Photos (hand-over / return photos → a PDF to one person)
+
+| Concern | Current files |
+|---|---|
+| Is a message `outbound` / `inbound`, and is it bare | `lib/truckPhotos/trigger.js` (pure) |
+| Who may mark (never the driver of a solo group with a known account) | `lib/truckPhotos/whoMayMark.js` (pure) |
+| Which photos; how many per PDF | `lib/truckPhotos/{selectPhotos,chunk}.js` (pure) |
+| What the PDF and the private failure message say | `lib/truckPhotos/{pdfLayout,pdfText,failureText}.js` (pure) |
+| Who sent a message, a photo's largest size, a picture sent as a file, the real reply target | `lib/telegram/messageParts.js` (pure; shared with Safety Approvals) |
+| Settings, the photo buffer (file ids only), the reports, the driver's accounts | `database/truckPhotos/{settings,photos,reports,driverContext}.js`, migration 0096 |
+| Remembering photos; noticing the word, the claim and the queue | `services/truckPhotos/{capture,triggerHandler}.js`, `bot/handlers/truckPhotoHandlers.js` (thin observer) |
+| Making the PDF and sending it | `services/truckPhotos/{pipeline,aiCheck,pdf,deliver}.js`; capability `truck_photo_handover`; key `truck_photo_reports` |
+| The hourly pass (a claim left behind by a restart) | `services/truckPhotos/sweep.js`, on the scheduler's retention tick |
+| Settings → Truck Photos | `server/routes/settings/truckPhotoRoutes.js`, admin `settings/TruckPhotosTab.jsx`, `admin/src/api/truckPhotos.js` |
 
 ### 6. AI / Insights Module
 

@@ -51,6 +51,11 @@ const DEFAULT_WINDOWS = Object.freeze({
   resolvedReportDays: 90,
   /** `service_runs` idempotency keys: one row per service per run key, forever. */
   serviceRunDays: 30,
+  /**
+   * Truck Photos' memory of driver-group photos (file ids, never bytes). A
+   * PDF looks back hours, not weeks; the PDFs themselves are never stored.
+   */
+  truckPhotoDays: 30,
 });
 
 function defaultDeps() {
@@ -141,6 +146,13 @@ async function runDataRetentionPass({ windows = {}, deps = defaultDeps() } = {})
   await attempt('serviceRuns', () => sql(
     `DELETE FROM service_runs WHERE ran_at < NOW() - ($1 || ' days')::interval`,
     [String(w.serviceRunDays)]
+  ));
+
+  // Every photo, sent in a PDF or not: the record of the PDF is
+  // `truck_photo_reports`, which is kept.
+  await attempt('truckPhotos', () => sql(
+    `DELETE FROM driver_group_photos WHERE sent_at < NOW() - ($1 || ' days')::interval`,
+    [String(w.truckPhotoDays)]
   ));
 
   // EVERY PRUNE FAILED is this pass not having run, and it must say so in

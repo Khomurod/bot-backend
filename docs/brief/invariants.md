@@ -355,6 +355,16 @@ repository-wide working rules. The highest-consequence items:
   one there decided something. See
   `docs/architecture/telegram-identity.md`.
 
+- **Truck Photos writes nothing in a driver's group but a 👍, and keeps no
+  PDF.** The PDF goes to ONE person privately, and the 👍 only after every part
+  was delivered; a failure is told to that person, never the group. The word is
+  claimed `(chat_id, trigger_message_id)` before anything is done, so a
+  redelivered `outbound` makes no second PDF. Only Telegram file ids are
+  stored. A model may only check a non-bare word and LEAVE OUT photos — never
+  add one — and with no model a bare word still makes a PDF while anything else
+  makes none. Off until a test message reached the recipient (a CHECK). See
+  `docs/architecture/truck-photo-reports.md`.
+
 ### Code-structure rules (enforced by CI)
 
 The 500-line cap, the two lint gates a build is not, the façade rule and the

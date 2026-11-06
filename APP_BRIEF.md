@@ -72,7 +72,9 @@ Business problems it solves:
 - Give dispatch real-time truck location, load and ETA information (the admin
   Live Locations map and `/location`; loads come from the Dispatcher Board and
   Datatruck).
-- Automate recurring operations work: bonuses, home-time, birthday wishes.
+- Automate recurring operations work: bonuses, home-time, birthday wishes,
+  and the truck hand-over / return photos as a PDF to one person (Truck
+  Photos, November 2026 — `docs/architecture/truck-photo-reports.md`).
   (BOL/POD document forwarding, everything fuel — stop reminders, the risk
   watch, the Fuel Monitor — the dispatcher ETA updates with `/update`,
   `/status`, `/load` and the pinned-load reading, and the Finance Monitor
@@ -171,6 +173,7 @@ Hard constraints of this deployment:
 |---|---|
 | **Drivers** | Their Telegram driver group is the whole interface: answer surveys, post `Status: Home/Ready/Rolling`, request home time, receive broadcasts and bonuses. Also anonymous feedback in the bot's private chat. |
 | **Dispatchers** | `/location` inside driver groups (the live truck position); the Live Locations map; keep the Dispatcher Board current, which Home Time reads. (`/load`, `/status`, `/update` and the automatic ETA updates were removed on 2026-10-23.) |
+| **Fleet managers** | Photograph a truck at hand-over and return in the driver's group and write `outbound` / `inbound`; the PDF goes privately to the one person set in Settings → Truck Photos, and the bot answers in the group only with a 👍. |
 | **Admins / office staff** | The admin SPA at `/admin`: broadcasts, surveys, groups, leads, live map, home time, mileage bonuses, recruiter KPIs, settings. |
 | **Accounting** | Mileage-bonus Paid/Rejected buttons in Telegram (allow-listed accounting users — see §5). |
 | **Recruiters** | Measured, not users: RingCentral call logs feed KPIs and the public `/recruiters` leaderboard. |

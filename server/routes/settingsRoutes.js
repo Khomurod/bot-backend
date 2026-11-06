@@ -12,6 +12,7 @@
  *   ./settings/safetyEventRoutes.js   /safety-events*  dashcam music overlay
  *   ./settings/retiredLeftoversRoutes.js /retired-leftovers*  removed-feature cleanup
  *   ./settings/safetyApprovalRoutes.js /safety-approvals* Safety's hire decisions
+ *   ./settings/truckPhotoRoutes.js    /truck-photos*   hand-over / return photo PDFs to one person
  *   ./settings/aiLessonsRoutes.js     /ai/lessons*     what Wenze learned from answers
  *   ./settings/metaCrmRoutes.js       /meta-crm*       Facebook ↔ Bitrix (Conversions API for CRM)
  *   ./settings/boardBitrixRoutes.js   /board-bitrix*   the Dispatcher Board ↔ Bitrix check
@@ -39,6 +40,7 @@ const { createControlSettingsRouter } = require('./settings/controlRoutes');
 const { createRetiredLeftoversRouter } = require('./settings/retiredLeftoversRoutes');
 const { createRecruitingHoursRouter } = require('./settings/recruitingHoursRoutes');
 const { createSafetyApprovalSettingsRouter } = require('./settings/safetyApprovalRoutes');
+const { createTruckPhotoSettingsRouter } = require('./settings/truckPhotoRoutes');
 const { createMetaCrmSettingsRouter } = require('./settings/metaCrmRoutes');
 const { createBoardBitrixSettingsRouter } = require('./settings/boardBitrixRoutes');
 const { createAppSecretsRouter } = require('./settings/appSecretsRoutes');
@@ -63,6 +65,7 @@ function createSettingsRouter({ authMiddleware, telegram = null }) {
   router.use(createRetiredLeftoversRouter(deps));
   router.use(createRecruitingHoursRouter(deps));
   router.use(createSafetyApprovalSettingsRouter(deps));
+  router.use(createTruckPhotoSettingsRouter(deps));
   router.use(createMetaCrmSettingsRouter(deps));
   router.use(createBoardBitrixSettingsRouter(deps));
   router.use(createAppSecretsRouter(deps));

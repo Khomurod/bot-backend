@@ -177,6 +177,17 @@ The same allow-list decides whose plain-words answer to an AI learning question
 becomes a lesson ([`ai-learning.md`](../architecture/ai-learning.md)); a
 stranger's answer is consumed and never kept.
 
+**Truck Photos' "who may mark" is ID-only too, and it is an exclusion, not a
+grant.** In a driver group anybody's `outbound` / `inbound` makes the PDF
+EXCEPT the group's own driver's, in a solo group whose driver's account is
+known — the person's open `driver_person_telegram_identities` rows and the
+profile's `telegram_user_id`, never a username. A team group, an unlinked
+driver or an unreadable group accepts anybody; the worst a wrong yes does is
+send one PDF to the one person who asked for them
+([`truck-photo-reports.md`](../architecture/truck-photo-reports.md)). Its
+settings routes (`/api/settings/truck-photos*`) are under `admin.full_access`
+like every settings route.
+
 A correction applied this way is attributed `telegram:<id>`, a third initiator
 form beside `admin:<id>` and `system`. It counts as a person, which is what
 gets an approval-tier correction past the schema's system-is-auto-only CHECK.
