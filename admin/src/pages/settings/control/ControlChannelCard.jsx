@@ -157,8 +157,10 @@ export default function ControlChannelCard({ flash }) {
           <div>Most questions a day</div>
           <input
             type="number" min={0} max={20} disabled={busy}
-            defaultValue={settings.maxQuestionsPerDay ?? 2}
-            onBlur={(e) => save({ maxQuestionsPerDay: Number(e.target.value) })}
+            placeholder="No limit"
+            defaultValue={settings.maxQuestionsPerDay ?? ""}
+            // Empty is "no daily limit"; 0 is "ask me nothing".
+            onBlur={(e) => save({ maxQuestionsPerDay: e.target.value === "" ? null : Number(e.target.value) })}
             style={{ width: "100%" }}
             aria-label="Most questions a day"
           />

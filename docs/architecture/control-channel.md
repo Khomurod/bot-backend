@@ -231,7 +231,12 @@ with the group muted:
   two important questions a day" (2026-10-06; migration 0067). Counted from the
   first questions that actually reached the chat in the last 24 hours
   (`countQuestionsAskedSince`), so restarts and fifteen-minute passes cannot add
-  up to more; a count that failed is a spent budget. 0 asks nothing;
+  up to more; a count that failed is a spent budget. 0 asks nothing; **empty
+  (NULL) is no daily limit** (owner, 6 November 2026; migration 0095). With
+  `max_questions_per_pass = 1` that is "one at a time": nothing new while one
+  question waits, and **an answer asks the next one about fifteen seconds
+  later** (`services/control/askNext.js`) rather than on the next sweep — the
+  ordinary pass with every gate, never two passes at once in one process;
 - `max_questions_per_pass` (default 5), **most important first**
   (`lib/control/priority.js`): money (a held road bonus) before anything,
   then serious, then warning, each oldest first. Strictly oldest-first spent

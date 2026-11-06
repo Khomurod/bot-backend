@@ -212,6 +212,9 @@ async function questionAllowance(settings, outstanding, deps) {
   // actually reached the chat in the last 24 hours, so restarts and fifteen-
   // minute passes cannot add up to more. A count that failed is a spent
   // budget: one question too few is the cheap mistake.
+  // NULL is "no daily limit" (owner, 6 November 2026): the standing cap above
+  // still holds, so with one unanswered question allowed they go one at a time.
+  if (settings.maxQuestionsPerDay === null) return { stop: null, budget: Number.MAX_SAFE_INTEGER };
   const perDay = Number.isFinite(Number(settings.maxQuestionsPerDay))
     ? Number(settings.maxQuestionsPerDay) : 2;
   const askedToday = await Promise.resolve(deps.digest?.countQuestionsAskedSince?.(24))
@@ -232,7 +235,7 @@ async function questionAllowance(settings, outstanding, deps) {
  *   `daily_limit`): such a tick reads only the candidates already answered,
  *   and does not read the rest just to count them.
  */
-async function runAskPass(_options = {}, deps = defaultDeps()) {
+async function askOnce(_options = {}, deps = defaultDeps()) {
   const skipped = {
     notAskable: 0, noWording: 0, recentlyAsked: 0, noPayload: 0, notSent: 0, remembered: 0,
   };
@@ -405,6 +408,23 @@ async function runAskPass(_options = {}, deps = defaultDeps()) {
         + 'so only approval-tier findings were considered' }
       : {}),
   };
+}
+
+/**
+ * ONE PASS AT A TIME IN THIS PROCESS. The sweep runs it every fifteen minutes
+ * and an answer now runs it again at once (`askNext.js`), so two could meet;
+ * both would read the same "nothing outstanding" and ask two questions where
+ * the owner allowed one. The second simply stands down.
+ */
+let passRunning = false;
+async function runAskPass(options = {}, deps = undefined) {
+  if (passRunning) return { skipped: true, reason: 'a pass is already running' };
+  passRunning = true;
+  try {
+    return await askOnce(options, deps);
+  } finally {
+    passRunning = false;
+  }
 }
 
 module.exports = {
