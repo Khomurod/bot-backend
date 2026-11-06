@@ -36,6 +36,27 @@ test('the board and Datatruck have a driver Wenze has nobody for: a notice that 
   assert.match(f.title, /Wenze has this driver on 01/);
 });
 
+test('only other owners\' trucks on the number (1 ERNST, 1 ROGER) is still nobody in 1 RUDOLPH', () => {
+  const [f] = run({
+    boardRows: [board('1 RUDOLPH', '1', 'owner_operator', 'JOHN ELISEE', { fleetLabelRaw: 'RUDOLPH' })],
+    wenze: [
+      { unitNumber: '1', fleetType: 'owner_operator', truckOwner: 'ERNST', displayName: 'JEROME JOYNER', groupId: 61 },
+      { unitNumber: '1', fleetType: 'owner_operator', truckOwner: 'ROGER', displayName: 'ROGER ALCIDE', groupId: 60 },
+      { unitNumber: '01', fleetType: 'owner_operator', truckOwner: 'RUDOLPH', displayName: 'JOHN ELISEE', groupId: 347484, groupName: 'WENZE UNIT # 01 JOHN / MARK' },
+    ],
+    orders: [{ label: '1 RUDOLPH', drivers: ['John Elisee'], at: '2026-11-04' }],
+  });
+  assert.equal(f.checkKey, 'fleet.driver_not_in_wenze');
+  assert.deepEqual(f.evidence.wenzeElsewhere, [{ unitNumber: '01', groupName: 'WENZE UNIT # 01 JOHN / MARK' }]);
+
+  // The same driver under another fleet is a stale truck, not a missing driver.
+  assert.deepEqual(run({
+    boardRows: [board('023 CMP', '023', 'company', 'FELICIEN VERNET', { fleetLabelRaw: 'CMP' })],
+    wenze: [{ unitNumber: '023', fleetType: 'owner_operator', displayName: 'FELICIEN VERNET', groupId: 303269 }],
+    orders: [{ label: '023 CMP', drivers: ['Felicien Vernet'], at: '2026-11-04' }],
+  }).filter((x) => x.checkKey === 'fleet.driver_not_in_wenze'), []);
+});
+
 test('one source is not two: the board alone, or Datatruck naming somebody else, files nothing', () => {
   assert.deepEqual(run({
     boardRows: [board('016 COMP', '016', 'company', 'ZAKY GEBREYESUS', { fleetLabelRaw: 'COMP' })],
