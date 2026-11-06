@@ -20,14 +20,21 @@
  *
  * The PDF uses Helvetica, which every reader has, so nothing is embedded but
  * the photos; every string is WinAnsi-safe (lib/truckPhotos/pdfText.js).
+ *
+ * VIDEOS are never downloaded: the page after the cover lists them with a
+ * link to each message (services/truckPhotos/pdfVideos.js), beside the small
+ * preview Telegram made for it (`prepareThumbnails`).
  */
 
 const sharp = require('sharp');
 const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
 const { downloadTelegramFile } = require('../telegram/fileDownload');
 const { pdfSafeText } = require('../../lib/truckPhotos/pdfText');
+const { drawVideoPages } = require('./pdfVideos');
 
 const MAX_DOWNLOAD_BYTES = 20 * 1024 * 1024;
+/** A video's preview is a few dozen KB; anything near this is not a preview. */
+const MAX_THUMB_BYTES = 2 * 1024 * 1024;
 const DOWNLOAD_TIMEOUT_MS = 60_000;
 /** Long edge, then quality; a stubborn photo steps down until it is under TARGET_BYTES. */
 const ENCODE_LADDER = Object.freeze([
@@ -110,6 +117,30 @@ async function preparePhotos(photos, { telegram, deadlineAt = Infinity, download
   return { ready, unreadable };
 }
 
+/**
+ * The preview Telegram made for each video, for the videos page. Small, so
+ * fetched one after another; a video without one, or one that fails, gets
+ * null and is listed with words and its link alone.
+ *
+ * @param {Array<{thumbFileId?: string|null}>} videos
+ * @returns {Promise<Array<{jpeg, width, height}|null>>} one per video, in order
+ */
+async function prepareThumbnails(videos, { telegram, deadlineAt = Infinity, download = downloadTelegramFile } = {}) {
+  const out = [];
+  for (const video of videos || []) {
+    if (!video?.thumbFileId || Date.now() > deadlineAt) { out.push(null); continue; }
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      const bytes = await download({ telegram }, video.thumbFileId, { maxBytes: MAX_THUMB_BYTES, timeoutMs: DOWNLOAD_TIMEOUT_MS });
+      // eslint-disable-next-line no-await-in-loop
+      out.push(await normalisePhoto(bytes));
+    } catch (_) {
+      out.push(null);
+    }
+  }
+  return out;
+}
+
 function drawCover(page, lines, { regular, bold }) {
   const { height } = page.getSize();
   let y = height - 96;
@@ -128,15 +159,17 @@ function fit(w, h, maxW, maxH) {
 }
 
 /**
- * Build one PDF: a cover, then one page per photo with its caption.
+ * Build one PDF: a cover, the videos page(s) when there are videos, then one
+ * page per photo with its caption.
  *
  * @param {object} args
  * @param {string} args.title
  * @param {Array<{text, size, bold?, gapBefore?}>} args.coverLines  (lib/truckPhotos/pdfLayout.js)
  * @param {Array<{jpeg: Buffer, width: number, height: number, caption: string}>} args.pages
+ * @param {Array<{heading, detail, link, linkText, thumb}>} [args.videos]  (pdfLayout.videoEntry + a preview)
  * @returns {Promise<Buffer>}
  */
-async function buildPdf({ title, coverLines, pages }) {
+async function buildPdf({ title, coverLines, pages, videos = [] }) {
   const doc = await PDFDocument.create();
   doc.setTitle(pdfSafeText(title, 120));
   doc.setCreator('Wenze');
@@ -145,6 +178,7 @@ async function buildPdf({ title, coverLines, pages }) {
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);
 
   drawCover(doc.addPage(PORTRAIT), coverLines, { regular, bold });
+  await drawVideoPages(doc, videos, { regular, bold });
 
   for (const item of pages) {
     // eslint-disable-next-line no-await-in-loop
@@ -171,5 +205,6 @@ module.exports = {
   TARGET_BYTES,
   normalisePhoto,
   preparePhotos,
+  prepareThumbnails,
   buildPdf,
 };

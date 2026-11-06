@@ -120,8 +120,9 @@ export default function TruckPhotosTab() {
           <input id="tp-lookback" className="form-input" style={{ maxWidth: 120 }} inputMode="numeric"
             value={lookback} disabled={busy} onChange={(e) => setLookback(e.target.value.replace(/[^\d]/g, ""))} />
           <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
-            From 1 to 24 (3 by default). A reply to a photo takes that photo&apos;s album and the photos around it.
-            Photos already in an earlier PDF are not sent again.
+            From 1 to 24 (3 by default). A reply to a photo takes that photo&apos;s album and the photos this many hours
+            either side of it. Videos are listed in the PDF as links to their message in Telegram. Photos and videos
+            already in an earlier PDF are not sent again.
           </div>
         </div>
         <button className="btn btn-primary" disabled={busy || !lookbackValid || Number(lookback) === settings.lookbackHours}
@@ -156,7 +157,7 @@ export default function TruckPhotosTab() {
                   <td>{r.groupName || "—"}{r.triggeredByName ? ` (${r.triggeredByName})` : ""}</td>
                   <td>{r.kind}</td>
                   <td>{STATUS[r.status] || r.status}{r.reason ? ` — ${r.reason}` : ""}{r.aiAssisted ? " (AI checked)" : ""}</td>
-                  <td>{r.photoCount}{r.excludedCount ? ` (${r.excludedCount} left out)` : ""}{r.parts > 1 ? `, ${r.parts} PDFs` : ""}</td>
+                  <td>{r.photoCount}{r.excludedCount ? ` (${r.excludedCount} left out)` : ""}{r.videoCount ? ` + ${r.videoCount} video${r.videoCount === 1 ? "" : "s"}` : ""}{r.parts > 1 ? `, ${r.parts} PDFs` : ""}</td>
                 </tr>
               ))}
             </tbody>

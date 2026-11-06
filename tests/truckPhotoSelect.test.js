@@ -102,3 +102,34 @@ test('no photos is an empty selection, not an error', () => {
   assert.deepEqual(out.photos, []);
   assert.equal(out.alreadySent, 0);
 });
+
+test('a reply to a days-old photo is about that day: its album and three hours either side of it, never the days after', () => {
+  const D = (day, hhmm) => new Date(`2026-11-0${day}T${hhmm}:00Z`);
+  const photos = [
+    photo(1, '00:00', { sentAt: D(2, '05:30') }), // more than 3 h before the photo
+    photo(2, '00:00', { sentAt: D(2, '07:00') }), // 2 h before
+    photo(3, '00:00', { sentAt: D(2, '09:00'), mediaGroupId: 'OLD' }), // the photo replied to
+    photo(4, '00:00', { sentAt: D(2, '09:00'), mediaGroupId: 'OLD' }),
+    photo(5, '00:00', { sentAt: D(2, '11:30') }), // 2.5 h after
+    photo(6, '00:00', { sentAt: D(3, '10:00') }), // the next day: not about that photo
+    photo(7, '00:00', { sentAt: D(6, '11:00') }), // an hour before the word: not about it either
+  ];
+  const anchor = { messageId: 3, mediaGroupId: 'OLD', sentAt: D(2, '09:00') };
+  const out = selectPhotos({ photos, trigger: { messageId: 20, sentAt: D(6, '12:00') }, anchor, lookbackHours: 3 });
+  assert.deepEqual(ids(out), [2, 3, 4, 5]);
+  assert.deepEqual(out.until, D(2, '12:00'));
+});
+
+test('a reply to a recent photo still reaches the word: the window ends at whichever comes first', () => {
+  const photos = [photo(10, '10:00'), photo(11, '11:00', { mediaGroupId: 'A' }), photo(12, '11:50')];
+  const anchor = { messageId: 11, mediaGroupId: 'A', sentAt: T('11:00') };
+  const out = selectPhotos({ photos, trigger: { messageId: 20, sentAt: T('12:00') }, anchor, lookbackHours: 3 });
+  assert.deepEqual(ids(out), [10, 11, 12]);
+  assert.deepEqual(out.until, T('12:00'));
+});
+
+test('videos are chosen by the same rules as photos', () => {
+  const photos = [photo(10, '10:00', { kind: 'video' }), photo(11, '10:05'), photo(12, '12:30', { kind: 'video' })];
+  const out = selectPhotos({ photos, trigger: { messageId: 20, sentAt: T('12:00') }, lookbackHours: 3 });
+  assert.deepEqual(out.photos.map((p) => [p.messageId, p.kind || 'photo']), [[10, 'video'], [11, 'photo']]);
+});

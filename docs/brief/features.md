@@ -394,7 +394,10 @@ or the last 3 hours) into an English PDF and sends it privately to **one
 person** set in Settings → Truck Photos, then puts a 👍 on the word. Nothing is
 ever written in the group; a failure is told to that person. A model may only
 check a message that says more than the word and leave out photos that are not
-the truck. Off by default; the PDF is never stored. See
+the truck. Videos are listed in the PDF with a link to their message in
+Telegram, never downloaded; a reply to a photo sent before Wenze was watching
+says on the cover that photos sent with it may be missing. Off by default; the
+PDF is never stored. See
 [`truck-photo-reports.md`](../architecture/truck-photo-reports.md).
 
 ### Recruiting and leads

@@ -19,7 +19,13 @@
  *                      the word is about may still be landing
  *
  * The photo the word REPLIES to is remembered now if it was not already — sent
- * before the switch went on, say — because the reply carries its file id.
+ * before the switch went on, say — because the reply carries its file id. But
+ * the reply carries THAT photo only, not the rest of its album, so when Wenze
+ * meets it here for the first time and it is older than LATE_AFTER_SECONDS,
+ * the report is told (`anchorSeenLate`) and the PDF says photos may be missing
+ * (the owner, 6 November 2026). The age keeps a photo sent seconds before the
+ * reply — whose own update may simply be handled a moment later — from
+ * counting.
  *
  * ONE REPORT AT A TIME. Each one holds its re-encoded photos in memory (up to
  * 240, services/truckPhotos/pipeline.js); two at once is a cost with no
@@ -37,6 +43,8 @@ const { isGroupChat } = require('./capture');
 
 /** Long enough for an album to finish arriving; short enough to feel immediate. */
 const SETTLE_MS = 5000;
+/** A replied-to photo first met with the reply, and at least this old, was sent while Wenze was not looking. */
+const LATE_AFTER_SECONDS = 120;
 
 let chain = Promise.resolve();
 /** Reports this process has claimed and not finished: the hourly sweep leaves them alone. */
@@ -115,11 +123,17 @@ async function noticeTruckPhotoTrigger(message, { telegram } = {}, deps = defaul
     });
     if (!reportId) return { handled: false, reason: 'already_claimed' };
 
-    if (message.reply_to_message) await deps.capture(message.reply_to_message);
+    let anchorSeenLate = false;
+    const replied = message.reply_to_message;
+    if (replied) {
+      const got = await deps.capture(replied);
+      const age = Number(message.date) - Number(replied.date);
+      anchorSeenLate = Boolean(got?.captured && got.isNew) && Number.isFinite(age) && age >= LATE_AFTER_SECONDS;
+    }
 
     active.add(reportId);
     const done = schedule(() => deps.run({
-      reportId, message, trigger, group, profile: driver.profile, telegram,
+      reportId, message, trigger, group, profile: driver.profile, telegram, anchorSeenLate,
     }), deps.settleMs ?? SETTLE_MS).finally(() => active.delete(reportId));
     return { handled: true, reportId, done };
   } catch (err) {
@@ -140,5 +154,5 @@ function __resetForTests() {
 }
 
 module.exports = {
-  SETTLE_MS, noticeTruckPhotoTrigger, activeReportIds, __resetForTests,
+  SETTLE_MS, LATE_AFTER_SECONDS, noticeTruckPhotoTrigger, activeReportIds, __resetForTests,
 };

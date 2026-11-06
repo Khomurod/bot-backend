@@ -5,9 +5,11 @@
  *
  * WHY. When somebody writes `outbound` or `inbound`, the PDF is made of the
  * photos sent before it — and a bot cannot read a chat's history. So every
- * photo (its largest size) and every picture sent "as a file" in a DRIVER
- * group is remembered as it arrives: its Telegram file id, who sent it, when,
- * and its album. Never the bytes (database/truckPhotos/photos.js).
+ * photo (its largest size), every picture sent "as a file" and every VIDEO
+ * (a video, a round video note, a video file — the PDF lists them as links,
+ * the owner, 6 November 2026) in a DRIVER group is remembered as it arrives:
+ * its Telegram file id, who sent it, when, and its album. Never the bytes
+ * (database/truckPhotos/photos.js).
  *
  * AN OBSERVER. It never consumes a message, never answers, and NEVER THROWS:
  * a rejection inside the bot's message handler reaches index.js's
@@ -23,7 +25,7 @@
  */
 
 const {
-  largestPhoto, isImageDocument, senderName,
+  largestPhoto, isImageDocument, messageVideo, senderName,
 } = require('../../lib/telegram/messageParts');
 
 function defaultDeps() {
@@ -46,6 +48,11 @@ function hasPicture(message) {
   return Boolean(message?.document?.file_id) && isImageDocument(message.document);
 }
 
+/** A picture or a video — anything Truck Photos remembers. No I/O. */
+function hasMedia(message) {
+  return hasPicture(message) || Boolean(messageVideo(message));
+}
+
 /**
  * The picture a message carries, as the buffer stores it; null for anything
  * else, or for a message a bot sent. Pure.
@@ -55,7 +62,11 @@ function shapePhoto(message, group) {
   if (!message.from || message.from.is_bot) return null;
   let picture = null;
   let kind = null;
-  if (Array.isArray(message.photo) && message.photo.length) {
+  const video = messageVideo(message);
+  if (video) {
+    picture = video;
+    kind = 'video';
+  } else if (Array.isArray(message.photo) && message.photo.length) {
     picture = largestPhoto(message.photo);
     kind = 'photo';
   } else if (message.document?.file_id && isImageDocument(message.document)) {
@@ -80,26 +91,29 @@ function shapePhoto(message, group) {
     width: picture.width,
     height: picture.height,
     fileSize: picture.file_size,
+    durationSeconds: kind === 'video' ? picture.duration : null,
+    thumbFileId: kind === 'video' ? picture.thumb_file_id : null,
     sentAt: Number.isFinite(message.date) ? new Date(message.date * 1000) : new Date(),
   };
 }
 
 /**
  * @param {object} message  a Telegram message
- * @returns {Promise<{captured: boolean, reason?: string}>}
+ * @returns {Promise<{captured: boolean, isNew?: boolean, reason?: string}>}
+ *   `isNew`: this sighting put it in the buffer — it was not remembered before
  */
 async function captureTruckPhoto(message, deps = defaultDeps()) {
   try {
     if (!message || !isGroupChat(message.chat)) return { captured: false, reason: 'not_a_group' };
-    if (!hasPicture(message)) return { captured: false, reason: 'no_picture' };
+    if (!hasMedia(message)) return { captured: false, reason: 'no_picture' };
     const settings = await deps.getSettings();
     if (!settings?.enabled) return { captured: false, reason: 'switched_off' };
     const group = await deps.getGroup(message.chat.id);
     if (!group || group.group_type !== 'driver') return { captured: false, reason: 'not_a_driver_group' };
     const shaped = shapePhoto(message, group);
     if (!shaped) return { captured: false, reason: 'not_a_person' };
-    await deps.upsertPhoto(shaped);
-    return { captured: true };
+    const isNew = await deps.upsertPhoto(shaped);
+    return { captured: true, isNew: isNew !== false };
   } catch (err) {
     console.warn('[TRUCK PHOTOS] could not remember a photo:', err?.message || String(err));
     return { captured: false, reason: 'error' };
@@ -107,5 +121,5 @@ async function captureTruckPhoto(message, deps = defaultDeps()) {
 }
 
 module.exports = {
-  captureTruckPhoto, shapePhoto, hasPicture, isGroupChat,
+  captureTruckPhoto, shapePhoto, hasPicture, hasMedia, isGroupChat,
 };
