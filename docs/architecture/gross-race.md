@@ -113,6 +113,13 @@ signed in. Therefore:
   and only on the teams' board, which is exactly when the race announces it.
   The dispatchers' board names no driver at all. The design held every
   driver's name in the page; a public endpoint must not.
+- **Birthdays are the one exception, by the owner's decision (6 November
+  2026):** for a day after the Telegram post, `birthdays` names the employee
+  (full first name and American name, and the card that went to the employee
+  group, served by `GET /api/gross-race/birthday-card/:key`) or the driver (the
+  name from their chat's title and the truck number on their profile). Never a
+  Telegram account, a date of birth or a phone number; the card route answers
+  404 for anything not on the boards today. See "Birthdays on the boards".
 - **A failed read reaches the screen as a fixed phrase** — "Datatruck rejected
   the token", "Datatruck rate limit reached, retrying", "Datatruck error (HTTP
   n)", "No connection to Datatruck" — never as the error itself, and the log
@@ -214,6 +221,36 @@ The owner (6 November 2026): when somebody climbs, an airport-style
   `autoplayProbe.js`, asked when the page opens). It runs no celebration and no
   video — those stay `/dispatchteam`'s.
 
+## Birthdays on the boards
+
+The owner (6 November 2026): employees and drivers, on both boards, at the
+same time as the Telegram post; an employee with the card that went to the
+employee group, a driver with the name and the truck; several in turn, about
+fifteen seconds each.
+
+- **One holder, in memory** (`services/grossRace/birthdays.js`): filled right
+  after a successful send — the employee card after `employee:<day>:<id>:sent`
+  is written (the JPEG that was posted, never drawn again per request), the
+  driver after `sendMessage` succeeds, with the truck read from
+  `driver_profiles.unit_number` at that moment. **A hook can never cost the
+  Telegram post anything**: it runs after the send and swallows its own
+  failure. A card re-sent by hand for chosen people ("Congratulate selected")
+  is not a birthday on the boards. Each entry is held for a day from its send,
+  at most 50.
+- **After a restart** (`birthdayRestore.js`, started with the background
+  services): one read of the last day's `service_runs` keys — `:sent` for
+  employees, the per-group key for drivers — the names and trucks, and each
+  employee's card drawn once. Never per poll: `GET /api/gross-race` is still
+  answered without a query.
+- **On the screen** (`admin/src/pages/grossRace/birthday/`): confetti and
+  balloons in CSS, "Happy Birthday!", the card or the name and "Truck 1109",
+  fifteen seconds each, in the order they went out. **Once per tab**, kept in
+  `sessionStorage`, so the board's own reload after a deploy does not repeat
+  them; a screen opened later that day shows them once.
+- **Priorities**: the 4 PM celebration, the video and the sound test go first
+  — a birthday waits until they are over; a climb card waits for a birthday
+  (the climb stays in the feed). No self-reload while a birthday is on.
+
 ## The screens update themselves
 
 The owner (12 October 2026): after a code update the office screens should
@@ -236,8 +273,8 @@ pick it up without anyone reloading them.
     which is newer, and while a deploy switches over, a screen already on the
     new page can get one answer from the old server (Codex, #280). The new
     build is still there a poll later; a stray answer is not;
-  - while the celebration or a climb card is on screen, or during the 4:00 PM
-    minute, when a fresh page would celebrate a second time;
+  - while the celebration, a climb card or a birthday is on screen, or during
+    the 4:00 PM minute, when a fresh page would celebrate a second time;
   - a second time within five minutes. A deploy in progress answers from the
     old and the new server for a while, and must not set a screen reloading
     over and over. The time is kept in the tab's `sessionStorage`.
@@ -285,17 +322,21 @@ the owner, 2 November 2026), while `/dispatch/` still meets the server's 410.
 | `services/grossRace/standings.js` | which loads count, who they count for, targets, ranking, what the public payload holds (pure) |
 | `services/grossRace/feed.js` | the held week, when to read, the failure phrases |
 | `services/grossRace/pageVersion.js` | which build of the race page the server hands out |
-| `server/routes/grossRaceRoutes.js` | `GET /api/gross-race`, and the video's routes (serve, replace, status, pause, delete) |
+| `server/routes/grossRaceRoutes.js` | `GET /api/gross-race`, the birthday card, and the video's routes (serve, replace, status, pause, delete) |
+| `services/grossRace/birthdays.js`, `birthdayRestore.js`, `database/raceBirthdays.js` | today's birthdays: the holder, its restore after a restart, the reads both need |
 | `services/grossRace/celebrationVideo.js`, `videoPause.js` | the video on the server's disk, and whether it is paused |
 | `admin/src/pages/settings/GrossRaceTab.jsx`, `settings/grossRace/` | Settings → Gross Grand Prix: the video console and the Windows sound set-up |
 | `admin/src/pages/grossRace/` | the page, its stylesheet and fonts (Archivo, SIL OFL), the race feed; `pageVersion.js` decides when a screen reloads itself |
 | `admin/src/pages/grossRace/celebration/` | the 4 PM celebration: when and whom (pure), the three.js scene, the overlay, the car and its credits |
 | `admin/src/pages/grossRace/rankUp/` | a racer moves up: which climb (pure), the chime, the card, and its timing (`useRankUp.js`) |
+| `admin/src/pages/grossRace/birthday/` | birthdays: whose next, once per tab (pure), the overlay, its timing (`useBirthdays.js`) |
 
 ## Tests
 
 ```
 node --test tests/grossRaceStandings.test.js tests/grossRaceFeed.test.js tests/grossRaceRoutes.test.js tests/grossRacePageVersion.test.js tests/grossRaceVideo.test.js tests/grossRaceVideoConsole.test.js
+node --test tests/grossRaceBirthdays.test.js tests/grossRaceBirthdayRestore.test.js tests/birthdayService.test.js tests/employeeBirthdayRaceBoard.test.js
+node --test tests/raceBirthdaysPg.test.js   # requires TEST_DATABASE_URL
 node --test tests/api-surface.test.js   # /dispatch and /dispatchteam serve the shell; /dispatch/* → 410
 npm test --prefix admin -- --run src/pages/grossRace src/pages/settings/GrossRaceTab.test.jsx
 ```

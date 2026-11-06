@@ -3,6 +3,8 @@ const db = require('../database/db');
 const { bot } = require('../bot/bot');
 const { safeSend } = require('./telegramHtml');
 const { createDailyWakeTimer } = require('./dailyWakeSchedule');
+const raceBirthdays = require('./grossRace/birthdays');
+const { getDriverFaces } = require('../database/raceBirthdays');
 
 const DRIVER_BIRTHDAY_HOUR = 8;   // 8 AM Central Time
 const TZ = 'America/Chicago';
@@ -21,6 +23,22 @@ const { extractDriverNameFromGroupTitle } = require('../lib/drivers/driverGroupT
 function extractDriverName(groupName) {
   const name = extractDriverNameFromGroupTitle(groupName);
   return name || 'Driver';
+}
+
+/**
+ * The race boards show the driver and their truck once the wish is out
+ * (services/grossRace/birthdays.js): the truck number on the profile now, read
+ * at the send. Never throws — the wish is already posted.
+ */
+async function showOnRaceBoards(group) {
+  try {
+    const [face] = await getDriverFaces([group.id]);
+    raceBirthdays.board.noteBirthday({
+      kind: 'driver', id: group.id, name: raceBirthdays.driverBoardName(group.group_name), truck: face?.unit_number || null,
+    });
+  } catch (err) {
+    console.warn(`[BIRTHDAY] Could not put ${group.group_name} on the race boards:`, err.message);
+  }
 }
 
 /**
@@ -62,7 +80,9 @@ async function processDriverBirthdays(isoDate, month, day) {
         failures += 1;
         await db.unclaimServiceRun('birthday', runKey).catch(() => {});
         console.error(`[BIRTHDAY] Failed to send to ${group.group_name} (will retry):`, err.message);
+        continue;
       }
+      await showOnRaceBoards(group);
     }
   } catch (err) {
     failures += 1;

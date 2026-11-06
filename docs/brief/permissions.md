@@ -132,7 +132,8 @@ the screen says so in words.
 |---|---|
 | `/raise`, `/raise/*` | **Retired** (October 2026): answers 410 Gone from `server/routes/retiredRoutes.js`; `/api/raise/*` is unmounted and 404s |
 | `/recruiters`, `GET /api/recruiters/public-stats` | Public; names + KPI numbers only |
-| `/dispatch`, `/dispatchteam`, `GET /api/gross-race` | Public; dispatcher and team names + race numbers only. A driver's name only on the teams' board and only once their truck has hit its weekly target; never the Datatruck token (`docs/architecture/gross-race.md`) |
+| `/dispatch`, `/dispatchteam`, `GET /api/gross-race` | Public; dispatcher and team names + race numbers only. A driver's name only on the teams' board and only once their truck has hit its weekly target; never the Datatruck token. For a day after a birthday post: the employee's first and American name, or the driver's name and truck — never a Telegram account or date of birth (`docs/architecture/gross-race.md`) |
+| `GET /api/gross-race/birthday-card/:key` | Public, `no-store`; the employee birthday card JPEG while that birthday is on the boards (a day from the post), 404 for anything else |
 | `/employee-birthday-form`, `POST /api/submit-employee-birthday` | Public form |
 | `/facebook/connect/:sessionToken`, `/facebook/oauth/*` | Session token |
 | `/ringcentral/connect/:sessionToken`, `/ringcentral/oauth/*` | Session token — single-use, 30-minute `ringcentral_connect_sessions` row; `oauth_state` binds the redirect to the callback. Public because a recruiter has no admin session |

@@ -89,6 +89,17 @@ one message for the whole day; it is still honoured, so a deploy on such a day
 does not wish anyone twice. "Congratulate selected" claims nothing — it is a
 deliberate manual re-post.
 
+## On the race boards too
+
+Since 6 November 2026 the same card is shown on the office race boards
+(`/dispatch`, `/dispatchteam`) once it is out: the JPEG that was posted is
+handed to `services/grossRace/birthdays.js` right after `:sent` is written, and
+the boards fetch it from `GET /api/gross-race/birthday-card/:key` for a day.
+Only the scheduled pass and "Send today's wishes now" put a card there — never
+"Congratulate selected". A failure on the boards' side never touches the post.
+After a restart the last day's `:sent` keys bring the cards back
+(`birthdayRestore.js`). The rules are in [`gross-race.md`](gross-race.md).
+
 ## Employees (Birthdays page)
 
 The Users page's old **Dispatchers** filter read `bot_users.source`, which
@@ -138,7 +149,8 @@ to correct wrong ones rather than to approve each one first.
 `tests/employeeBirthdayCard.test.js` (the real card: size, photo in the frame,
 the placeholder, a long name), `tests/employeeBirthdayWishService.test.js` (one
 card per employee, the per-employee claim, a failed card retried alone, an
-unreadable photo), `tests/companyEmployeesRoutes.test.js`,
+unreadable photo), `tests/employeeBirthdayRaceBoard.test.js` (the posted card
+on the race boards, only after `:sent`), `tests/companyEmployeesRoutes.test.js`,
 `tests/companyEmployeesPg.test.js` (a suggestion never overwrites a person; the
 list never reads photo bytes; a photo goes with its employee — requires
 `TEST_DATABASE_URL`), `admin/src/pages/birthdays/CompanyEmployeesTab.test.jsx`.

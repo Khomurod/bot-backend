@@ -11,7 +11,14 @@
  * `page` names the build of the race page this server hands out
  * (services/grossRace/pageVersion.js); a screen running another one reloads.
  * `video` says whether the teams' board has a video to play after the 4 PM
- * celebration (services/grossRace/celebrationVideo.js).
+ * celebration (services/grossRace/celebrationVideo.js). `birthdays` are the
+ * people congratulated in Telegram in the last day (services/grossRace/
+ * birthdays.js): a name, an American name or a truck number, never a Telegram
+ * account or a birthday date.
+ *
+ * GET /api/gross-race/birthday-card/:key — the card JPEG an employee's
+ * birthday post carried, while that birthday is still on the boards; 404 for
+ * anything else. Public for the screens, never cached.
  *
  * GET /api/gross-race/video — that video, public for the same reason, with
  * byte ranges so a TV can start playing before all of it arrived.
@@ -28,13 +35,16 @@
 const express = require('express');
 const celebrationVideo = require('../../services/grossRace/celebrationVideo');
 const videoPause = require('../../services/grossRace/videoPause');
+const raceBirthdays = require('../../services/grossRace/birthdays');
 
 const defaultVideo = { ...celebrationVideo, ...videoPause };
 
 const VIEWS = new Set(['teams', 'dispatchers']);
 const passThrough = (_req, _res, next) => next();
 
-function createGrossRaceRoutes({ feed, racePageVersion = () => null, video = defaultVideo, authMiddleware = passThrough }) {
+function createGrossRaceRoutes({
+  feed, racePageVersion = () => null, video = defaultVideo, birthdays = raceBirthdays.board, authMiddleware = passThrough,
+}) {
   const router = express.Router();
   const pause = () => (typeof video.pauseState === 'function' ? video.pauseState() : { paused: false });
   const playable = () => video.hasVideo() && !pause().paused;
@@ -45,11 +55,20 @@ function createGrossRaceRoutes({ feed, racePageVersion = () => null, video = def
     if (!VIEWS.has(view)) return res.status(400).json({ error: 'view must be teams or dispatchers' });
     try {
       res.set('Cache-Control', 'no-store');
-      return res.json({ ...feed.getRace(view), page: racePageVersion(), video: view === 'teams' && playable() });
+      return res.json({
+        ...feed.getRace(view), page: racePageVersion(), video: view === 'teams' && playable(), birthdays: birthdays.todaysBirthdays(),
+      });
     } catch (err) {
       console.error('[GROSS-RACE] standings failed:', err.message);
       return res.status(500).json({ error: 'Failed to load the race' });
     }
+  });
+
+  router.get('/api/gross-race/birthday-card/:key', (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    const card = birthdays.cardFor(req.params.key);
+    if (!card) return res.status(404).json({ error: 'No such card today' });
+    return res.type('image/jpeg').send(card);
   });
 
   router.get('/api/gross-race/video', (req, res) => {

@@ -40,6 +40,19 @@ require.cache[require.resolve('../services/telegramHtml')] = {
 require.cache[require.resolve('../lib/drivers/driverGroupTitle')] = {
   exports: { extractDriverNameFromGroupTitle: () => 'Driver' },
 };
+// The race boards' truck read at the send (database/raceBirthdays.js).
+let facesFail = false;
+const facesAsked = [];
+require.cache[require.resolve('../database/raceBirthdays')] = {
+  exports: {
+    getDriverFaces: async (ids) => {
+      facesAsked.push(ids);
+      if (facesFail) throw new Error('database unreachable');
+      return [{ id: 1, group_name: 'WENZE UNIT # 1 DRIVER', unit_number: '1109' }];
+    },
+  },
+};
+const raceBirthdays = require('../services/grossRace/birthdays');
 
 const {
   getDriverBirthdayScheduledTime,
@@ -97,4 +110,48 @@ test('a failed driver send releases its per-group claim so the next tick retries
   await processDriverBirthdays('2026-06-15', 6, 15);
   assert.equal(sentMessages.length, 1);
   assert.equal(claimedRuns.has('birthday:driver:1:2026-06-15'), true);
+});
+
+test('the race boards show the driver and the truck on their profile, once the wish is out', async () => {
+  claimedRuns.clear();
+  sentMessages.length = 0;
+  sendShouldFail = false;
+  raceBirthdays.board.clear();
+
+  await processDriverBirthdays('2026-06-16', 6, 16);
+  assert.equal(sentMessages.length, 1);
+  assert.deepEqual(raceBirthdays.board.todaysBirthdays().map((b) => [b.kind, b.name, b.truck]), [['driver', 'Driver', '1109']]);
+});
+
+test('a wish that failed is not on the race boards', async () => {
+  claimedRuns.clear();
+  sentMessages.length = 0;
+  raceBirthdays.board.clear();
+  facesAsked.length = 0;
+
+  sendShouldFail = true;
+  await processDriverBirthdays('2026-06-17', 6, 17);
+  sendShouldFail = false;
+  assert.deepEqual(raceBirthdays.board.todaysBirthdays(), []);
+  assert.deepEqual(facesAsked, [], 'nothing read for a wish that did not go out');
+});
+
+test('the race boards failing costs the wish nothing: sent, claimed, not retried', async () => {
+  claimedRuns.clear();
+  sentMessages.length = 0;
+  sendShouldFail = false;
+  raceBirthdays.board.clear();
+  facesFail = true;
+  const warn = console.warn;
+  console.warn = () => {};
+  try {
+    const failures = await processDriverBirthdays('2026-06-18', 6, 18);
+    assert.equal(failures, 0);
+    assert.equal(sentMessages.length, 1);
+    assert.equal(claimedRuns.has('birthday:driver:1:2026-06-18'), true);
+    assert.deepEqual(raceBirthdays.board.todaysBirthdays(), []);
+  } finally {
+    facesFail = false;
+    console.warn = warn;
+  }
 });
