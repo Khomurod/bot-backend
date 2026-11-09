@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * Migration 0088 and database/boardBitrix.js on a real PostgreSQL: the switch
+ * Migrations 0088/0098 and database/boardBitrix.js on a real PostgreSQL: the switch
  * is OFF until somebody turns it on; a pass is one transaction that opens,
  * keeps and resolves; a difference that comes back reopens its own row; only
  * one question is ever out; a redelivered reply is claimed once; "skip"
@@ -24,10 +24,75 @@ async function setup(t) {
 
 test('the switch is OFF after the migration and remembers who turned it on', { skip: skipWithoutPg() }, async (t) => {
   const { store } = await setup(t);
-  assert.equal((await store.getSettings()).enabled, false);
+  const initial = await store.getSettings();
+  assert.equal(initial.enabled, false);
+  assert.equal(initial.syncMode, 'off');
+  assert.equal(initial.maxUpdatesPerPass, 10);
   const on = await store.setEnabled(true, 'owner');
   assert.equal(on.enabled, true);
   assert.equal(on.updatedBy, 'owner');
+});
+
+test('status sync settings and the validated schema are stored, but live remains an explicit choice', { skip: skipWithoutPg() }, async (t) => {
+  const { store } = await setup(t);
+  await store.recordSchema({
+    mapping: { categoryId: 9, stageByRole: { HOME: 'D9:H' } },
+    fingerprint: 'schema-9', source: 'catalog_exact', confidence: 100,
+  });
+  let settings = await store.setSyncSettings({ syncMode: 'dry_run', maxUpdatesPerPass: 4 }, 'owner');
+  assert.equal(settings.syncMode, 'dry_run');
+  assert.equal(settings.maxUpdatesPerPass, 4);
+  assert.equal(settings.schemaFingerprint, 'schema-9');
+  assert.equal(settings.schemaSource, 'catalog_exact');
+  assert.equal(settings.schemaConfidence, 100);
+  settings = await store.setSyncSettings({ syncMode: 'off', maxUpdatesPerPass: 4 }, 'owner');
+  assert.equal(settings.syncMode, 'off');
+
+  await store.setEnabled(true, 'owner');
+  settings = await store.setSyncSettings({ syncMode: 'live', maxUpdatesPerPass: 4 }, 'owner');
+  assert.equal(settings.syncMode, 'live');
+  assert.equal(await store.isLiveSyncEnabled(), true);
+  settings = await store.setEnabled(false, 'owner');
+  assert.equal(settings.syncMode, 'off', 'turning the check off revokes its old live permission');
+  assert.equal(await store.isLiveSyncEnabled(), false);
+  await assert.rejects(
+    store.setSyncSettings({ syncMode: 'live', maxUpdatesPerPass: 4 }, 'owner'),
+    (err) => err.code === 'BOARD_BITRIX_CHECK_OFF',
+  );
+});
+
+test('stage actions are idempotent across processes, and an applied transition is never repeated', { skip: skipWithoutPg() }, async (t) => {
+  const { store } = await setup(t);
+  const action = {
+    actionKey: 'stage:test:one', dealId: 321, boardStatus: 'HOME',
+    beforeStageId: 'D9:W', targetStageId: 'D9:H', schemaFingerprint: 'schema-9',
+  };
+  assert.equal(await store.recordPlannedStageSync({ ...action, actionKey: 'stage:test:dry' }), true);
+  assert.equal(await store.recordPlannedStageSync({ ...action, actionKey: 'stage:test:dry' }), false);
+
+  const claim = await store.claimStageSync(action);
+  assert.ok(claim);
+  assert.equal(await store.claimStageSync(action), null, 'an active lease cannot be double-claimed');
+  await store.finishStageSync(claim, 'applied');
+  assert.equal(await store.claimStageSync(action), null, 'an applied action is terminal');
+});
+
+test('the pre-write Board check accepts only the same still-present status event', { skip: skipWithoutPg() }, async (t) => {
+  const { h, store } = await setup(t);
+  await h.query(
+    `INSERT INTO dispatch_board_rows
+       (row_key, driver_name_raw, driver_name_clean, fleet_type, truck_raw,
+        truck_norm, status, status_changed_at, present)
+     VALUES ('board:321', 'ALAN BROWN', 'ALAN BROWN', 'owner_operator',
+             '001', '001', 'HOME', '2026-11-09T18:00:00.123456Z', TRUE)`
+  );
+  const event = {
+    rowKey: 'board:321', boardStatus: 'HOME',
+    statusChangedAt: '2026-11-09T18:00:00.123Z',
+  };
+  assert.equal(await store.confirmBoardStatus(event), true, 'sub-millisecond database precision is harmless');
+  await h.query(`UPDATE dispatch_board_rows SET status = 'READY', status_changed_at = NOW() WHERE row_key = 'board:321'`);
+  assert.equal(await store.confirmBoardStatus(event), false);
 });
 
 test('a pass opens what is new, keeps what is still there, resolves what is gone — and a comeback reopens the same row', { skip: skipWithoutPg() }, async (t) => {

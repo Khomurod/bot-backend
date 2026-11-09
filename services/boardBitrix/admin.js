@@ -12,7 +12,7 @@
  *
  * Switching the check ON runs a pass at once (in the background), so the first
  * question does not wait for the next quarter of an hour. Switching it OFF puts
- * the question out back in line.
+ * the question out back in line and atomically resets automatic sync to OFF.
  */
 
 const { KIND_LABELS } = require('../../lib/boardBitrix/wording');
@@ -24,6 +24,7 @@ function defaultDeps() {
   return {
     store: require('../../database/boardBitrix'),
     getRun: require('../../database/backgroundRuns').getRun,
+    recentActions: require('../../database/boardBitrix').recentStageSyncActions,
     runNow: () => require('./timer').runNow(),
   };
   /* eslint-enable global-require */
@@ -49,6 +50,15 @@ function lastRunView(run) {
     activeTrucks: num(s.activeTrucks),
     paired: num(s.paired),
     differences: num(s.discrepancies),
+    syncMode: s.syncMode || 'off',
+    syncCandidates: num(s.syncCandidates),
+    syncIdentitySkipped: num(s.syncIdentitySkipped),
+    syncPlanned: num(s.syncPlanned),
+    syncApplied: num(s.syncApplied),
+    syncFailed: num(s.syncFailed),
+    syncBlocked: s.syncBlocked || null,
+    schemaSource: s.schemaSource || null,
+    schemaWriteSafe: s.schemaWriteSafe === true,
   };
 }
 
@@ -56,8 +66,19 @@ async function getView({ deps = defaultDeps() } = {}) {
   const settings = await deps.store.getSettings();
   const summary = await deps.store.summarise();
   const current = summary.current;
+  const recentActions = typeof deps.recentActions === 'function'
+    ? await deps.recentActions(8) : [];
   return {
     enabled: settings.enabled,
+    syncMode: settings.syncMode || 'off',
+    maxUpdatesPerPass: num(settings.maxUpdatesPerPass) || 10,
+    schema: {
+      source: settings.schemaSource || null,
+      confidence: settings.schemaConfidence,
+      checkedAt: settings.schemaCheckedAt,
+      writeSafe: ['catalog_exact', 'ai_validated'].includes(settings.schemaSource),
+    },
+    recentActions,
     updatedAt: settings.updatedAt,
     updatedBy: settings.updatedBy,
     counts: {
@@ -73,11 +94,37 @@ async function getView({ deps = defaultDeps() } = {}) {
   };
 }
 
+async function setSyncSettings({ syncMode, maxUpdatesPerPass, confirmLive = false } = {}, {
+  by = null, deps = defaultDeps(),
+} = {}) {
+  const mode = String(syncMode || '').trim();
+  if (!['off', 'dry_run', 'live'].includes(mode)) throw invalid('syncMode must be off, dry_run or live');
+  const max = Number(maxUpdatesPerPass);
+  if (!Number.isInteger(max) || max < 1 || max > 25) throw invalid('maxUpdatesPerPass must be from 1 to 25');
+  const current = await deps.store.getSettings();
+  if (mode === 'live') {
+    if (confirmLive !== true) throw invalid('Live Bitrix sync requires explicit confirmation');
+    if (!current.enabled) throw invalid('Switch the Board ↔ Bitrix check on before live sync');
+    if (!['catalog_exact', 'ai_validated'].includes(current.schemaSource)) {
+      throw invalid('Run a successful dry check so the current Bitrix schema is validated before live sync');
+    }
+  }
+  try {
+    await deps.store.setSyncSettings({ syncMode: mode, maxUpdatesPerPass: max }, by);
+  } catch (err) {
+    if (err?.code === 'BOARD_BITRIX_CHECK_OFF') throw invalid(err.message);
+    throw err;
+  }
+  if (mode !== 'off') Promise.resolve(deps.runNow()).catch(() => {});
+  return getView({ deps });
+}
+
 async function setEnabled(enabled, { by = null, deps = defaultDeps() } = {}) {
   if (typeof enabled !== 'boolean') throw invalid('enabled must be true or false');
   await deps.store.setEnabled(enabled, by);
-  // Off: the question out goes back in line, so switching on again asks it
-  // afresh instead of waiting forever on a message far up the chat.
+  // The store also atomically resets sync_mode to off. The question out goes
+  // back in line, so switching on again asks it afresh instead of waiting
+  // forever on a message far up the chat.
   if (!enabled) await deps.store.releaseQuestion();
   if (enabled) {
     Promise.resolve(deps.runNow()).catch((err) => console.warn('[BOARD-BITRIX] first pass failed:', err.message));
@@ -91,4 +138,6 @@ async function runNow({ deps = defaultDeps() } = {}) {
   return { summary, settings: await getView({ deps }) };
 }
 
-module.exports = { getView, setEnabled, runNow, lastRunView, SERVICE_KEY };
+module.exports = {
+  getView, setEnabled, setSyncSettings, runNow, lastRunView, SERVICE_KEY,
+};

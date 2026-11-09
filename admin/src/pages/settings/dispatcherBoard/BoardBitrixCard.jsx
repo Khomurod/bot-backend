@@ -7,8 +7,8 @@ import * as api from "../../../api";
  * The Board is the source of truth. Every 15 minutes Wenze compares it with
  * Bitrix24 — active drivers in DRIVER RELATION, their trucks, their status —
  * and asks about each difference, ONE AT A TIME, in the Needs-attention group.
- * The owner fixes Bitrix and replies "done"; Wenze checks again, confirms and
- * asks the next. Bitrix is only read.
+ * The owner can keep this read-only, record a dry run, or explicitly enable a
+ * guarded STAGE_ID sync after the current Bitrix schema has been validated.
  *
  * COUNTS ONLY, like the Feed card above: no driver name, no truck number. The
  * questions themselves are in the group.
@@ -42,6 +42,10 @@ function LastRun({ run }) {
           <Row label="Trucks on the road in Bitrix" value={run.activeTrucks} />
           <Row label="Matched" value={run.paired} />
           <Row label="Differences found" value={run.differences} />
+          <Row label="Status sync" value={`${run.syncMode || "off"} · ${run.syncApplied || 0} applied · ${run.syncFailed || 0} failed`} />
+          {(run.syncIdentitySkipped || 0) > 0 && <Row label="Status changes needing review" value={run.syncIdentitySkipped} />}
+          <Row label="Schema" value={run.schemaWriteSafe ? `${run.schemaSource || "validated"} · safe for writes` : "read-only fallback"} />
+          {run.syncBlocked && <div style={{ fontSize: 12, color: "var(--warning)", marginTop: 4 }}>{run.syncBlocked}</div>}
         </>
       )}
     </>
@@ -53,10 +57,15 @@ export default function BoardBitrixCard() {
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState(null);
+  const [syncMode, setSyncMode] = useState("off");
+  const [maxUpdates, setMaxUpdates] = useState(10);
 
   const load = useCallback(async () => {
     try {
-      setView(await api.getBoardBitrixCheck());
+      const next = await api.getBoardBitrixCheck();
+      setView(next);
+      setSyncMode(next.syncMode || "off");
+      setMaxUpdates(next.maxUpdatesPerPass || 10);
       setError(null);
     } catch (err) {
       setError(err.message);
@@ -67,8 +76,13 @@ export default function BoardBitrixCard() {
   const toggle = async (enabled) => {
     setBusy(true); setMessage(null);
     try {
-      setView(await api.setBoardBitrixCheckEnabled(enabled));
-      setMessage(enabled ? "On — the first check is running now." : "Off — nothing more will be asked.");
+      const next = await api.setBoardBitrixCheckEnabled(enabled);
+      setView(next);
+      setSyncMode(next.syncMode || "off");
+      setMaxUpdates(next.maxUpdatesPerPass || 10);
+      setMessage(enabled
+        ? "On — the first check is running now. Automatic status sync remains off until separately enabled."
+        : "Off — questions and automatic status sync stopped; sync mode was reset to Off.");
     } catch (err) { setMessage(err.message); }
     finally { setBusy(false); }
   };
@@ -80,6 +94,31 @@ export default function BoardBitrixCard() {
       setView(out.settings);
       const s = out.summary || {};
       setMessage(s.error || s.blocked || `Checked: ${s.discrepancies ?? 0} difference(s).`);
+    } catch (err) { setMessage(err.message); }
+    finally { setBusy(false); }
+  };
+
+  const saveSync = async () => {
+    let confirmLive = false;
+    if (syncMode === "live") {
+      confirmLive = window.confirm(
+        "Enable live Board → Bitrix status sync? Wenze will update STAGE_ID only after strict name + exact fleet/unit matching, a 20-minute settled Board status, and fresh Board and Bitrix re-checks."
+      );
+      if (!confirmLive) return;
+    }
+    setBusy(true); setMessage(null);
+    try {
+      const next = await api.setBoardBitrixSync({
+        syncMode,
+        maxUpdatesPerPass: Number(maxUpdates),
+        confirmLive,
+      });
+      setView(next);
+      setSyncMode(next.syncMode || "off");
+      setMaxUpdates(next.maxUpdatesPerPass || 10);
+      setMessage(syncMode === "live"
+        ? "Live sync enabled — a guarded check is running now."
+        : syncMode === "dry_run" ? "Dry run enabled — Bitrix will not be changed." : "Automatic status sync is off.");
     } catch (err) { setMessage(err.message); }
     finally { setBusy(false); }
   };
@@ -100,9 +139,9 @@ export default function BoardBitrixCard() {
       <div style={{ fontWeight: 600, marginBottom: 6 }}>Board ↔ Bitrix check</div>
       <p style={{ color: "var(--text-muted)", fontSize: 13, marginTop: 0 }}>
         Compares the board (the source of truth) with Bitrix24 — active drivers, their trucks and
-        their status — every 15 minutes, and asks about each difference <strong>one at a time</strong> in
-        the Needs-attention group. Fix Bitrix, reply <strong>done</strong> to the question, and Wenze checks
-        again and asks the next. Bitrix is only read.
+        their status — every 15 minutes. Read-only mode asks about differences one at a time.
+        Dry run records the exact HOME/WORKING changes without writing. Live mode changes only
+        <strong> STAGE_ID</strong>, after a fresh schema and deal check.
       </p>
 
       <label style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 600, marginBottom: 10 }}>
@@ -110,6 +149,32 @@ export default function BoardBitrixCard() {
           onChange={(e) => toggle(e.target.checked)} />
         {view.enabled ? "Check is ON" : "Check is OFF"}
       </label>
+
+      <div style={{ margin: "10px 0", padding: 10, border: "1px solid var(--border)", borderRadius: 10 }}>
+        <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 6 }}>Automatic Board → Bitrix status</div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "end" }}>
+          <label style={{ fontSize: 12 }}>
+            Mode
+            <select aria-label="Board Bitrix sync mode" value={syncMode} disabled={busy}
+              onChange={(e) => setSyncMode(e.target.value)} style={{ display: "block", marginTop: 3 }}>
+              <option value="off">Off — questions only</option>
+              <option value="dry_run">Dry run — record only</option>
+              <option value="live">Live — update STAGE_ID</option>
+            </select>
+          </label>
+          <label style={{ fontSize: 12 }}>
+            Stop if more than
+            <input aria-label="Maximum Bitrix updates per pass" type="number" min="1" max="25"
+              value={maxUpdates} disabled={busy} onChange={(e) => setMaxUpdates(e.target.value)}
+              style={{ display: "block", width: 80, marginTop: 3 }} />
+          </label>
+          <button className="btn btn-ghost touch-target" onClick={saveSync} disabled={busy}>Save mode</button>
+        </div>
+        <Row label="Last schema check" value={view.schema?.checkedAt ? new Date(view.schema.checkedAt).toLocaleString() : "not checked"} />
+        <Row label="Schema source" value={view.schema?.writeSafe
+          ? `${view.schema.source}${view.schema.confidence != null ? ` (${view.schema.confidence}%)` : ""}`
+          : "not validated for writes"} />
+      </div>
 
       <Row label="Question out now" value={view.current ? `${view.current.label} (since ${new Date(view.current.askedAt).toLocaleString()})` : "none"} />
       <Row label="Waiting to be asked" value={c.waiting ?? 0} />

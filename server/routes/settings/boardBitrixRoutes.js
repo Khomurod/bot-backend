@@ -6,9 +6,11 @@
  *   GET  /board-bitrix          → the switch, counts by kind, whether a question
  *                                 is out, the last pass — counts only, no names
  *   PUT  /board-bitrix/enabled  → the ON/OFF switch; ON runs a pass at once
+ *   PUT  /board-bitrix/sync     → off / dry-run / explicitly confirmed live
  *   POST /board-bitrix/run      → one pass now (rate-limited: it reads Bitrix)
  *
- * The logic is services/boardBitrix/admin.js. Bitrix is only ever read.
+ * The logic is services/boardBitrix/admin.js. Live writes can change STAGE_ID
+ * only and remain off until explicitly confirmed.
  */
 const express = require('express');
 const service = require('../../../services/boardBitrix/admin');
@@ -46,6 +48,16 @@ function createBoardBitrixSettingsRouter({ authMiddleware, adminService = servic
       return res.json({ settings: await adminService.setEnabled(req.body?.enabled, { by: who(req) }) });
     } catch (err) {
       return failed(res, err, 'switch');
+    }
+  });
+
+  router.put('/board-bitrix/sync', authMiddleware, async (req, res) => {
+    try {
+      return res.json({
+        settings: await adminService.setSyncSettings(req.body || {}, { by: who(req) }),
+      });
+    } catch (err) {
+      return failed(res, err, 'configure status sync');
     }
   });
 

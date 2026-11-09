@@ -5,8 +5,9 @@
  * Bitrix, compare (lib/boardBitrix/compare.js), record what differs, resolve
  * what no longer does, and ask the next question if none is out.
  *
- * THE BOARD IS THE SOURCE OF TRUTH; BITRIX IS ONLY READ. Nothing here writes
- * to Bitrix or to the Board — a person corrects Bitrix and says "done".
+ * THE BOARD IS THE SOURCE OF TRUTH. The comparison stays read-only unless an
+ * administrator explicitly selects dry-run or live status sync. Live sync can
+ * change only STAGE_ID, through services/boardBitrix/stageSync.js.
  *
  * NOTHING IS DECIDED FROM AN INCOMPLETE READ. Each of these stops the pass
  * before the queue is touched, so a bad afternoon cannot resolve every open
@@ -23,6 +24,7 @@
  */
 
 const { compareBoardWithBitrix } = require('../../lib/boardBitrix/compare');
+const { STATIC_SCHEMA } = require('../../lib/boardBitrix/vocabulary');
 const { askNext, sayUnder } = require('./ask');
 
 /**
@@ -35,11 +37,17 @@ const BOARD_ROW_LIMIT = 5000;
 
 function defaultDeps() {
   /* eslint-disable global-require */
+  const { discoverBitrixSchema } = require('./schemaDiscovery');
+  const { readBitrix } = require('./bitrixRead');
   return {
     store: require('../../database/boardBitrix'),
     boardConfig: require('../../database/dispatchBoardSettings').getBoardConfig,
     boardRows: () => require('../../database/dispatchBoard').listBoardRows({ presentOnly: true, limit: BOARD_ROW_LIMIT }),
-    readBitrix: () => require('./bitrixRead').readBitrix(),
+    readBitrix: async () => {
+      const schema = await discoverBitrixSchema();
+      return { ...(await readBitrix(undefined, schema)), schema };
+    },
+    syncStages: (args) => require('./stageSync').runStageSync(args),
     askNext: () => askNext(),
     sayUnder: (args) => sayUnder(args),
     now: () => Date.now(),
@@ -99,13 +107,32 @@ async function runCheckPass({ deps = defaultDeps(), confirmId = null, ask = true
     return { error: `Bitrix could not be read: ${String(err.message).slice(0, 200)}` };
   }
 
-  const result = compareBoardWithBitrix({ boardRows: rows, deals: bitrix.deals, trucks: bitrix.trucks });
+  const schema = bitrix.schema || STATIC_SCHEMA;
+  const result = compareBoardWithBitrix({
+    boardRows: rows, deals: bitrix.deals, trucks: bitrix.trucks, schema,
+  });
   if (!result.counts.boardPeople) return { error: 'the Dispatcher Board snapshot names no drivers — nothing was compared' };
   if (!result.counts.activeDeals) return { error: 'Bitrix returned no active driver in DRIVER RELATION — nothing was compared' };
 
+  let sync = { mode: settings.syncMode || 'off', resolvedKeys: [] };
+  try {
+    if (typeof deps.syncStages === 'function') {
+      sync = await deps.syncStages({
+        discrepancies: result.discrepancies,
+        schema,
+        mode: settings.syncMode || 'off',
+        maxUpdates: settings.maxUpdatesPerPass || 10,
+      });
+    }
+  } catch (err) {
+    sync = { mode: settings.syncMode || 'off', error: String(err.message).slice(0, 200), resolvedKeys: [] };
+  }
+  const resolvedBySync = new Set(sync.resolvedKeys || []);
+  const effectiveDiscrepancies = result.discrepancies.filter((d) => !resolvedBySync.has(d.key));
+
   let applied;
   try {
-    applied = await deps.store.applyPass(result.discrepancies, { confirmId });
+    applied = await deps.store.applyPass(effectiveDiscrepancies, { confirmId });
   } catch (err) {
     return { error: `the differences could not be recorded: ${String(err.message).slice(0, 200)}` };
   }
@@ -125,10 +152,22 @@ async function runCheckPass({ deps = defaultDeps(), confirmId = null, ask = true
   const asked = ask ? await deps.askNext() : null;
   return {
     ...result.counts,
+    discrepancies: effectiveDiscrepancies.length,
+    detectedDiscrepancies: result.counts.discrepancies,
     opened: applied.opened.length,
     reopened: applied.reopened.length,
     resolved: applied.resolved.length,
     asked: asked?.asked === true,
+    syncMode: sync.mode || 'off',
+    syncCandidates: Number(sync.candidates || 0),
+    syncIdentitySkipped: Number(sync.identitySkipped || 0),
+    syncPlanned: Number(sync.planned || 0),
+    syncApplied: Number(sync.applied || 0),
+    syncAlreadyDone: Number(sync.alreadyDone || 0),
+    syncFailed: Number(sync.failed || 0),
+    syncBlocked: sync.blocked || sync.error || null,
+    schemaSource: schema.source || 'static_fallback',
+    schemaWriteSafe: schema.writeSafe === true,
   };
 }
 

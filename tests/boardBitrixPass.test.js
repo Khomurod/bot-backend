@@ -15,7 +15,11 @@ const { askNext, linksFor } = require('../services/boardBitrix/ask');
 
 const NOW = Date.parse('2026-10-29T15:00:00Z');
 const freshBoard = { enabled: true, configured: true, lastPollOk: true, lastPollAt: new Date(NOW - 5 * 60 * 1000), pollIntervalSeconds: 300 };
-const boardRow = { present: true, cleanName: 'OLABODE OLUDAISI', fleetType: 'owner_operator', truckNorm: '001', status: 'DISPATCHED', teamMembers: [] };
+const boardRow = {
+  rowKey: 'owner_operator:001:olabode-oludaisi', present: true,
+  cleanName: 'OLABODE OLUDAISI', fleetType: 'owner_operator',
+  truckNorm: '001', status: 'DISPATCHED', teamMembers: [],
+};
 const okDeal = { id: 321, title: 'OLABODE OLUDAISI', stageId: 'C3:UC_XZ955I', semantic: 'P', fleetType: 'owner_operator', truckId: 3 };
 const okTruck = { id: 3, title: 'Trucks #001', stageId: 'DT1040_17:UC_90RJVZ' };
 
@@ -75,6 +79,29 @@ test('a good pass records the differences, then asks the next question', async (
   assert.equal(out.discrepancies, 1);
   assert.equal(out.asked, true);
   assert.equal(calls.asked, 1);
+});
+
+test('a live status update resolved by the guarded writer is never queued as a stale question', async () => {
+  const dynamicSchema = {
+    ...require('../lib/boardBitrix/vocabulary').STATIC_SCHEMA,
+    source: 'catalog_exact', writeSafe: true, fingerprint: 'schema-1',
+  };
+  const { deps, calls } = fakes({
+    store: { getSettings: async () => ({ enabled: true, syncMode: 'live', maxUpdatesPerPass: 10 }) },
+    boardRows: async () => [{ ...boardRow, statusChangedAt: new Date(NOW - 60 * 60000).toISOString() }],
+    readBitrix: async () => ({
+      deals: [{ ...okDeal, stageId: 'C3:UC_UF0NDK' }], trucks: [okTruck], schema: dynamicSchema,
+    }),
+    syncStages: async ({ discrepancies, mode }) => ({
+      mode, applied: 1, candidates: 1,
+      resolvedKeys: [discrepancies.find((d) => d.kind === 'status_differs').key],
+    }),
+  });
+  const out = await runCheckPass({ deps });
+  assert.equal(out.syncApplied, 1);
+  assert.equal(out.detectedDiscrepancies, 1);
+  assert.equal(out.discrepancies, 0);
+  assert.deepEqual(calls.applied[0].found, []);
 });
 
 test('the re-check after "done" passes confirmId and does not ask (the caller confirms first)', async () => {

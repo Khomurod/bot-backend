@@ -240,8 +240,13 @@ repository-wide working rules. The highest-consequence items:
 - **The Dispatcher Board is read for Home Time's home-in / home-out and by the
   Board ↔ Bitrix check; Wenze is the authority on who a person is.** The check
   (29 October 2026, `docs/architecture/board-bitrix-check.md`) treats the Board
-  as the source of truth for Bitrix, reads Bitrix only, and writes nothing to
-  the snapshot or the person layer. Since October 2026 nothing else reads it:
+  as the source of truth for Bitrix and writes nothing to the snapshot or the
+  person layer. Its separately enabled live mode may change only the matched
+  Bitrix deal's `STAGE_ID`: after 20 minutes, strict name + exact fleet/unit,
+  live-schema validation, current Board/deal re-reads, an update cap and an
+  idempotency claim. A fuzzy match can suppress a question but can never write;
+  AI can classify catalogue labels but never driver data or an update. Since
+  October 2026 nothing else reads it:
   its identity checks, the `board.link_person` correction,
   the board-vs-Home-Time contradictions and its panels were removed (keys in
   `services/operations/checks/retired.js`). Which person a row is about is

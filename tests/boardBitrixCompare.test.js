@@ -78,6 +78,18 @@ test('READY, RESERVED and REST are WORKING; NEW in Bitrix for a driver on the Bo
     'a status the Board invents is never a conclusion');
 });
 
+test('the November Board statuses COVERED and HOLD FOR LOAD are WORKING in Bitrix too', () => {
+  for (const status of ['COVERED', 'HOLD FOR LOAD']) {
+    const result = run(
+      [row({ status })],
+      [deal({ stageId: 'C3:UC_UF0NDK' })],
+      [truck()],
+    );
+    const difference = result.discrepancies.find((d) => d.kind === 'status_differs');
+    assert.equal(difference.expectedStageId, 'C3:UC_XZ955I', status);
+  }
+});
+
 test('driver type empty in Bitrix, no truck assigned, the truck not on the road', () => {
   assert.deepEqual(kinds(run([row()], [deal({ fleetType: null })], [truck()])), ['fleet_missing:deal:321']);
   assert.deepEqual(kinds(run([row()], [deal({ truckId: null })], [truck()])).sort(), ['truck_missing:deal:321', 'truck_without_driver:truck:3']);

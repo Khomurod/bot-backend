@@ -11,11 +11,13 @@ Decided with the owner the same day:
 
 - **The Dispatcher Board is the source of truth.** Every difference is
   something to correct in **Bitrix**.
-- Each difference is a **question, asked one at a time** in the
+- Each difference is normally a **question, asked one at a time** in the
   **Needs-attention** group, as soon as it is found when nothing else is out.
-- The owner fixes Bitrix and **replies "done"** to the question; Wenze re-reads
-  Bitrix at once, **confirms** and asks the next — or says what is still
-  different. "skip" brings it back tomorrow.
+  An administrator may separately put status differences into dry-run or live
+  sync; every other kind always remains a question.
+- In read-only mode the owner fixes Bitrix and **replies "done"** to the
+  question; Wenze re-reads Bitrix at once, **confirms** and asks the next — or
+  says what is still different. "skip" brings it back tomorrow.
 - A difference of a letter or two, an extra space or the other word order in a
   name is the **same person** and is not asked about. Per word: none in a word
   shorter than four letters ("ALI" and "ALX" are different people), one letter
@@ -28,13 +30,20 @@ Decided with the owner the same day:
   is a difference too.
 - The status is compared as well as the driver and the truck.
 
-AI matching of names a person would still recognise as the same driver is the
-second step (not built yet); today those are asked.
+Since 9 November 2026 the application discovers the current Bitrix catalogue on
+every pass. Exact live labels are resolved deterministically. If an operator
+renamed a pipeline, field or stage, AI may classify the **catalogue labels and
+opaque ids only** — never driver/deal data — but every selected id must be one
+returned by the same live Bitrix read and confidence must be at least 85. AI
+never selects a driver and is never on the write path. An ambiguous catalogue
+falls back to the 29 October snapshot for comparison only and blocks both dry
+run and live writes.
 
 ## Where Bitrix keeps drivers and trucks
 
-Read from the portal on 29 October 2026 by the owner's Bitrix agent (read-only).
-`lib/boardBitrix/vocabulary.js` holds every code.
+Read from the portal on 29 October 2026 by the owner's Bitrix agent. These are
+the fallback names and ids; `services/boardBitrix/schemaDiscovery.js` resolves
+the current catalogue before every pass.
 
 | | Where | Active |
 |---|---|---|
@@ -57,9 +66,38 @@ driver's fleet plus that number.
 
 ## Invariants — do not undo
 
-- **Bitrix is only read.** `services/boardBitrix/bitrixRead.js` calls
-  `crm.deal.list` and `crm.item.list` and nothing else; `tests/boardBitrixPass.test.js`
-  asserts every call is a `.list`. "done" means a person changed Bitrix.
+- **Read-only is the default, and the write boundary is one field.** The check
+  itself and `sync_mode` both default off. `services/boardBitrix/bitrixRead.js`
+  still only lists deals and truck items. An administrator must first turn on
+  the check, obtain a dynamically validated schema, and explicitly confirm
+  `live`; `dry_run` records the exact transitions and never calls a Bitrix
+  mutation. The live writer's only mutation is `crm.deal.update` with
+  `{ fields: { STAGE_ID } }`. It cannot edit a name, truck, driver type, deal,
+  pipeline, field, or Board row.
+- **AI understands schema labels; it never authorizes a write.** Exact catalogue
+  labels win. AI receives no driver names, deal ids, truck numbers or statuses,
+  may choose only ids in the supplied catalogue, and needs confidence ≥85.
+  `lib/boardBitrix/schema.js` independently validates the pipeline, smart
+  process, fields and four different HOME/VACATION/SHOP/WORKING stages against
+  that same catalogue. Fallback/static schema has `writeSafe = false`.
+- **A fuzzy comparison is never identity proof for a write.** The comparison
+  keeps the owner's typo tolerance so it does not create noisy questions. The
+  writer separately requires a strict name match and the same known fleet plus
+  the **exact normalized unit spelling**. `001` and `1` may be treated as the
+  same seat for a question, but are not enough for an automatic update. A
+  missing/ambiguous fact leaves the status discrepancy in the human queue.
+- **Every status event settles for 20 minutes.** Immediately before writing,
+  the worker re-reads the exact `dispatch_board_rows` event (row key, status and
+  `status_changed_at`) and `crm.deal.get`; it refuses when the Board changed,
+  the deal moved, changed pipeline or closed. It also re-reads the live kill
+  switch immediately before the mutation, then verifies the target stage with
+  another `crm.deal.get`.
+- **No mass update and no duplicate update.** More candidates than the
+  configured per-pass limit (1–25, default 10) blocks the whole pass. A durable
+  database claim makes each Board event/deal transition idempotent across
+  processes; applied transitions are terminal and every planned/applied/failed
+  action is audited. If a robot later reverses an applied stage, Wenze asks a
+  person instead of looping forever.
 - **Nothing is decided from an incomplete read.** The pass stops before the
   queue is touched when the check or the Board feed is off (`blocked`), Bitrix
   is not connected (`blocked`), the Board's last successful read is older than
@@ -123,6 +161,8 @@ driver's fleet plus that number.
   re-check after "done" queue behind each other in this process.
 - **Off until switched on** (`board_bitrix_settings.enabled` defaults FALSE), so
   a deploy asks nobody anything by itself. Switching on runs a pass at once.
+  Switching the check off also resets `sync_mode` to `off`; turning the check
+  on later can never silently restore an old live-write permission.
 - **Stood down in economy mode** with the other automatic checks and the
   questions they raise (`lib/operations/economyMode.js`): no pass, no new
   question, no reminder; while paused, "done" is answered with "could not
@@ -167,19 +207,22 @@ Board status Wenze does not know is never compared.
 | | |
 |---|---|
 | `database/migrations/0088_board_bitrix_check.sql` | `board_bitrix_settings` (the switch) and `board_bitrix_discrepancies` (the queue) |
-| `lib/boardBitrix/` | pure: `vocabulary` (Bitrix codes), `names`, `trucks`, `compare`, `wording`, `replyIntent` |
+| `database/migrations/0098_board_bitrix_status_sync.sql` | sync mode, validated-schema record and the idempotent `board_bitrix_stage_sync_actions` audit |
+| `lib/boardBitrix/` | pure: `vocabulary` (read-only fallback), `schema` (live-catalogue validation), `names`, `trucks`, `compare`, `wording`, `replyIntent` |
 | `services/boardBitrix/bitrixRead.js` | the two list reads, complete or failed |
+| `services/boardBitrix/schemaDiscovery.js`, `schemaAi.js` | exact live schema discovery; bounded AI interpretation of catalogue labels only |
+| `services/boardBitrix/stageSync.js` | dry-run/live status plan, strict identity guard, fresh Board/deal checks, the only `STAGE_ID` write |
 | `services/boardBitrix/pass.js`, `timer.js` | one pass; the 15-minute timer, `board_bitrix_check` in the roster |
 | `services/boardBitrix/ask.js`, `reply.js` | one question at a time; "done" / "skip" |
 | `database/boardBitrix.js` | the switch, the one-transaction pass, the queue |
 | `bot/handlers/boardBitrixReplyHandlers.js` | registers the reply handler |
-| `services/boardBitrix/admin.js`, `server/routes/settings/boardBitrixRoutes.js` | `GET /board-bitrix`, `PUT /board-bitrix/enabled`, `POST /board-bitrix/run` under `/api/settings` |
+| `services/boardBitrix/admin.js`, `server/routes/settings/boardBitrixRoutes.js` | `GET /board-bitrix`, `PUT /board-bitrix/enabled`, `PUT /board-bitrix/sync`, `POST /board-bitrix/run` under `/api/settings` |
 | `admin/src/pages/settings/dispatcherBoard/BoardBitrixCard.jsx` | the card under the Feed card |
 
 ## Tests
 
 ```
-node --test tests/boardBitrixNames.test.js tests/boardBitrixCompare.test.js tests/boardBitrixPass.test.js tests/boardBitrixReply.test.js tests/boardBitrixAdmin.test.js
+node --test tests/boardBitrixNames.test.js tests/boardBitrixCompare.test.js tests/boardBitrixPass.test.js tests/boardBitrixSync.test.js tests/boardBitrixReply.test.js tests/boardBitrixAdmin.test.js
 TEST_DATABASE_URL=… node --test tests/boardBitrixPg.test.js
 npm test --prefix admin -- --run src/pages/settings/dispatcherBoard/BoardBitrixCard.test.jsx
 ```

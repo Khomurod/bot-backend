@@ -2,7 +2,7 @@
 
 /**
  * The Dispatcher Board ↔ Bitrix24 check: its switch and its question queue
- * (migration 0088). services/boardBitrix/ decides; this writes.
+ * (migrations 0088 and 0098). services/boardBitrix/ decides; this writes.
  *
  * ONE QUESTION OUT AT A TIME. `currentQuestion` is what the ask step checks,
  * and the partial unique index `uniq_board_bitrix_one_asked` holds it when a
@@ -48,19 +48,173 @@ function mapRow(row) {
  */
 async function getSettings() {
   try {
-    const res = await query('SELECT enabled, updated_at, updated_by FROM board_bitrix_settings WHERE id = 1');
+    const res = await query(
+      `SELECT enabled, sync_mode, max_updates_per_pass, schema_mapping,
+              schema_fingerprint, schema_source, schema_confidence,
+              schema_checked_at, updated_at, updated_by
+         FROM board_bitrix_settings WHERE id = 1`
+    );
     const row = res.rows[0];
-    return { enabled: row?.enabled === true, updatedAt: row?.updated_at || null, updatedBy: row?.updated_by || null };
+    return {
+      enabled: row?.enabled === true,
+      syncMode: row?.sync_mode || 'off',
+      maxUpdatesPerPass: Number(row?.max_updates_per_pass || 10),
+      schemaMapping: row?.schema_mapping || null,
+      schemaFingerprint: row?.schema_fingerprint || null,
+      schemaSource: row?.schema_source || null,
+      schemaConfidence: row?.schema_confidence == null ? null : Number(row.schema_confidence),
+      schemaCheckedAt: row?.schema_checked_at || null,
+      updatedAt: row?.updated_at || null,
+      updatedBy: row?.updated_by || null,
+    };
   } catch (err) {
     if (err && err.code === '42P01') return { enabled: false, updatedAt: null, updatedBy: null };
     throw err;
   }
 }
 
+async function setSyncSettings({ syncMode, maxUpdatesPerPass }, updatedBy = null) {
+  const mode = String(syncMode || '').trim();
+  const max = Number(maxUpdatesPerPass);
+  const res = await query(
+    `UPDATE board_bitrix_settings
+        SET sync_mode = $1, max_updates_per_pass = $2,
+            updated_at = NOW(), updated_by = $3
+      WHERE id = 1 AND ($1 <> 'live' OR enabled = TRUE)
+      RETURNING id`,
+    [mode, max, updatedBy]
+  );
+  if (mode === 'live' && !res.rows[0]) {
+    const err = new Error('the Board ↔ Bitrix check was switched off before live sync could be saved');
+    err.code = 'BOARD_BITRIX_CHECK_OFF';
+    throw err;
+  }
+  return getSettings();
+}
+
+/** The last dynamically validated schema, for the card and the next diagnosis. */
+async function recordSchema({ mapping, fingerprint, source, confidence }) {
+  await query(
+    `UPDATE board_bitrix_settings
+        SET schema_mapping = $1::jsonb, schema_fingerprint = $2,
+            schema_source = $3, schema_confidence = $4,
+            schema_checked_at = NOW()
+      WHERE id = 1`,
+    [JSON.stringify(mapping || {}), fingerprint || null, source || null,
+      confidence == null ? null : Math.round(Number(confidence))]
+  );
+}
+
+/** Record a dry-run proposal once; the same unchanged Board event stays one row. */
+async function recordPlannedStageSync(action) {
+  const res = await query(
+    `INSERT INTO board_bitrix_stage_sync_actions
+       (action_key, mode, deal_id, board_status, before_stage_id,
+        target_stage_id, state, schema_fingerprint)
+     VALUES ($1, 'dry_run', $2, $3, $4, $5, 'planned', $6)
+     ON CONFLICT (action_key) DO NOTHING
+     RETURNING id`,
+    [action.actionKey, action.dealId, action.boardStatus, action.beforeStageId,
+      action.targetStageId, action.schemaFingerprint || null]
+  );
+  return Boolean(res.rows[0]);
+}
+
+/**
+ * Claim one live transition across every process sharing the database. A failed
+ * or abandoned claim may be retried; an applied action never can.
+ */
+async function claimStageSync(action, { leaseMinutes = 5 } = {}) {
+  const res = await query(
+    `INSERT INTO board_bitrix_stage_sync_actions
+       (action_key, mode, deal_id, board_status, before_stage_id,
+        target_stage_id, state, schema_fingerprint, claimed_until)
+     VALUES ($1, 'live', $2, $3, $4, $5, 'claimed', $6,
+             NOW() + make_interval(mins => $7::int))
+     ON CONFLICT (action_key) DO UPDATE SET
+       state = 'claimed', attempts = board_bitrix_stage_sync_actions.attempts + 1,
+       claimed_until = NOW() + make_interval(mins => $7::int),
+       last_error = NULL, updated_at = NOW()
+     WHERE board_bitrix_stage_sync_actions.state = 'failed'
+        OR (board_bitrix_stage_sync_actions.state = 'claimed'
+            AND board_bitrix_stage_sync_actions.claimed_until < NOW())
+     RETURNING id`,
+    [action.actionKey, action.dealId, action.boardStatus, action.beforeStageId,
+      action.targetStageId, action.schemaFingerprint || null,
+      Math.max(1, Math.round(Number(leaseMinutes) || 5))]
+  );
+  return res.rows[0] ? Number(res.rows[0].id) : null;
+}
+
+async function finishStageSync(id, state, error = null) {
+  const allowed = new Set(['applied', 'already_done', 'failed']);
+  const next = allowed.has(state) ? state : 'failed';
+  await query(
+    `UPDATE board_bitrix_stage_sync_actions
+        SET state = $2, last_error = $3, claimed_until = NULL,
+            updated_at = NOW(), applied_at = CASE WHEN $2 IN ('applied', 'already_done') THEN NOW() ELSE applied_at END
+      WHERE id = $1 AND state = 'claimed'`,
+    [Number(id), next, error ? String(error).slice(0, 400) : null]
+  );
+}
+
+async function recentStageSyncActions(limit = 10) {
+  const res = await query(
+    `SELECT mode, state, board_status, before_stage_id, target_stage_id,
+            last_error, updated_at
+       FROM board_bitrix_stage_sync_actions
+      ORDER BY updated_at DESC LIMIT $1`,
+    [Math.min(25, Math.max(1, Number(limit) || 10))]
+  );
+  return res.rows.map((r) => ({
+    mode: r.mode,
+    state: r.state,
+    boardStatus: r.board_status,
+    beforeStageId: r.before_stage_id,
+    targetStageId: r.target_stage_id,
+    error: r.last_error,
+    updatedAt: r.updated_at,
+  }));
+}
+
+/**
+ * Re-read the exact Board event immediately before a live Bitrix write. The
+ * poller may have replaced HOME with READY since the comparison began; that
+ * newer fact must win. Millisecond truncation matches node-postgres Date
+ * precision without treating a genuinely new event as the old one.
+ */
+async function confirmBoardStatus({ rowKey, boardStatus, statusChangedAt }) {
+  if (!rowKey || !boardStatus || !statusChangedAt) return false;
+  const res = await query(
+    `SELECT 1
+       FROM dispatch_board_rows
+      WHERE row_key = $1 AND present = TRUE AND UPPER(status) = UPPER($2)
+        AND date_trunc('milliseconds', status_changed_at)
+            = date_trunc('milliseconds', $3::timestamptz)
+      LIMIT 1`,
+    [String(rowKey), String(boardStatus), statusChangedAt]
+  );
+  return Boolean(res.rows[0]);
+}
+
+/** Re-read the kill switch immediately before an external Bitrix mutation. */
+async function isLiveSyncEnabled() {
+  const res = await query(
+    `SELECT 1
+       FROM board_bitrix_settings
+      WHERE id = 1 AND enabled = TRUE AND sync_mode = 'live'
+      LIMIT 1`
+  );
+  return Boolean(res.rows[0]);
+}
+
 async function setEnabled(enabled, updatedBy = null) {
   await query(
     `INSERT INTO board_bitrix_settings (id, enabled, updated_at, updated_by) VALUES (1, $1, NOW(), $2)
-     ON CONFLICT (id) DO UPDATE SET enabled = EXCLUDED.enabled, updated_at = NOW(), updated_by = EXCLUDED.updated_by`,
+     ON CONFLICT (id) DO UPDATE SET
+       enabled = EXCLUDED.enabled,
+       sync_mode = CASE WHEN EXCLUDED.enabled THEN board_bitrix_settings.sync_mode ELSE 'off' END,
+       updated_at = NOW(), updated_by = EXCLUDED.updated_by`,
     [enabled === true, updatedBy]
   );
   return getSettings();
@@ -295,6 +449,14 @@ async function summarise() {
 module.exports = {
   getSettings,
   setEnabled,
+  setSyncSettings,
+  recordSchema,
+  recordPlannedStageSync,
+  claimStageSync,
+  finishStageSync,
+  recentStageSyncActions,
+  confirmBoardStatus,
+  isLiveSyncEnabled,
   applyPass,
   getDiscrepancy,
   currentQuestion,

@@ -77,7 +77,7 @@ fallback, and files a finding whenever it is the one that answered.
 `dispatch_board_rows` 0046) sits BESIDE both, and outranks neither.** It records
 what an external spreadsheet says about today — truck, trailer, status, ETA,
 dispatcher — and is read for Home Time's home-in / home-out and by the Board ↔
-Bitrix check, which treats it as the source of truth (`board_bitrix_*` 0088,
+Bitrix check, which treats it as the source of truth (`board_bitrix_*` 0088/0098,
 `docs/architecture/board-bitrix-check.md`). It is keyed by `row_key` (normalised truck + normalised person)
 because the board has no stable row id: a spreadsheet row number changes the
 moment somebody sorts the sheet. Three rules:

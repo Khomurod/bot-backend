@@ -21,8 +21,7 @@
  */
 
 const {
-  DEAL_CATEGORY_ID, TRUCK_ENTITY_TYPE_ID, DEAL_FIELDS, DEAL_SELECT, TRUCK_SELECT,
-  fleetFromDriverType, truckIdFromLink,
+  TRUCK_SELECT, STATIC_SCHEMA, truckIdFromLink,
 } = require('../../lib/boardBitrix/vocabulary');
 
 const PAGE_SIZE = 50;
@@ -52,11 +51,14 @@ async function readPages(fetchPage, what, { maxPages = MAX_PAGES, mustFinish = t
 }
 
 /** Pipeline 3's deals with this stage semantic ('P' active, 'F' closed). */
-function dealPage(deps, semantic, order) {
+function dealPage(deps, schema, semantic, order) {
   return async (start) => {
     const result = await deps.call('crm.deal.list', {
-      filter: { CATEGORY_ID: DEAL_CATEGORY_ID, STAGE_SEMANTIC_ID: semantic },
-      select: DEAL_SELECT,
+      filter: { CATEGORY_ID: schema.categoryId, STAGE_SEMANTIC_ID: semantic },
+      select: [
+        'ID', 'TITLE', 'STAGE_ID', 'STAGE_SEMANTIC_ID', 'CATEGORY_ID',
+        schema.dealFields.truck, schema.dealFields.driverType,
+      ],
       order: { ID: order },
       start,
     });
@@ -64,15 +66,17 @@ function dealPage(deps, semantic, order) {
   };
 }
 
-function mapDeal(row) {
+function mapDeal(row, schema = STATIC_SCHEMA) {
   const stageId = row.STAGE_ID || null;
+  const rawFleet = Array.isArray(row[schema.dealFields.driverType])
+    ? row[schema.dealFields.driverType][0] : row[schema.dealFields.driverType];
   return {
     id: Number(row.ID),
     title: String(row.TITLE || '').trim(),
     stageId,
     semantic: row.STAGE_SEMANTIC_ID || (CLOSED_STAGES.has(stageId) ? 'F' : 'P'),
-    fleetType: fleetFromDriverType(row[DEAL_FIELDS.driverType]),
-    truckId: truckIdFromLink(row[DEAL_FIELDS.truck]),
+    fleetType: schema.fleetByDriverType?.[String(rawFleet ?? '').trim()] || null,
+    truckId: truckIdFromLink(row[schema.dealFields.truck]),
   };
 }
 
@@ -81,13 +85,13 @@ function mapDeal(row) {
  * @throws a BitrixError (reason `not_configured` when Bitrix is not connected),
  *   or an Error when an active list is incomplete or a field is gone
  */
-async function readBitrix(deps = defaultDeps()) {
-  const active = await readPages(dealPage(deps, 'P', 'ASC'), 'active driver deals');
-  const closed = await readPages(dealPage(deps, 'F', 'DESC'), 'closed driver deals', { maxPages: CLOSED_MAX_PAGES, mustFinish: false });
+async function readBitrix(deps = defaultDeps(), schema = STATIC_SCHEMA) {
+  const active = await readPages(dealPage(deps, schema, 'P', 'ASC'), 'active driver deals');
+  const closed = await readPages(dealPage(deps, schema, 'F', 'DESC'), 'closed driver deals', { maxPages: CLOSED_MAX_PAGES, mustFinish: false });
 
   const rawTrucks = await readPages(async (start) => {
     const result = await deps.call('crm.item.list', {
-      entityTypeId: TRUCK_ENTITY_TYPE_ID,
+      entityTypeId: schema.truckEntityTypeId,
       select: TRUCK_SELECT,
       order: { id: 'ASC' },
       start,
@@ -97,7 +101,7 @@ async function readBitrix(deps = defaultDeps()) {
 
   // A field that was renamed comes back as nothing at all, on every row. Read
   // that as "every driver has no truck" and the group gets a hundred questions.
-  for (const field of [DEAL_FIELDS.truck, DEAL_FIELDS.driverType]) {
+  for (const field of [schema.dealFields.truck, schema.dealFields.driverType]) {
     if (active.length && !active.some((r) => Object.prototype.hasOwnProperty.call(r, field))) {
       throw new Error(`Bitrix no longer returns the deal field ${field}; nothing was compared`);
     }
@@ -111,7 +115,7 @@ async function readBitrix(deps = defaultDeps()) {
     for (const r of rows) {
       if (!r || !r.ID || seen.has(String(r.ID))) continue;
       seen.add(String(r.ID));
-      deals.push(mapDeal({ STAGE_SEMANTIC_ID: semantic, ...r }));
+      deals.push(mapDeal({ STAGE_SEMANTIC_ID: semantic, ...r }, schema));
     }
   }
   const trucks = rawTrucks.filter((t) => t && t.id).map((t) => ({ id: Number(t.id), title: t.title || '', stageId: t.stageId || null }));

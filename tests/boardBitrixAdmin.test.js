@@ -15,13 +15,20 @@ const { createBoardBitrixSettingsRouter } = require('../server/routes/settings/b
 const { createRateLimiter } = require('../server/middleware/rateLimit');
 
 function deps(over = {}) {
-  const calls = { enabled: [], runs: 0 };
+  const calls = { enabled: [], sync: [], runs: 0 };
   return {
     calls,
     deps: {
       store: {
-        getSettings: async () => ({ enabled: calls.enabled.at(-1) ?? false, updatedAt: null, updatedBy: null }),
+        getSettings: async () => ({
+          enabled: calls.enabled.at(-1) ?? false,
+          syncMode: calls.sync.at(-1)?.syncMode || 'off',
+          maxUpdatesPerPass: calls.sync.at(-1)?.maxUpdatesPerPass || 10,
+          schemaSource: 'catalog_exact',
+          updatedAt: null, updatedBy: null,
+        }),
         setEnabled: async (enabled, by) => { calls.enabled.push(enabled); calls.by = by; },
+        setSyncSettings: async (settings, by) => { calls.sync.push(settings); calls.syncBy = by; },
         releaseQuestion: async () => { calls.released = (calls.released || 0) + 1; },
         summarise: async () => ({
           open: 5, snoozed: 1, asked: 1, confirmed: 2, seen_fixed: 3,
@@ -62,6 +69,28 @@ test('switching ON records who and runs a pass at once; OFF runs nothing and put
   await assert.rejects(admin.setEnabled('yes', { deps: d }), { statusCode: 400 });
 });
 
+test('dry run is easy to enable; live needs the check, a validated schema and explicit confirmation', async () => {
+  const { deps: d, calls } = deps();
+  await admin.setSyncSettings({ syncMode: 'dry_run', maxUpdatesPerPass: 5 }, { by: 'owner', deps: d });
+  assert.deepEqual(calls.sync[0], { syncMode: 'dry_run', maxUpdatesPerPass: 5 });
+  assert.equal(calls.syncBy, 'owner');
+  await assert.rejects(
+    admin.setSyncSettings({ syncMode: 'live', maxUpdatesPerPass: 5 }, { deps: d }),
+    /explicit confirmation/
+  );
+  await assert.rejects(
+    admin.setSyncSettings({ syncMode: 'live', maxUpdatesPerPass: 5, confirmLive: true }, { deps: d }),
+    /Switch the Board/
+  );
+  calls.enabled.push(true);
+  await admin.setSyncSettings({ syncMode: 'live', maxUpdatesPerPass: 5, confirmLive: true }, { deps: d });
+  assert.equal(calls.sync.at(-1).syncMode, 'live');
+  await assert.rejects(
+    admin.setSyncSettings({ syncMode: 'live', maxUpdatesPerPass: 100, confirmLive: true }, { deps: d }),
+    /from 1 to 25/
+  );
+});
+
 function serve(t, { signedIn = true, runLimiter = null } = {}) {
   const app = express();
   app.use(express.json());
@@ -74,6 +103,7 @@ function serve(t, { signedIn = true, runLimiter = null } = {}) {
   const adminService = {
     getView: async () => ({ enabled: true }),
     setEnabled: async (enabled, { by }) => { seen.push({ enabled, by }); if (typeof enabled !== 'boolean') { const e = new Error('enabled must be true or false'); e.statusCode = 400; throw e; } return { enabled }; },
+    setSyncSettings: async (body, { by }) => { seen.push({ sync: body.syncMode, by }); return { enabled: true, syncMode: body.syncMode }; },
     runNow: async () => ({ summary: { discrepancies: 2 }, settings: { enabled: true } }),
   };
   app.use('/api/settings', createBoardBitrixSettingsRouter({ authMiddleware, adminService, runLimiter }));
@@ -88,6 +118,7 @@ test('every route needs a signed-in admin', async (t) => {
   const { base } = serve(t, { signedIn: false });
   assert.equal((await fetch(base)).status, 401);
   assert.equal((await send(`${base}/enabled`, 'PUT', { enabled: true })).status, 401);
+  assert.equal((await send(`${base}/sync`, 'PUT', { syncMode: 'dry_run', maxUpdatesPerPass: 10 })).status, 401);
   assert.equal((await send(`${base}/run`, 'POST')).status, 401);
 });
 
@@ -97,6 +128,8 @@ test('the switch records who; a bad body is a 400; check now answers the summary
   assert.equal((await send(`${base}/enabled`, 'PUT', { enabled: true })).status, 200);
   assert.deepEqual(seen[0], { enabled: true, by: 'owner' });
   assert.equal((await send(`${base}/enabled`, 'PUT', { enabled: 'yes' })).status, 400);
+  assert.equal((await send(`${base}/sync`, 'PUT', { syncMode: 'dry_run', maxUpdatesPerPass: 10 })).status, 200);
+  assert.deepEqual(seen[2], { sync: 'dry_run', by: 'owner' });
   const first = await send(`${base}/run`, 'POST');
   assert.equal(first.status, 200);
   assert.equal((await first.json()).summary.discrepancies, 2);

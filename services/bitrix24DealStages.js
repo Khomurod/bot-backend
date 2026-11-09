@@ -9,9 +9,10 @@
  * words only). Every call is bounded by a timeout — a Bitrix that hangs must
  * not hold a queue lease or a button press open.
  *
- * `crm.deal.update` IS THE ONLY WRITE, and only services/hiringStages/actions.js
- * calls it, after a person pressed the button. `callBitrix` is exported for
- * readers (services/homeTime/violationAlerts.js), which never write.
+ * `crm.deal.update` remains the only update to an existing CRM record. Hiring
+ * calls it after a person presses the button; the guarded Board sync may call
+ * it for STAGE_ID only after a live-schema validation, an exact before-stage
+ * re-read and a database idempotency claim.
  *
  * A failure THROWS `BitrixError` (with `.retryable` for a network failure or a
  * 5xx). The callers decide: the reviewer tries again later, a button press

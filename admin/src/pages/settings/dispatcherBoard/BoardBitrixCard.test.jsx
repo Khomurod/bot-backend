@@ -11,12 +11,16 @@ import * as api from "../../../api";
 vi.mock("../../../api", () => ({
   getBoardBitrixCheck: vi.fn(),
   setBoardBitrixCheckEnabled: vi.fn(),
+  setBoardBitrixSync: vi.fn(),
   runBoardBitrixCheck: vi.fn(),
 }));
 
 function view(over = {}) {
   return {
     enabled: true,
+    syncMode: "off",
+    maxUpdatesPerPass: 10,
+    schema: { source: "catalog_exact", confidence: 100, checkedAt: "2026-11-09T15:00:00Z", writeSafe: true },
     counts: { waiting: 4, skipped: 1, asked: 1, confirmed: 2, fixedWithoutReply: 3 },
     byKind: [{ kind: "fleet_missing", label: "Driver type not set in Bitrix", count: 3 }],
     current: { kind: "truck_differs", label: "Different truck", askedAt: "2026-10-29T15:00:00Z" },
@@ -37,13 +41,24 @@ test("shows the switch, the question out, the counts and the last check — coun
   expect(screen.getByText("Differences found").nextSibling).toHaveTextContent("9");
 });
 
-test("switching on says the first check is running; off says nothing more will be asked", async () => {
+test("switching on says the first check is running", async () => {
   api.getBoardBitrixCheck.mockResolvedValue(view({ enabled: false }));
   api.setBoardBitrixCheckEnabled.mockResolvedValue(view({ enabled: true }));
   render(<BoardBitrixCard />);
   fireEvent.click(await screen.findByLabelText("Board ↔ Bitrix check on"));
   await waitFor(() => expect(api.setBoardBitrixCheckEnabled).toHaveBeenCalledWith(true));
   expect(await screen.findByText(/first check is running now/)).toBeInTheDocument();
+});
+
+test("switching off immediately shows the server-enforced sync reset", async () => {
+  api.getBoardBitrixCheck.mockResolvedValue(view({ enabled: true, syncMode: "live" }));
+  api.setBoardBitrixCheckEnabled.mockResolvedValue(view({ enabled: false, syncMode: "off" }));
+  render(<BoardBitrixCard />);
+  expect(await screen.findByLabelText("Board Bitrix sync mode")).toHaveValue("live");
+  fireEvent.click(screen.getByLabelText("Board ↔ Bitrix check on"));
+  await waitFor(() => expect(api.setBoardBitrixCheckEnabled).toHaveBeenCalledWith(false));
+  expect(screen.getByLabelText("Board Bitrix sync mode")).toHaveValue("off");
+  expect(screen.getByText(/sync mode was reset to Off/)).toBeInTheDocument();
 });
 
 test("check now reports the outcome, and is disabled while the check is off", async () => {
@@ -57,6 +72,27 @@ test("check now reports the outcome, and is disabled while the check is off", as
   render(<BoardBitrixCard />);
   await screen.findByText("Check is OFF");
   expect(screen.getAllByRole("button", { name: "Check now" }).at(-1)).toBeDisabled();
+});
+
+test("dry run saves without confirmation; live requires confirmation", async () => {
+  api.getBoardBitrixCheck.mockResolvedValue(view());
+  api.setBoardBitrixSync.mockResolvedValue(view({ syncMode: "dry_run" }));
+  render(<BoardBitrixCard />);
+  fireEvent.change(await screen.findByLabelText("Board Bitrix sync mode"), { target: { value: "dry_run" } });
+  fireEvent.click(screen.getByRole("button", { name: "Save mode" }));
+  await waitFor(() => expect(api.setBoardBitrixSync).toHaveBeenCalledWith({
+    syncMode: "dry_run", maxUpdatesPerPass: 10, confirmLive: false,
+  }));
+  expect(await screen.findByText(/Dry run enabled/)).toBeInTheDocument();
+
+  const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+  api.setBoardBitrixSync.mockResolvedValue(view({ syncMode: "live" }));
+  fireEvent.change(screen.getByLabelText("Board Bitrix sync mode"), { target: { value: "live" } });
+  fireEvent.click(screen.getByRole("button", { name: "Save mode" }));
+  await waitFor(() => expect(api.setBoardBitrixSync).toHaveBeenLastCalledWith({
+    syncMode: "live", maxUpdatesPerPass: 10, confirmLive: true,
+  }));
+  expect(confirm).toHaveBeenCalledTimes(1);
 });
 
 test("a failed read shows the failure and a retry, never a switch drawn from defaults", async () => {
