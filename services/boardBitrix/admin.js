@@ -77,6 +77,9 @@ async function getView({ deps = defaultDeps() } = {}) {
       confidence: settings.schemaConfidence,
       checkedAt: settings.schemaCheckedAt,
       writeSafe: ['catalog_exact', 'ai_validated'].includes(settings.schemaSource),
+      problem: settings.schemaSource === 'static_fallback'
+        && typeof settings.schemaMapping?.problem === 'string'
+        ? settings.schemaMapping.problem.replace(/\s+/g, ' ').trim().slice(0, 240) : null,
     },
     recentActions,
     updatedAt: settings.updatedAt,

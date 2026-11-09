@@ -174,6 +174,11 @@ export default function BoardBitrixCard() {
         <Row label="Schema source" value={view.schema?.writeSafe
           ? `${view.schema.source}${view.schema.confidence != null ? ` (${view.schema.confidence}%)` : ""}`
           : "not validated for writes"} />
+        {view.schema?.problem && (
+          <div role="status" style={{ fontSize: 12, color: "var(--warning)", marginTop: 5 }}>
+            Writes are blocked: {view.schema.problem}
+          </div>
+        )}
       </div>
 
       <Row label="Question out now" value={view.current ? `${view.current.label} (since ${new Date(view.current.askedAt).toLocaleString()})` : "none"} />

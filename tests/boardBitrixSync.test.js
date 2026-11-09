@@ -109,6 +109,8 @@ test('renamed labels may be mapped by AI, but only to ids from the live catalogu
   assert.equal(refused.writeSafe, false);
   assert.equal(refused.source, 'static_fallback');
   assert.match(refused.problem, /stage was not returned/);
+  assert.equal(bad.recorded.at(-1).source, 'static_fallback');
+  assert.match(bad.recorded.at(-1).mapping.problem, /stage was not returned/);
 });
 
 test('an incomplete or low-confidence discovery falls back to reads and cannot be live', async () => {
@@ -120,6 +122,9 @@ test('an incomplete or low-confidence discovery falls back to reads and cannot b
   assert.equal(out.writeSafe, false);
   assert.equal(out.categoryId, STATIC_SCHEMA.categoryId);
   assert.equal(complete(out), true, 'the static map remains usable for the old read-only check');
+  assert.equal(w.recorded.length, 1);
+  assert.equal(w.recorded[0].source, 'static_fallback');
+  assert.match(w.recorded[0].mapping.problem, /ambiguous/);
 });
 
 test('the mapping validator rejects ids and duplicate role stages a model invented', () => {

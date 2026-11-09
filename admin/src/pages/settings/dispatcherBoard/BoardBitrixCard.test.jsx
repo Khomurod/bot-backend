@@ -41,6 +41,20 @@ test("shows the switch, the question out, the counts and the last check — coun
   expect(screen.getByText("Differences found").nextSibling).toHaveTextContent("9");
 });
 
+test("shows why a fallback schema blocks writes", async () => {
+  api.getBoardBitrixCheck.mockResolvedValue(view({
+    schema: {
+      source: "static_fallback", confidence: null, checkedAt: "2026-11-09T20:00:00Z",
+      writeSafe: false, problem: "Bitrix crm.type.list: access denied for this webhook",
+    },
+  }));
+  render(<BoardBitrixCard />);
+  expect(await screen.findByRole("status")).toHaveTextContent(
+    "Writes are blocked: Bitrix crm.type.list: access denied for this webhook"
+  );
+  expect(screen.getByText("Schema source").nextSibling).toHaveTextContent("not validated for writes");
+});
+
 test("switching on says the first check is running", async () => {
   api.getBoardBitrixCheck.mockResolvedValue(view({ enabled: false }));
   api.setBoardBitrixCheckEnabled.mockResolvedValue(view({ enabled: true }));

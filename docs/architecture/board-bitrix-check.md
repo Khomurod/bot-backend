@@ -37,7 +37,9 @@ opaque ids only** — never driver/deal data — but every selected id must be o
 returned by the same live Bitrix read and confidence must be at least 85. AI
 never selects a driver and is never on the write path. An ambiguous catalogue
 falls back to the 29 October snapshot for comparison only and blocks both dry
-run and live writes.
+run and live writes. The settings card records the time and the catalogue-only
+reason for that fallback; the reason is kept off the shared public health
+summary and never contains driver, deal, truck or Board data.
 
 ## Where Bitrix keeps drivers and trucks
 

@@ -37,9 +37,29 @@ function fallback(problem) {
     stageByRole: { ...STATIC_SCHEMA.stageByRole },
     fleetByDriverType: { ...STATIC_SCHEMA.fleetByDriverType },
     activeTruckStageIds: [...STATIC_SCHEMA.activeTruckStageIds],
-    problem: String(problem || 'the live Bitrix schema could not be discovered').slice(0, 240),
+    problem: String(problem || 'the live Bitrix schema could not be discovered')
+      .replace(/\s+/g, ' ').trim().slice(0, 240),
     fingerprint: fingerprint(STATIC_SCHEMA),
   };
+}
+
+/**
+ * Remember a failed catalogue check on the settings row, not in the shared
+ * background-run summary (which is also read by the public health endpoint).
+ * The stored mapping is the read-only fallback plus a catalogue-only reason;
+ * it contains no driver, deal, truck or Board data.
+ */
+async function recordFallback(problem, deps) {
+  const out = fallback(problem);
+  if (typeof deps.recordSchema === 'function') {
+    await Promise.resolve(deps.recordSchema({
+      mapping: out,
+      fingerprint: out.fingerprint,
+      source: out.source,
+      confidence: null,
+    })).catch(() => {});
+  }
+  return out;
 }
 
 function structureFromAi(answer, categories, types) {
@@ -82,14 +102,16 @@ async function discoverBitrixSchema(deps = defaultDeps()) {
     ]);
     const categories = rows(rawCategories, 'categories');
     const types = rows(rawTypes, 'types');
-    if (!categories.length || !types.length) return fallback('Bitrix returned no pipeline or smart-process catalogue');
+    if (!categories.length || !types.length) {
+      return recordFallback('Bitrix returned no pipeline or smart-process catalogue', deps);
+    }
 
     let structure = resolveStructure({ categories, types });
     let aiUsed = false;
     let confidence = 100;
     if (!structure.categoryId || !structure.truckEntityTypeId) {
       const picked = structureFromAi(await deps.askStructure({ categories, types }), categories, types);
-      if (!picked) return fallback('the driver pipeline or Trucks process is ambiguous');
+      if (!picked) return recordFallback('the driver pipeline or Trucks process is ambiguous', deps);
       structure = picked;
       confidence = picked.confidence;
       aiUsed = true;
@@ -153,7 +175,7 @@ async function discoverBitrixSchema(deps = defaultDeps()) {
     }
 
     const valid = validateMapping(mapping, catalog);
-    if (!valid.ok) return fallback(valid.reason);
+    if (!valid.ok) return recordFallback(valid.reason, deps);
     const out = {
       ...mapping,
       source: aiUsed ? 'ai_validated' : 'catalog_exact',
@@ -169,11 +191,11 @@ async function discoverBitrixSchema(deps = defaultDeps()) {
     })).catch(() => {});
     return out;
   } catch (err) {
-    return fallback(err?.message || err);
+    return recordFallback(err?.message || err, deps);
   }
 }
 
 module.exports = {
-  MIN_AI_CONFIDENCE, rows, fallback, structureFromAi, mergeAiSemantics,
+  MIN_AI_CONFIDENCE, rows, fallback, recordFallback, structureFromAi, mergeAiSemantics,
   discoverBitrixSchema, defaultDeps,
 };

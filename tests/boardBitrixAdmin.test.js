@@ -54,6 +54,21 @@ test('the view is counts by kind, the question out by kind and time, the last pa
   assert.ok(!JSON.stringify(view).includes('SECRET NAME') && !JSON.stringify(view).includes('310'));
 });
 
+test('a schema fallback exposes its catalogue-only reason on the admin view', async () => {
+  const { deps: d } = deps({
+    store: {
+      getSettings: async () => ({
+        enabled: true, syncMode: 'off', maxUpdatesPerPass: 10,
+        schemaSource: 'static_fallback', schemaCheckedAt: '2026-11-09T20:00:00Z',
+        schemaMapping: { problem: 'Bitrix crm.type.list: access denied\nfor this webhook' },
+      }),
+    },
+  });
+  const view = await admin.getView({ deps: d });
+  assert.equal(view.schema.writeSafe, false);
+  assert.equal(view.schema.problem, 'Bitrix crm.type.list: access denied for this webhook');
+});
+
 test('switching ON records who and runs a pass at once; OFF runs nothing and puts the question out back in line; a non-boolean is a 400', async () => {
   const { deps: d, calls } = deps();
   await admin.setEnabled(true, { by: 'owner', deps: d });
