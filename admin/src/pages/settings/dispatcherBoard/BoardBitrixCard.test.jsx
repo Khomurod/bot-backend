@@ -161,3 +161,23 @@ test("a failed read shows the failure and a retry, never a switch drawn from def
   fireEvent.click(screen.getByRole("button", { name: "Try again" }));
   expect(await screen.findByText("Check is ON")).toBeInTheDocument();
 });
+
+test("shows which previously verified truck stages Bitrix still lists, with their counts", async () => {
+  const candidate = {
+    state: "invalid",
+    problem: "the schema is missing active-truck stages; Bitrix no longer lists the previously verified truck stage(s) DT1040_17:UC_SO73F7",
+    evidence: { historicalStages: [
+      { code: "DT1040_17:UC_90RJVZ", label: "On the road", present: true, itemCount: 104 },
+      { code: "DT1040_17:UC_UNYJLF", label: "Drivers at shops", present: true, itemCount: 0 },
+      { code: "DT1040_17:UC_SO73F7", label: null, present: false, itemCount: 0 },
+    ] },
+  };
+  api.getBoardBitrixCheck.mockResolvedValue(view({
+    schema: { source: "static_fallback", writeSafe: false, problem: candidate.problem, candidate },
+  }));
+  render(<BoardBitrixCard />);
+  const warning = await screen.findByRole("status");
+  expect(warning).toHaveTextContent(
+    "Previously verified active truck stages: On the road (104) · Drivers at shops (0) · DT1040_17:UC_SO73F7 — not in Bitrix"
+  );
+});

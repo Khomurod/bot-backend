@@ -6,7 +6,7 @@
  * answer is treated exactly like no answer.
  */
 const { runCapability, AiUnavailableError } = require('../ai/router');
-const { FLEET_ALIASES, words } = require('../../lib/boardBitrix/schema');
+const { FLEET_ALIASES, words, labelOf } = require('../../lib/boardBitrix/schema');
 
 const CAPABILITY = 'board_bitrix_schema_reading';
 const MAX_FIELD_ROWS = 500;
@@ -41,10 +41,8 @@ function clipRows(rows, idNames, max = 100) {
     for (const name of idNames) {
       if (row?.[name] != null) { id = String(row[name]); break; }
     }
-    return {
-      id,
-      label: firstText(row, ['name', 'NAME', 'title', 'TITLE', 'formLabel', 'listLabel']),
-    };
+    // The words a person reads — a custom field's `title` is only its code.
+    return { id, label: labelOf(row).slice(0, 120) };
   }).filter((row) => row.id);
 }
 

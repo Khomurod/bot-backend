@@ -10,6 +10,7 @@ const { decideCandidate } = require('../lib/boardBitrix/schemaCandidate');
 const { askSemantics, fieldPromptRows, semanticsValidator } = require('../services/boardBitrix/schemaAi');
 const { discoverBitrixSchema } = require('../services/boardBitrix/schemaDiscovery');
 const { planStageUpdates, runStageSync } = require('../services/boardBitrix/stageSync');
+const { bitrixStatusRows } = require('./helpers/bitrixStatusRows');
 
 const NOW = Date.parse('2026-11-09T18:00:00Z');
 const ago = (minutes) => new Date(NOW - minutes * 60000).toISOString();
@@ -30,10 +31,10 @@ function catalog({ renamed = false } = {}) {
       },
     },
     dealStages: [
-      { ID: 'D9:H', NAME: renamed ? 'Residence' : 'HOME' },
-      { ID: 'D9:V', NAME: renamed ? 'Time Away' : 'VACATION' },
-      { ID: 'D9:S', NAME: renamed ? 'Repair Bay' : 'SHOP' },
-      { ID: 'D9:W', NAME: renamed ? 'Rolling' : 'WORKING' },
+      { ID: 'C9:H', NAME: renamed ? 'Residence' : 'HOME' },
+      { ID: 'C9:V', NAME: renamed ? 'Time Away' : 'VACATION' },
+      { ID: 'C9:S', NAME: renamed ? 'Repair Bay' : 'SHOP' },
+      { ID: 'C9:W', NAME: renamed ? 'Rolling' : 'WORKING' },
     ],
     truckCategories: [{ id: 7, name: renamed ? 'Primary Flow' : 'Trucks' }],
     truckStages: [{ ID: 'DT2000_7:ROAD', NAME: renamed ? 'Rolling Asset' : 'On the road' }],
@@ -58,7 +59,8 @@ function discoveryDeps(c, over = {}) {
           return { categories: params.entityTypeId === 2 ? c.categories : c.truckCategories };
         }
         if (method === 'crm.status.list') {
-          return params.filter.ENTITY_ID.startsWith('DEAL_STAGE_') ? c.dealStages : c.truckStages;
+          const entity = params.filter.ENTITY_ID;
+          return bitrixStatusRows(entity.startsWith('DEAL_STAGE_') ? c.dealStages : c.truckStages, entity);
         }
         throw new Error(`unexpected ${method}`);
       },
@@ -87,7 +89,7 @@ test('exact live Bitrix labels produce a write-safe dynamic schema without AI', 
   assert.equal(out.source, 'catalog_exact');
   assert.equal(out.categoryId, 9);
   assert.equal(out.truckEntityTypeId, 2000);
-  assert.deepEqual(out.stageByRole, { HOME: 'D9:H', VACATION: 'D9:V', SHOP: 'D9:S', WORKING: 'D9:W' });
+  assert.deepEqual(out.stageByRole, { HOME: 'C9:H', VACATION: 'C9:V', SHOP: 'C9:S', WORKING: 'C9:W' });
   assert.deepEqual(out.fleetByDriverType, {
     501: 'company', 502: 'owner_operator', 503: 'lease',
   });
@@ -116,7 +118,7 @@ test('renamed labels may be mapped by AI, but only to ids from the live catalogu
   const aiSemantics = {
     understood: true,
     deal_fields: { truck: 'UF_NEW_TRUCK', driver_type: 'UF_NEW_TYPE' },
-    stages: { HOME: 'D9:H', VACATION: 'D9:V', SHOP: 'D9:S', WORKING: 'D9:W' },
+    stages: { HOME: 'C9:H', VACATION: 'C9:V', SHOP: 'C9:S', WORKING: 'C9:W' },
     truck_category_id: '7', active_truck_stage_ids: ['DT2000_7:ROAD'], confidence: 91,
   };
   const w = discoveryDeps(c, {
@@ -130,7 +132,7 @@ test('renamed labels may be mapped by AI, but only to ids from the live catalogu
 
   const bad = discoveryDeps(c, {
     askStructure: async () => aiStructure,
-    askSemantics: async () => ({ ...aiSemantics, stages: { ...aiSemantics.stages, WORKING: 'MADE_UP' } }),
+    askSemantics: async () => ({ ...aiSemantics, stages: { ...aiSemantics.stages, WORKING: 'C9:MADE_UP' } }),
   });
   const refused = await discoverBitrixSchema(bad.deps);
   assert.equal(refused.writeSafe, false);
@@ -148,7 +150,7 @@ test('AI routing rejects an overconfident empty truck-stage answer and can ask a
   const good = {
     understood: true, confidence: 95,
     deal_fields: { truck: 'UF_NEW_TRUCK', driver_type: 'UF_NEW_TYPE' },
-    stages: { HOME: 'D9:H', VACATION: 'D9:V', SHOP: 'D9:S', WORKING: 'D9:W' },
+    stages: { HOME: 'C9:H', VACATION: 'C9:V', SHOP: 'C9:S', WORKING: 'C9:W' },
     truck_category_id: '7', active_truck_stage_ids: ['DT2000_7:ROAD'],
   };
   const empty = { ...good, active_truck_stage_ids: ['DT2000_7:EMPTY'], confidence: 99 };
@@ -201,7 +203,7 @@ test('AI sees every bounded deal field plus safe relation and enum schema metada
   const good = {
     understood: true, confidence: 96,
     deal_fields: { truck: 'UF_RENAMED_TRUCK', driver_type: 'UF_RENAMED_TYPE' },
-    stages: { HOME: 'D9:H', VACATION: 'D9:V', SHOP: 'D9:S', WORKING: 'D9:W' },
+    stages: { HOME: 'C9:H', VACATION: 'C9:V', SHOP: 'C9:S', WORKING: 'C9:W' },
     truck_category_id: '7', active_truck_stage_ids: ['DT2000_7:ROAD'],
   };
   await askSemantics({
@@ -272,7 +274,7 @@ test('an invalid AI selection records only safe populated-stage diagnostics', as
     askSemantics: async () => ({
       understood: true, confidence: 99,
       deal_fields: { truck: 'UF_NEW_TRUCK', driver_type: 'UF_NEW_TYPE' },
-      stages: { HOME: 'D9:H', VACATION: 'D9:V', SHOP: 'D9:S', WORKING: 'D9:W' },
+      stages: { HOME: 'C9:H', VACATION: 'C9:V', SHOP: 'C9:S', WORKING: 'C9:W' },
       truck_category_id: '7', active_truck_stage_ids: ['DT2000_7:EMPTY'],
     }),
   });
@@ -310,7 +312,7 @@ test('the mapping validator rejects ids and duplicate role stages a model invent
   const mapping = {
     categoryId: 9, truckEntityTypeId: 2000, truckCategoryId: 7,
     dealFields: { truck: 'UF_NEW_TRUCK', driverType: 'UF_NEW_TYPE' },
-    stageByRole: { HOME: 'D9:H', VACATION: 'D9:V', SHOP: 'D9:S', WORKING: 'D9:W' },
+    stageByRole: { HOME: 'C9:H', VACATION: 'C9:V', SHOP: 'C9:S', WORKING: 'C9:W' },
     activeTruckStageIds: ['DT2000_7:ROAD'],
   };
   assert.deepEqual(validateMapping(mapping, c), { ok: true });
@@ -318,7 +320,7 @@ test('the mapping validator rejects ids and duplicate role stages a model invent
   assert.match(validateMapping({ ...mapping, dealFields: {
     truck: 'UF_NEW_TRUCK', driverType: 'UF_NEW_TRUCK',
   } }, c).reason, /two different Bitrix fields/);
-  assert.match(validateMapping({ ...mapping, stageByRole: { ...mapping.stageByRole, WORKING: 'D9:H' } }, c).reason, /different stages/);
+  assert.match(validateMapping({ ...mapping, stageByRole: { ...mapping.stageByRole, WORKING: 'C9:H' } }, c).reason, /different stages/);
   const wrongCategory = { ...c, truckStages: c.truckStages.map((row) => ({ ...row, __categoryId: 8 })) };
   assert.match(validateMapping(mapping, wrongCategory).reason, /another Trucks category/);
 });
@@ -331,16 +333,16 @@ function mismatch(over = {}) {
       name: 'ALAN BROWN', fleetType: 'owner_operator', truck: '001',
     },
     deal: {
-      id: 321, title: 'ALAN BROWN', stageId: 'D9:W',
+      id: 321, title: 'ALAN BROWN', stageId: 'C9:W',
       fleetType: 'owner_operator', truckNumber: '001',
     },
-    expectedStageId: 'D9:H', ...over,
+    expectedStageId: 'C9:H', ...over,
   };
 }
 
 const schema = {
   categoryId: 9,
-  stageByRole: { HOME: 'D9:H', VACATION: 'D9:V', SHOP: 'D9:S', WORKING: 'D9:W' },
+  stageByRole: { HOME: 'C9:H', VACATION: 'C9:V', SHOP: 'C9:S', WORKING: 'C9:W' },
   fingerprint: 'abc', writeSafe: true,
 };
 
@@ -398,7 +400,7 @@ test('live sync claims, re-reads, writes only STAGE_ID, verifies and resolves th
         calls.push({ method, params });
         if (method === 'crm.deal.get') {
           reads += 1;
-          return { ID: '321', CATEGORY_ID: '9', CLOSED: 'N', STAGE_ID: reads === 1 ? 'D9:W' : 'D9:H' };
+          return { ID: '321', CATEGORY_ID: '9', CLOSED: 'N', STAGE_ID: reads === 1 ? 'C9:W' : 'C9:H' };
         }
         if (method === 'crm.deal.update') return true;
         throw new Error('unexpected call');
@@ -409,7 +411,7 @@ test('live sync claims, re-reads, writes only STAGE_ID, verifies and resolves th
   assert.deepEqual(out.resolvedKeys, ['status_differs:deal:321']);
   assert.deepEqual(calls[1], {
     method: 'crm.deal.update',
-    params: { id: 321, fields: { STAGE_ID: 'D9:H' }, params: { REGISTER_SONET_EVENT: 'Y' } },
+    params: { id: 321, fields: { STAGE_ID: 'C9:H' }, params: { REGISTER_SONET_EVENT: 'Y' } },
   });
   assert.deepEqual(finished, [[7, 'applied']]);
 });
@@ -426,7 +428,7 @@ test('live sync never overwrites a deal moved after comparison, and fallback sch
       confirmBoardStatus: async () => true,
       call: async (method) => {
         if (method === 'crm.deal.update') updates += 1;
-        return { CATEGORY_ID: '9', CLOSED: 'N', STAGE_ID: 'D9:S' };
+        return { CATEGORY_ID: '9', CLOSED: 'N', STAGE_ID: 'C9:S' };
       },
     },
   });
@@ -452,7 +454,7 @@ test('live sync fails closed when the Board event changed after comparison', asy
       confirmBoardStatus: async () => false,
       call: async (method) => {
         if (method === 'crm.deal.update') updates += 1;
-        return { CATEGORY_ID: '9', CLOSED: 'N', STAGE_ID: 'D9:W' };
+        return { CATEGORY_ID: '9', CLOSED: 'N', STAGE_ID: 'C9:W' };
       },
     },
   });
@@ -474,7 +476,7 @@ test('live sync re-reads its kill switch immediately before the Bitrix mutation'
       confirmBoardStatus: async () => true,
       call: async (method) => {
         if (method === 'crm.deal.update') updates += 1;
-        return { CATEGORY_ID: '9', CLOSED: 'N', STAGE_ID: 'D9:W' };
+        return { CATEGORY_ID: '9', CLOSED: 'N', STAGE_ID: 'C9:W' };
       },
     },
   });

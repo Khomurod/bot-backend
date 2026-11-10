@@ -66,6 +66,41 @@ fingerprint remain valid. If an applicable field/category/stage is added,
 removed or renamed, the active mapping is not reused and current-catalogue AI
 discovery runs.
 
+### A stage is its STATUS_ID — never the row's ID (10 November 2026)
+
+`crm.status.list` answers every stage with two identifiers: `ID`, the row's
+number in Bitrix's status table (`"703"`), and `STATUS_ID`, the stage itself —
+what a deal carries in `STAGE_ID` and a truck item in `stageId`
+(`C3:UC_XZ955I`, `DT1040_17:UC_90RJVZ`). The schema code read `ID` as the
+stage from 9 November, and its tests agreed because their fixtures put the
+code in `ID`. In production the catalogue ("703") and the truck counts
+(`DT1040_17:…`) never met:
+
+- the historical bootstrap could not find stage `DT1040_17:UC_90RJVZ` (104
+  trucks) in the catalogue, so the schema stayed blocked with "missing Trucks
+  pipeline, active-truck stages";
+- the model was shown every truck stage with 0 trucks, so every answer was
+  refused;
+- the 9 November `ai_validated` schema saved driver stages as `"711"`, `"703"`…
+  and truck stages as `"1087"`…; the one comparison it ran filed 104 false
+  "status differs" and 94 false "truck inactive" questions, and a live sync
+  would have written `STAGE_ID: "703"` into deals. None was written
+  (`board_bitrix_stage_sync_actions` was empty; sync was `off`).
+
+So (`lib/boardBitrix/stageCodes.js`): every stage row is turned into
+`{ id: STATUS_ID, name, sort, semantics }` the moment it is read, and a row
+without `STATUS_ID` makes the read incomplete — the pass stays blocked. A
+mapping whose driver stage is not `C{pipeline}:…` or whose truck stage is not
+`DT{process}_{category}:…` — a row number above all — never validates. A
+Trucks process with exactly one pipeline uses it whatever it is called
+("Default pipeline"); two or more with no matching label stay unresolved. A
+historical-bootstrap refusal says which check failed ("Bitrix no longer lists
+the previously verified truck stage(s) …"), and the settings card lists the
+three previously verified stages: their live names, whether Bitrix still lists
+them, and their truck counts. A custom field's `title` is only its code, so its
+label is `formLabel` / `listLabel`. Every discovery test answers
+`crm.status.list` in the real shape (`tests/helpers/bitrixStatusRows.js`).
+
 ## Where Bitrix keeps drivers and trucks
 
 Read from the portal on 29 October 2026 by the owner's Bitrix agent. These are
@@ -266,7 +301,7 @@ Board status Wenze does not know is never compared.
 | `database/migrations/0088_board_bitrix_check.sql` | `board_bitrix_settings` (the switch) and `board_bitrix_discrepancies` (the queue) |
 | `database/migrations/0098_board_bitrix_status_sync.sql` | sync mode, last-known-good schema record and the idempotent `board_bitrix_stage_sync_actions` audit |
 | `database/migrations/0099_board_bitrix_schema_candidates.sql` | catalogue/count-only candidate or invalid discovery; never driver/deal/Board data |
-| `lib/boardBitrix/` | pure: `vocabulary` (read-only fallback), `schema` (live-catalogue validation), `schemaEvidence` (aggregate proof), `schemaCandidate` (two-pass/approval rule), `names`, `trucks`, `compare`, `wording`, `replyIntent` |
+| `lib/boardBitrix/` | pure: `vocabulary` (read-only fallback), `stageCodes` (a stage is its STATUS_ID), `schema` (live-catalogue validation), `schemaEvidence` (aggregate proof), `schemaCandidate` (two-pass/approval rule), `names`, `trucks`, `compare`, `wording`, `replyIntent` |
 | `services/boardBitrix/bitrixRead.js` | the two list reads, complete or failed |
 | `services/boardBitrix/schemaDiscovery.js`, `schemaAi.js` | exact live schema discovery; bounded AI interpretation of catalogue labels/opaque ids, safe schema metadata and aggregate counts only |
 | `services/boardBitrix/stageSync.js` | dry-run/live status plan, strict identity guard, fresh Board/deal checks, the only `STAGE_ID` write |
@@ -282,6 +317,7 @@ Board status Wenze does not know is never compared.
 
 ```
 node --test tests/boardBitrixNames.test.js tests/boardBitrixCompare.test.js tests/boardBitrixPass.test.js tests/boardBitrixSync.test.js tests/boardBitrixReply.test.js tests/boardBitrixAdmin.test.js
+node --test tests/boardBitrixSchemaBootstrap.test.js tests/boardBitrixStageCodes.test.js   # production-shaped catalogue
 TEST_DATABASE_URL=… node --test tests/boardBitrixPg.test.js
 npm test --prefix admin -- --run src/pages/settings/dispatcherBoard/BoardBitrixCard.test.jsx
 ```

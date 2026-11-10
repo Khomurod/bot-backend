@@ -4,6 +4,11 @@
  * Discover the current Bitrix schema from catalogue labels plus aggregate
  * truck counts. A model may propose ids; catalogue/evidence checks and a
  * durable two-pass candidate decide whether the mapping can become active.
+ *
+ * Every stage row is read as its STATUS_ID the moment it arrives
+ * (lib/boardBitrix/stageCodes.js): `crm.status.list`'s own `ID` is a row
+ * number, and reading it as the stage kept the catalogue and the truck counts
+ * apart until November 2026.
  */
 const { STATIC_SCHEMA } = require('../../lib/boardBitrix/vocabulary');
 const {
@@ -14,6 +19,7 @@ const {
   buildTruckEvidence, countSelected, assessEvidence, summarizeEvidence, describeMapping,
 } = require('../../lib/boardBitrix/schemaEvidence');
 const { askStructure, askSemantics } = require('./schemaAi');
+const { normalizeStageRows } = require('../../lib/boardBitrix/stageCodes');
 
 const MIN_AI_CONFIDENCE = 85;
 const PAGE_SIZE = 50;
@@ -37,6 +43,18 @@ function defaultDeps() {
 function rows(result, key) {
   if (Array.isArray(result)) return result;
   return Array.isArray(result?.[key]) ? result[key] : [];
+}
+
+/** Stage rows in their one shape; a row without STATUS_ID makes the whole read incomplete. */
+function stageRowsOrThrow(result, options) {
+  const read = normalizeStageRows(rows(result, 'statuses'), options);
+  if (read.problem) throw new Error(read.problem);
+  return read.rows;
+}
+
+/** The consequence first, then what caused it — "missing X; Bitrix no longer lists Y". */
+function withCause(reason, cause) {
+  return cause ? `${reason}; ${cause}` : reason;
 }
 
 function cleanProblem(problem) {
@@ -125,7 +143,7 @@ async function readTruckStages(call, entityTypeId, categories) {
       filter: { ENTITY_ID: `DYNAMIC_${entityTypeId}_STAGE_${categoryId}` },
       order: { SORT: 'ASC' },
     });
-    return rows(result, 'statuses').map((stage) => ({ ...stage, __categoryId: categoryId }));
+    return stageRowsOrThrow(result, { categoryId });
   }));
   return pages.flat();
 }
@@ -176,7 +194,7 @@ async function discoverBitrixSchema(deps = defaultDeps()) {
       }),
       deps.call('crm.category.list', { entityTypeId: structure.truckEntityTypeId }),
     ]);
-    const dealStages = rows(rawDealStages, 'statuses');
+    const dealStages = stageRowsOrThrow(rawDealStages);
     const truckCategories = rows(rawTruckCategories, 'categories');
     evidence = await readTruckEvidence(deps.call, structure.truckEntityTypeId);
     const truckStages = await readTruckStages(deps.call, structure.truckEntityTypeId, truckCategories);
@@ -216,6 +234,7 @@ async function discoverBitrixSchema(deps = defaultDeps()) {
       evidenceCheck = complete(mapping) ? assessEvidence(mapping, evidence) : { ok: false };
     }
 
+    let historicalReason = null;
     if (!complete(mapping) || !evidenceCheck.ok) {
       const historical = resolveHistoricalTruck(mapping, catalog, evidence);
       if (historical.matched) {
@@ -223,12 +242,14 @@ async function discoverBitrixSchema(deps = defaultDeps()) {
         sourceOverride = 'catalog_historical';
         historicalUsed = true;
         evidenceCheck = assessEvidence(mapping, evidence);
+      } else {
+        historicalReason = historical.reason || null;
       }
     }
 
     const valid = validateMapping(mapping, catalog);
-    if (!valid.ok) return recordFallback(valid.reason, deps, diagnostic);
-    if (!evidenceCheck.ok) return recordFallback(evidenceCheck.reason, deps, diagnostic);
+    if (!valid.ok) return recordFallback(withCause(valid.reason, historicalReason), deps, diagnostic);
+    if (!evidenceCheck.ok) return recordFallback(withCause(evidenceCheck.reason, historicalReason), deps, diagnostic);
 
     const activeValid = activeStateValid(state.active, catalog, evidence);
     const activeProven = activeStateProven(state.active);
@@ -274,7 +295,7 @@ async function discoverBitrixSchema(deps = defaultDeps()) {
 
 module.exports = {
   MIN_AI_CONFIDENCE, PAGE_SIZE, MAX_ITEM_PAGES, MAX_TRUCK_CATEGORIES,
-  rows, fallback, recordFallback, structureFromAi, mergeAiSemantics,
+  rows, stageRowsOrThrow, withCause, fallback, recordFallback, structureFromAi, mergeAiSemantics,
   readTruckEvidence, readTruckStages, activeStateValid, activeStateProven,
   discoverBitrixSchema, defaultDeps,
 };

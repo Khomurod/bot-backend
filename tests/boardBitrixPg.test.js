@@ -37,7 +37,7 @@ test('the switch is OFF after the migration and remembers who turned it on', { s
 test('status sync settings and the validated schema are stored, but live remains an explicit choice', { skip: skipWithoutPg() }, async (t) => {
   const { store } = await setup(t);
   await store.recordSchema({
-    mapping: { categoryId: 9, stageByRole: { HOME: 'D9:H' } },
+    mapping: { categoryId: 9, stageByRole: { HOME: 'C9:H' } },
     fingerprint: 'schema-9', source: 'catalog_exact', confidence: 100,
   });
   let settings = await store.setSyncSettings({ syncMode: 'dry_run', maxUpdatesPerPass: 4 }, 'owner');
@@ -102,7 +102,7 @@ test('stage actions are idempotent across processes, and an applied transition i
   const { store } = await setup(t);
   const action = {
     actionKey: 'stage:test:one', dealId: 321, boardStatus: 'HOME',
-    beforeStageId: 'D9:W', targetStageId: 'D9:H', schemaFingerprint: 'schema-9',
+    beforeStageId: 'C9:W', targetStageId: 'C9:H', schemaFingerprint: 'schema-9',
   };
   assert.equal(await store.recordPlannedStageSync({ ...action, actionKey: 'stage:test:dry' }), true);
   assert.equal(await store.recordPlannedStageSync({ ...action, actionKey: 'stage:test:dry' }), false);
