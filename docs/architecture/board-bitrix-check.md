@@ -92,7 +92,12 @@ driver's fleet plus that number.
   confidence ≥85. `lib/boardBitrix/schema.js` independently validates the
   pipeline, smart process, fields, stage category and four different
   HOME/VACATION/SHOP/WORKING stages. `schemaEvidence.js` independently proves
-  that the chosen category and active stages contain current items. AI is
+  that the chosen category and active stages contain current items. That proof
+  is also the validator for **each model attempt**: an overconfident answer
+  selecting empty or cross-category stages is rejected inside the AI router so
+  the next eligible model is asked; it is not accepted and rejected only after
+  routing has stopped. If none answers validly, the pass stays blocked and the
+  settings card shows populated catalogue stage labels/counts only. AI is
   absent from `stageSync.js` and cannot call a mutation.
 - **A newly interpreted schema cannot affect the first pass.** It lives in
   `board_bitrix_schema_candidates`, must have the same fingerprint on two

@@ -171,6 +171,40 @@ test('"unclear" escalates whatever the confidence; a reply the model was sure of
   assert.equal(calls.length, 2);
 });
 
+test('a schema model saying it did not understand is escalated even at 99%', async () => {
+  const { router, calls } = loadRouter({
+    providers: [groq(), claude()],
+    respond: byAdapter({
+      openai_chat: { understood: false, confidence: 99 },
+      anthropic: { understood: true, confidence: 91 },
+    }),
+  });
+  const out = await router.runCapability({
+    ...decision, capability: 'board_bitrix_schema_reading',
+  });
+  assert.equal(out.stage, 'claude');
+  assert.equal(out.parsed.understood, true);
+  assert.equal(calls.length, 2);
+});
+
+test('a schema answer rejected by catalogue evidence advances to the next model', async () => {
+  const { router, calls } = loadRouter({
+    providers: [groq({ modelChain: ['empty-stage', 'populated-stage'] })],
+    respond: (args) => json({
+      understood: true, confidence: 99,
+      active_items: args.model === 'populated-stage' ? 104 : 0,
+    }),
+  });
+  const out = await router.runCapability({
+    ...decision,
+    capability: 'board_bitrix_schema_reading',
+    validate: (_text, parsed) => (parsed.active_items > 0
+      ? true : { message: 'selected active truck stages have zero current items' }),
+  });
+  assert.equal(out.parsed.active_items, 104);
+  assert.deepEqual(calls.map((call) => call.model), ['empty-stage', 'populated-stage']);
+});
+
 test('the free model is asked for a confidence once — and not when the prompt already has one', async () => {
   const { router, calls } = loadRouter({ providers: [groq()], respond: byAdapter({ openai_chat: { confidence: 90 } }) });
   await router.runCapability(decision);

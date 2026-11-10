@@ -41,6 +41,54 @@ function validateBase(_text, parsed) {
   return true;
 }
 
+function ids(rows, names) {
+  return new Set((rows || []).map((row) => {
+    for (const name of names) {
+      if (row?.[name] != null) return String(row[name]);
+    }
+    return null;
+  }).filter(Boolean));
+}
+
+function semanticsValidator({ fields, dealStages, truckCategories, truckStages, evidence = {} }) {
+  const fieldRows = Array.isArray(fields)
+    ? fields : Object.entries(fields || {}).map(([id, row]) => ({ id, ...(row || {}) }));
+  const fieldIds = ids(fieldRows, ['id', 'ID']);
+  const dealStageIds = ids(dealStages, ['id', 'ID']);
+  const categoryIds = ids(truckCategories, ['id', 'ID']);
+  const truckStageIds = ids(truckStages, ['id', 'ID']);
+  const stageCategory = new Map((truckStages || []).map((row) => [
+    String(row.ID ?? row.id), row.__categoryId == null ? null : String(row.__categoryId),
+  ]));
+  return (text, parsed) => {
+    const base = validateBase(text, parsed);
+    if (base !== true || parsed.understood === false) return base;
+    const selectedFields = [parsed.deal_fields?.truck, parsed.deal_fields?.driver_type].map(String);
+    if (!selectedFields.every((id) => fieldIds.has(id))) return { message: 'selected deal field was not listed' };
+    if (new Set(selectedFields).size !== 2) return { message: 'driver roles require two distinct deal fields' };
+    const selectedDealStages = ['HOME', 'VACATION', 'SHOP', 'WORKING']
+      .map((role) => String(parsed.stages?.[role]));
+    if (!selectedDealStages.every((id) => dealStageIds.has(id))) return { message: 'selected driver stage was not listed' };
+    if (new Set(selectedDealStages).size !== 4) return { message: 'driver roles require four distinct stages' };
+    const categoryId = String(parsed.truck_category_id);
+    if (!categoryIds.has(categoryId)) return { message: 'selected truck category was not listed' };
+    if (Number(evidence.categoryCounts?.[categoryId] || 0) < 1) {
+      return { message: 'selected truck category has no current items' };
+    }
+    if (!Array.isArray(parsed.active_truck_stage_ids) || !parsed.active_truck_stage_ids.length) {
+      return { message: 'at least one active truck stage is required' };
+    }
+    const active = [...new Set(parsed.active_truck_stage_ids.map(String))];
+    if (!active.every((id) => truckStageIds.has(id))) return { message: 'selected truck stage was not listed' };
+    if (active.some((id) => stageCategory.get(id) !== categoryId)) {
+      return { message: 'selected truck stage belongs to another category' };
+    }
+    const selectedItems = active.reduce((sum, id) => sum + Number(evidence.stageCounts?.[id] || 0), 0);
+    if (selectedItems < 1) return { message: 'selected active truck stages have zero current items' };
+    return true;
+  };
+}
+
 async function askStructure({ categories, types }, deps = {}) {
   const run = deps.runCapability || runCapability;
   const answer = await run({
@@ -86,6 +134,7 @@ async function askSemantics({
     systemText: SYSTEM,
     userText: JSON.stringify({
       task: 'Map the driver fields and stages. A truck is active in stages meaning on road, at shop, or about to leave.',
+      evidence_rule: 'The selected truck category and active truck stages must be from one category and their item_count total must be greater than zero.',
       deal_fields: clipRows(fieldRows, ['id', 'ID'], 150),
       driver_stages: clipRows(dealStages, ['id', 'ID'], 100),
       truck_categories: categoryRows,
@@ -106,10 +155,13 @@ async function askSemantics({
       },
     }),
     expects: 'json',
-    validate: validateBase,
+    validate: semanticsValidator({ fields, dealStages, truckCategories, truckStages, evidence }),
   });
   if (answer?.uncertain || !answer?.parsed?.understood) return null;
   return answer.parsed;
 }
 
-module.exports = { CAPABILITY, SYSTEM, askStructure, askSemantics, validateBase, AiUnavailableError };
+module.exports = {
+  CAPABILITY, SYSTEM, askStructure, askSemantics,
+  validateBase, semanticsValidator, AiUnavailableError,
+};

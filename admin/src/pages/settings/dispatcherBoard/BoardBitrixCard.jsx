@@ -54,15 +54,22 @@ function LastRun({ run }) {
 
 function SchemaCandidate({ candidate, busy, onApprove }) {
   if (!candidate) return null;
+  const evidence = candidate.evidence || {};
+  const populated = evidence.populatedStages || [];
   if (candidate.state === "invalid") {
     return (
       <div role="status" style={{ fontSize: 12, color: "var(--warning)", marginTop: 5 }}>
-        Writes and comparison are blocked: {candidate.problem || "the live catalogue could not be proven"}
+        <div>Writes and comparison are blocked: {candidate.problem || "the live catalogue could not be proven"}</div>
+        {populated.length > 0 && (
+          <div>
+            Populated Bitrix truck stages: {populated.map((stage) =>
+              `${stage.label}${stage.category ? ` / ${stage.category}` : ""} (${stage.itemCount})`).join(" · ")}
+          </div>
+        )}
       </div>
     );
   }
   const labels = candidate.labels || {};
-  const evidence = candidate.evidence || {};
   return (
     <div role="status" style={{ fontSize: 12, color: "var(--warning)", marginTop: 7 }}>
       <div>

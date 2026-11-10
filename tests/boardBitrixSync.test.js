@@ -7,6 +7,7 @@ const { STATIC_SCHEMA } = require('../lib/boardBitrix/vocabulary');
 const { complete, validateMapping } = require('../lib/boardBitrix/schema');
 const { assessEvidence, buildTruckEvidence } = require('../lib/boardBitrix/schemaEvidence');
 const { decideCandidate } = require('../lib/boardBitrix/schemaCandidate');
+const { askSemantics, semanticsValidator } = require('../services/boardBitrix/schemaAi');
 const { discoverBitrixSchema } = require('../services/boardBitrix/schemaDiscovery');
 const { planStageUpdates, runStageSync } = require('../services/boardBitrix/stageSync');
 
@@ -139,6 +140,44 @@ test('renamed labels may be mapped by AI, but only to ids from the live catalogu
   assert.match(bad.recorded.at(-1).problem, /stage was not returned/);
 });
 
+test('AI routing rejects an overconfident empty truck-stage answer and can ask another model', async () => {
+  const c = catalog({ renamed: true });
+  c.truckStages.push({ ID: 'DT2000_7:EMPTY', NAME: 'Archive' });
+  const truckStages = c.truckStages.map((row) => ({ ...row, __categoryId: 7 }));
+  const evidence = buildTruckEvidence(c.truckItems);
+  const good = {
+    understood: true, confidence: 95,
+    deal_fields: { truck: 'UF_NEW_TRUCK', driver_type: 'UF_NEW_TYPE' },
+    stages: { HOME: 'D9:H', VACATION: 'D9:V', SHOP: 'D9:S', WORKING: 'D9:W' },
+    truck_category_id: '7', active_truck_stage_ids: ['DT2000_7:ROAD'],
+  };
+  const empty = { ...good, active_truck_stage_ids: ['DT2000_7:EMPTY'], confidence: 99 };
+  const sameField = { ...good, deal_fields: {
+    truck: 'UF_NEW_TRUCK', driver_type: 'UF_NEW_TRUCK',
+  } };
+  const validate = semanticsValidator({
+    fields: c.fields, dealStages: c.dealStages, truckCategories: c.truckCategories,
+    truckStages, evidence,
+  });
+  assert.match(validate('', empty).message, /zero current items/);
+  assert.match(validate('', sameField).message, /two distinct deal fields/);
+  assert.equal(validate('', good), true);
+  assert.equal(validate('', { understood: false, confidence: 99 }), true,
+    'an honest refusal is valid output so the escalation layer can ask a stronger model');
+
+  let routed = false;
+  const answer = await askSemantics({
+    fields: c.fields, dealStages: c.dealStages, truckCategories: c.truckCategories,
+    truckStages, evidence,
+  }, { runCapability: async (args) => {
+    routed = true;
+    assert.match(args.validate('', empty).message, /zero current items/);
+    return { parsed: good, uncertain: false };
+  } });
+  assert.equal(routed, true);
+  assert.deepEqual(answer.active_truck_stage_ids, ['DT2000_7:ROAD']);
+});
+
 test('an incomplete or low-confidence discovery falls back to reads and cannot be live', async () => {
   const c = catalog({ renamed: true });
   const w = discoveryDeps(c, {
@@ -166,6 +205,30 @@ test('truck evidence refuses the production failure shape: populated category, z
   assert.equal(out.ok, false);
   assert.equal(out.counts.activeItems, 0);
   assert.match(out.reason, /no current truck items/);
+  assert.match(assessEvidence(wrong, buildTruckEvidence([])).reason, /no current truck items for schema evidence/);
+});
+
+test('an invalid AI selection records only safe populated-stage diagnostics', async () => {
+  const c = catalog({ renamed: true });
+  c.truckStages.push({ ID: 'DT2000_7:EMPTY', NAME: 'Archive' });
+  const aiStructure = { understood: true, category_id: '9', truck_entity_type_id: '2000', confidence: 93 };
+  const w = discoveryDeps(c, {
+    askStructure: async () => aiStructure,
+    askSemantics: async () => ({
+      understood: true, confidence: 99,
+      deal_fields: { truck: 'UF_NEW_TRUCK', driver_type: 'UF_NEW_TYPE' },
+      stages: { HOME: 'D9:H', VACATION: 'D9:V', SHOP: 'D9:S', WORKING: 'D9:W' },
+      truck_category_id: '7', active_truck_stage_ids: ['DT2000_7:EMPTY'],
+    }),
+  });
+  const out = await discoverBitrixSchema(w.deps);
+  assert.equal(out.comparisonSafe, false);
+  const invalid = w.recorded.at(-1);
+  assert.equal(invalid.invalid, true);
+  assert.deepEqual(invalid.evidence.populatedStages, [
+    { label: 'Rolling Asset', category: 'Primary Flow', itemCount: 1 },
+  ]);
+  assert.ok(!JSON.stringify(invalid.evidence).includes('81'), 'truck item ids are never diagnostic data');
 });
 
 test('a schema candidate must repeat; structural or count drift needs approval', () => {
@@ -197,6 +260,9 @@ test('the mapping validator rejects ids and duplicate role stages a model invent
   };
   assert.deepEqual(validateMapping(mapping, c), { ok: true });
   assert.match(validateMapping({ ...mapping, categoryId: 999 }, c).reason, /pipeline/);
+  assert.match(validateMapping({ ...mapping, dealFields: {
+    truck: 'UF_NEW_TRUCK', driverType: 'UF_NEW_TRUCK',
+  } }, c).reason, /two different Bitrix fields/);
   assert.match(validateMapping({ ...mapping, stageByRole: { ...mapping.stageByRole, WORKING: 'D9:H' } }, c).reason, /different stages/);
   const wrongCategory = { ...c, truckStages: c.truckStages.map((row) => ({ ...row, __categoryId: 8 })) };
   assert.match(validateMapping(mapping, wrongCategory).reason, /another Trucks category/);

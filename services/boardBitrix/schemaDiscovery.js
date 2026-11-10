@@ -10,7 +10,7 @@ const {
   resolveStructure, resolveSemantics, complete, validateMapping, fingerprint,
 } = require('../../lib/boardBitrix/schema');
 const {
-  buildTruckEvidence, countSelected, assessEvidence, describeMapping,
+  buildTruckEvidence, countSelected, assessEvidence, summarizeEvidence, describeMapping,
 } = require('../../lib/boardBitrix/schemaEvidence');
 const { askStructure, askSemantics } = require('./schemaAi');
 
@@ -143,6 +143,7 @@ function activeStateProven(active) {
 
 async function discoverBitrixSchema(deps = defaultDeps()) {
   let evidence = {};
+  let diagnostic = {};
   try {
     const state = typeof deps.getSchemaState === 'function'
       ? await deps.getSchemaState() : { active: null, candidate: null };
@@ -182,6 +183,7 @@ async function discoverBitrixSchema(deps = defaultDeps()) {
 
     const semantics = resolveSemantics({ fields, dealStages, truckCategories, truckStages });
     let mapping = { ...structure, ...semantics };
+    diagnostic = summarizeEvidence(mapping, catalog, evidence);
     let evidenceCheck = complete(mapping) ? assessEvidence(mapping, evidence) : { ok: false };
     if (!complete(mapping) || !evidenceCheck.ok) {
       const answer = await deps.askSemantics({
@@ -189,6 +191,7 @@ async function discoverBitrixSchema(deps = defaultDeps()) {
         previousMapping: state.active?.mapping || null,
       });
       mapping = mergeAiSemantics(mapping, answer);
+      diagnostic = summarizeEvidence(mapping, catalog, evidence);
       if (Number(answer?.confidence) >= MIN_AI_CONFIDENCE) {
         confidence = Math.min(confidence, Number(answer.confidence));
         aiUsed = true;
@@ -197,8 +200,8 @@ async function discoverBitrixSchema(deps = defaultDeps()) {
     }
 
     const valid = validateMapping(mapping, catalog);
-    if (!valid.ok) return recordFallback(valid.reason, deps, evidence);
-    if (!evidenceCheck.ok) return recordFallback(evidenceCheck.reason, deps, evidence);
+    if (!valid.ok) return recordFallback(valid.reason, deps, diagnostic);
+    if (!evidenceCheck.ok) return recordFallback(evidenceCheck.reason, deps, diagnostic);
 
     const activeValid = activeStateValid(state.active, catalog, evidence);
     const activeProven = activeStateProven(state.active);
@@ -235,7 +238,7 @@ async function discoverBitrixSchema(deps = defaultDeps()) {
       : `schema candidate seen ${observed?.seenCount || 1}/2; one more matching check is required`;
     return fallback(reason, 'candidate_pending');
   } catch (err) {
-    return recordFallback(err?.message || err, deps, evidence);
+    return recordFallback(err?.message || err, deps, diagnostic);
   }
 }
 

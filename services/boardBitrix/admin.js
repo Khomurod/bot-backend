@@ -64,6 +64,11 @@ function candidateView(candidate) {
       totalTruckItems: num(candidate.evidence?.totalTruckItems),
       selectedCategoryItems: num(candidate.evidence?.selectedCategoryItems),
       selectedActiveItems: num(candidate.evidence?.selectedActiveItems),
+      populatedStages: (candidate.evidence?.populatedStages || []).slice(0, 8).map((stage) => ({
+        label: text(stage?.label),
+        category: text(stage?.category),
+        itemCount: num(stage?.itemCount),
+      })).filter((stage) => stage.label && stage.itemCount > 0),
     },
   };
 }

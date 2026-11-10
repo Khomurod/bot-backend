@@ -57,7 +57,12 @@ test("shows why a fallback schema blocks writes", async () => {
 });
 
 test("an invalid discovery shows one blocking reason, not duplicate warnings", async () => {
-  const candidate = { state: "invalid", problem: "selected active stages contain no trucks" };
+  const candidate = {
+    state: "invalid", problem: "selected active stages contain no trucks",
+    evidence: { populatedStages: [
+      { label: "Available for dispatch", category: "Trucks", itemCount: 104 },
+    ] },
+  };
   api.getBoardBitrixCheck.mockResolvedValue(view({
     schema: { source: "catalog_exact", writeSafe: false, problem: candidate.problem, candidate },
   }));
@@ -65,6 +70,7 @@ test("an invalid discovery shows one blocking reason, not duplicate warnings", a
   const warnings = await screen.findAllByRole("status");
   expect(warnings).toHaveLength(1);
   expect(warnings[0]).toHaveTextContent("Writes and comparison are blocked");
+  expect(warnings[0]).toHaveTextContent("Available for dispatch / Trucks (104)");
 });
 
 test("shows candidate evidence and approves only a twice-seen structural change", async () => {

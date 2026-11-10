@@ -70,7 +70,9 @@ test('a schema fallback exposes its catalogue-only reason on the admin view', as
     },
     deps: {
       schemaStore: { getSchemaState: async () => ({ candidate: {
-        state: 'invalid', seenCount: 0, evidence: {},
+        state: 'invalid', seenCount: 0, evidence: { populatedStages: [
+          { label: 'Available for dispatch', category: 'Trucks', itemCount: 104 },
+        ] },
         problem: 'Bitrix crm.type.list: access denied\nfor this webhook',
       } }) },
     },
@@ -78,6 +80,9 @@ test('a schema fallback exposes its catalogue-only reason on the admin view', as
   const view = await admin.getView({ deps: d });
   assert.equal(view.schema.writeSafe, false);
   assert.equal(view.schema.problem, 'Bitrix crm.type.list: access denied for this webhook');
+  assert.deepEqual(view.schema.candidate.evidence.populatedStages, [
+    { label: 'Available for dispatch', category: 'Trucks', itemCount: 104 },
+  ]);
 });
 
 test('a twice-seen candidate can be approved explicitly and always triggers a fresh pass', async () => {
