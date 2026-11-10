@@ -38,8 +38,10 @@ their message ("Which driver is this about? Reply to the driver's post with
 writes in the conversation.
 
 The same captured messages feed a second, separately switched feature: the
-**Bitrix stage proposals**, which DO reply in General ("move <driver> to
-<stage>?" with a button). See [`hiring-stage-proposals.md`](hiring-stage-proposals.md).
+**Bitrix stage proposals**, which read the conversation in General and write
+in a **Bitrix topic** of their own ("move <driver> to <stage>?" with a button,
+a deal created, a Bitrix error) — never in General. See
+[`hiring-stage-proposals.md`](hiring-stage-proposals.md).
 
 ## The rules, and why each one exists
 
@@ -72,8 +74,21 @@ Every rule below closes a way to post one.
    is that driver. In a team post it must name one ("#Approved Darnell"), or
    say "both"; a team hashtag naming nobody, or both hashtags for one driver,
    is asked about (`lib/safetyApprovals/hashtagDecision.js`). The name is read
-   off the post without a model (`lib/safetyApprovals/postDetails.js`); only a
-   post with no readable name asks a model — for the names, never the decision.
+   off the post without a model (`lib/safetyApprovals/postDetails.js`): a line
+   of two to four capitalised words (ALL CAPS or Title; "van", "de", "bin" may
+   stay small) with no digit, @ or link and no word a recruiter uses ABOUT the
+   driver — job, experience, referral, recruiter, status, consent, signed….
+   **A possessive line ("Matthew's referral", "Polvon's truck") and a labelled
+   field ("Referral: Ann Lee", "Recruiter - Ann Lee") are never a driver**; a
+   "Name:" / "Driver:" / "Co-driver:" label is. Until November 2026 "Matthew's
+   referral" read as a second driver, so one-driver cards looked like teams
+   and every `#Approved` under them was asked about. What is not certain asks
+   a model for the names (never the decision) instead of trusting the count: a
+   post with no name, a name-shaped line in small letters ("john smith"), or a
+   post that SAYS it is a team ("team drivers", "(main)", "co-driver") with
+   fewer than two names read. **A post that says it is a team is never
+   decided as one driver**, even when only one name could be read: its
+   hashtag must name the driver.
 5. **No waiting for Safety's files.** They are not posted, so nothing waits
    for them. A decision is read 5 seconds after its last piece arrives (an
    album comes item by item; each item and each edit re-arms the delay).
@@ -108,7 +123,7 @@ Every rule below closes a way to post one.
    the post cannot post it again. A send Telegram refused gives the
    reservation back. This is at-most-once on purpose: a duplicate APPROVED
    is worse than a missing one, which shows in Settings.
-10. **The recruiting group is not a driver group.** Every group the bot joins
+9. **The recruiting group is not a driver group.** Every group the bot joins
     is registered as `driver`; this one is moved to `recruitment` on save and on
     the first captured message, so home-time, retention and driver broadcasts
     leave it alone. Only a `driver` row is moved — another type was chosen by a
@@ -174,11 +189,16 @@ drivers' names and phone numbers.
 3. Copy a message link from the approved / not approved topic, paste it,
    **Save topic**, and **Send a test message** to prove the bot may post there.
 4. Tick the Safety people, **Save Safety people**, then switch it on.
+5. Optional — the Bitrix stage proposals: paste a message link from the
+   **Bitrix** topic, **Save Bitrix topic**, **Send a test message to the
+   Bitrix topic**, then switch them on ([`hiring-stage-proposals.md`](hiring-stage-proposals.md)).
 
 ## Tests
 
 `tests/safetyApprovalReading.test.js`, `tests/safetyApprovalAnnouncement.test.js`,
 `tests/safetyApprovalReviewer.test.js`, `tests/safetyApprovalHashtag.test.js`,
-`tests/safetyApprovalTrigger.test.js`, `tests/safetyApprovalCapture.test.js`,
+`tests/safetyApprovalTrigger.test.js`, `tests/safetyApprovalPostNames.test.js`
+(a card with a referral line is one driver; real teams; a post that says
+"team"), `tests/safetyApprovalCapture.test.js`,
 `tests/safetyApprovalSettingsRoute.test.js`, `tests/safetyApprovalStorePg.test.js`
 and `admin/src/pages/settings/SafetyApprovalsTab.test.jsx`.

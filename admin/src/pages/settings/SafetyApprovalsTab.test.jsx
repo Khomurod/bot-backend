@@ -16,6 +16,7 @@ vi.mock("../../api", () => ({
   validateSafetyApprovalChat: vi.fn(),
   updateSafetyApprovals: vi.fn(),
   sendSafetyApprovalTestPost: vi.fn(),
+  sendBitrixTopicTestPost: vi.fn(),
 }));
 
 const switchBox = () => screen.getByLabelText(/Post Safety's decisions/i);
@@ -68,7 +69,7 @@ test("a group the bot cannot read says so", async () => {
 
 test("the topic link is saved as typed; the server reads it", async () => {
   render(<SafetyApprovalsTab />);
-  fireEvent.change(await screen.findByLabelText(/Topic link or number/i), {
+  fireEvent.change(await screen.findByLabelText(/^Topic link or number/i), {
     target: { value: "https://t.me/c/777/45" },
   });
   fireEvent.click(screen.getByRole("button", { name: /Save topic/i }));
@@ -80,9 +81,45 @@ test("Bitrix stage proposals stay off until Safety Approvals is on", async () =>
   expect(await screen.findByLabelText(/Propose Bitrix stage changes/i)).toBeDisabled();
 });
 
+test("with Safety Approvals on but no Bitrix topic, the stage switch waits for the topic", async () => {
+  api.getSafetyApprovals.mockResolvedValue({
+    settings: { ...SETTINGS, safetyUserIds: ["900"], enabled: true }, members: MEMBERS, recent: [],
+  });
+  render(<SafetyApprovalsTab />);
+  expect(await screen.findByLabelText(/Propose Bitrix stage changes/i)).toBeDisabled();
+  expect(screen.getByText(/Save the Bitrix topic first/i)).toBeTruthy();
+});
+
+test("the Bitrix topic is saved as typed and proven with a test message in it", async () => {
+  api.getSafetyApprovals.mockResolvedValue({
+    settings: { ...SETTINGS, safetyUserIds: ["900"], enabled: true, bitrixTopicId: 77 }, members: MEMBERS, recent: [],
+  });
+  api.sendBitrixTopicTestPost.mockResolvedValue({ ok: true });
+  render(<SafetyApprovalsTab />);
+  fireEvent.change(await screen.findByLabelText(/Bitrix topic link or number/i), {
+    target: { value: "https://t.me/c/777/78" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: /Save Bitrix topic/i }));
+  await waitFor(() => expect(api.updateSafetyApprovals).toHaveBeenCalledWith({ bitrixTopic: "https://t.me/c/777/78" }));
+  fireEvent.click(screen.getByRole("button", { name: /test message to the Bitrix topic/i }));
+  await waitFor(() => expect(api.sendBitrixTopicTestPost).toHaveBeenCalled());
+  expect(api.sendSafetyApprovalTestPost).not.toHaveBeenCalled();
+});
+
+test("the bot's own Bitrix creations are listed under the switch", async () => {
+  api.getSafetyApprovals.mockResolvedValue({
+    settings: { ...SETTINGS, safetyUserIds: ["900"], enabled: true, bitrixTopicId: 77, stageProposalsEnabled: true },
+    members: MEMBERS,
+    recent: [],
+    crmRecords: [{ id: 3, status: "created", driverName: "Kwame Asante", dealId: 812, contactReused: true, dealReused: false, updatedAt: "2026-11-10T10:00:00Z" }],
+  });
+  render(<SafetyApprovalsTab />);
+  expect(await screen.findByText(/Created — deal #812 \(existing contact\)/)).toBeTruthy();
+});
+
 test("with Safety Approvals on, the stage proposals have a switch of their own and a history", async () => {
   api.getSafetyApprovals.mockResolvedValue({
-    settings: { ...SETTINGS, safetyUserIds: ["900"], enabled: true },
+    settings: { ...SETTINGS, safetyUserIds: ["900"], enabled: true, bitrixTopicId: 77 },
     members: MEMBERS,
     recent: [],
     proposals: [{

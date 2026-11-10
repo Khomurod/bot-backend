@@ -45,19 +45,33 @@ function titleMatches(title, parts) {
   return parts.filter((w) => hasWord(text, w)).length >= Math.min(2, parts.length);
 }
 
-async function byName(name, opts) {
-  const parts = nameParts(name);
-  if (parts.length < 2) return { deals: [], people: 0 };
-  // The two longest words are the likeliest surnames; "jr" and initials are not.
-  const words = [...parts].sort((a, b) => b.length - a.length).slice(0, 2);
+/** The two longest words are the likeliest surnames; "jr" and initials are not. */
+function searchWords(parts) {
+  return [...parts].sort((a, b) => b.length - a.length).slice(0, 2);
+}
 
+/**
+ * Contacts whose first AND last name are among the posted words — any deals
+ * or none. @returns {Promise<object[]>}
+ */
+async function findContactsByName(name, opts = {}) {
+  const parts = nameParts(name);
+  if (parts.length < 2) return [];
   const contacts = new Map();
-  for (const word of words) {
+  for (const word of searchWords(parts)) {
     // eslint-disable-next-line no-await-in-loop
     for (const c of await bitrix.listContactsByLastName(word, opts)) {
       if (contactMatches(c, parts)) contacts.set(c.id, c);
     }
   }
+  return [...contacts.values()];
+}
+
+async function byName(name, opts) {
+  const parts = nameParts(name);
+  if (parts.length < 2) return { deals: [], people: 0 };
+  const words = searchWords(parts);
+  const contacts = new Map((await findContactsByName(name, opts)).map((c) => [c.id, c]));
   const deals = new Map();
   for (const id of [...contacts.keys()].slice(0, 5)) {
     // eslint-disable-next-line no-await-in-loop
@@ -91,4 +105,6 @@ async function findCandidateDeal({ phones = [], name = null }, opts = {}) {
   return { status: 'none' };
 }
 
-module.exports = { findCandidateDeal, __contactMatchesForTests: contactMatches, __titleMatchesForTests: titleMatches };
+module.exports = {
+  findCandidateDeal, findContactsByName, contactMatches, __contactMatchesForTests: contactMatches, __titleMatchesForTests: titleMatches,
+};

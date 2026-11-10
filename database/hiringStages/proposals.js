@@ -37,6 +37,8 @@ function mapProposal(row) {
     toStageId: row.to_stage_id,
     toStageName: row.to_stage_name,
     evidence: row.evidence || null,
+    // Why the bot did not create the deal itself (migration 0100).
+    note: row.note || null,
     recruiterUserId: row.recruiter_user_id === null ? null : String(row.recruiter_user_id),
     recruiterName: row.recruiter_name || null,
     botMessageId: num(row.bot_message_id),
@@ -73,15 +75,15 @@ async function reserveProposal(p) {
     `INSERT INTO hiring_stage_proposals (
        chat_id, root_message_id, kind, driver_name, driver_phone, deal_id, deal_title,
        category_id, from_stage_id, from_stage_name, to_stage_id, to_stage_name, evidence,
-       recruiter_user_id, recruiter_name
-     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+       recruiter_user_id, recruiter_name, note
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
      ON CONFLICT (chat_id, root_message_id) WHERE status IN ('pending', 'applying') DO NOTHING
      RETURNING *`,
     [
       String(p.chatId), Number(p.rootMessageId), p.kind, p.driverName ?? null, p.driverPhone ?? null,
       p.dealId ?? null, p.dealTitle ?? null, p.categoryId ?? null, p.fromStageId ?? null,
       p.fromStageName ?? null, p.toStageId, p.toStageName, p.evidence ?? null,
-      p.recruiterUserId ?? null, p.recruiterName ?? null,
+      p.recruiterUserId ?? null, p.recruiterName ?? null, p.note ?? null,
     ],
   );
   return mapProposal(rows[0]);

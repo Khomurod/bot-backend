@@ -5,6 +5,14 @@
 `bot/handlers/hiringStageHandlers.js` or
 `admin/src/pages/settings/HiringStagesCard.jsx`.
 
+**Since November 2026** (the owner, in one request): the conversation is still
+READ in General, but everything the bot WRITES about Bitrix goes to a
+**Bitrix topic** of its own; a candidate the conversation identifies for
+certain who has **no open deal gets a contact and a deal created by the bot**
+instead of a "please create it" request; and a recruiter's card with a line
+like "Matthew's referral" is one driver, not a team
+([`safety-approvals.md`](safety-approvals.md) rule 4a).
+
 ## What it does
 
 In the recruiting group's **General** topic, Safety and the recruiters talk
@@ -20,10 +28,10 @@ questions asked before building it:
 
 | Question | Answer |
 |---|---|
-| Where is the proposal posted? | As a **reply in General**, under the message that moved the conversation |
+| Where is the proposal posted? | ~~As a reply in General~~ — **since November 2026 in the Bitrix topic** named in Settings, with the driver's name and a link to the post in General |
 | Who may confirm? | **Anyone in the group** |
 | Which stages may be proposed? | **Any stage of the pipeline** — the model picks, by meaning |
-| How is the deal found? | **By phone and name.** With none found, the bot asks the recruiter who posted the candidate (the one who sent the CDL) to create it |
+| How is the deal found? | **By phone and name.** With none found, ~~the recruiter is asked to create it~~ — **since November 2026 the bot creates the contact and deal itself** when the candidate is certain, and asks the recruiter (with the reason) only when not |
 
 ## The rules, and why each one exists
 
@@ -33,7 +41,10 @@ to make one.
 
 1. **A model proposes; a person moves the deal.** `crm.deal.update` is called
    from exactly one place (`services/hiringStages/actions.js`), after somebody
-   in the group pressed **Move**. There is no automatic mode.
+   in the group pressed **Move**. There is no automatic mode. Creating a
+   missing deal (rule 13) is not moving one: a created deal starts at the
+   first stage, and the stage the conversation reached is still a proposal.
+   No model decides a creation — the identity is read off the post by rules.
 2. **The deal is read again at the press.** If somebody moved it by hand since
    the proposal, it is not moved (`stale`, and the message says where it is
    now). If it is already there, nothing is written.
@@ -74,7 +85,42 @@ to make one.
     conversation, and **Skip** means never.
 11. **Off by default.** `safety_approval_settings.stage_proposals_enabled` is
     FALSE, and the feature also needs Safety Approvals on — it reads the
-    messages Safety Approvals captures.
+    messages Safety Approvals captures — and a saved **Bitrix topic**: the
+    switch cannot be turned on without one, and while it is on without one
+    (the state right after the November 2026 deploy) the worker is `blocked`
+    and conversations wait in the queue. Nothing Bitrix is ever posted in
+    General.
+12. **Read in General, written in the Bitrix topic.** Every new message —
+    proposal, "please create it", deal created, two people matching, Bitrix
+    error — is sent with `message_thread_id` = `safety_approval_settings.
+    bitrix_topic_id` and never as a reply (a reply cannot cross topics). Each
+    names the driver and ends with a link to the post in General. Move / No
+    results are edits of the proposal's own message. A notice is posted once
+    per conversation (`hiring_stage_notices`, reserved before the send).
+13. **A missing deal is created only for a CERTAIN candidate**
+    (`lib/hiringStages/identity.js`): exactly one driver's name read off the
+    post without a model (not a team, no name-shaped line in small letters),
+    exactly one phone a recruiter typed, and — when the model named the driver
+    — a name made of the post's words. Then, in Bitrix
+    (`services/hiringStages/crmCreate.js`): the contact holding that phone is
+    reused when its first and last name are among the post's words; two
+    contacts holding it, another person's name on it, or this name on a
+    contact under another phone **creates nothing** (`blocked`) — the recruiter
+    is asked, with the reason. A new deal starts at the pipeline's **first
+    open stage** (New Lead), titled with the name as posted, on the configured
+    deal pipeline (default 0); the stage the conversation reached is then
+    PROPOSED with Move / No like any other — creating never moves a deal. A
+    recruiter's earlier **Skip** stops the bot creating it too.
+14. **Never two records.** `hiring_stage_crm_records` claims the creation per
+    conversation (and at most one in flight per phone — a second post of the
+    same driver waits) and records each step BEFORE its Bitrix call:
+    `claimed → creating_contact → creating_deal → created`. A call with no
+    answer leaves the step in flight; the next read finishes it FIRST,
+    searching by phone, by the contact's open deals and by the
+    `ORIGINATOR_ID` / `ORIGIN_ID` the bot stamps on what it creates
+    (`wenze_recruiting`, `tg:<chat>:<post>`) — and adds only when that finds
+    nothing. A refusal (`failed`) or a block may be tried again on a later
+    message; a conversation already `created` never creates again.
 
 ## How it flows
 
@@ -86,9 +132,13 @@ captured General message (services/safetyApprovals/captureService.js)
        conversation (database/hiringStages/threads.js: the post, its album, every reply at any depth)
        → candidate post? → deal by phone (dealFinder.js) → the pipeline's stages (crm.status.list)
        → model (aiReading.js, capability `hiring_stage_reading`, redacted words only)
-       → verifyStageAnswer → deal by name (if none yet) → stagePlan.js (carry the stage to the deal's pipeline by NAME)
-       → "move X to STAGE?" [Move] [No]      replying to the newest message
-         or "no deal — <recruiter>, please create it" [Deal created — search again] [Skip]   replying to the post
+       (first: a creation an earlier read left in flight is finished — crmCreate.js resumeInFlight)
+       → verifyStageAnswer → deal by name (if none yet) → no deal and certain? crmCreate.js (contact + deal)
+       → stagePlan.js (carry the stage to the deal's pipeline by NAME)
+       → propose.js, in the Bitrix topic (groupMessages.js), each with the driver and a link to the post:
+         "created a deal for X" (once) · "move X to STAGE?" [Move] [No]
+         or "no deal — <reason> — <recruiter>, please create it" [Deal created — search again] [Skip]
+         or "N people in Bitrix match X" · "Bitrix error while handling X" (once)
   → button press: bot/handlers/hiringStageHandlers.js (thin) → services/hiringStages/actions.js
 ```
 
@@ -110,32 +160,54 @@ captured General message (services/safetyApprovals/captureService.js)
 
 ## Data
 
-Migration `0076_hiring_stage_proposals.sql`:
+Migrations `0076_hiring_stage_proposals.sql` and
+`0100_hiring_stage_bitrix_topic_and_crm_records.sql`:
 
 | Table / column | What it holds |
 |---|---|
 | `safety_approval_settings.stage_proposals_enabled` | the switch (Settings → Safety Approvals → 5) |
+| `safety_approval_settings.bitrix_topic_id` | the Bitrix topic every Bitrix message goes to; cleared when the group changes; may not be the approvals topic |
 | `hiring_stage_threads` | one row per conversation: the queue, and what the last read concluded (never the raw model answer) |
-| `hiring_stage_proposals` | what the bot posted and what became of it — who pressed, when, from which stage to which |
+| `hiring_stage_proposals` | what the bot posted and what became of it — who pressed, when, from which stage to which; `note` is why a deal was not created automatically |
+| `hiring_stage_crm_records` | the claim on creating a contact + deal: one per conversation, at most one in flight per phone, each step recorded before its Bitrix call |
+| `hiring_stage_notices` | which notice ("created", "ambiguous", "bitrix_error:<revision>") was posted about a conversation |
 
-Proposals carry a driver's name and phone, so closed ones are **deleted after
-60 days**, like the captured messages; finished queue rows too. Nothing logs
+Proposals, creation records and notices carry a driver's name and phone, so
+closed ones are **deleted after 60 days**, like the captured messages;
+finished queue rows too (a creation still in flight is kept). Nothing logs
 message text or a phone number.
 
 ## Bitrix
 
 `services/bitrix24DealStages.js` uses the same inbound webhook as the lead
 push (Settings → Bitrix24, which must be **enabled**). The
-webhook needs the `crm` scope with write access. Calls: `crm.duplicate.findbycomm`,
-`crm.contact.list`, `crm.deal.list`, `crm.deal.get`, `crm.status.list`, and
-the one write, `crm.deal.update`. Each is bounded at 15 seconds. With no deal
-found, the stages shown to the model are those of the pipeline set as the
-deal category in Bitrix settings, or the default pipeline.
+webhook needs the `crm` scope with write access. Reads: `crm.duplicate.findbycomm`,
+`crm.contact.list`, `crm.contact.get`, `crm.deal.list`, `crm.deal.get`,
+`crm.status.list`. Writes: `crm.deal.update` (`STAGE_ID` only, after a press —
+the only change to an existing record) and, since November 2026,
+`crm.contact.add` and `crm.deal.add` — new records only, only from
+`services/hiringStages/crmCreate.js`, each stamped `ORIGINATOR_ID =
+wenze_recruiting`, `ORIGIN_ID = tg:<chat>:<post>`, a comment linking the post,
+and `ASSIGNED_BY_ID` only when Settings → Bitrix24 names a numeric assignee
+(otherwise Bitrix's own default and distribution rules apply — the bot does
+not guess a recruiter's Bitrix user). Each call is bounded at 15 seconds.
+With no deal found, the stages shown to the model — and the pipeline a new
+deal is created in — are those of the pipeline set as the deal category in
+Bitrix settings, or the default pipeline. A Bitrix error says only Bitrix's
+own words; the webhook URL never appears.
 
 ## Tests
 
 `tests/hiringStageRules.test.js` (redaction, the transcript, verification, the
-messages), `tests/bitrix24DealStages.test.js` (the Bitrix calls and the deal
-finder), `tests/hiringStageFlow.test.js` (read → propose → press → move),
-`tests/hiringStageQueue.test.js`, `tests/hiringStageStorePg.test.js` and
+messages), `tests/bitrix24DealStages.test.js` (the Bitrix calls — creation
+fields and origin search included — and the deal finder),
+`tests/hiringStageFlow.test.js` (read → propose in the Bitrix topic → press →
+move), `tests/hiringStageCrmCreate.test.js` (a stateful fake Bitrix: neither
+contact nor deal, an existing contact, an existing deal, every ambiguous and
+not-certain case, timeouts before and after Bitrix acted, a refusal, the same
+driver posted twice, Skip), `tests/hiringStageIdentity.test.js`,
+`tests/hiringStageWorker.test.js` (blocked without the topic),
+`tests/hiringStageQueue.test.js`, `tests/hiringStageStorePg.test.js`,
+`tests/hiringStageCrmRecordsPg.test.js` (the claim, busy per phone, notices,
+the topic setting), `tests/safetyApprovalSettingsRoute.test.js` and
 `admin/src/pages/settings/SafetyApprovalsTab.test.jsx`.

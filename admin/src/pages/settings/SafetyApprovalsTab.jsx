@@ -10,7 +10,8 @@ import HiringStagesCard from "./HiringStagesCard";
  * as Safety marks a decision — #Approved / #NotApproved, or the words — it
  * posts the driver's post (CDL photos and the recruiter's words) in the
  * approvals topic with "APPROVED by …" under it, within seconds. A decision it
- * cannot place is asked of Safety in General, never guessed.
+ * cannot place is asked of Safety in General, never guessed. The Bitrix stage
+ * proposals (card 5) write in a topic of their own.
  *
  * The switch stays disabled until the group is validated, the topic is named
  * and at least one Safety person is picked — each one missing is a way to post
@@ -26,6 +27,7 @@ export default function SafetyApprovalsTab() {
   const [members, setMembers] = useState([]);
   const [recent, setRecent] = useState([]);
   const [proposals, setProposals] = useState([]);
+  const [crmRecords, setCrmRecords] = useState([]);
   const [form, setForm] = useState({ chatId: "", topic: "", extraId: "" });
   const [picked, setPicked] = useState([]);
   const [message, setMessage] = useState(null);
@@ -43,6 +45,7 @@ export default function SafetyApprovalsTab() {
       setMembers(Array.isArray(data.members) ? data.members : []);
       setRecent(Array.isArray(data.recent) ? data.recent : []);
       setProposals(Array.isArray(data.proposals) ? data.proposals : []);
+      setCrmRecords(Array.isArray(data.crmRecords) ? data.crmRecords : []);
       setPicked(data.settings?.safetyUserIds || []);
       setForm({
         chatId: data.settings?.chatId || "",
@@ -80,8 +83,8 @@ export default function SafetyApprovalsTab() {
     setMessage({ type: "success", text: done });
   });
 
-  const testPost = () => run(async () => {
-    const out = await api.sendSafetyApprovalTestPost();
+  const testPost = (send = api.sendSafetyApprovalTestPost) => run(async () => {
+    const out = await send();
     setMessage(out.ok
       ? { type: "success", text: "A test message was posted in the topic. Check the group." }
       : { type: "error", text: out.message || "The test message could not be posted." });
@@ -109,8 +112,10 @@ export default function SafetyApprovalsTab() {
   );
 
   const hiringStages = (
-    <HiringStagesCard settings={settings} proposals={proposals} busy={busy}
-      onToggle={(on) => save({ stageProposalsEnabled: on }, on ? "Bitrix stage proposals are on." : "Bitrix stage proposals are off.")} />
+    <HiringStagesCard settings={settings} proposals={proposals} crmRecords={crmRecords} busy={busy}
+      onToggle={(on) => save({ stageProposalsEnabled: on }, on ? "Bitrix stage proposals are on." : "Bitrix stage proposals are off.")}
+      onSaveTopic={(value) => save({ bitrixTopic: value }, "Bitrix topic saved. Send a test message to check it.")}
+      onTestTopic={() => testPost(api.sendBitrixTopicTestPost)} />
   );
 
   const latestReplies = (
@@ -141,11 +146,11 @@ export default function SafetyApprovalsTab() {
   return (
     <div>
       <p style={{ color: "var(--text-muted)", marginTop: 0 }}>
-        The bot listens <strong>quietly</strong> in the recruiting group and never writes in the
-        conversation. When a Safety person <strong>replies</strong> to a recruiter&apos;s driver post,
-        it posts the decision in the approvals topic: the CDL, Safety&apos;s PSP / MVR / CLH files, and
-        APPROVED or NOT APPROVED with the driver&apos;s name and phone. If the reply is not clear, nothing
-        is posted.
+        The bot listens in the recruiting group. When a Safety person marks a decision on a recruiter&apos;s
+        driver post — <strong>#Approved</strong> / <strong>#NotApproved</strong>, or the words — it posts the
+        driver&apos;s post in the approvals topic: the CDL photos and the recruiter&apos;s words, with APPROVED
+        or NOT APPROVED and who decided. Safety&apos;s PSP / MVR / CLH files are not re-posted. When it cannot
+        tell which driver a decision is about, it <strong>asks Safety in General</strong> — it never guesses.
       </p>
       <Banner message={message} />
 
@@ -208,7 +213,7 @@ export default function SafetyApprovalsTab() {
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           <button className="btn btn-primary" onClick={() => save({ topic: form.topic })}
             disabled={busy || !settings?.chatId}>Save topic</button>
-          <button className="btn btn-ghost" onClick={testPost} disabled={busy || !settings?.topicId}>Send a test message</button>
+          <button className="btn btn-ghost" onClick={() => testPost()} disabled={busy || !settings?.topicId}>Send a test message</button>
         </div>
       </div>
 
@@ -256,7 +261,7 @@ export default function SafetyApprovalsTab() {
 const STATUS = {
   pending: "Waiting to be read",
   published: "Posted",
-  unclear: "Not clear — nothing posted (Safety asked if it was a decision)",
+  unclear: "Not clear — nothing posted; Safety was asked in General",
   no_post: "Not read (switched off, or an old post the bot never saw)",
   gave_up: "Could not post",
 };

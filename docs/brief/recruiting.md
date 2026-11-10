@@ -187,28 +187,49 @@ the same treatment home time got, and for the same reason.
   matched to the posts the last six messages were about (a model may only pick
   one by label). A team hashtag naming nobody, or a decision the bot cannot
   place, makes the bot **ask Safety in General** under their message.
+- **Who the post is about is read by rules** (`lib/safetyApprovals/postDetails.js`).
+  Lines ABOUT the driver are never a driver: a possessive ("Matthew's
+  referral"), a labelled field ("Referral: Ann Lee"), or words like referral,
+  recruiter, status, consent, signed. Until November 2026 "Matthew's referral"
+  read as a second driver, so one-driver cards looked like teams and every
+  `#Approved` under them was asked about. A post that says it is a team ("team
+  drivers", "(main)") is never decided as one driver; a name in small letters
+  asks a model for the names (never the decision).
 - Off by default; Settings → Safety Approvals cannot switch it on without a
   validated group, a topic and a Safety person. The group is moved from
   `driver` to `recruitment` so no driver feature acts on it. Captured messages
   are deleted after 60 days. See
   [`docs/architecture/safety-approvals.md`](../architecture/safety-approvals.md).
 
-## Bitrix stage proposals (the recruiting group's General topic)
+## Bitrix stage proposals (read in General, written in the Bitrix topic)
 
 - **The bot follows each candidate's conversation in General** ("CLH sent",
   "CLEAN", "Approved") and, when it shows the candidate has reached a later
-  stage of the Bitrix deal pipeline, **replies there with "move <driver> to
-  <stage>?" and a Move / No button**. Anyone in the group may press it; only
-  then does the deal move (`crm.deal.update`), after it is read again — a deal
-  moved by hand meanwhile is not moved. The owner's request, 20 October 2026.
+  stage of the Bitrix deal pipeline, **posts "move <driver> to <stage>?" with a
+  Move / No button in the group's Bitrix topic** — since November 2026 never
+  in General; every message names the driver and links the post. Anyone in
+  the group may press it; only then does the deal move (`crm.deal.update`),
+  after it is read again — a deal moved by hand meanwhile is not moved. The
+  owner's request, 20 October 2026; the topic, November 2026. With no topic
+  saved nothing is posted and conversations wait (`blocked`).
 - The deal is found by the phone a recruiter typed, else by first AND last
-  name; two different people matching proposes nothing. With no deal, the
-  recruiter who posted the candidate is asked once to create it, with a
-  "search again" button.
+  name; two different people matching proposes nothing (said once in the
+  topic). **With no open deal, the bot creates the contact and the deal
+  itself** (November 2026) — only when the post names ONE driver (read by
+  rules) with ONE phone, reusing the contact that holds that phone when its
+  name agrees; the deal starts at the pipeline's first stage and the reached
+  stage is proposed as usual. Anything ambiguous (two contacts on the phone,
+  another person's name on it, this name under another phone) or missing (a
+  team, no phone, two phones) creates nothing: the recruiter who posted is
+  asked once, in the topic, with the reason and a "search again" button. A
+  creation is claimed in the database and each step recorded before its
+  Bitrix call, so a retry, a timeout or the same driver posted twice never
+  makes a second record (`hiring_stage_crm_records`).
 - A model picks the stage by meaning; `lib/hiringStages/proposal.js` keeps only
   a stage of that pipeline, forward of where the deal is (or a lost stage),
   quoting words somebody wrote. SSNs, birth dates, licence numbers and phones
   are removed before the text is sent; no photo is.
-- Off by default (Settings → Safety Approvals → 5, needs Safety Approvals on).
-  Proposals are deleted after 60 days. See
+- Off by default (Settings → Safety Approvals → 5, needs Safety Approvals on
+  and a saved, tested Bitrix topic). Proposals, creation records and notices
+  are deleted after 60 days. See
   [`docs/architecture/hiring-stage-proposals.md`](../architecture/hiring-stage-proposals.md).

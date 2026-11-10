@@ -144,3 +144,59 @@ test('nothing found by phone or name is "none"', async () => {
   });
   assert.deepEqual(await findCandidateDeal({ phones: ['4045550134'], name: 'Joe Hardeman' }, opts), { status: 'none' });
 });
+
+test('a NEW contact and deal: exactly the fields asked, stamped with the bot\'s origin', async () => {
+  const { calls, opts } = fakeBitrix({ 'crm.contact.add': () => 501, 'crm.deal.add': () => 777 });
+  const origin = 'tg:-1001234567890:169';
+  assert.equal(await bitrix.createContact({
+    first: 'Kwame', last: 'Asante', phone: '5552013344', originId: origin, comments: 'Created by the Wenze bot.',
+  }, opts), 501);
+  assert.equal(await bitrix.createDeal({
+    title: 'Kwame Asante', categoryId: '0', stageId: 'NEW', contactId: 501, originId: origin, assignedById: 7,
+  }, opts), 777);
+  assert.deepEqual(calls[0], {
+    method: 'crm.contact.add',
+    params: {
+      fields: {
+        NAME: 'Kwame', LAST_NAME: 'Asante', PHONE: [{ VALUE: '+15552013344', VALUE_TYPE: 'WORK' }], OPENED: 'Y',
+        ORIGINATOR_ID: 'wenze_recruiting', ORIGIN_ID: origin, COMMENTS: 'Created by the Wenze bot.',
+      },
+      params: { REGISTER_SONET_EVENT: 'Y' },
+    },
+  });
+  assert.deepEqual(calls[1].params.fields, {
+    TITLE: 'Kwame Asante', CATEGORY_ID: 0, STAGE_ID: 'NEW', CONTACT_ID: 501, OPENED: 'Y',
+    ORIGINATOR_ID: 'wenze_recruiting', ORIGIN_ID: origin, COMMENTS: '', ASSIGNED_BY_ID: 7,
+  });
+});
+
+test('an add Bitrix did not answer with an id is an error, never a made-up record', async () => {
+  const { opts } = fakeBitrix({ 'crm.deal.add': () => false });
+  await assert.rejects(bitrix.createDeal({
+    title: 'x', categoryId: 0, stageId: 'NEW', contactId: 1, originId: 'o',
+  }, opts), /did not return the new deal's id/);
+});
+
+test('a search by origin keeps only rows that really carry it — an ignored filter matches nothing', async () => {
+  const { calls, opts } = fakeBitrix({
+    'crm.deal.list': () => [
+      { ID: '777', ORIGINATOR_ID: 'wenze_recruiting', ORIGIN_ID: 'tg:1:169' },
+      { ID: '12', ORIGINATOR_ID: '', ORIGIN_ID: '' },
+      { ID: '13', ORIGINATOR_ID: 'wenze_recruiting', ORIGIN_ID: 'tg:1:170' },
+    ],
+  });
+  assert.deepEqual(await bitrix.findByOrigin('deal', 'tg:1:169', opts), [777]);
+  assert.deepEqual(calls[0].params.filter, { ORIGINATOR_ID: 'wenze_recruiting', ORIGIN_ID: 'tg:1:169' });
+});
+
+test('a contact is read with its phones as ten digits, and its origin only when it is the bot\'s', async () => {
+  const { opts } = fakeBitrix({
+    'crm.contact.get': () => ({
+      ID: '40', NAME: 'Kwame', LAST_NAME: 'Asante', PHONE: [{ VALUE: '+1 (555) 201-3344' }, { VALUE: '12' }],
+      ORIGINATOR_ID: 'someone_else', ORIGIN_ID: 'x',
+    }),
+  });
+  assert.deepEqual(await bitrix.getContact(40, opts), {
+    id: 40, first: 'Kwame', last: 'Asante', name: 'Kwame Asante', phones: ['5552013344'], originId: null,
+  });
+});

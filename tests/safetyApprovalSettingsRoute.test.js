@@ -33,6 +33,7 @@ stub('database/pool.js', {
       row = {
         ...row, enabled: values[0], chat_id: values[1], chat_title: values[2], chat_validated_at: values[3],
         topic_id: values[4], safety_user_ids: values[5], enabled_at: values[6],
+        stage_proposals_enabled: values[8], bitrix_topic_id: values[9],
       };
       return { rows: [row] };
     }
@@ -46,6 +47,7 @@ stub('database/groupMembers.js', {
   listGroupMembers: async () => [{ telegram_user_id: '900', first_name: 'Avery', last_name: 'Davis', username: null }],
 });
 stub('database/safetyApprovals/reviews.js', { listRecentReviews: async () => [] });
+stub('database/hiringStages/crmRecords.js', { listRecentRecords: async () => [] });
 
 const { createSafetyApprovalSettingsRouter } = require('../server/routes/settings/safetyApprovalRoutes');
 const settingsStore = require('../database/safetyApprovals/settings');
@@ -152,5 +154,36 @@ test('the test message goes to the topic', async () => {
     assert.equal(body.ok, true);
     assert.equal(sent.at(-1)[0], '-100777');
     assert.deepEqual(sent.at(-1)[2], { message_thread_id: 45 });
+  });
+});
+
+test('THE BITRIX TOPIC: saved from a link in the group, refused from another group, proven by its own test message', async () => {
+  freshRow();
+  Object.assign(row, { chat_id: '-100777', topic_id: 45 });
+  await withServer(async (base) => {
+    const saved = await (await put(base, { bitrixTopic: 'https://t.me/c/777/78/901' })).json();
+    assert.equal(saved.bitrixTopicId, 78);
+    const elsewhere = await put(base, { bitrixTopic: 'https://t.me/c/999/78' });
+    assert.equal(elsewhere.status, 400);
+    assert.equal((await elsewhere.json()).field, 'bitrixTopic');
+    const same = await put(base, { bitrixTopic: '45' });
+    assert.equal(same.status, 400, 'not the approvals topic');
+
+    const body = await (await fetch(`${base}/test-bitrix-topic`, { method: 'POST' })).json();
+    assert.equal(body.ok, true);
+    assert.deepEqual(sent.at(-1)[2], { message_thread_id: 78 });
+    assert.match(sent.at(-1)[1], /Bitrix is connected/);
+  });
+});
+
+test('the Bitrix stage proposals cannot be switched on before the Bitrix topic is saved', async () => {
+  freshRow();
+  Object.assign(row, { chat_id: '-100777', topic_id: 45 });
+  await withServer(async (base) => {
+    const refused = await put(base, { stageProposalsEnabled: true });
+    assert.equal(refused.status, 400);
+    assert.match((await refused.json()).error, /name the Bitrix topic/);
+    await put(base, { bitrixTopic: '78' });
+    assert.equal((await (await put(base, { stageProposalsEnabled: true })).json()).stageProposalsEnabled, true);
   });
 });

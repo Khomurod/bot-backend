@@ -86,8 +86,10 @@ function shape(row) {
     topicId: normaliseTopicId(row?.topic_id),
     safetyUserIds: normaliseUserIds(row?.safety_user_ids),
     enabledAt: row?.enabled_at || null,
-    // Bitrix deal-stage proposals in the General topic (migration 0076).
+    // Bitrix deal-stage proposals, read from General (migration 0076) and
+    // posted in a topic of their own (migration 0100).
     stageProposalsEnabled: Boolean(row?.stage_proposals_enabled),
+    bitrixTopicId: normaliseTopicId(row?.bitrix_topic_id),
     updatedAt: row?.updated_at || null,
   };
 }
@@ -114,10 +116,18 @@ function missingForEnable(next) {
   return missing;
 }
 
+/** What stands between these settings and the Bitrix stage proposals being switched on. */
+function missingForStageProposals(next) {
+  return next.bitrix_topic_id ? [] : ['name the Bitrix topic'];
+}
+
 /**
  * Save. Omitted fields keep their stored value. A different group is a
  * different set of topics, so changing the group without naming a topic
- * clears the topic rather than keeping a number from another chat.
+ * clears the topic rather than keeping a number from another chat — both of
+ * them. Switching the Bitrix stage proposals ON needs the Bitrix topic: they
+ * post nowhere else. (A switch already on without one is not refused on an
+ * unrelated save; the worker waits instead.)
  */
 async function updateSafetyApprovalSettings(patch = {}, adminId = null) {
   const current = await getRow();
@@ -140,11 +150,22 @@ async function updateSafetyApprovalSettings(patch = {}, adminId = null) {
     stage_proposals_enabled: patch.stageProposalsEnabled === undefined
       ? Boolean(current?.stage_proposals_enabled)
       : Boolean(patch.stageProposalsEnabled),
+    bitrix_topic_id: patch.bitrixTopicId === undefined
+      ? (chatChanged ? null : normaliseTopicId(current?.bitrix_topic_id))
+      : normaliseTopicId(patch.bitrixTopicId),
   };
 
   const missing = missingForEnable(next);
   if (next.enabled && missing.length) {
     throw new SafetyApprovalSettingsError(`Before switching Safety Approvals on: ${missing.join(', ')}.`);
+  }
+  const turningOn = patch.stageProposalsEnabled === true && !current?.stage_proposals_enabled;
+  const missingStage = missingForStageProposals(next);
+  if (turningOn && missingStage.length) {
+    throw new SafetyApprovalSettingsError(`Before switching the Bitrix stage proposals on: ${missingStage.join(', ')}.`);
+  }
+  if (next.bitrix_topic_id && next.bitrix_topic_id === next.topic_id) {
+    throw new SafetyApprovalSettingsError('The Bitrix topic must be a different topic from the approved / not approved topic.');
   }
   const enabledAt = next.enabled ? (current?.enabled_at || new Date()) : (current?.enabled_at || null);
 
@@ -152,12 +173,14 @@ async function updateSafetyApprovalSettings(patch = {}, adminId = null) {
     `UPDATE safety_approval_settings
         SET enabled = $1, chat_id = $2, chat_title = $3, chat_validated_at = $4,
             topic_id = $5, safety_user_ids = $6::bigint[], enabled_at = $7,
-            updated_at = NOW(), updated_by = $8, stage_proposals_enabled = $9
+            updated_at = NOW(), updated_by = $8, stage_proposals_enabled = $9,
+            bitrix_topic_id = $10
       WHERE id = 1
       RETURNING *`,
     [
       next.enabled, next.chat_id, next.chat_title, next.chat_validated_at,
       next.topic_id, next.safety_user_ids, enabledAt, adminId, next.stage_proposals_enabled,
+      next.bitrix_topic_id,
     ],
   );
   invalidateCache();
@@ -189,6 +212,7 @@ module.exports = {
   updateSafetyApprovalSettings,
   markRecruitmentGroup,
   missingForEnable,
+  missingForStageProposals,
   invalidateCache,
   CACHE_TTL_MS,
   __shapeForTests: shape,

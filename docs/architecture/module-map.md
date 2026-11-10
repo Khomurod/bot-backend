@@ -184,10 +184,12 @@ organization should converge toward.
 | What leaves for a model (no SSN, no phone); the phones a deal is found by | `lib/hiringStages/redact.js` (pure) |
 | A candidate's conversation as the model reads it | `lib/hiringStages/conversation.js` (pure) |
 | Which answers may become a proposal (real stage, forward only, real quote) | `lib/hiringStages/proposal.js` (pure) |
-| The group messages and their buttons | `lib/hiringStages/messages.js` (pure) |
-| The conversation queue, the proposals | `database/hiringStages/{threads,proposals}.js`, migration 0076 |
-| Bitrix deals: find, stages, the one write | `services/bitrix24DealStages.js`, `services/hiringStages/{dealFinder,stagePlan}.js` |
-| Queueing from capture; reading and proposing | `services/hiringStages/{conversationQueue,reviewer,aiReading,groupMessages}.js`; worker `services/hiringStages/worker.js`, key `hiring_stage_proposals`, capability `hiring_stage_reading` |
+| The Bitrix topic's messages and their buttons (each names the driver and links the post) | `lib/hiringStages/messages.js` (pure) |
+| Whether a candidate is certain enough to create a Bitrix record for | `lib/hiringStages/identity.js` (pure) |
+| The conversation queue, the proposals, the creation claim, the notices | `database/hiringStages/{threads,proposals,crmRecords,notices}.js`, migrations 0076, 0100 |
+| Bitrix deals: find, stages, the one update, the two adds | `services/bitrix24DealStages.js`, `services/hiringStages/{dealFinder,stagePlan}.js` |
+| Creating a missing contact + deal, at most once | `services/hiringStages/crmCreate.js` (the only caller of `crm.contact.add` / `crm.deal.add`) |
+| Queueing from capture; reading and proposing | `services/hiringStages/{conversationQueue,reviewer,propose,aiReading,groupMessages}.js`; worker `services/hiringStages/worker.js`, key `hiring_stage_proposals`, capability `hiring_stage_reading` |
 | The buttons | `bot/handlers/hiringStageHandlers.js` (thin) → `services/hiringStages/actions.js` |
 | The switch and history | `admin/src/pages/settings/HiringStagesCard.jsx` inside Settings → Safety Approvals |
 
@@ -307,6 +309,8 @@ over `admin/src/pages/<area>/` holding data hooks and presentational sections:
 | `responses` (`ON CONFLICT (driver_id, question_id) DO NOTHING`) | Duplicate survey answers |
 | `mileage_bonus_runs` | Double milestone runs |
 | `meta_crm_events` UNIQUE `(leadgen_id, event_name)` | A lead's hiring stage being reported to Meta twice |
+| `hiring_stage_crm_records` UNIQUE `(chat_id, root_message_id)` + partial UNIQUE `(phone)` while in flight; each step recorded before its Bitrix call | A second Bitrix contact or deal for the same candidate — on a retry, a timeout or the same driver posted twice |
+| `hiring_stage_notices` UNIQUE `(chat_id, root_message_id, notice_key)` | The same "created" / "ambiguous" / "Bitrix error" notice posted twice in the Bitrix topic |
 
 ---
 

@@ -238,12 +238,17 @@ not `facebookCrypto` — the poller holds none of this app's secrets.
   candidates' names and phones, kept only while a late Safety reply could
   still need them. What a model made of a reply is never stored, only the
   verified outcome (`docs/architecture/safety-approvals.md`).
-- **The hiring-stage tables ride on them** (migration 0076):
-  `hiring_stage_threads` (one queue row per candidate conversation) and
-  `hiring_stage_proposals` (what was proposed in General and who answered),
-  plus `safety_approval_settings.stage_proposals_enabled`. The Bitrix deal is
-  referenced by its id only; nothing is copied from Bitrix but its title and
-  stage names. Closed proposals are deleted after 60 days
+- **The hiring-stage tables ride on them** (migrations 0076, 0100):
+  `hiring_stage_threads` (one queue row per candidate conversation),
+  `hiring_stage_proposals` (what was proposed in the Bitrix topic and who
+  answered; `note` = why a deal was not created automatically),
+  `hiring_stage_crm_records` (the claim on creating a missing contact + deal:
+  one per conversation, at most one in flight per phone, each step recorded
+  before its Bitrix call) and `hiring_stage_notices` (which notice was posted
+  about a conversation, once), plus `safety_approval_settings.
+  stage_proposals_enabled` and `.bitrix_topic_id`. The Bitrix deal and
+  contact are referenced by id only; nothing is copied from Bitrix but a
+  deal's title and stage names. Closed rows are deleted after 60 days
   (`docs/architecture/hiring-stage-proposals.md`).
 - **The Truck Photos tables** (migrations 0096, 0097): `truck_photo_settings` (one
   row; `enabled` cannot be TRUE without a recipient a test message reached —
