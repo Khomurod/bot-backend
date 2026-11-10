@@ -37,3 +37,10 @@ export async function sendSafetyApprovalTestPost() {
   if (!res.ok) { await handleApiError(res); }
   return res.json();
 }
+
+/** A test message in the Bitrix topic, to prove the bot may write there. */
+export async function sendBitrixTopicTestPost() {
+  const res = await fetch(`${BASE}/test-bitrix-topic`, { method: 'POST', headers: getHeaders() });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}

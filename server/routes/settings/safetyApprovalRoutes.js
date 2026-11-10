@@ -5,7 +5,9 @@
  *
  * Where an administrator points the bot at the recruiting group, names the
  * "approved / not approved" topic, and picks the people whose replies count as
- * Safety's. `enabled` cannot be saved without all three
+ * Safety's — and names the Bitrix topic, where everything the stage proposals
+ * write goes (each topic is saved, then proven with a test message).
+ * `enabled` cannot be saved without the first three
  * (database/safetyApprovals/settings.js), and the group is VALIDATED here —
  * the bot is asked whether it can reach the chat — before it is stored.
  *
@@ -18,6 +20,7 @@ const express = require('express');
 const settingsStore = require('../../../database/safetyApprovals/settings');
 const reviews = require('../../../database/safetyApprovals/reviews');
 const { listRecentProposals } = require('../../../database/hiringStages/proposals');
+const { listRecentRecords } = require('../../../database/hiringStages/crmRecords');
 const { listGroupMembers } = require('../../../database/groupMembers');
 const { getGroupByTelegramId } = require('../../../database/groups');
 const { checkChatId } = require('../../../services/telegramChatIdCheck');
@@ -86,19 +89,68 @@ function shapeProposal(p) {
   };
 }
 
+/** A pasted topic link or number → `{topicId}`, or `{error, field}`. */
+async function topicFromBody(value, patch, field) {
+  const raw = String(value ?? '').trim();
+  if (!raw) return { topicId: null };
+  const parsed = parseTopicReference(raw);
+  if (parsed.error) return { error: parsed.error, field };
+  const chatId = patch.chatId !== undefined
+    ? patch.chatId
+    : (await settingsStore.getSafetyApprovalSettings()).chatId;
+  if (parsed.chatId && chatId && parsed.chatId !== chatId) {
+    return { error: 'That link is to a topic in a different group from the recruiting group.', field };
+  }
+  return { topicId: parsed.topicId };
+}
+
+/** Post a short message in one of the two topics, to prove the bot may write there. */
+async function testPost(res, telegram, topicKey, text) {
+  try {
+    const settings = await settingsStore.getSafetyApprovalSettings();
+    if (!settings.chatId || !settings[topicKey]) {
+      return res.status(400).json({ error: 'Save the recruiting group and the topic first.' });
+    }
+    if (!telegram) return res.status(503).json({ error: 'The bot is not running.' });
+    await telegram.sendMessage(settings.chatId, text, { message_thread_id: settings[topicKey] });
+    return res.json({ ok: true });
+  } catch (err) {
+    return res.json({ ok: false, message: `Telegram refused: ${String(err?.description || err?.message || err)}` });
+  }
+}
+
+/** A contact + deal the bot created (or could not), for the list under the switch. No phone. */
+function shapeRecord(r) {
+  return {
+    id: r.id,
+    status: r.status,
+    driverName: r.driverName,
+    dealId: r.dealId,
+    contactReused: r.contactReused,
+    dealReused: r.dealReused,
+    lastError: r.lastError,
+    updatedAt: r.updatedAt,
+  };
+}
+
 function createSafetyApprovalSettingsRouter({ authMiddleware, telegram }) {
   const router = express.Router();
 
   router.get('/safety-approvals', authMiddleware, async (req, res) => {
     try {
       const settings = await settingsStore.getSafetyApprovalSettings();
-      const [members, recent, proposals] = await Promise.all([
+      const [members, recent, proposals, created] = await Promise.all([
         membersOf(settings.chatId),
         reviews.listRecentReviews(20),
         listRecentProposals(15),
+        listRecentRecords(10),
       ]);
       res.json({
-        settings, members, recent: recent.map(shapeReview), proposals: proposals.map(shapeProposal),
+        settings,
+        members,
+        recent: recent.map(shapeReview),
+        proposals: proposals.map(shapeProposal),
+        crmRecords: created.map(shapeRecord),
       });
     } catch (err) {
       sendFailure(res, err, { message: 'Failed to read the Safety Approvals settings', ...LOG });
@@ -156,23 +208,12 @@ function createSafetyApprovalSettingsRouter({ authMiddleware, telegram }) {
         }
       }
 
-      if (body.topic !== undefined) {
-        const raw = String(body.topic ?? '').trim();
-        if (!raw) {
-          patch.topicId = null;
-        } else {
-          const parsed = parseTopicReference(raw);
-          if (parsed.error) return res.status(400).json({ error: parsed.error, field: 'topic' });
-          const chatId = patch.chatId !== undefined
-            ? patch.chatId
-            : (await settingsStore.getSafetyApprovalSettings()).chatId;
-          if (parsed.chatId && chatId && parsed.chatId !== chatId) {
-            return res.status(400).json({
-              error: 'That link is to a topic in a different group from the recruiting group.', field: 'topic',
-            });
-          }
-          patch.topicId = parsed.topicId;
-        }
+      for (const [field, key] of [['topic', 'topicId'], ['bitrixTopic', 'bitrixTopicId']]) {
+        if (body[field] === undefined) continue;
+        // eslint-disable-next-line no-await-in-loop
+        const topic = await topicFromBody(body[field], patch, field);
+        if (topic.error) return res.status(400).json(topic);
+        patch[key] = topic.topicId;
       }
 
       const saved = await settingsStore.updateSafetyApprovalSettings(patch, req.admin?.id ?? null);
@@ -186,24 +227,11 @@ function createSafetyApprovalSettingsRouter({ authMiddleware, telegram }) {
     }
   });
 
-  /** Post a short test message in the topic, to prove the bot may write there. */
-  router.post('/safety-approvals/test-post', authMiddleware, async (req, res) => {
-    try {
-      const settings = await settingsStore.getSafetyApprovalSettings();
-      if (!settings.chatId || !settings.topicId) {
-        return res.status(400).json({ error: 'Save the recruiting group and the topic first.' });
-      }
-      if (!telegram) return res.status(503).json({ error: 'The bot is not running.' });
-      await telegram.sendMessage(
-        settings.chatId,
-        '✅ Safety Approvals is connected. Safety\'s decisions will be posted in this topic.',
-        { message_thread_id: settings.topicId },
-      );
-      return res.json({ ok: true });
-    } catch (err) {
-      return res.json({ ok: false, message: `Telegram refused: ${String(err?.description || err?.message || err)}` });
-    }
-  });
+  router.post('/safety-approvals/test-post', authMiddleware, (req, res) => testPost(res, telegram, 'topicId',
+    '✅ Safety Approvals is connected. Safety\'s decisions will be posted in this topic.'));
+
+  router.post('/safety-approvals/test-bitrix-topic', authMiddleware, (req, res) => testPost(res, telegram, 'bitrixTopicId',
+    '✅ Bitrix is connected. Stage proposals, deals created in Bitrix and Bitrix errors will be posted in this topic.'));
 
   return router;
 }

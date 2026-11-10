@@ -2,7 +2,8 @@
 
 /**
  * Bitrix24 deals, as the hiring-stage proposals need them: find a candidate's
- * open deal, read the pipeline's stages, move a deal to one of them.
+ * open deal, read the pipeline's stages, move a deal to one of them — and,
+ * when the candidate has none, create the contact and the deal.
  *
  * Over the same inbound webhook as services/bitrix24Service.js (the URL is the
  * credential: it is never logged, and an error message carries Bitrix's own
@@ -13,6 +14,12 @@
  * calls it after a person presses the button; the guarded Board sync may call
  * it for STAGE_ID only after a live-schema validation, an exact before-stage
  * re-read and a database idempotency claim.
+ *
+ * `crm.contact.add` and `crm.deal.add` create NEW records, and only from
+ * services/hiringStages/crmCreate.js, after it has proved there is no open
+ * deal and claimed the creation in the database. Each carries
+ * ORIGINATOR_ID / ORIGIN_ID, so a retry after a timeout can find what an
+ * unanswered call may have created before it ever adds again.
  *
  * A failure THROWS `BitrixError` (with `.retryable` for a network failure or a
  * 5xx). The callers decide: the reviewer tries again later, a button press
@@ -167,6 +174,84 @@ async function listStageRows(categoryId, opts) {
   return Array.isArray(rows) ? rows : [];
 }
 
+const ORIGINATOR = 'wenze_recruiting';
+
+function phoneDigits(multifield) {
+  return (Array.isArray(multifield) ? multifield : [])
+    .map((p) => String(p?.VALUE || '').replace(/\D/g, '').slice(-10))
+    .filter((d) => d.length === 10);
+}
+
+async function getContact(contactId, opts) {
+  const r = await call('crm.contact.get', { id: Number(contactId) }, opts);
+  if (!r || !r.ID) return null;
+  return {
+    id: Number(r.ID),
+    first: r.NAME || '',
+    last: r.LAST_NAME || '',
+    name: [r.NAME, r.SECOND_NAME, r.LAST_NAME].filter(Boolean).join(' '),
+    phones: phoneDigits(r.PHONE),
+    originId: r.ORIGINATOR_ID === ORIGINATOR ? (r.ORIGIN_ID || null) : null,
+  };
+}
+
+/**
+ * Records this bot created under `originId` — checked on every row returned,
+ * so a filter Bitrix did not apply can never pass for a match.
+ */
+async function findByOrigin(entity, originId, opts) {
+  const rows = await call(`crm.${entity}.list`, {
+    filter: { ORIGINATOR_ID: ORIGINATOR, ORIGIN_ID: String(originId) },
+    select: ['ID', 'ORIGINATOR_ID', 'ORIGIN_ID', 'CLOSED'],
+    order: { ID: 'ASC' },
+  }, opts);
+  return (Array.isArray(rows) ? rows : [])
+    .filter((r) => r.ORIGINATOR_ID === ORIGINATOR && String(r.ORIGIN_ID) === String(originId))
+    .map((r) => Number(r.ID))
+    .filter((n) => n > 0);
+}
+
+function newId(result, what) {
+  const id = Number(result);
+  if (!Number.isInteger(id) || id <= 0) throw new BitrixError(`Bitrix did not return the new ${what}'s id`);
+  return id;
+}
+
+/** A NEW contact. Only from services/hiringStages/crmCreate.js (see the header). */
+async function createContact({
+  first, last, phone, originId, assignedById = null, comments = '',
+}, opts) {
+  const fields = {
+    NAME: first,
+    LAST_NAME: last,
+    PHONE: [{ VALUE: `+1${phone}`, VALUE_TYPE: 'WORK' }],
+    OPENED: 'Y',
+    ORIGINATOR_ID: ORIGINATOR,
+    ORIGIN_ID: String(originId),
+    COMMENTS: comments,
+    ...(assignedById ? { ASSIGNED_BY_ID: Number(assignedById) } : {}),
+  };
+  return newId(await call('crm.contact.add', { fields, params: { REGISTER_SONET_EVENT: 'Y' } }, opts), 'contact');
+}
+
+/** A NEW deal for a contact. Only from services/hiringStages/crmCreate.js (see the header). */
+async function createDeal({
+  title, categoryId, stageId, contactId, originId, assignedById = null, comments = '',
+}, opts) {
+  const fields = {
+    TITLE: title,
+    CATEGORY_ID: Number(categoryId) || 0,
+    STAGE_ID: String(stageId),
+    CONTACT_ID: Number(contactId),
+    OPENED: 'Y',
+    ORIGINATOR_ID: ORIGINATOR,
+    ORIGIN_ID: String(originId),
+    COMMENTS: comments,
+    ...(assignedById ? { ASSIGNED_BY_ID: Number(assignedById) } : {}),
+  };
+  return newId(await call('crm.deal.add', { fields, params: { REGISTER_SONET_EVENT: 'Y' } }, opts), 'deal');
+}
+
 /** THE WRITE. Only after a person confirmed (see the header). */
 async function moveDealToStage(dealId, stageId, opts) {
   const ok = await call('crm.deal.update', {
@@ -196,5 +281,10 @@ module.exports = {
   getDeal,
   listStageRows,
   moveDealToStage,
+  getContact,
+  findByOrigin,
+  createContact,
+  createDeal,
+  ORIGINATOR,
   __mapDealForTests: mapDeal,
 };

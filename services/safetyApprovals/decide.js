@@ -5,8 +5,11 @@
  *
  *   #Approved / #NotApproved  → THE HASHTAG DECIDES (lib/safetyApprovals/
  *     hashtagDecision.js). The drivers are read off the post without a model
- *     (lib/safetyApprovals/postDetails.js); only a post with no readable name
- *     asks the model — and then only for the names, never the decision.
+ *     (lib/safetyApprovals/postDetails.js); only a post whose names cannot be
+ *     read for certain — none, a name-shaped line in small letters, or a post
+ *     that says "team" with fewer than two names — asks the model, and then
+ *     only for the names, never the decision. A post that says it is a team
+ *     is never decided as one driver.
  *   the words alone ("approved", "not approved") → the model reads Safety's
  *     words, as before, and lib/safetyApprovals/reading.js keeps only what the
  *     messages prove.
@@ -16,20 +19,26 @@
  * is not a decision and is not answered with one.
  */
 
-const { namesInPost } = require('../../lib/safetyApprovals/postDetails');
+const { readPostNames } = require('../../lib/safetyApprovals/postDetails');
 const { driverKey, phonesIn } = require('../../lib/safetyApprovals/reading');
 const { decideByHashtag, reasonFor } = require('../../lib/safetyApprovals/hashtagDecision');
 
-/** The post's drivers, read without a model; [] when no line reads as a name. */
+/**
+ * The post's drivers, read without a model.
+ * @returns {{candidates: object[], team: boolean, certain: boolean}} `certain`
+ *   is false when the names cannot be trusted as the whole list of drivers
+ */
 function driversFromPost(postText) {
-  const names = namesInPost(postText);
+  const { names, doubtful, team } = readPostNames(postText);
   const phones = [...phonesIn(postText).values()];
-  return names.map((name, i) => ({
+  const candidates = names.map((name, i) => ({
     key: driverKey(name),
     name,
     phone: names.length === 1 ? (phones[0] || null) : (phones.length === names.length ? phones[i] : null),
     cdlPhoto: null,
   }));
+  const certain = candidates.length > 0 && doubtful === 0 && !(team && candidates.length < 2);
+  return { candidates, team: team || candidates.length > 1, certain };
 }
 
 /**
@@ -51,13 +60,14 @@ async function decide({
   });
 
   if (trigger.hashtag) {
-    let candidates = driversFromPost(post.text);
+    const fromPost = driversFromPost(post.text);
+    let { candidates } = fromPost;
     let reading = null;
-    if (!candidates.length) {
+    if (!fromPost.certain) {
       reading = await read();
       candidates = reading.candidates;
     }
-    const result = decideByHashtag(trigger.segments, candidates);
+    const result = decideByHashtag(trigger.segments, candidates, { team: fromPost.team });
     if (result.ask) return { ask: result.ask, reading };
     return { mode: reading ? 'hashtag_model_names' : 'hashtag', decisions: result.decisions, candidates, reading };
   }

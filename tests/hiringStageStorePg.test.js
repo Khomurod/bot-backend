@@ -116,10 +116,12 @@ test('ONE OPEN PROPOSAL PER CONVERSATION, and a press is claimed exactly once',
     assert.equal((await proposals.listRecentProposals(10)).length, 3);
   });
 
-test('the switch is off by default and saved on its own', { skip: skipWithoutPg() }, async (t) => {
+test('the switch is off by default, needs the Bitrix topic, and is saved on its own', { skip: skipWithoutPg() }, async (t) => {
   const { settings } = await setup(t);
   settings.invalidateCache();
   assert.equal((await settings.getSafetyApprovalSettings()).stageProposalsEnabled, false);
+  await assert.rejects(settings.updateSafetyApprovalSettings({ stageProposalsEnabled: true }), /name the Bitrix topic/);
+  await settings.updateSafetyApprovalSettings({ bitrixTopicId: 77 });
   const saved = await settings.updateSafetyApprovalSettings({ stageProposalsEnabled: true });
   assert.equal(saved.stageProposalsEnabled, true);
   const kept = await settings.updateSafetyApprovalSettings({ safetyUserIds: ['900'] });

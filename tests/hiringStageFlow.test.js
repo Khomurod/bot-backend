@@ -21,7 +21,10 @@ function stub(rel, exports) {
 
 const CHAT = '-1001234567890';
 const SAFETY = '900';
-const SETTINGS = { enabled: true, stageProposalsEnabled: true, chatId: CHAT, topicId: 3, safetyUserIds: [SAFETY] };
+const SETTINGS = {
+  enabled: true, stageProposalsEnabled: true, chatId: CHAT, topicId: 3, bitrixTopicId: 77, safetyUserIds: [SAFETY],
+};
+const POST_LINK = 'https://t.me/c/1234567890/169';
 
 // ── the stores, in memory ───────────────────────────────────────────────────
 let threadMessages = [];
@@ -58,6 +61,15 @@ stub('database/hiringStages/proposals.js', {
   },
 });
 stub('database/safetyApprovals/settings.js', { getSafetyApprovalSettings: async () => SETTINGS });
+let noticeKeys = new Set();
+stub('database/hiringStages/notices.js', {
+  reserve: async (chatId, root, key) => (noticeKeys.has(`${root}:${key}`) ? null : (noticeKeys.add(`${root}:${key}`), noticeKeys.size)),
+  recordSent: async () => {},
+  release: async () => {},
+});
+// The creation itself is pinned in tests/hiringStageCrmCreate.test.js; here it answers as told.
+let creation = { status: 'blocked', reason: 'a contact named Phillips Samuel is already in Bitrix under another phone' };
+stub('services/hiringStages/crmCreate.js', { ensureCandidateDeal: async () => creation, resumeInFlight: async () => null });
 stub('database/bitrix.js', { getBitrixConfig: async () => ({ enabled: true, webhookUrl: 'https://acme.bitrix24.com/rest/1/s/', dealCategoryId: '' }) });
 
 // ── a fake Bitrix ───────────────────────────────────────────────────────────
@@ -121,6 +133,8 @@ const press = (action, id, chatId = CHAT, from = ANN) => handleStageButton({ act
 
 function reset() {
   threadMessages = [POST, CLH, CLEAN]; finished = []; retried = []; rows = []; sent = []; edits = []; moves = [];
+  noticeKeys = new Set();
+  creation = { status: 'blocked', reason: 'a contact named Phillips Samuel is already in Bitrix under another phone' };
   failMove = false;
   telegram.sendMessage = send;
   bitrixDeal = { id: 12, title: 'Facebook Lead – Samuel Phillips', stageId: 'PREPARATION', categoryId: '0', contactId: 55 };
@@ -128,13 +142,14 @@ function reset() {
   aiAnswer = { move: true, stage_id: 'EXECUTING', driver_name: 'Samuel Phillips', evidence: 'CLEAN' };
 }
 
-test('a conversation that moved on posts ONE proposal, replying in General, and moves nothing', async () => {
+test('a conversation that moved on posts ONE proposal, IN THE BITRIX TOPIC, and moves nothing', async () => {
   reset();
   assert.equal(await run(), 'done');
   assert.equal(sent.length, 1);
   assert.equal(sent[0].chatId, CHAT);
-  assert.equal(sent[0].extra.reply_to_message_id, 174, 'it answers the message that moved the conversation');
-  assert.equal(sent[0].extra.message_thread_id, undefined, 'General has no thread id');
+  assert.equal(sent[0].extra.message_thread_id, 77, 'the Bitrix topic, never General');
+  assert.equal(sent[0].extra.reply_to_message_id, undefined, 'a reply would land in General');
+  assert.ok(sent[0].text.includes(`<a href="${POST_LINK}">The post in General</a>`), 'it links the post');
   assert.match(sent[0].text, /move <b>Samuel Phillips<\/b> to <b>MVR \+ PSP CHECK<\/b>\?/);
   assert.match(sent[0].text, /Now: CLEARINGHOUSE CHECK/);
   assert.deepEqual(moves, [], 'A MODEL NEVER MOVES A DEAL');
@@ -211,17 +226,19 @@ test('a LATER stage supersedes the open proposal', async () => {
   assert.equal(rows[0].status, 'superseded');
   assert.match(edits.at(-1).text, /replaced by a newer proposal/);
   assert.equal(rows[1].status, 'pending');
-  assert.equal(sent[1].extra.reply_to_message_id, 180);
+  assert.equal(sent[1].extra.message_thread_id, 77);
 });
 
-test('NO DEAL: the recruiter who posted is asked ONCE; "search again" turns it into a proposal', async () => {
+test('NO DEAL the bot may not create: the recruiter is asked ONCE, with why; "search again" turns it into a proposal', async () => {
   reset();
   found = { status: 'none' };
   await run();
   assert.equal(rows[0].kind, 'create_deal');
-  assert.equal(sent[0].extra.reply_to_message_id, 169, 'asked under the recruiter\'s own post');
+  assert.equal(sent[0].extra.message_thread_id, 77, 'asked in the Bitrix topic');
   assert.match(sent[0].text, /no open deal found for <b>Samuel Phillips<\/b>/);
+  assert.match(sent[0].text, /Not created automatically: a contact named Phillips Samuel is already in Bitrix/);
   assert.match(sent[0].text, /tg:\/\/user\?id=500/);
+  assert.ok(sent[0].text.includes(POST_LINK));
   await run();
   assert.equal(sent.length, 1, 'asked once');
 
@@ -254,7 +271,12 @@ test('not a candidate post, a lone post, or an unverified answer posts nothing',
   bitrixDeal = null;
   await run();
   assert.equal(finished.at(-1).outcome.result, 'ambiguous');
-  assert.equal(sent.length, 0);
+  assert.equal(sent.length, 1, 'said once in the Bitrix topic — no proposal');
+  assert.match(sent[0].text, /2 different people in Bitrix match <b>Samuel Phillips<\/b> — nothing was moved or created/);
+  assert.equal(sent[0].extra.message_thread_id, 77);
+  assert.equal(rows.length, 0);
+  await run();
+  assert.equal(sent.length, 1, 'not said twice');
 });
 
 test('AI unavailable or Telegram refusing → try again later, with nothing left open', async () => {

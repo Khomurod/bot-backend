@@ -8,9 +8,11 @@
  * idle sweep of services/jobQueueScheduler.js as the backstop.
  *
  * Off means off: while Safety Approvals or its stage proposals are switched
- * off, a drain reads the settings and stops, `blocked`, without touching the
- * queue. Once a day it first deletes proposals and queue rows older than
- * sixty days — the same life as the captured messages they were read from.
+ * off — or no Bitrix topic is saved for them to write in — a drain reads the
+ * settings and stops, `blocked`, without touching the queue: the waiting
+ * conversations are read once the topic is saved. Once a day it first deletes
+ * proposals, queue rows, creation records and notices older than sixty days —
+ * the same life as the captured messages they were read from.
  */
 
 const { createQueueWakeScheduler } = require('../jobQueueScheduler');
@@ -18,6 +20,8 @@ const { withRunRecord } = require('../operations/runLedger');
 const { getSafetyApprovalSettings } = require('../../database/safetyApprovals/settings');
 const threads = require('../../database/hiringStages/threads');
 const { purgeOldProposals } = require('../../database/hiringStages/proposals');
+const { purgeOldRecords } = require('../../database/hiringStages/crmRecords');
+const { purgeOldNotices } = require('../../database/hiringStages/notices');
 const { processThread } = require('./reviewer');
 
 const SERVICE_KEY = 'hiring_stage_proposals';
@@ -44,11 +48,16 @@ async function drainHiringStages(deps = {}) {
   if (Date.now() - lastPurgeAt > PURGE_EVERY_MS) {
     lastPurgeAt = Date.now();
     const purged = (await purgeOldProposals(RETENTION_DAYS).catch(() => 0))
-      + (await threads.purgeOldThreads(RETENTION_DAYS).catch(() => 0));
-    if (purged) console.log(`[HIRING STAGES] deleted ${purged} proposal/queue row(s) older than ${RETENTION_DAYS} days`);
+      + (await threads.purgeOldThreads(RETENTION_DAYS).catch(() => 0))
+      + (await purgeOldRecords(RETENTION_DAYS).catch(() => 0))
+      + (await purgeOldNotices(RETENTION_DAYS).catch(() => 0));
+    if (purged) console.log(`[HIRING STAGES] deleted ${purged} proposal/queue/record row(s) older than ${RETENTION_DAYS} days`);
   }
   if (!settings.enabled) return { blocked: 'Safety Approvals is switched off' };
   if (!settings.stageProposalsEnabled) return { blocked: 'Bitrix stage proposals are switched off' };
+  if (!settings.bitrixTopicId) {
+    return { blocked: 'no Bitrix topic is saved — Settings → Safety Approvals → 5 (conversations wait in the queue)' };
+  }
   if (!deps.telegram) return { blocked: 'no Telegram client is available' };
 
   const counts = {};

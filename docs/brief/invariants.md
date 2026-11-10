@@ -237,6 +237,17 @@ repository-wide working rules. The highest-consequence items:
   never act (`lib/board/truck.js`). `unknown` is a real fleet type and never
   wins a match. A team pair is two people on one truck, not a duplicate. See
   `docs/architecture/dispatcher-board.md`.
+- **A recruiting candidate gets at most one Bitrix contact and deal from the
+  bot, and only when certain** (November 2026,
+  `docs/architecture/hiring-stage-proposals.md` rules 13–14): one name read off
+  the post by rules, one typed phone, no other contact holding either; the
+  creation is claimed (`hiring_stage_crm_records`) and every step recorded
+  before its Bitrix call, so a retry or timeout searches before it adds. A
+  created deal starts at the first stage — a stage MOVE is still a person's
+  press. Bitrix messages go to the Bitrix topic only, never General.
+  `tests/hiringStageCrmCreate.test.js`. **A possessive or labelled line
+  ("Matthew's referral") is never a driver** of a Safety post
+  (`tests/safetyApprovalPostNames.test.js`).
 - **The Dispatcher Board is read for Home Time's home-in / home-out and by the
   Board ↔ Bitrix check; Wenze is the authority on who a person is.** The check
   (29 October 2026, `docs/architecture/board-bitrix-check.md`) treats the Board
