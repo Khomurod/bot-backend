@@ -8,6 +8,13 @@ const {
 } = require('../lib/boardBitrix/vocabulary');
 const { catalogSignature, fingerprint, labelOf } = require('../lib/boardBitrix/schema');
 const { discoverBitrixSchema } = require('../services/boardBitrix/schemaDiscovery');
+const { bitrixStatusRows } = require('./helpers/bitrixStatusRows');
+const { normalizeStageRows } = require('../lib/boardBitrix/stageCodes');
+
+/** Stage rows as discovery holds them after reading Bitrix's answer. */
+const readAs = (rows, entity, categoryId = null) => (
+  normalizeStageRows(bitrixStatusRows(rows, entity), { categoryId }).rows
+);
 
 function opaqueTruckCatalog() {
   return {
@@ -24,7 +31,7 @@ function opaqueTruckCatalog() {
       },
     },
     dealStages: Object.entries(STAGE).map(([role, ID]) => ({ ID, NAME: role })),
-    truckCategories: [{ id: 17, name: 'DT1040_17' }],
+    truckCategories: [{ id: 17, name: 'Default pipeline', isDefault: 'Y' }],
     truckStages: STATIC_SCHEMA.activeTruckStageIds.map((ID) => ({ ID, NAME: ID })),
     truckItems: [
       { id: 1, categoryId: 17, stageId: STATIC_SCHEMA.activeTruckStageIds[0] },
@@ -43,7 +50,8 @@ function depsFor(c, over = {}) {
         return { categories: params.entityTypeId === 2 ? c.categories : c.truckCategories };
       }
       if (method === 'crm.status.list') {
-        return params.filter.ENTITY_ID.startsWith('DEAL_STAGE_') ? c.dealStages : c.truckStages;
+        const entity = params.filter.ENTITY_ID;
+        return bitrixStatusRows(entity.startsWith('DEAL_STAGE_') ? c.dealStages : c.truckStages, entity);
       }
       throw new Error(`unexpected ${method}`);
     },
@@ -69,7 +77,8 @@ function approvedHistorical(c) {
   };
   mapping.catalogSignature = catalogSignature(mapping, {
     ...c,
-    truckStages: c.truckStages.map((stage) => ({ ...stage, __categoryId: 17 })),
+    dealStages: readAs(c.dealStages, 'DEAL_STAGE_3'),
+    truckStages: readAs(c.truckStages, 'DYNAMIC_1040_STAGE_17', 17),
   });
   return {
     mapping, fingerprint: fingerprint(mapping), source: 'catalog_historical', confidence: 100,
@@ -150,7 +159,8 @@ test('historical ids never bootstrap another smart process or empty evidence', a
     recordInvalid: async (value) => wrongProcessInvalid.push(value),
   }));
   assert.equal(wrongProcessOut.writeSafe, false);
-  assert.match(wrongProcessInvalid[0].problem, /missing Trucks pipeline/);
+  // The consequence, then the cause the historical check found.
+  assert.match(wrongProcessInvalid[0].problem, /missing active-truck stages; the Trucks process is not the previously verified 1040/);
 
   const empty = opaqueTruckCatalog();
   empty.truckItems = [];
@@ -159,5 +169,5 @@ test('historical ids never bootstrap another smart process or empty evidence', a
     recordInvalid: async (value) => emptyInvalid.push(value),
   }));
   assert.equal(emptyOut.writeSafe, false);
-  assert.match(emptyInvalid[0].problem, /missing Trucks pipeline/);
+  assert.match(emptyInvalid[0].problem, /missing active-truck stages; Trucks category 17 holds no current truck items/);
 });

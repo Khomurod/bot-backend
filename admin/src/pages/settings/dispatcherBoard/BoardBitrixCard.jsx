@@ -52,6 +52,18 @@ function LastRun({ run }) {
   );
 }
 
+/** The previously verified active truck stages, as the last check found them in Bitrix. */
+function HistoricalStages({ stages }) {
+  if (!stages || !stages.length) return null;
+  return (
+    <div>
+      Previously verified active truck stages: {stages.map((stage) => (stage.present
+        ? `${stage.label || stage.code} (${stage.itemCount})`
+        : `${stage.code} — not in Bitrix`)).join(" · ")}
+    </div>
+  );
+}
+
 function SchemaCandidate({ candidate, busy, onApprove }) {
   if (!candidate) return null;
   const evidence = candidate.evidence || {};
@@ -66,6 +78,7 @@ function SchemaCandidate({ candidate, busy, onApprove }) {
               `${stage.label}${stage.category ? ` / ${stage.category}` : ""} (${stage.itemCount})`).join(" · ")}
           </div>
         )}
+        <HistoricalStages stages={evidence.historicalStages} />
       </div>
     );
   }
@@ -85,6 +98,7 @@ function SchemaCandidate({ candidate, busy, onApprove }) {
         Evidence: {evidence.selectedActiveItems || 0} active of {evidence.selectedCategoryItems || 0} items
         {(labels.activeTruckStages || []).length ? ` · ${labels.activeTruckStages.join(", ")}` : ""}
       </div>
+      <HistoricalStages stages={evidence.historicalStages} />
       {candidate.problem && <div>{candidate.problem}</div>}
       {candidate.requiresApproval && (
         <button className="btn btn-ghost touch-target" style={{ marginTop: 5 }}

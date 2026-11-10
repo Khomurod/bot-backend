@@ -70,6 +70,13 @@ function candidateView(candidate) {
         category: text(stage?.category),
         itemCount: num(stage?.itemCount),
       })).filter((stage) => stage.label && stage.itemCount > 0),
+      // The previously verified active truck stages: found in Bitrix or not, and their counts.
+      historicalStages: (candidate.evidence?.historicalStages || []).slice(0, 6).map((stage) => ({
+        code: text(stage?.code, 80),
+        label: text(stage?.label),
+        present: stage?.present === true,
+        itemCount: num(stage?.itemCount),
+      })).filter((stage) => stage.code),
     },
   };
 }

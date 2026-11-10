@@ -252,7 +252,11 @@ repository-wide working rules. The highest-consequence items:
   resets live sync to off. An empty selected active-truck set blocks the whole
   pass while the last-known-good mapping is preserved. Opaque truck labels are
   never guessed: matching the historical ids requires exact live catalogue and
-  count proof, two reads and explicit admin approval. Since
+  count proof, two reads and explicit admin approval. A Bitrix stage is its
+  `STATUS_ID` (`C3:…`, `DT1040_17:…`), never the row `ID` `crm.status.list` also
+  returns: a stage row without `STATUS_ID` blocks the read, and a mapping
+  holding a row number for a stage never validates (`lib/boardBitrix/stageCodes.js`;
+  reading `ID` blocked production and once saved driver stages as `"703"`). Since
   October 2026 nothing else reads it:
   its identity checks, the `board.link_person` correction,
   the board-vs-Home-Time contradictions and its panels were removed (keys in
