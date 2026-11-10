@@ -25,6 +25,7 @@ function deps(over = {}) {
           syncMode: calls.sync.at(-1)?.syncMode || 'off',
           maxUpdatesPerPass: calls.sync.at(-1)?.maxUpdatesPerPass || 10,
           schemaSource: 'catalog_exact',
+          schemaMapping: { evidence: { selectedActiveItems: 104 } },
           updatedAt: null, updatedBy: null,
         }),
         setEnabled: async (enabled, by) => { calls.enabled.push(enabled); calls.by = by; },
@@ -38,6 +39,10 @@ function deps(over = {}) {
         ...over.store,
       },
       getRun: async () => ({ lastFinishedAt: 't', lastStatus: 'ok', lastSummary: { boardPeople: 110, activeDeals: 121, activeTrucks: 109, paired: 104, discrepancies: 9 } }),
+      schemaStore: {
+        getSchemaState: async () => ({ active: null, candidate: null }),
+        approveCandidate: async () => null,
+      },
       runNow: async () => { calls.runs += 1; return { discrepancies: 9 }; },
       ...over.deps,
     },
@@ -59,14 +64,31 @@ test('a schema fallback exposes its catalogue-only reason on the admin view', as
     store: {
       getSettings: async () => ({
         enabled: true, syncMode: 'off', maxUpdatesPerPass: 10,
-        schemaSource: 'static_fallback', schemaCheckedAt: '2026-11-09T20:00:00Z',
-        schemaMapping: { problem: 'Bitrix crm.type.list: access denied\nfor this webhook' },
+        schemaSource: 'catalog_exact', schemaCheckedAt: '2026-11-09T20:00:00Z',
+        schemaMapping: { evidence: { selectedActiveItems: 104 } },
       }),
+    },
+    deps: {
+      schemaStore: { getSchemaState: async () => ({ candidate: {
+        state: 'invalid', seenCount: 0, evidence: {},
+        problem: 'Bitrix crm.type.list: access denied\nfor this webhook',
+      } }) },
     },
   });
   const view = await admin.getView({ deps: d });
   assert.equal(view.schema.writeSafe, false);
   assert.equal(view.schema.problem, 'Bitrix crm.type.list: access denied for this webhook');
+});
+
+test('a twice-seen candidate can be approved explicitly and always triggers a fresh pass', async () => {
+  const { deps: d, calls } = deps({ deps: { schemaStore: {
+    getSchemaState: async () => ({ candidate: null }),
+    approveCandidate: async (by) => ({ fingerprint: 'candidate', by }),
+  } } });
+  await assert.rejects(admin.approveSchema({}, { deps: d }), /explicit confirmation/);
+  await admin.approveSchema({ confirm: true }, { by: 'owner', deps: d });
+  await new Promise((r) => setImmediate(r));
+  assert.equal(calls.runs, 1);
 });
 
 test('switching ON records who and runs a pass at once; OFF runs nothing and puts the question out back in line; a non-boolean is a 400', async () => {
@@ -100,6 +122,11 @@ test('dry run is easy to enable; live needs the check, a validated schema and ex
   calls.enabled.push(true);
   await admin.setSyncSettings({ syncMode: 'live', maxUpdatesPerPass: 5, confirmLive: true }, { deps: d });
   assert.equal(calls.sync.at(-1).syncMode, 'live');
+  d.schemaStore.getSchemaState = async () => ({ candidate: { state: 'candidate' } });
+  await assert.rejects(
+    admin.setSyncSettings({ syncMode: 'live', maxUpdatesPerPass: 5, confirmLive: true }, { deps: d }),
+    /current Bitrix schema is validated/
+  );
   await assert.rejects(
     admin.setSyncSettings({ syncMode: 'live', maxUpdatesPerPass: 100, confirmLive: true }, { deps: d }),
     /from 1 to 25/
@@ -119,6 +146,7 @@ function serve(t, { signedIn = true, runLimiter = null } = {}) {
     getView: async () => ({ enabled: true }),
     setEnabled: async (enabled, { by }) => { seen.push({ enabled, by }); if (typeof enabled !== 'boolean') { const e = new Error('enabled must be true or false'); e.statusCode = 400; throw e; } return { enabled }; },
     setSyncSettings: async (body, { by }) => { seen.push({ sync: body.syncMode, by }); return { enabled: true, syncMode: body.syncMode }; },
+    approveSchema: async (body, { by }) => { seen.push({ approve: body.confirm, by }); return { enabled: true }; },
     runNow: async () => ({ summary: { discrepancies: 2 }, settings: { enabled: true } }),
   };
   app.use('/api/settings', createBoardBitrixSettingsRouter({ authMiddleware, adminService, runLimiter }));
@@ -134,6 +162,7 @@ test('every route needs a signed-in admin', async (t) => {
   assert.equal((await fetch(base)).status, 401);
   assert.equal((await send(`${base}/enabled`, 'PUT', { enabled: true })).status, 401);
   assert.equal((await send(`${base}/sync`, 'PUT', { syncMode: 'dry_run', maxUpdatesPerPass: 10 })).status, 401);
+  assert.equal((await send(`${base}/schema/approve`, 'POST', { confirm: true })).status, 401);
   assert.equal((await send(`${base}/run`, 'POST')).status, 401);
 });
 
@@ -145,6 +174,8 @@ test('the switch records who; a bad body is a 400; check now answers the summary
   assert.equal((await send(`${base}/enabled`, 'PUT', { enabled: 'yes' })).status, 400);
   assert.equal((await send(`${base}/sync`, 'PUT', { syncMode: 'dry_run', maxUpdatesPerPass: 10 })).status, 200);
   assert.deepEqual(seen[2], { sync: 'dry_run', by: 'owner' });
+  assert.equal((await send(`${base}/schema/approve`, 'POST', { confirm: true })).status, 200);
+  assert.deepEqual(seen[3], { approve: true, by: 'owner' });
   const first = await send(`${base}/run`, 'POST');
   assert.equal(first.status, 200);
   assert.equal((await first.json()).summary.discrepancies, 2);

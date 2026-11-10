@@ -1,26 +1,34 @@
 'use strict';
 
 /**
- * Discover the current Bitrix schema. Exact labels win; AI is asked only for
- * labels the deterministic reader cannot settle. Every AI-selected id is then
- * checked against this same live catalogue. Failure degrades to the October
- * snapshot for READS ONLY — live writes are always blocked on a fallback.
+ * Discover the current Bitrix schema from catalogue labels plus aggregate
+ * truck counts. A model may propose ids; catalogue/evidence checks and a
+ * durable two-pass candidate decide whether the mapping can become active.
  */
 const { STATIC_SCHEMA } = require('../../lib/boardBitrix/vocabulary');
 const {
   resolveStructure, resolveSemantics, complete, validateMapping, fingerprint,
 } = require('../../lib/boardBitrix/schema');
+const {
+  buildTruckEvidence, countSelected, assessEvidence, describeMapping,
+} = require('../../lib/boardBitrix/schemaEvidence');
 const { askStructure, askSemantics } = require('./schemaAi');
 
 const MIN_AI_CONFIDENCE = 85;
+const PAGE_SIZE = 50;
+const MAX_ITEM_PAGES = 40;
+const MAX_TRUCK_CATEGORIES = 20;
 
 function defaultDeps() {
   /* eslint-disable global-require */
+  const schemaStore = require('../../database/boardBitrixSchema');
   return {
     call: require('../bitrix24DealStages').callBitrix,
     askStructure,
     askSemantics,
-    recordSchema: (schema) => require('../../database/boardBitrix').recordSchema(schema),
+    getSchemaState: schemaStore.getSchemaState,
+    observeCandidate: schemaStore.observeCandidate,
+    recordInvalid: schemaStore.recordInvalid,
   };
   /* eslint-enable global-require */
 }
@@ -30,34 +38,30 @@ function rows(result, key) {
   return Array.isArray(result?.[key]) ? result[key] : [];
 }
 
-function fallback(problem) {
+function cleanProblem(problem) {
+  return String(problem || 'the live Bitrix schema could not be discovered')
+    .replace(/\s+/g, ' ').trim().slice(0, 240);
+}
+
+function fallback(problem, source = 'static_fallback') {
   return {
     ...STATIC_SCHEMA,
     dealFields: { ...STATIC_SCHEMA.dealFields },
     stageByRole: { ...STATIC_SCHEMA.stageByRole },
     fleetByDriverType: { ...STATIC_SCHEMA.fleetByDriverType },
     activeTruckStageIds: [...STATIC_SCHEMA.activeTruckStageIds],
-    problem: String(problem || 'the live Bitrix schema could not be discovered')
-      .replace(/\s+/g, ' ').trim().slice(0, 240),
+    source,
+    problem: cleanProblem(problem),
     fingerprint: fingerprint(STATIC_SCHEMA),
+    comparisonSafe: false,
+    writeSafe: false,
   };
 }
 
-/**
- * Remember a failed catalogue check on the settings row, not in the shared
- * background-run summary (which is also read by the public health endpoint).
- * The stored mapping is the read-only fallback plus a catalogue-only reason;
- * it contains no driver, deal, truck or Board data.
- */
-async function recordFallback(problem, deps) {
+async function recordFallback(problem, deps, evidence = {}) {
   const out = fallback(problem);
-  if (typeof deps.recordSchema === 'function') {
-    await Promise.resolve(deps.recordSchema({
-      mapping: out,
-      fingerprint: out.fingerprint,
-      source: out.source,
-      confidence: null,
-    })).catch(() => {});
+  if (typeof deps.recordInvalid === 'function') {
+    await Promise.resolve(deps.recordInvalid({ problem: out.problem, evidence })).catch(() => {});
   }
   return out;
 }
@@ -94,8 +98,54 @@ function mergeAiSemantics(base, answer) {
   };
 }
 
+async function readTruckEvidence(call, entityTypeId) {
+  const items = [];
+  for (let page = 0; page < MAX_ITEM_PAGES; page += 1) {
+    // Aggregate evidence only: no title, assigned driver, or other item field.
+    // eslint-disable-next-line no-await-in-loop
+    const result = await call('crm.item.list', {
+      entityTypeId, select: ['id', 'categoryId', 'stageId'],
+      order: { id: 'ASC' }, start: page * PAGE_SIZE,
+    });
+    const batch = rows(result, 'items');
+    items.push(...batch.map((item) => ({ categoryId: item.categoryId, stageId: item.stageId })));
+    if (batch.length < PAGE_SIZE) return buildTruckEvidence(items);
+  }
+  throw new Error(`Bitrix has more than ${MAX_ITEM_PAGES * PAGE_SIZE} truck items; schema evidence is incomplete`);
+}
+
+async function readTruckStages(call, entityTypeId, categories) {
+  if (categories.length > MAX_TRUCK_CATEGORIES) {
+    throw new Error(`Bitrix returned more than ${MAX_TRUCK_CATEGORIES} Trucks categories; schema selection is ambiguous`);
+  }
+  const pages = await Promise.all(categories.map(async (category) => {
+    const categoryId = Number(category.id ?? category.ID);
+    const result = await call('crm.status.list', {
+      filter: { ENTITY_ID: `DYNAMIC_${entityTypeId}_STAGE_${categoryId}` },
+      order: { SORT: 'ASC' },
+    });
+    return rows(result, 'statuses').map((stage) => ({ ...stage, __categoryId: categoryId }));
+  }));
+  return pages.flat();
+}
+
+function activeStateValid(active, catalog, evidence) {
+  if (!active?.mapping || !['catalog_exact', 'ai_validated'].includes(active.source)) return false;
+  return validateMapping(active.mapping, catalog).ok
+    && assessEvidence(active.mapping, evidence).ok;
+}
+
+function activeStateProven(active) {
+  return Boolean(active?.mapping
+    && ['catalog_exact', 'ai_validated'].includes(active.source)
+    && Number(active.mapping.evidence?.selectedActiveItems) > 0);
+}
+
 async function discoverBitrixSchema(deps = defaultDeps()) {
+  let evidence = {};
   try {
+    const state = typeof deps.getSchemaState === 'function'
+      ? await deps.getSchemaState() : { active: null, candidate: null };
     const [rawCategories, rawTypes] = await Promise.all([
       deps.call('crm.category.list', { entityTypeId: 2 }),
       deps.call('crm.type.list', {}),
@@ -120,82 +170,78 @@ async function discoverBitrixSchema(deps = defaultDeps()) {
     const [fields, rawDealStages, rawTruckCategories] = await Promise.all([
       deps.call('crm.deal.fields', {}),
       deps.call('crm.status.list', {
-        filter: { ENTITY_ID: structure.categoryId ? `DEAL_STAGE_${structure.categoryId}` : 'DEAL_STAGE' },
-        order: { SORT: 'ASC' },
+        filter: { ENTITY_ID: `DEAL_STAGE_${structure.categoryId}` }, order: { SORT: 'ASC' },
       }),
       deps.call('crm.category.list', { entityTypeId: structure.truckEntityTypeId }),
     ]);
     const dealStages = rows(rawDealStages, 'statuses');
     const truckCategories = rows(rawTruckCategories, 'categories');
-    const preliminary = resolveSemantics({ fields, dealStages, truckCategories, truckStages: [] });
+    evidence = await readTruckEvidence(deps.call, structure.truckEntityTypeId);
+    const truckStages = await readTruckStages(deps.call, structure.truckEntityTypeId, truckCategories);
+    const catalog = { categories, types, fields, dealStages, truckCategories, truckStages };
 
-    let truckStages = [];
-    if (preliminary.truckCategoryId) {
-      const rawTruckStages = await deps.call('crm.status.list', {
-        filter: { ENTITY_ID: `DYNAMIC_${structure.truckEntityTypeId}_STAGE_${preliminary.truckCategoryId}` },
-        order: { SORT: 'ASC' },
-      });
-      truckStages = rows(rawTruckStages, 'statuses');
-    }
-
-    let semantics = resolveSemantics({ fields, dealStages, truckCategories, truckStages });
+    const semantics = resolveSemantics({ fields, dealStages, truckCategories, truckStages });
     let mapping = { ...structure, ...semantics };
-    let catalog = { categories, types, fields, dealStages, truckCategories, truckStages };
-
-    if (!complete(mapping) || !mapping.truckCategoryId || !mapping.activeTruckStageIds?.length) {
-      let answer = await deps.askSemantics({ fields, dealStages, truckCategories, truckStages });
+    let evidenceCheck = complete(mapping) ? assessEvidence(mapping, evidence) : { ok: false };
+    if (!complete(mapping) || !evidenceCheck.ok) {
+      const answer = await deps.askSemantics({
+        fields, dealStages, truckCategories, truckStages, evidence,
+        previousMapping: state.active?.mapping || null,
+      });
       mapping = mergeAiSemantics(mapping, answer);
       if (Number(answer?.confidence) >= MIN_AI_CONFIDENCE) {
         confidence = Math.min(confidence, Number(answer.confidence));
         aiUsed = true;
       }
-      // AI may identify a truck category whose stages were not fetched yet.
-      if (!truckStages.length && mapping.truckCategoryId) {
-        const rawTruckStages = await deps.call('crm.status.list', {
-          filter: { ENTITY_ID: `DYNAMIC_${structure.truckEntityTypeId}_STAGE_${mapping.truckCategoryId}` },
-          order: { SORT: 'ASC' },
-        });
-        truckStages = rows(rawTruckStages, 'statuses');
-        catalog = { ...catalog, truckStages };
-        semantics = resolveSemantics({ fields, dealStages, truckCategories, truckStages });
-        mapping = {
-          ...mapping,
-          activeTruckStageIds: mapping.activeTruckStageIds?.length
-            ? mapping.activeTruckStageIds : semantics.activeTruckStageIds,
-        };
-        if (!mapping.activeTruckStageIds?.length) {
-          answer = await deps.askSemantics({ fields, dealStages, truckCategories, truckStages });
-          mapping = mergeAiSemantics(mapping, answer);
-          if (Number(answer?.confidence) >= MIN_AI_CONFIDENCE) {
-            confidence = Math.min(confidence, Number(answer.confidence));
-            aiUsed = true;
-          }
-        }
-      }
+      evidenceCheck = complete(mapping) ? assessEvidence(mapping, evidence) : { ok: false };
     }
 
     const valid = validateMapping(mapping, catalog);
-    if (!valid.ok) return recordFallback(valid.reason, deps);
-    const out = {
-      ...mapping,
-      source: aiUsed ? 'ai_validated' : 'catalog_exact',
+    if (!valid.ok) return recordFallback(valid.reason, deps, evidence);
+    if (!evidenceCheck.ok) return recordFallback(evidenceCheck.reason, deps, evidence);
+
+    const activeValid = activeStateValid(state.active, catalog, evidence);
+    const activeProven = activeStateProven(state.active);
+    const staticCount = countSelected(STATIC_SCHEMA, evidence).activeItems;
+    const activeCount = activeValid ? countSelected(state.active.mapping, evidence).activeItems : 0;
+    const previousCount = activeProven
+      ? Number(state.active.mapping.evidence.selectedActiveItems) : 0;
+    evidenceCheck = assessEvidence(mapping, evidence, {
+      baselineActiveCount: activeCount || previousCount || staticCount,
+    });
+    const described = describeMapping(mapping, catalog, evidence);
+    const source = aiUsed ? 'ai_validated' : 'catalog_exact';
+    const proposed = {
+      mapping: described,
+      fingerprint: fingerprint(described),
+      source,
       confidence,
-      writeSafe: true,
+      evidence: described.evidence,
+      problem: evidenceCheck.reason,
+      anomalous: evidenceCheck.anomalous,
+      activeValid,
+      activeProven,
+      baseFingerprint: state.active?.fingerprint || null,
     };
-    out.fingerprint = fingerprint(out);
-    await Promise.resolve(deps.recordSchema({
-      mapping: out,
-      fingerprint: out.fingerprint,
-      source: out.source,
-      confidence: out.confidence,
-    })).catch(() => {});
-    return out;
+    const observed = await deps.observeCandidate(proposed);
+    if (observed?.status === 'active') {
+      return {
+        ...described, source, confidence, fingerprint: proposed.fingerprint,
+        comparisonSafe: true, writeSafe: true,
+      };
+    }
+    const reason = observed?.requiresApproval
+      ? `${evidenceCheck.reason || 'the Bitrix structure changed'}; administrator approval is required after two matching checks`
+      : `schema candidate seen ${observed?.seenCount || 1}/2; one more matching check is required`;
+    return fallback(reason, 'candidate_pending');
   } catch (err) {
-    return recordFallback(err?.message || err, deps);
+    return recordFallback(err?.message || err, deps, evidence);
   }
 }
 
 module.exports = {
-  MIN_AI_CONFIDENCE, rows, fallback, recordFallback, structureFromAi, mergeAiSemantics,
+  MIN_AI_CONFIDENCE, PAGE_SIZE, MAX_ITEM_PAGES, MAX_TRUCK_CATEGORIES,
+  rows, fallback, recordFallback, structureFromAi, mergeAiSemantics,
+  readTruckEvidence, readTruckStages, activeStateValid, activeStateProven,
   discoverBitrixSchema, defaultDeps,
 };

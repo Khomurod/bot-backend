@@ -45,6 +45,7 @@ function defaultDeps() {
     boardRows: () => require('../../database/dispatchBoard').listBoardRows({ presentOnly: true, limit: BOARD_ROW_LIMIT }),
     readBitrix: async () => {
       const schema = await discoverBitrixSchema();
+      if (schema.comparisonSafe === false) return { schema, schemaBlocked: true };
       return { ...(await readBitrix(undefined, schema)), schema };
     },
     syncStages: (args) => require('./stageSync').runStageSync(args),
@@ -108,6 +109,13 @@ async function runCheckPass({ deps = defaultDeps(), confirmId = null, ask = true
   }
 
   const schema = bitrix.schema || STATIC_SCHEMA;
+  if (bitrix.schemaBlocked) {
+    return {
+      blocked: 'the current Bitrix schema is not yet proven; see Settings → Dispatcher Board and run the check again',
+      schemaSource: schema.source || 'static_fallback',
+      schemaWriteSafe: false,
+    };
+  }
   const result = compareBoardWithBitrix({
     boardRows: rows, deals: bitrix.deals, trucks: bitrix.trucks, schema,
   });

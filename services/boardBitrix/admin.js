@@ -23,6 +23,7 @@ function defaultDeps() {
   /* eslint-disable global-require */
   return {
     store: require('../../database/boardBitrix'),
+    schemaStore: require('../../database/boardBitrixSchema'),
     getRun: require('../../database/backgroundRuns').getRun,
     recentActions: require('../../database/boardBitrix').recentStageSyncActions,
     runNow: () => require('./timer').runNow(),
@@ -37,6 +38,35 @@ function invalid(message) {
 }
 
 const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+
+const text = (value, max = 160) => (typeof value === 'string'
+  ? value.replace(/\s+/g, ' ').trim().slice(0, max) : null);
+
+function candidateView(candidate) {
+  if (!candidate) return null;
+  const labels = candidate.mapping?.labels || {};
+  return {
+    state: candidate.state,
+    source: candidate.source,
+    confidence: candidate.confidence,
+    seenCount: candidate.seenCount,
+    requiresApproval: candidate.requiresApproval,
+    readyToApprove: candidate.state === 'candidate' && candidate.seenCount >= 2,
+    problem: text(candidate.problem, 240),
+    checkedAt: candidate.checkedAt,
+    labels: {
+      driverPipeline: text(labels.driverPipeline),
+      truckProcess: text(labels.truckProcess),
+      truckCategory: text(labels.truckCategory),
+      activeTruckStages: (labels.activeTruckStages || []).map((v) => text(v)).filter(Boolean),
+    },
+    evidence: {
+      totalTruckItems: num(candidate.evidence?.totalTruckItems),
+      selectedCategoryItems: num(candidate.evidence?.selectedCategoryItems),
+      selectedActiveItems: num(candidate.evidence?.selectedActiveItems),
+    },
+  };
+}
 
 function lastRunView(run) {
   if (!run) return null;
@@ -63,11 +93,19 @@ function lastRunView(run) {
 }
 
 async function getView({ deps = defaultDeps() } = {}) {
-  const settings = await deps.store.getSettings();
+  const [settings, schemaState] = await Promise.all([
+    deps.store.getSettings(),
+    typeof deps.schemaStore?.getSchemaState === 'function'
+      ? deps.schemaStore.getSchemaState() : Promise.resolve({ candidate: null }),
+  ]);
   const summary = await deps.store.summarise();
   const current = summary.current;
   const recentActions = typeof deps.recentActions === 'function'
     ? await deps.recentActions(8) : [];
+  const activeEvidence = settings.schemaMapping?.evidence || {};
+  const proven = ['catalog_exact', 'ai_validated'].includes(settings.schemaSource)
+    && num(activeEvidence.selectedActiveItems) > 0;
+  const candidate = candidateView(schemaState.candidate);
   return {
     enabled: settings.enabled,
     syncMode: settings.syncMode || 'off',
@@ -76,10 +114,11 @@ async function getView({ deps = defaultDeps() } = {}) {
       source: settings.schemaSource || null,
       confidence: settings.schemaConfidence,
       checkedAt: settings.schemaCheckedAt,
-      writeSafe: ['catalog_exact', 'ai_validated'].includes(settings.schemaSource),
-      problem: settings.schemaSource === 'static_fallback'
-        && typeof settings.schemaMapping?.problem === 'string'
-        ? settings.schemaMapping.problem.replace(/\s+/g, ' ').trim().slice(0, 240) : null,
+      writeSafe: proven && !candidate,
+      problem: candidate?.state === 'invalid' ? candidate.problem
+        : settings.schemaSource === 'static_fallback' ? text(settings.schemaMapping?.problem, 240) : null,
+      evidence: proven ? activeEvidence : null,
+      candidate,
     },
     recentActions,
     updatedAt: settings.updatedAt,
@@ -108,7 +147,11 @@ async function setSyncSettings({ syncMode, maxUpdatesPerPass, confirmLive = fals
   if (mode === 'live') {
     if (confirmLive !== true) throw invalid('Live Bitrix sync requires explicit confirmation');
     if (!current.enabled) throw invalid('Switch the Board ↔ Bitrix check on before live sync');
-    if (!['catalog_exact', 'ai_validated'].includes(current.schemaSource)) {
+    const state = typeof deps.schemaStore?.getSchemaState === 'function'
+      ? await deps.schemaStore.getSchemaState() : { candidate: null };
+    if (!['catalog_exact', 'ai_validated'].includes(current.schemaSource)
+      || num(current.schemaMapping?.evidence?.selectedActiveItems) < 1
+      || state.candidate) {
       throw invalid('Run a successful dry check so the current Bitrix schema is validated before live sync');
     }
   }
@@ -119,6 +162,14 @@ async function setSyncSettings({ syncMode, maxUpdatesPerPass, confirmLive = fals
     throw err;
   }
   if (mode !== 'off') Promise.resolve(deps.runNow()).catch(() => {});
+  return getView({ deps });
+}
+
+async function approveSchema({ confirm = false } = {}, { by = null, deps = defaultDeps() } = {}) {
+  if (confirm !== true) throw invalid('Schema approval requires explicit confirmation');
+  const approved = await deps.schemaStore.approveCandidate(by);
+  if (!approved) throw invalid('The schema candidate needs two recent matching checks before approval');
+  Promise.resolve(deps.runNow()).catch(() => {});
   return getView({ deps });
 }
 
@@ -142,5 +193,5 @@ async function runNow({ deps = defaultDeps() } = {}) {
 }
 
 module.exports = {
-  getView, setEnabled, setSyncSettings, runNow, lastRunView, SERVICE_KEY,
+  getView, setEnabled, setSyncSettings, approveSchema, runNow, lastRunView, SERVICE_KEY,
 };

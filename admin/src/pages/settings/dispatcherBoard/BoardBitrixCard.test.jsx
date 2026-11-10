@@ -12,6 +12,7 @@ vi.mock("../../../api", () => ({
   getBoardBitrixCheck: vi.fn(),
   setBoardBitrixCheckEnabled: vi.fn(),
   setBoardBitrixSync: vi.fn(),
+  approveBoardBitrixSchema: vi.fn(),
   runBoardBitrixCheck: vi.fn(),
 }));
 
@@ -53,6 +54,42 @@ test("shows why a fallback schema blocks writes", async () => {
     "Writes are blocked: Bitrix crm.type.list: access denied for this webhook"
   );
   expect(screen.getByText("Schema source").nextSibling).toHaveTextContent("not validated for writes");
+});
+
+test("an invalid discovery shows one blocking reason, not duplicate warnings", async () => {
+  const candidate = { state: "invalid", problem: "selected active stages contain no trucks" };
+  api.getBoardBitrixCheck.mockResolvedValue(view({
+    schema: { source: "catalog_exact", writeSafe: false, problem: candidate.problem, candidate },
+  }));
+  render(<BoardBitrixCard />);
+  const warnings = await screen.findAllByRole("status");
+  expect(warnings).toHaveLength(1);
+  expect(warnings[0]).toHaveTextContent("Writes and comparison are blocked");
+});
+
+test("shows candidate evidence and approves only a twice-seen structural change", async () => {
+  const candidate = {
+    state: "candidate", source: "ai_validated", confidence: 95,
+    seenCount: 2, requiresApproval: true, readyToApprove: true,
+    problem: "the Bitrix structure changed",
+    labels: {
+      driverPipeline: "4. DRIVER RELATION", truckProcess: "Trucks",
+      truckCategory: "On road", activeTruckStages: ["On the road", "Drivers at shops"],
+    },
+    evidence: { totalTruckItems: 140, selectedCategoryItems: 118, selectedActiveItems: 104 },
+  };
+  api.getBoardBitrixCheck.mockResolvedValue(view({
+    schema: { source: "catalog_exact", writeSafe: false, candidate },
+  }));
+  api.approveBoardBitrixSchema.mockResolvedValue(view({
+    schema: { source: "ai_validated", confidence: 95, writeSafe: true, candidate: null },
+  }));
+  vi.spyOn(window, "confirm").mockReturnValue(true);
+  render(<BoardBitrixCard />);
+  expect(await screen.findByRole("status")).toHaveTextContent("104 active of 118 items");
+  fireEvent.click(screen.getByRole("button", { name: "Approve schema" }));
+  await waitFor(() => expect(api.approveBoardBitrixSchema).toHaveBeenCalledTimes(1));
+  expect(await screen.findByText(/Schema approved/)).toBeInTheDocument();
 });
 
 test("switching on says the first check is running", async () => {

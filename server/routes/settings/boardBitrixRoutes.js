@@ -7,6 +7,7 @@
  *                                 is out, the last pass — counts only, no names
  *   PUT  /board-bitrix/enabled  → the ON/OFF switch; ON runs a pass at once
  *   PUT  /board-bitrix/sync     → off / dry-run / explicitly confirmed live
+ *   POST /board-bitrix/schema/approve → approve a twice-seen structural candidate
  *   POST /board-bitrix/run      → one pass now (rate-limited: it reads Bitrix)
  *
  * The logic is services/boardBitrix/admin.js. Live writes can change STAGE_ID
@@ -58,6 +59,16 @@ function createBoardBitrixSettingsRouter({ authMiddleware, adminService = servic
       });
     } catch (err) {
       return failed(res, err, 'configure status sync');
+    }
+  });
+
+  router.post('/board-bitrix/schema/approve', authMiddleware, async (req, res) => {
+    try {
+      return res.json({
+        settings: await adminService.approveSchema(req.body || {}, { by: who(req) }),
+      });
+    } catch (err) {
+      return failed(res, err, 'approve schema');
     }
   });
 

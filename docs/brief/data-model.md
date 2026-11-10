@@ -77,7 +77,7 @@ fallback, and files a finding whenever it is the one that answered.
 `dispatch_board_rows` 0046) sits BESIDE both, and outranks neither.** It records
 what an external spreadsheet says about today — truck, trailer, status, ETA,
 dispatcher — and is read for Home Time's home-in / home-out and by the Board ↔
-Bitrix check, which treats it as the source of truth (`board_bitrix_*` 0088/0098,
+Bitrix check, which treats it as the source of truth (`board_bitrix_*` 0088/0098/0099,
 `docs/architecture/board-bitrix-check.md`). It is keyed by `row_key` (normalised truck + normalised person)
 because the board has no stable row id: a spreadsheet row number changes the
 moment somebody sorts the sheet. Three rules:
@@ -94,6 +94,14 @@ moment somebody sorts the sheet. Three rules:
   2026; links it made stay and are still honoured. Home Time's board watch
   decides which person a row is about at read time
   (`services/dispatchBoard/rowPeople.js`) and writes nothing back.
+
+The Board ↔ Bitrix check keeps its last-known-good catalogue mapping on the
+singleton `board_bitrix_settings` row. `board_bitrix_schema_candidates` is a
+separate singleton staging row: it holds catalogue labels/ids and aggregate
+category/stage counts only, must repeat before promotion, and never participates
+in comparison or writes while pending. Structural/count drift may require an
+administrator; any promotion resets status sync to off. Neither schema row may
+contain a driver, deal, truck title/number or Board row.
 
 **The person layer (`driver_people`, `driver_person_groups`, `driver_units`,
 migration 0015) sits ABOVE `groups` and fixes that additively.** No foreign key

@@ -15,6 +15,7 @@ const SYSTEM = [
   'Choose only ids present in the supplied lists. Never invent, edit, or infer an id that is not listed.',
   'DRIVER RELATION is the pipeline holding active drivers. Trucks is the smart process holding truck items.',
   'HOME means the driver is home; VACATION means away; SHOP means at a repair shop; WORKING means on the road or working.',
+  'Aggregate item counts are evidence: choose active truck stages from the chosen truck category and explain the populated fleet, not an empty parallel process.',
   'If labels do not prove one unique answer, set understood=false.',
   'Answer JSON only and include confidence from 0 to 100.',
 ].join('\n');
@@ -63,10 +64,23 @@ async function askStructure({ categories, types }, deps = {}) {
   return answer.parsed;
 }
 
-async function askSemantics({ fields, dealStages, truckCategories, truckStages }, deps = {}) {
+async function askSemantics({
+  fields, dealStages, truckCategories, truckStages, evidence = {}, previousMapping = null,
+}, deps = {}) {
   const run = deps.runCapability || runCapability;
   const fieldRows = Array.isArray(fields)
     ? fields : Object.entries(fields || {}).map(([id, row]) => ({ id, ...(row || {}) }));
+  const categoryRows = clipRows(truckCategories, ['id', 'ID'], 50).map((row) => ({
+    ...row, item_count: Number(evidence.categoryCounts?.[row.id] || 0),
+  }));
+  const stageRows = clipRows(truckStages, ['id', 'ID'], 150).map((row) => {
+    const source = (truckStages || []).find((stage) => String(stage.ID ?? stage.id) === row.id);
+    return {
+      ...row,
+      category_id: source?.__categoryId == null ? null : String(source.__categoryId),
+      item_count: Number(evidence.stageCounts?.[row.id] || 0),
+    };
+  });
   const answer = await run({
     capability: CAPABILITY,
     systemText: SYSTEM,
@@ -74,8 +88,14 @@ async function askSemantics({ fields, dealStages, truckCategories, truckStages }
       task: 'Map the driver fields and stages. A truck is active in stages meaning on road, at shop, or about to leave.',
       deal_fields: clipRows(fieldRows, ['id', 'ID'], 150),
       driver_stages: clipRows(dealStages, ['id', 'ID'], 100),
-      truck_categories: clipRows(truckCategories, ['id', 'ID'], 50),
-      truck_stages: clipRows(truckStages, ['id', 'ID'], 100),
+      truck_categories: categoryRows,
+      truck_stages: stageRows,
+      total_truck_items: Number(evidence.totalItems || 0),
+      previous_schema: previousMapping ? {
+        truck_category_id: previousMapping.truckCategoryId,
+        active_truck_stage_ids: previousMapping.activeTruckStageIds,
+        previous_active_items: previousMapping.evidence?.selectedActiveItems ?? null,
+      } : null,
       answer_shape: {
         understood: true,
         deal_fields: { truck: 'listed field id', driver_type: 'listed field id' },

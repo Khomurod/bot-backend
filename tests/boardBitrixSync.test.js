@@ -5,6 +5,8 @@ const assert = require('node:assert/strict');
 
 const { STATIC_SCHEMA } = require('../lib/boardBitrix/vocabulary');
 const { complete, validateMapping } = require('../lib/boardBitrix/schema');
+const { assessEvidence, buildTruckEvidence } = require('../lib/boardBitrix/schemaEvidence');
+const { decideCandidate } = require('../lib/boardBitrix/schemaCandidate');
 const { discoverBitrixSchema } = require('../services/boardBitrix/schemaDiscovery');
 const { planStageUpdates, runStageSync } = require('../services/boardBitrix/stageSync');
 
@@ -34,12 +36,14 @@ function catalog({ renamed = false } = {}) {
     ],
     truckCategories: [{ id: 7, name: renamed ? 'Primary Flow' : 'Trucks' }],
     truckStages: [{ ID: 'DT2000_7:ROAD', NAME: renamed ? 'Rolling Asset' : 'On the road' }],
+    truckItems: [{ id: 81, categoryId: 7, stageId: 'DT2000_7:ROAD' }],
   };
 }
 
 function discoveryDeps(c, over = {}) {
   const recorded = [];
   const calls = [];
+  let currentCandidate = null;
   return {
     recorded,
     calls,
@@ -48,6 +52,7 @@ function discoveryDeps(c, over = {}) {
         calls.push({ method, params });
         if (method === 'crm.type.list') return { types: c.types };
         if (method === 'crm.deal.fields') return c.fields;
+        if (method === 'crm.item.list') return { items: c.truckItems };
         if (method === 'crm.category.list') {
           return { categories: params.entityTypeId === 2 ? c.categories : c.truckCategories };
         }
@@ -58,7 +63,13 @@ function discoveryDeps(c, over = {}) {
       },
       askStructure: async () => null,
       askSemantics: async () => null,
-      recordSchema: async (s) => { recorded.push(s); },
+      getSchemaState: async () => ({ active: null, candidate: currentCandidate }),
+      observeCandidate: async (s) => {
+        recorded.push(s);
+        currentCandidate = { state: 'candidate', fingerprint: s.fingerprint, seenCount: 1 };
+        return { status: 'active', seenCount: 2, requiresApproval: false };
+      },
+      recordInvalid: async (s) => { recorded.push({ invalid: true, ...s }); },
       ...over,
     },
   };
@@ -81,6 +92,21 @@ test('exact live Bitrix labels produce a write-safe dynamic schema without AI', 
   });
   assert.deepEqual(out.activeTruckStageIds, ['DT2000_7:ROAD']);
   assert.equal(w.recorded.length, 1);
+  assert.equal(w.recorded[0].evidence.selectedActiveItems, 1);
+  assert.deepEqual(w.calls.find((entry) => entry.method === 'crm.item.list').params.select,
+    ['id', 'categoryId', 'stageId'], 'schema evidence never reads a truck title or driver field');
+});
+
+test('the first valid schema observation is pending and cannot affect comparison', async () => {
+  const c = catalog();
+  const w = discoveryDeps(c, {
+    observeCandidate: async () => ({ status: 'candidate', seenCount: 1, requiresApproval: false }),
+  });
+  const out = await discoverBitrixSchema(w.deps);
+  assert.equal(out.source, 'candidate_pending');
+  assert.equal(out.comparisonSafe, false);
+  assert.equal(out.writeSafe, false);
+  assert.match(out.problem, /seen 1\/2/);
 });
 
 test('renamed labels may be mapped by AI, but only to ids from the live catalogue', async () => {
@@ -109,8 +135,8 @@ test('renamed labels may be mapped by AI, but only to ids from the live catalogu
   assert.equal(refused.writeSafe, false);
   assert.equal(refused.source, 'static_fallback');
   assert.match(refused.problem, /stage was not returned/);
-  assert.equal(bad.recorded.at(-1).source, 'static_fallback');
-  assert.match(bad.recorded.at(-1).mapping.problem, /stage was not returned/);
+  assert.equal(bad.recorded.at(-1).invalid, true);
+  assert.match(bad.recorded.at(-1).problem, /stage was not returned/);
 });
 
 test('an incomplete or low-confidence discovery falls back to reads and cannot be live', async () => {
@@ -123,8 +149,42 @@ test('an incomplete or low-confidence discovery falls back to reads and cannot b
   assert.equal(out.categoryId, STATIC_SCHEMA.categoryId);
   assert.equal(complete(out), true, 'the static map remains usable for the old read-only check');
   assert.equal(w.recorded.length, 1);
-  assert.equal(w.recorded[0].source, 'static_fallback');
-  assert.match(w.recorded[0].mapping.problem, /ambiguous/);
+  assert.equal(w.recorded[0].invalid, true);
+  assert.match(w.recorded[0].problem, /ambiguous/);
+});
+
+test('truck evidence refuses the production failure shape: populated category, zero selected active stages', () => {
+  const evidence = buildTruckEvidence([
+    { categoryId: 7, stageId: 'DT2000_7:ROAD' },
+    { categoryId: 7, stageId: 'DT2000_7:ROAD' },
+  ]);
+  const wrong = {
+    truckCategoryId: 7,
+    activeTruckStageIds: ['DT2000_7:EMPTY'],
+  };
+  const out = assessEvidence(wrong, evidence, { baselineActiveCount: 2 });
+  assert.equal(out.ok, false);
+  assert.equal(out.counts.activeItems, 0);
+  assert.match(out.reason, /no current truck items/);
+});
+
+test('a schema candidate must repeat; structural or count drift needs approval', () => {
+  const proposed = { fingerprint: 'new', mapping: { categoryId: 3, truckEntityTypeId: 1040,
+    truckCategoryId: 17, dealFields: { truck: 'T', driverType: 'D' } } };
+  const first = decideCandidate({ proposed });
+  assert.equal(first.seenCount, 1);
+  assert.equal(first.promote, false);
+  const second = decideCandidate({ proposed, current: { state: 'candidate', fingerprint: 'new', seenCount: 1 } });
+  assert.equal(second.promote, true);
+  const active = { fingerprint: 'old', mapping: { ...proposed.mapping, truckCategoryId: 99 } };
+  const structural = decideCandidate({ active, activeValid: true, proposed,
+    current: { state: 'candidate', fingerprint: 'new', seenCount: 1 } });
+  assert.equal(structural.seenCount, 2);
+  assert.equal(structural.requiresApproval, true);
+  assert.equal(structural.promote, false);
+  assert.equal(decideCandidate({ active, activeValid: false, activeProven: true, proposed })
+    .requiresApproval, true, 'a previously proven structure stays protected after its ids disappear');
+  assert.equal(decideCandidate({ proposed, anomalous: true }).requiresApproval, true);
 });
 
 test('the mapping validator rejects ids and duplicate role stages a model invented', () => {
@@ -138,6 +198,8 @@ test('the mapping validator rejects ids and duplicate role stages a model invent
   assert.deepEqual(validateMapping(mapping, c), { ok: true });
   assert.match(validateMapping({ ...mapping, categoryId: 999 }, c).reason, /pipeline/);
   assert.match(validateMapping({ ...mapping, stageByRole: { ...mapping.stageByRole, WORKING: 'D9:H' } }, c).reason, /different stages/);
+  const wrongCategory = { ...c, truckStages: c.truckStages.map((row) => ({ ...row, __categoryId: 8 })) };
+  assert.match(validateMapping(mapping, wrongCategory).reason, /another Trucks category/);
 });
 
 function mismatch(over = {}) {

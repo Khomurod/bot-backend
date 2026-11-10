@@ -52,6 +52,46 @@ function LastRun({ run }) {
   );
 }
 
+function SchemaCandidate({ candidate, busy, onApprove }) {
+  if (!candidate) return null;
+  if (candidate.state === "invalid") {
+    return (
+      <div role="status" style={{ fontSize: 12, color: "var(--warning)", marginTop: 5 }}>
+        Writes and comparison are blocked: {candidate.problem || "the live catalogue could not be proven"}
+      </div>
+    );
+  }
+  const labels = candidate.labels || {};
+  const evidence = candidate.evidence || {};
+  return (
+    <div role="status" style={{ fontSize: 12, color: "var(--warning)", marginTop: 7 }}>
+      <div>
+        Candidate schema: {candidate.source || "catalogue"}
+        {candidate.confidence != null ? ` (${candidate.confidence}%)` : ""}
+        {` · seen ${candidate.seenCount || 0}/2`}
+      </div>
+      <div>
+        {labels.driverPipeline || "driver pipeline"} → {labels.truckProcess || "Trucks"}
+        {labels.truckCategory ? ` / ${labels.truckCategory}` : ""}
+      </div>
+      <div>
+        Evidence: {evidence.selectedActiveItems || 0} active of {evidence.selectedCategoryItems || 0} items
+        {(labels.activeTruckStages || []).length ? ` · ${labels.activeTruckStages.join(", ")}` : ""}
+      </div>
+      {candidate.problem && <div>{candidate.problem}</div>}
+      {candidate.requiresApproval && (
+        <button className="btn btn-ghost touch-target" style={{ marginTop: 5 }}
+          disabled={busy || !candidate.readyToApprove} onClick={onApprove}>
+          {candidate.readyToApprove ? "Approve schema" : "Check again before approval"}
+        </button>
+      )}
+      {!candidate.requiresApproval && candidate.seenCount < 2 && (
+        <div>Run Check now once more. The same result must be observed twice.</div>
+      )}
+    </div>
+  );
+}
+
 export default function BoardBitrixCard() {
   const [view, setView] = useState(null);
   const [error, setError] = useState(null);
@@ -123,6 +163,18 @@ export default function BoardBitrixCard() {
     finally { setBusy(false); }
   };
 
+  const approveSchema = async () => {
+    if (!window.confirm("Approve this twice-observed Bitrix schema? Live status sync will remain Off.")) return;
+    setBusy(true); setMessage(null);
+    try {
+      const next = await api.approveBoardBitrixSchema();
+      setView(next);
+      setSyncMode(next.syncMode || "off");
+      setMessage("Schema approved. Live sync remains Off; a fresh check is running now.");
+    } catch (err) { setMessage(err.message); }
+    finally { setBusy(false); }
+  };
+
   if (error) {
     return (
       <div className="ios-glass" style={{ padding: 14, marginTop: 16 }}>
@@ -174,11 +226,12 @@ export default function BoardBitrixCard() {
         <Row label="Schema source" value={view.schema?.writeSafe
           ? `${view.schema.source}${view.schema.confidence != null ? ` (${view.schema.confidence}%)` : ""}`
           : "not validated for writes"} />
-        {view.schema?.problem && (
+        {view.schema?.problem && !view.schema?.candidate && (
           <div role="status" style={{ fontSize: 12, color: "var(--warning)", marginTop: 5 }}>
             Writes are blocked: {view.schema.problem}
           </div>
         )}
+        <SchemaCandidate candidate={view.schema?.candidate} busy={busy} onApprove={approveSchema} />
       </div>
 
       <Row label="Question out now" value={view.current ? `${view.current.label} (since ${new Date(view.current.askedAt).toLocaleString()})` : "none"} />

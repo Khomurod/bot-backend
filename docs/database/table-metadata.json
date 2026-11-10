@@ -40,11 +40,18 @@
       "danger": "Contains driver names and phone numbers. A row is NEVER deleted and never marked absent on a failed read — `present=false` plus first/last_seen_at is the only history of an assignment the board itself does not keep. `status_changed_at` is NARROWER than `last_changed_at` on purpose: it moves only when the status word itself changes, because Home Time waits for a status to hold before acting on it and an edited ETA must not restart that wait."
     },
     "board_bitrix_settings": {
-      "purpose": "Single-row switch for the Board ↔ Bitrix comparison, its separately confirmed off/dry-run/live status-sync mode, per-pass write cap, and the most recently validated live Bitrix schema fingerprint.",
+      "purpose": "Single-row switch for the Board ↔ Bitrix comparison, its separately confirmed off/dry-run/live status-sync mode, per-pass write cap, and the last-known-good live Bitrix schema fingerprint.",
       "status": "active",
       "service": "bot (Board ↔ Bitrix timer and admin settings)",
       "sourceOfTruth": "Administrators choose the modes; live Bitrix catalogue reads supply the schema mapping.",
-      "danger": "Both the check and sync default off. Switching the check off resets sync to off. A stored mapping is diagnostic state, never sufficient by itself to authorize a write; every pass validates the live catalogue again."
+      "danger": "Both the check and sync default off. Switching the check off resets sync to off. A stored mapping is never sufficient by itself to authorize a write: every pass validates the live catalogue and aggregate item counts again. Replacing this mapping always resets sync to off."
+    },
+    "board_bitrix_schema_candidates": {
+      "purpose": "Singleton staging row for a newly discovered Bitrix catalogue mapping or a failed discovery. A valid candidate must be observed twice before automatic promotion; structural or aggregate-count drift waits for administrator approval.",
+      "status": "active",
+      "service": "bot (Board ↔ Bitrix schema discovery and admin settings)",
+      "sourceOfTruth": "Live Bitrix catalogue labels, opaque ids and aggregate category/stage item counts only.",
+      "danger": "Never store driver names, deal ids, truck numbers/titles or Board rows here. A candidate is not used for comparison or writes. Promotion replaces the last-known-good mapping and resets live sync to off."
     },
     "board_bitrix_stage_sync_actions": {
       "purpose": "Idempotency lease and audit history for proposed or applied Dispatcher Board → Bitrix deal STAGE_ID transitions.",

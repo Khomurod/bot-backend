@@ -34,6 +34,15 @@ export async function setBoardBitrixSync({ syncMode, maxUpdatesPerPass, confirmL
   return data.settings;
 }
 
+export async function approveBoardBitrixSchema() {
+  const res = await fetch(`${API_BASE}/settings/board-bitrix/schema/approve`, {
+    method: 'POST', headers: getHeaders(), body: JSON.stringify({ confirm: true }),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  const data = await res.json();
+  return data.settings;
+}
+
 /** One pass now. → { summary, settings } */
 export async function runBoardBitrixCheck() {
   const res = await fetch(`${API_BASE}/settings/board-bitrix/run`, { method: 'POST', headers: getHeaders() });

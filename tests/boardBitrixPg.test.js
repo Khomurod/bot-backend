@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * Migrations 0088/0098 and database/boardBitrix.js on a real PostgreSQL: the switch
+ * Migrations 0088/0098/0099 and the Board-Bitrix data layer on real PostgreSQL: the switch
  * is OFF until somebody turns it on; a pass is one transaction that opens,
  * keeps and resolves; a difference that comes back reopens its own row; only
  * one question is ever out; a redelivered reply is claimed once; "skip"
@@ -18,8 +18,9 @@ const found = (key, priority = 10, extra = {}) => ({ key, kind: key.split(':')[0
 
 async function setup(t) {
   const h = await createPgHarness(t, { extraDdl: ALL_MIGRATIONS });
-  const { boardBitrix: store } = h.loadDataLayer(['boardBitrix']);
-  return { h, store };
+  const { boardBitrix: store, boardBitrixSchema: schemaStore }
+    = h.loadDataLayer(['boardBitrix', 'boardBitrixSchema']);
+  return { h, store, schemaStore };
 }
 
 test('the switch is OFF after the migration and remembers who turned it on', { skip: skipWithoutPg() }, async (t) => {
@@ -59,6 +60,42 @@ test('status sync settings and the validated schema are stored, but live remains
     store.setSyncSettings({ syncMode: 'live', maxUpdatesPerPass: 4 }, 'owner'),
     (err) => err.code === 'BOARD_BITRIX_CHECK_OFF',
   );
+});
+
+test('a schema candidate is promoted only after two matching observations; structural drift waits for approval', { skip: skipWithoutPg() }, async (t) => {
+  const { store, schemaStore } = await setup(t);
+  const mapping = {
+    categoryId: 3, truckEntityTypeId: 1040, truckCategoryId: 17,
+    dealFields: { truck: 'UF_TRUCK', driverType: 'UF_TYPE' },
+    stageByRole: { HOME: 'H', VACATION: 'V', SHOP: 'S', WORKING: 'W' },
+    activeTruckStageIds: ['ROAD'], evidence: { selectedActiveItems: 104 },
+  };
+  const proposed = {
+    mapping, fingerprint: 'schema-a', source: 'ai_validated', confidence: 95,
+    evidence: mapping.evidence, activeValid: false, baseFingerprint: null,
+  };
+  let observed = await schemaStore.observeCandidate(proposed);
+  assert.equal(observed.status, 'candidate');
+  assert.equal(observed.seenCount, 1);
+  observed = await schemaStore.observeCandidate(proposed);
+  assert.equal(observed.status, 'active');
+  assert.equal((await store.getSettings()).schemaFingerprint, 'schema-a');
+
+  const changed = {
+    ...proposed,
+    mapping: { ...mapping, truckCategoryId: 21 },
+    fingerprint: 'schema-b', activeValid: true, activeProven: true,
+    baseFingerprint: 'schema-a',
+  };
+  await schemaStore.observeCandidate(changed);
+  observed = await schemaStore.observeCandidate(changed);
+  assert.equal(observed.status, 'candidate');
+  assert.equal(observed.seenCount, 2);
+  assert.equal(observed.requiresApproval, true);
+  assert.ok(await schemaStore.approveCandidate('owner'));
+  const settings = await store.getSettings();
+  assert.equal(settings.schemaFingerprint, 'schema-b');
+  assert.equal(settings.syncMode, 'off');
 });
 
 test('stage actions are idempotent across processes, and an applied transition is never repeated', { skip: skipWithoutPg() }, async (t) => {

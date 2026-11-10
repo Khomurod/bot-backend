@@ -72,6 +72,19 @@ test('NOTHING IS DECIDED FROM AN INCOMPLETE READ: stale Board, empty Board, no a
   }
 });
 
+test('an unproven schema blocks the whole pass before comparison or question changes', async () => {
+  const { deps, calls } = fakes({
+    readBitrix: async () => ({
+      schemaBlocked: true,
+      schema: { source: 'candidate_pending', comparisonSafe: false, writeSafe: false },
+    }),
+  });
+  const out = await runCheckPass({ deps });
+  assert.match(out.blocked, /schema is not yet proven/);
+  assert.equal(calls.applied.length, 0);
+  assert.equal(calls.asked, 0);
+});
+
 test('a good pass records the differences, then asks the next question', async () => {
   const { deps, calls } = fakes({ readBitrix: async () => ({ deals: [{ ...okDeal, fleetType: null }], trucks: [okTruck] }) });
   const out = await runCheckPass({ deps });

@@ -1,7 +1,8 @@
 # The Dispatcher Board ↔ Bitrix24 check
 
 **Read this before changing anything under `lib/boardBitrix/`,
-`services/boardBitrix/`, `database/boardBitrix.js` or
+`services/boardBitrix/`, `database/boardBitrix.js`,
+`database/boardBitrixSchema.js` or
 `bot/handlers/boardBitrixReplyHandlers.js`.**
 
 The owner, 29 October 2026: compare the active drivers on the Dispatcher Board
@@ -32,14 +33,22 @@ Decided with the owner the same day:
 
 Since 9 November 2026 the application discovers the current Bitrix catalogue on
 every pass. Exact live labels are resolved deterministically. If an operator
-renamed a pipeline, field or stage, AI may classify the **catalogue labels and
-opaque ids only** — never driver/deal data — but every selected id must be one
-returned by the same live Bitrix read and confidence must be at least 85. AI
-never selects a driver and is never on the write path. An ambiguous catalogue
-falls back to the 29 October snapshot for comparison only and blocks both dry
-run and live writes. The settings card records the time and the catalogue-only
-reason for that fallback; the reason is kept off the shared public health
-summary and never contains driver, deal, truck or Board data.
+renamed a pipeline, field or stage, AI may classify **catalogue labels, opaque
+ids and aggregate item counts only** — never driver/deal/Board data. Every
+selected id must be one returned by the same live Bitrix read and confidence
+must be at least 85. The aggregate evidence is just category/stage totals from
+`crm.item.list`; titles, assigned drivers and other item fields are not read for
+schema discovery.
+
+Since 10 November 2026 a plausible result is first stored as a candidate, not
+used by the comparison. It must be seen on two matching complete reads. A
+pipeline/process/category/field change, or a large change from the proven
+active-truck count, remains pending for explicit administrator approval even
+after the second read. A selected populated category with zero selected active
+trucks is invalid, not a candidate. Promotion preserves no old write authority:
+it replaces the last-known-good mapping and resets status sync to `off`. The
+settings card shows catalogue labels and counts, never driver/deal/truck data.
+Failure/candidate detail stays off the shared public health summary.
 
 ## Where Bitrix keeps drivers and trucks
 
@@ -76,12 +85,22 @@ driver's fleet plus that number.
   mutation. The live writer's only mutation is `crm.deal.update` with
   `{ fields: { STAGE_ID } }`. It cannot edit a name, truck, driver type, deal,
   pipeline, field, or Board row.
-- **AI understands schema labels; it never authorizes a write.** Exact catalogue
-  labels win. AI receives no driver names, deal ids, truck numbers or statuses,
-  may choose only ids in the supplied catalogue, and needs confidence ≥85.
-  `lib/boardBitrix/schema.js` independently validates the pipeline, smart
-  process, fields and four different HOME/VACATION/SHOP/WORKING stages against
-  that same catalogue. Fallback/static schema has `writeSafe = false`.
+- **AI interprets catalogue structure; deterministic code authorizes use.**
+  Exact catalogue labels win. AI receives no driver names, deal ids, truck
+  numbers/titles, Board statuses or Board rows. It may choose only ids in the
+  supplied catalogue, sees only aggregate category/stage item counts, and needs
+  confidence ≥85. `lib/boardBitrix/schema.js` independently validates the
+  pipeline, smart process, fields, stage category and four different
+  HOME/VACATION/SHOP/WORKING stages. `schemaEvidence.js` independently proves
+  that the chosen category and active stages contain current items. AI is
+  absent from `stageSync.js` and cannot call a mutation.
+- **A newly interpreted schema cannot affect the first pass.** It lives in
+  `board_bitrix_schema_candidates`, must have the same fingerprint on two
+  complete reads, and until promotion the pass stops before comparing, changing
+  the queue, asking or syncing. A structural change or implausible count needs
+  an administrator after those two reads. Invalid discovery never overwrites
+  the last-known-good mapping. Every promotion — automatic or approved — resets
+  `sync_mode` to `off`; live must be explicitly confirmed again.
 - **A fuzzy comparison is never identity proof for a write.** The comparison
   keeps the owner's typo tolerance so it does not create noisy questions. The
   writer separately requires a strict name match and the same known fleet plus
@@ -112,6 +131,15 @@ driver's fleet plus that number.
   drivers point at (`error`). Resolving or
   asking from half a list would call every driver on the missing pages "not in
   Bitrix".
+- **Schema evidence is complete or the pass stops.** The schema reader pages
+  through at most 2 000 truck items and keeps category/stage counts only. It
+  rejects a candidate when its chosen category has no current items, when a
+  populated chosen category has zero items in the chosen active stages, or
+  when an id belongs to another category. Crossing the count anomaly threshold
+  (less than half the last-known-good active count, or more than 1.5× plus 10)
+  cannot auto-promote. The 9 November production failure shape — 104 trucks in
+  Bitrix but AI-selected active stages counting 0 — therefore blocks before it
+  can turn 45 real differences into hundreds of false questions.
 - **Closed deals are read newest first, and only the newest 500.** They grow
   forever and only sharpen a question asked anyway — a Board driver with no
   active deal is "closed in Bitrix" when the closed deal is recent and "no deal"
@@ -209,16 +237,18 @@ Board status Wenze does not know is never compared.
 | | |
 |---|---|
 | `database/migrations/0088_board_bitrix_check.sql` | `board_bitrix_settings` (the switch) and `board_bitrix_discrepancies` (the queue) |
-| `database/migrations/0098_board_bitrix_status_sync.sql` | sync mode, validated-schema record and the idempotent `board_bitrix_stage_sync_actions` audit |
-| `lib/boardBitrix/` | pure: `vocabulary` (read-only fallback), `schema` (live-catalogue validation), `names`, `trucks`, `compare`, `wording`, `replyIntent` |
+| `database/migrations/0098_board_bitrix_status_sync.sql` | sync mode, last-known-good schema record and the idempotent `board_bitrix_stage_sync_actions` audit |
+| `database/migrations/0099_board_bitrix_schema_candidates.sql` | catalogue/count-only candidate or invalid discovery; never driver/deal/Board data |
+| `lib/boardBitrix/` | pure: `vocabulary` (read-only fallback), `schema` (live-catalogue validation), `schemaEvidence` (aggregate proof), `schemaCandidate` (two-pass/approval rule), `names`, `trucks`, `compare`, `wording`, `replyIntent` |
 | `services/boardBitrix/bitrixRead.js` | the two list reads, complete or failed |
-| `services/boardBitrix/schemaDiscovery.js`, `schemaAi.js` | exact live schema discovery; bounded AI interpretation of catalogue labels only |
+| `services/boardBitrix/schemaDiscovery.js`, `schemaAi.js` | exact live schema discovery; bounded AI interpretation of catalogue labels/opaque ids/aggregate counts only |
 | `services/boardBitrix/stageSync.js` | dry-run/live status plan, strict identity guard, fresh Board/deal checks, the only `STAGE_ID` write |
 | `services/boardBitrix/pass.js`, `timer.js` | one pass; the 15-minute timer, `board_bitrix_check` in the roster |
 | `services/boardBitrix/ask.js`, `reply.js` | one question at a time; "done" / "skip" |
 | `database/boardBitrix.js` | the switch, the one-transaction pass, the queue |
+| `database/boardBitrixSchema.js` | locked last-known-good refresh, candidate observation/promotion and explicit approval |
 | `bot/handlers/boardBitrixReplyHandlers.js` | registers the reply handler |
-| `services/boardBitrix/admin.js`, `server/routes/settings/boardBitrixRoutes.js` | `GET /board-bitrix`, `PUT /board-bitrix/enabled`, `PUT /board-bitrix/sync`, `POST /board-bitrix/run` under `/api/settings` |
+| `services/boardBitrix/admin.js`, `server/routes/settings/boardBitrixRoutes.js` | `GET /board-bitrix`, `PUT /board-bitrix/enabled`, `PUT /board-bitrix/sync`, `POST /board-bitrix/run`, `POST /board-bitrix/schema/approve` under `/api/settings` |
 | `admin/src/pages/settings/dispatcherBoard/BoardBitrixCard.jsx` | the card under the Feed card |
 
 ## Tests
