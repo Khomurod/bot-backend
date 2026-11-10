@@ -127,6 +127,12 @@ test('dry run is easy to enable; live needs the check, a validated schema and ex
   calls.enabled.push(true);
   await admin.setSyncSettings({ syncMode: 'live', maxUpdatesPerPass: 5, confirmLive: true }, { deps: d });
   assert.equal(calls.sync.at(-1).syncMode, 'live');
+  d.store.getSettings = async () => ({
+    enabled: true, syncMode: 'off', maxUpdatesPerPass: 5,
+    schemaSource: 'catalog_historical',
+    schemaMapping: { evidence: { selectedActiveItems: 104 } },
+  });
+  await admin.setSyncSettings({ syncMode: 'live', maxUpdatesPerPass: 5, confirmLive: true }, { deps: d });
   d.schemaStore.getSchemaState = async () => ({ candidate: { state: 'candidate' } });
   await assert.rejects(
     admin.setSyncSettings({ syncMode: 'live', maxUpdatesPerPass: 5, confirmLive: true }, { deps: d }),

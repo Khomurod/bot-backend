@@ -7,7 +7,8 @@
  */
 const { STATIC_SCHEMA } = require('../../lib/boardBitrix/vocabulary');
 const {
-  resolveStructure, resolveSemantics, complete, validateMapping, fingerprint,
+  resolveStructure, resolveSemantics, resolveHistoricalTruck, activeSchemaSource, catalogSignature,
+  complete, validateMapping, fingerprint,
 } = require('../../lib/boardBitrix/schema');
 const {
   buildTruckEvidence, countSelected, assessEvidence, summarizeEvidence, describeMapping,
@@ -130,14 +131,14 @@ async function readTruckStages(call, entityTypeId, categories) {
 }
 
 function activeStateValid(active, catalog, evidence) {
-  if (!active?.mapping || !['catalog_exact', 'ai_validated'].includes(active.source)) return false;
+  if (!active?.mapping || !activeSchemaSource(active.source)) return false;
   return validateMapping(active.mapping, catalog).ok
     && assessEvidence(active.mapping, evidence).ok;
 }
 
 function activeStateProven(active) {
   return Boolean(active?.mapping
-    && ['catalog_exact', 'ai_validated'].includes(active.source)
+    && activeSchemaSource(active.source)
     && Number(active.mapping.evidence?.selectedActiveItems) > 0);
 }
 
@@ -186,8 +187,21 @@ async function discoverBitrixSchema(deps = defaultDeps()) {
       truckEntityTypeId: structure.truckEntityTypeId,
     });
     let mapping = { ...structure, ...semantics };
+    let sourceOverride = null;
+    let historicalUsed = false;
     diagnostic = summarizeEvidence(mapping, catalog, evidence);
     let evidenceCheck = complete(mapping) ? assessEvidence(mapping, evidence) : { ok: false };
+
+    const activeCatalogMatches = Boolean(state.active?.mapping?.catalogSignature
+      && state.active.mapping.catalogSignature === catalogSignature(state.active.mapping, catalog));
+    if ((!complete(mapping) || !evidenceCheck.ok)
+      && activeCatalogMatches && activeStateValid(state.active, catalog, evidence)) {
+      mapping = { ...state.active.mapping };
+      confidence = Number(state.active.confidence ?? confidence);
+      sourceOverride = state.active.source;
+      evidenceCheck = assessEvidence(mapping, evidence);
+    }
+
     if (!complete(mapping) || !evidenceCheck.ok) {
       const answer = await deps.askSemantics({
         fields, dealStages, truckCategories, truckStages, evidence,
@@ -200,6 +214,16 @@ async function discoverBitrixSchema(deps = defaultDeps()) {
         aiUsed = true;
       }
       evidenceCheck = complete(mapping) ? assessEvidence(mapping, evidence) : { ok: false };
+    }
+
+    if (!complete(mapping) || !evidenceCheck.ok) {
+      const historical = resolveHistoricalTruck(mapping, catalog, evidence);
+      if (historical.matched) {
+        mapping = historical.mapping;
+        sourceOverride = 'catalog_historical';
+        historicalUsed = true;
+        evidenceCheck = assessEvidence(mapping, evidence);
+      }
     }
 
     const valid = validateMapping(mapping, catalog);
@@ -216,15 +240,18 @@ async function discoverBitrixSchema(deps = defaultDeps()) {
       baselineActiveCount: activeCount || previousCount || staticCount,
     });
     const described = describeMapping(mapping, catalog, evidence);
-    const source = aiUsed ? 'ai_validated' : 'catalog_exact';
+    const source = sourceOverride || (aiUsed ? 'ai_validated' : 'catalog_exact');
+    const historicalProblem = historicalUsed
+      ? 'the live Trucks labels are opaque; current catalogue and counts match the previously verified truck category and stages'
+      : null;
     const proposed = {
       mapping: described,
       fingerprint: fingerprint(described),
       source,
       confidence,
       evidence: described.evidence,
-      problem: evidenceCheck.reason,
-      anomalous: evidenceCheck.anomalous,
+      problem: historicalProblem || evidenceCheck.reason,
+      anomalous: historicalUsed || evidenceCheck.anomalous,
       activeValid,
       activeProven,
       baseFingerprint: state.active?.fingerprint || null,
@@ -237,7 +264,7 @@ async function discoverBitrixSchema(deps = defaultDeps()) {
       };
     }
     const reason = observed?.requiresApproval
-      ? `${evidenceCheck.reason || 'the Bitrix structure changed'}; administrator approval is required after two matching checks`
+      ? `${proposed.problem || 'the Bitrix structure changed'}; administrator approval is required after two matching checks`
       : `schema candidate seen ${observed?.seenCount || 1}/2; one more matching check is required`;
     return fallback(reason, 'candidate_pending');
   } catch (err) {

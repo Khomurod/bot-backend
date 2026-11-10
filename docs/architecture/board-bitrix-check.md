@@ -54,6 +54,18 @@ it replaces the last-known-good mapping and resets status sync to `off`. The
 settings card shows catalogue labels and counts, never driver/deal/truck data.
 Failure/candidate detail stays off the shared public health summary.
 
+Some Bitrix portals expose the truck pipeline and custom stages with opaque
+codes as their labels. AI must refuse to invent meanings for those. On the
+safe historical bootstrap, code may match the October last-known ids when the
+live process is still exactly entity `1040`, category `17` and all three known
+active-stage ids are returned in that category with current items. That result
+is always anomalous: it must repeat on two complete reads and then an
+administrator must explicitly approve it. Once approved, it is reused only
+while every id, the non-zero aggregate evidence and the selected live-catalogue
+fingerprint remain valid. If an applicable field/category/stage is added,
+removed or renamed, the active mapping is not reused and current-catalogue AI
+discovery runs.
+
 ## Where Bitrix keeps drivers and trucks
 
 Read from the portal on 29 October 2026 by the owner's Bitrix agent. These are
@@ -105,6 +117,10 @@ driver's fleet plus that number.
   routing has stopped. If none answers validly, the pass stays blocked and the
   settings card shows populated catalogue stage labels/counts only. AI is
   absent from `stageSync.js` and cannot call a mutation.
+- **Opaque labels are never guessed.** A match to the historical Trucks ids is
+  allowed only under the exact live-process/category/stage/count proof above,
+  and unlike an ordinary candidate it can never auto-promote after two reads:
+  an administrator must approve it. Approval still resets sync to `off`.
 - **A newly interpreted schema cannot affect the first pass.** It lives in
   `board_bitrix_schema_candidates`, must have the same fingerprint on two
   complete reads, and until promotion the pass stops before comparing, changing

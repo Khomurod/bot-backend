@@ -16,6 +16,7 @@
  */
 
 const { KIND_LABELS } = require('../../lib/boardBitrix/wording');
+const { activeSchemaSource } = require('../../lib/boardBitrix/schema');
 
 const SERVICE_KEY = 'board_bitrix_check';
 
@@ -108,7 +109,7 @@ async function getView({ deps = defaultDeps() } = {}) {
   const recentActions = typeof deps.recentActions === 'function'
     ? await deps.recentActions(8) : [];
   const activeEvidence = settings.schemaMapping?.evidence || {};
-  const proven = ['catalog_exact', 'ai_validated'].includes(settings.schemaSource)
+  const proven = activeSchemaSource(settings.schemaSource)
     && num(activeEvidence.selectedActiveItems) > 0;
   const candidate = candidateView(schemaState.candidate);
   return {
@@ -154,7 +155,7 @@ async function setSyncSettings({ syncMode, maxUpdatesPerPass, confirmLive = fals
     if (!current.enabled) throw invalid('Switch the Board ↔ Bitrix check on before live sync');
     const state = typeof deps.schemaStore?.getSchemaState === 'function'
       ? await deps.schemaStore.getSchemaState() : { candidate: null };
-    if (!['catalog_exact', 'ai_validated'].includes(current.schemaSource)
+    if (!activeSchemaSource(current.schemaSource)
       || num(current.schemaMapping?.evidence?.selectedActiveItems) < 1
       || state.candidate) {
       throw invalid('Run a successful dry check so the current Bitrix schema is validated before live sync');
