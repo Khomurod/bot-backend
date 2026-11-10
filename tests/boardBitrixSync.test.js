@@ -4,10 +4,10 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const { STATIC_SCHEMA } = require('../lib/boardBitrix/vocabulary');
-const { complete, validateMapping } = require('../lib/boardBitrix/schema');
+const { complete, resolveSemantics, validateMapping } = require('../lib/boardBitrix/schema');
 const { assessEvidence, buildTruckEvidence } = require('../lib/boardBitrix/schemaEvidence');
 const { decideCandidate } = require('../lib/boardBitrix/schemaCandidate');
-const { askSemantics, semanticsValidator } = require('../services/boardBitrix/schemaAi');
+const { askSemantics, fieldPromptRows, semanticsValidator } = require('../services/boardBitrix/schemaAi');
 const { discoverBitrixSchema } = require('../services/boardBitrix/schemaDiscovery');
 const { planStageUpdates, runStageSync } = require('../services/boardBitrix/stageSync');
 
@@ -176,6 +176,61 @@ test('AI routing rejects an overconfident empty truck-stage answer and can ask a
   } });
   assert.equal(routed, true);
   assert.deepEqual(answer.active_truck_stage_ids, ['DT2000_7:ROAD']);
+});
+
+test('AI sees every bounded deal field plus safe relation and enum schema metadata', async () => {
+  const fields = Object.fromEntries(Array.from({ length: 180 }, (_, i) => [
+    `UF_OTHER_${i}`, { title: `Other field ${i}`, type: 'string' },
+  ]));
+  fields.UF_RENAMED_TRUCK = {
+    name: '', title: 'Asset seat', type: 'crm', settings: { DYNAMIC_2000: 'Y' },
+  };
+  fields.UF_RENAMED_TYPE = {
+    title: 'Employment class', type: 'enumeration',
+    items: [{ VALUE: 'Company Driver' }, { VALUE: 'Owner Operator' },
+      { VALUE: 'Lease Driver' }, { VALUE: 'Private custom choice' }],
+  };
+  const safe = fieldPromptRows(fields);
+  assert.equal(safe.length, 182);
+  assert.equal(safe.find((row) => row.id === 'UF_RENAMED_TRUCK').label, 'Asset seat');
+  assert.deepEqual(safe.find((row) => row.id === 'UF_RENAMED_TRUCK').relation_targets, ['DYNAMIC_2000']);
+  assert.deepEqual(safe.find((row) => row.id === 'UF_RENAMED_TYPE').enum_labels,
+    ['Company Driver', 'Owner Operator', 'Lease Driver']);
+
+  const c = catalog({ renamed: true });
+  const good = {
+    understood: true, confidence: 96,
+    deal_fields: { truck: 'UF_RENAMED_TRUCK', driver_type: 'UF_RENAMED_TYPE' },
+    stages: { HOME: 'D9:H', VACATION: 'D9:V', SHOP: 'D9:S', WORKING: 'D9:W' },
+    truck_category_id: '7', active_truck_stage_ids: ['DT2000_7:ROAD'],
+  };
+  await askSemantics({
+    fields, dealStages: c.dealStages, truckCategories: c.truckCategories,
+    truckStages: c.truckStages.map((row) => ({ ...row, __categoryId: 7 })),
+    evidence: buildTruckEvidence(c.truckItems),
+  }, { runCapability: async (args) => {
+    const prompt = JSON.parse(args.userText);
+    assert.ok(prompt.deal_fields.some((row) => row.id === 'UF_RENAMED_TRUCK'));
+    assert.ok(prompt.deal_fields.some((row) => row.id === 'UF_RENAMED_TYPE'));
+    return { parsed: good, uncertain: false };
+  } });
+  assert.throws(() => fieldPromptRows(Array.from({ length: 501 }, (_, id) => ({ id }))), /incomplete/);
+});
+
+test('safe field metadata resolves renamed deal fields before AI has to guess', () => {
+  const c = catalog();
+  const fields = {
+    UF_ASSET: { title: 'Asset seat', type: 'crm', settings: { DYNAMIC_2000: 'Y' } },
+    UF_CLASS: { title: 'Employment class', type: 'enumeration', items: [
+      { ID: '501', VALUE: 'Company Driver' }, { ID: '502', VALUE: 'Owner Operator' },
+      { ID: '503', VALUE: 'Lease Driver' },
+    ] },
+  };
+  const out = resolveSemantics({ ...c, fields, truckEntityTypeId: 2000 });
+  assert.deepEqual(out.dealFields, { truck: 'UF_ASSET', driverType: 'UF_CLASS' });
+  assert.deepEqual(out.fleetByDriverType, {
+    501: 'company', 502: 'owner_operator', 503: 'lease',
+  });
 });
 
 test('an incomplete or low-confidence discovery falls back to reads and cannot be live', async () => {

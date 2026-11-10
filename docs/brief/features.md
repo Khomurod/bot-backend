@@ -133,8 +133,8 @@ and every API client function is exactly what it was.
   name is the same driver and not asked. The check and automatic status sync
   are separate switches: status sync defaults off, can audit in dry-run, and
   live changes `STAGE_ID` only behind strict identity, 20-minute settle,
-  live-schema validation and fresh Board/deal checks. AI sees catalogue/count
-  evidence only; candidates repeat twice, anomalies need approval, and promotion resets live off. Off
+  live-schema validation and fresh Board/deal checks. AI sees catalogue schema metadata
+  and aggregate counts only; candidates repeat twice, anomalies need approval, and promotion resets live off. Off
   until switched on in Settings → Dispatcher Board. See
   [`board-bitrix-check.md`](../architecture/board-bitrix-check.md).
 - **Route Control was removed** (October 2026, the owner's decision): no

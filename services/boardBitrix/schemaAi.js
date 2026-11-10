@@ -6,19 +6,34 @@
  * answer is treated exactly like no answer.
  */
 const { runCapability, AiUnavailableError } = require('../ai/router');
+const { FLEET_ALIASES, words } = require('../../lib/boardBitrix/schema');
 
 const CAPABILITY = 'board_bitrix_schema_reading';
+const MAX_FIELD_ROWS = 500;
+const MAX_STRUCTURE_ROWS = 100;
+const MAX_DEAL_STAGE_ROWS = 100;
+const MAX_TRUCK_STAGE_ROWS = 400;
+const SAFE_FLEET_ENUM_LABELS = new Set(Object.values(FLEET_ALIASES).flat().map(words));
 
 const SYSTEM = [
   'You map a Bitrix24 CRM catalogue for a trucking company.',
-  'The Dispatcher Board is the source of truth. You are shown catalogue labels and opaque ids only, never driver data.',
+  'The Dispatcher Board is the source of truth. You are shown catalogue labels, opaque ids, safe schema metadata, and aggregate counts only, never driver data.',
   'Choose only ids present in the supplied lists. Never invent, edit, or infer an id that is not listed.',
   'DRIVER RELATION is the pipeline holding active drivers. Trucks is the smart process holding truck items.',
   'HOME means the driver is home; VACATION means away; SHOP means at a repair shop; WORKING means on the road or working.',
+  'For fields, use schema metadata too: the assigned-truck field links to the Trucks smart process; driver type is the enum containing company, owner-operator, and lease choices.',
   'Aggregate item counts are evidence: choose active truck stages from the chosen truck category and explain the populated fleet, not an empty parallel process.',
-  'If labels do not prove one unique answer, set understood=false.',
+  'If the supplied catalogue metadata and counts do not prove one unique answer, set understood=false.',
   'Answer JSON only and include confidence from 0 to 100.',
 ].join('\n');
+
+function firstText(row, names) {
+  for (const name of names) {
+    const value = String(row?.[name] ?? '').trim();
+    if (value) return value.slice(0, 120);
+  }
+  return '';
+}
 
 function clipRows(rows, idNames, max = 100) {
   return (rows || []).slice(0, max).map((row) => {
@@ -28,10 +43,62 @@ function clipRows(rows, idNames, max = 100) {
     }
     return {
       id,
-      label: String(row?.name ?? row?.NAME ?? row?.title ?? row?.TITLE
-        ?? row?.formLabel ?? row?.listLabel ?? '').slice(0, 120),
+      label: firstText(row, ['name', 'NAME', 'title', 'TITLE', 'formLabel', 'listLabel']),
     };
   }).filter((row) => row.id);
+}
+
+function enabled(value) {
+  return value === true || value === 1 || /^(Y|YES|TRUE|1)$/i.test(String(value || '').trim());
+}
+
+function relationTargets(field) {
+  const settings = field?.settings || field?.SETTINGS || {};
+  const out = [];
+  for (const [key, value] of Object.entries(settings)) {
+    const upperKey = String(key).toUpperCase();
+    const upperValue = String(value).toUpperCase();
+    if (/^(LEAD|CONTACT|COMPANY|DEAL|DYNAMIC_\d+)$/.test(upperKey) && enabled(value)) out.push(upperKey);
+    if (/^DYNAMIC_\d+$/.test(upperValue)) out.push(upperValue);
+  }
+  return [...new Set(out)].slice(0, 12);
+}
+
+function fieldPromptRows(fields) {
+  const rows = Array.isArray(fields)
+    ? fields : Object.entries(fields || {}).map(([id, row]) => ({ id, ...(row || {}) }));
+  if (rows.length > MAX_FIELD_ROWS) {
+    throw new Error(`Bitrix returned more than ${MAX_FIELD_ROWS} deal fields; AI schema input would be incomplete`);
+  }
+  return rows.map((row) => {
+    const itemRows = Array.isArray(row?.items || row?.ITEMS || row?.list)
+      ? (row.items || row.ITEMS || row.list) : [];
+    const enumLabels = itemRows.map((item) => firstText(item,
+      ['value', 'VALUE', 'name', 'NAME', 'title', 'TITLE']))
+      .filter((label) => label && SAFE_FLEET_ENUM_LABELS.has(words(label)));
+    return {
+      ...clipRows([row], ['id', 'ID'], 1)[0],
+      type: firstText(row, ['type', 'TYPE', 'userTypeId', 'USER_TYPE_ID']),
+      multiple: row?.isMultiple === true || row?.isMultiple === 'Y'
+        || row?.IS_MULTIPLE === true || row?.IS_MULTIPLE === 'Y',
+      relation_targets: relationTargets(row),
+      enum_labels: [...new Set(enumLabels)].slice(0, 12),
+    };
+  }).filter((row) => row.id);
+}
+
+function stagePromptRows(stages, max, label = 'stage') {
+  if ((stages || []).length > max) {
+    throw new Error(`Bitrix returned more than ${max} ${label} rows; AI schema input would be incomplete`);
+  }
+  return clipRows(stages, ['id', 'ID'], max).map((row) => {
+    const source = (stages || []).find((stage) => String(stage.ID ?? stage.id) === row.id);
+    return {
+      ...row,
+      semantic: firstText(source, ['semantics', 'SEMANTICS']),
+      sort: Number(source?.sort ?? source?.SORT) || null,
+    };
+  });
 }
 
 function validateBase(_text, parsed) {
@@ -91,13 +158,17 @@ function semanticsValidator({ fields, dealStages, truckCategories, truckStages, 
 
 async function askStructure({ categories, types }, deps = {}) {
   const run = deps.runCapability || runCapability;
+  if ((categories || []).length > MAX_STRUCTURE_ROWS || (types || []).length > MAX_STRUCTURE_ROWS) {
+    throw new Error(`Bitrix returned more than ${MAX_STRUCTURE_ROWS} pipeline/process rows; AI schema input would be incomplete`);
+  }
   const answer = await run({
     capability: CAPABILITY,
     systemText: SYSTEM,
     userText: JSON.stringify({
       task: 'Choose the DRIVER RELATION deal pipeline and the Trucks smart process.',
-      categories: clipRows(categories, ['id', 'ID'], 50),
-      smart_processes: clipRows(types, ['entityTypeId', 'ENTITY_TYPE_ID', 'id', 'ID'], 50),
+      categories: clipRows(categories, ['id', 'ID'], MAX_STRUCTURE_ROWS),
+      smart_processes: clipRows(types,
+        ['entityTypeId', 'ENTITY_TYPE_ID', 'id', 'ID'], MAX_STRUCTURE_ROWS),
       answer_shape: {
         understood: true,
         category_id: 'one listed categories.id',
@@ -116,12 +187,11 @@ async function askSemantics({
   fields, dealStages, truckCategories, truckStages, evidence = {}, previousMapping = null,
 }, deps = {}) {
   const run = deps.runCapability || runCapability;
-  const fieldRows = Array.isArray(fields)
-    ? fields : Object.entries(fields || {}).map(([id, row]) => ({ id, ...(row || {}) }));
+  const safeFields = fieldPromptRows(fields);
   const categoryRows = clipRows(truckCategories, ['id', 'ID'], 50).map((row) => ({
     ...row, item_count: Number(evidence.categoryCounts?.[row.id] || 0),
   }));
-  const stageRows = clipRows(truckStages, ['id', 'ID'], 150).map((row) => {
+  const stageRows = stagePromptRows(truckStages, MAX_TRUCK_STAGE_ROWS, 'truck-stage').map((row) => {
     const source = (truckStages || []).find((stage) => String(stage.ID ?? stage.id) === row.id);
     return {
       ...row,
@@ -135,12 +205,14 @@ async function askSemantics({
     userText: JSON.stringify({
       task: 'Map the driver fields and stages. A truck is active in stages meaning on road, at shop, or about to leave.',
       evidence_rule: 'The selected truck category and active truck stages must be from one category and their item_count total must be greater than zero.',
-      deal_fields: clipRows(fieldRows, ['id', 'ID'], 150),
-      driver_stages: clipRows(dealStages, ['id', 'ID'], 100),
+      deal_fields: safeFields,
+      driver_stages: stagePromptRows(dealStages, MAX_DEAL_STAGE_ROWS, 'driver-stage'),
       truck_categories: categoryRows,
       truck_stages: stageRows,
       total_truck_items: Number(evidence.totalItems || 0),
       previous_schema: previousMapping ? {
+        deal_fields: previousMapping.dealFields,
+        stages: previousMapping.stageByRole,
         truck_category_id: previousMapping.truckCategoryId,
         active_truck_stage_ids: previousMapping.activeTruckStageIds,
         previous_active_items: previousMapping.evidence?.selectedActiveItems ?? null,
@@ -163,5 +235,7 @@ async function askSemantics({
 
 module.exports = {
   CAPABILITY, SYSTEM, askStructure, askSemantics,
-  validateBase, semanticsValidator, AiUnavailableError,
+  MAX_FIELD_ROWS, MAX_STRUCTURE_ROWS, MAX_DEAL_STAGE_ROWS, MAX_TRUCK_STAGE_ROWS,
+  validateBase, relationTargets, fieldPromptRows, stagePromptRows,
+  semanticsValidator, AiUnavailableError,
 };

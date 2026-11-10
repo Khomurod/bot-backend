@@ -245,8 +245,9 @@ repository-wide working rules. The highest-consequence items:
   Bitrix deal's `STAGE_ID`: after 20 minutes, strict name + exact fleet/unit,
   live-schema validation, current Board/deal re-reads, an update cap and an
   idempotency claim. A fuzzy match can suppress a question but can never write;
-  AI can classify catalogue labels and aggregate category/stage counts but
-  never driver data or an update. A mapping is not active on its first reading:
+  AI can classify catalogue labels, safe field/stage metadata and aggregate
+  category/stage counts but never driver data or an update. A mapping is not
+  active on its first reading:
   it must repeat, structural/count drift may require approval, and promotion
   resets live sync to off. An empty selected active-truck set blocks the whole
   pass while the last-known-good mapping is preserved. Since

@@ -34,7 +34,11 @@ Decided with the owner the same day:
 Since 9 November 2026 the application discovers the current Bitrix catalogue on
 every pass. Exact live labels are resolved deterministically. If an operator
 renamed a pipeline, field or stage, AI may classify **catalogue labels, opaque
-ids and aggregate item counts only** — never driver/deal/Board data. Every
+ids, safe field/stage metadata and aggregate item counts only** — never
+driver/deal/Board data. Field metadata is limited to type, multiplicity, CRM
+relation targets and enum labels from the closed fleet vocabulary; all deal fields are included up to a
+fail-closed bound, so a custom field cannot disappear merely because it was
+later in a large catalogue. Every
 selected id must be one returned by the same live Bitrix read and confidence
 must be at least 85. The aggregate evidence is just category/stage totals from
 `crm.item.list`; titles, assigned drivers and other item fields are not read for
@@ -88,8 +92,10 @@ driver's fleet plus that number.
 - **AI interprets catalogue structure; deterministic code authorizes use.**
   Exact catalogue labels win. AI receives no driver names, deal ids, truck
   numbers/titles, Board statuses or Board rows. It may choose only ids in the
-  supplied catalogue, sees only aggregate category/stage item counts, and needs
-  confidence ≥85. `lib/boardBitrix/schema.js` independently validates the
+  supplied catalogue, sees safe schema metadata plus aggregate category/stage
+  item counts, and needs confidence ≥85. A unique Trucks relation and a unique
+  company/owner-operator/lease enum are resolved deterministically before AI.
+  `lib/boardBitrix/schema.js` independently validates the
   pipeline, smart process, fields, stage category and four different
   HOME/VACATION/SHOP/WORKING stages. `schemaEvidence.js` independently proves
   that the chosen category and active stages contain current items. That proof
@@ -246,7 +252,7 @@ Board status Wenze does not know is never compared.
 | `database/migrations/0099_board_bitrix_schema_candidates.sql` | catalogue/count-only candidate or invalid discovery; never driver/deal/Board data |
 | `lib/boardBitrix/` | pure: `vocabulary` (read-only fallback), `schema` (live-catalogue validation), `schemaEvidence` (aggregate proof), `schemaCandidate` (two-pass/approval rule), `names`, `trucks`, `compare`, `wording`, `replyIntent` |
 | `services/boardBitrix/bitrixRead.js` | the two list reads, complete or failed |
-| `services/boardBitrix/schemaDiscovery.js`, `schemaAi.js` | exact live schema discovery; bounded AI interpretation of catalogue labels/opaque ids/aggregate counts only |
+| `services/boardBitrix/schemaDiscovery.js`, `schemaAi.js` | exact live schema discovery; bounded AI interpretation of catalogue labels/opaque ids, safe schema metadata and aggregate counts only |
 | `services/boardBitrix/stageSync.js` | dry-run/live status plan, strict identity guard, fresh Board/deal checks, the only `STAGE_ID` write |
 | `services/boardBitrix/pass.js`, `timer.js` | one pass; the 15-minute timer, `board_bitrix_check` in the roster |
 | `services/boardBitrix/ask.js`, `reply.js` | one question at a time; "done" / "skip" |

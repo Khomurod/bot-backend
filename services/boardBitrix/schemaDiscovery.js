@@ -181,7 +181,10 @@ async function discoverBitrixSchema(deps = defaultDeps()) {
     const truckStages = await readTruckStages(deps.call, structure.truckEntityTypeId, truckCategories);
     const catalog = { categories, types, fields, dealStages, truckCategories, truckStages };
 
-    const semantics = resolveSemantics({ fields, dealStages, truckCategories, truckStages });
+    const semantics = resolveSemantics({
+      fields, dealStages, truckCategories, truckStages,
+      truckEntityTypeId: structure.truckEntityTypeId,
+    });
     let mapping = { ...structure, ...semantics };
     diagnostic = summarizeEvidence(mapping, catalog, evidence);
     let evidenceCheck = complete(mapping) ? assessEvidence(mapping, evidence) : { ok: false };
