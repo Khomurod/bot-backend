@@ -14,6 +14,7 @@ vi.mock("../../../api", () => ({
   setBoardBitrixSync: vi.fn(),
   approveBoardBitrixSchema: vi.fn(),
   runBoardBitrixCheck: vi.fn(),
+  setBoardBitrixResponders: vi.fn(),
 }));
 
 function view(over = {}) {
@@ -180,4 +181,16 @@ test("shows which previously verified truck stages Bitrix still lists, with thei
   expect(warning).toHaveTextContent(
     "Previously verified active truck stages: On the road (104) · Drivers at shops (0) · DT1040_17:UC_SO73F7 — not in Bitrix"
   );
+});
+
+test("who may answer: the ids are shown and saved as typed", async () => {
+  api.getBoardBitrixCheck.mockResolvedValue(view({ responderIds: ["8245947790"] }));
+  api.setBoardBitrixResponders.mockResolvedValue(["8245947790", "6504395610"]);
+  render(<BoardBitrixCard />);
+  const input = await screen.findByLabelText(/Who may answer the questions/i);
+  expect(input).toHaveValue("8245947790");
+  fireEvent.change(input, { target: { value: "8245947790, 6504395610" } });
+  fireEvent.click(screen.getByRole("button", { name: "Save who may answer" }));
+  await waitFor(() => expect(api.setBoardBitrixResponders).toHaveBeenCalledWith("8245947790, 6504395610"));
+  expect(await screen.findByText(/2 people may answer/)).toBeInTheDocument();
 });

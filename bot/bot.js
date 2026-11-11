@@ -25,6 +25,7 @@ const { registerControlReplyHandlers } = require('./controlReplyHandlers');
 const { registerHomeTimeViolationHandlers } = require('./handlers/homeTimeViolationHandlers');
 const { registerLessonReplyHandlers } = require('./handlers/lessonReplyHandlers');
 const { registerBoardBitrixReplyHandlers } = require('./handlers/boardBitrixReplyHandlers');
+const { registerBoardBitrixButtonHandlers } = require('./handlers/boardBitrixButtonHandlers');
 const { registerDispatchCommands } = require('./handlers/dispatchCommandHandlers');
 const { registerStartHandler } = require('./handlers/startHandlers');
 const { registerSurveyCallbackHandlers } = require('./handlers/surveyCallbackHandlers');
@@ -223,8 +224,11 @@ async function startBot() {
     registerAnonymousFeedbackHandlers(bot);
 
     // Move / No / search-again on the Bitrix stage proposals in the
-    // recruiting group's General topic (services/hiringStages/actions.js).
+    // recruiting group's Bitrix topic (services/hiringStages/actions.js).
     registerHiringStageHandlers(bot);
+    // The fix / Skip buttons under a Board ↔ Bitrix question
+    // (services/boardBitrix/buttons.js).
+    registerBoardBitrixButtonHandlers(bot);
 
     // Mileage bonus Paid / Rejected buttons (accounting-only).
     registerMileageBonusHandlers(bot);

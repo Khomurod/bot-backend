@@ -4,8 +4,11 @@
  * Asking about Board ↔ Bitrix differences, ONE AT A TIME, in the
  * Needs-attention group (the owner, 29 October 2026): a difference is asked as
  * soon as it is found if nothing else is out; the next goes out only after the
- * last is confirmed fixed or skipped. No daily limit, no buttons — the owner
- * fixes Bitrix and replies "done" (services/boardBitrix/reply.js).
+ * last is confirmed fixed or skipped. No daily limit. Since 11 November 2026
+ * each question carries ADVICE (services/boardBitrix/advice.js): a plain
+ * recommendation and, when the bot can do the fix itself, a button per action
+ * plus Skip (services/boardBitrix/buttons.js). Typed "done" / "skip" / own
+ * words still work (services/boardBitrix/reply.js).
  *
  * A QUESTION NOBODY ANSWERS IS POSTED AGAIN after REMIND_AFTER_HOURS, as a
  * reminder: the same question, at the bottom of the chat, rather than a
@@ -25,6 +28,7 @@
  */
 
 const { questionFor } = require('../../lib/boardBitrix/wording');
+const { adviceLines, adviceKeyboard } = require('../../lib/boardBitrix/actions');
 const { TRUCK_ENTITY_TYPE_ID } = require('../../lib/boardBitrix/vocabulary');
 const { dealUrlFor, itemUrlFor } = require('../bitrix24DealStages');
 
@@ -39,6 +43,8 @@ function defaultDeps() {
     notify: require('../notifications/send').notify,
     portalOrigin: require('../bitrix24DealStages').portalOrigin,
     paused: () => require('../operations/economy').economyPauseReasonFor('board_bitrix_check'),
+    advice: require('../../database/boardBitrixAdvice'),
+    adviseOn: (details) => require('./advice').adviseOn(details),
   };
   /* eslint-enable global-require */
 }
@@ -50,6 +56,27 @@ function linksFor(origin) {
     dealUrl: (id) => dealUrlFor(origin, id),
     truckUrl: (id) => itemUrlFor(origin, TRUCK_ENTITY_TYPE_ID, id),
   };
+}
+
+/**
+ * The advice under a question: worked out when it is first asked (the facts
+ * can change between asks, so a question asked again is advised again), kept
+ * for a reminder, and stored so a button means what it showed. Never throws.
+ */
+async function adviceFor(question, reminder, deps) {
+  if (!deps.advice || !deps.adviseOn) return null;
+  try {
+    if (reminder) {
+      const kept = await deps.advice.getAdvice(question.id);
+      if (kept) return kept;
+    }
+    const advice = await deps.adviseOn(question.details);
+    await deps.advice.saveAdvice(question.id, advice);
+    return advice;
+  } catch (err) {
+    console.warn('[BOARD-BITRIX] no advice for this question:', String(err.message).slice(0, 160));
+    return null;
+  }
 }
 
 /** @returns {Promise<{asked: boolean, reason?: string, id?: number}>} */
@@ -80,11 +107,13 @@ async function askNext(deps = defaultDeps()) {
     const waiting = await deps.store.countWaiting();
     const origin = await Promise.resolve(deps.portalOrigin()).catch(() => null);
     const q = questionFor(claimed.details, { ...linksFor(origin), waiting });
+    const advice = await adviceFor(claimed, reminder, deps);
     const out = await deps.notify({
       category: CATEGORY,
       title: reminder ? `Reminder — ${q.title}` : q.title,
-      lines: q.lines,
+      lines: [...q.lines, ...adviceLines(advice)],
       action: q.action,
+      replyMarkup: adviceKeyboard(claimed.id, advice),
       subjectType: SUBJECT_TYPE,
       subjectId: String(claimed.id),
       // Each ask is its own notice: a question skipped yesterday and asked

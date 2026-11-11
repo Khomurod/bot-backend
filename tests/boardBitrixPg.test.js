@@ -18,9 +18,11 @@ const found = (key, priority = 10, extra = {}) => ({ key, kind: key.split(':')[0
 
 async function setup(t) {
   const h = await createPgHarness(t, { extraDdl: ALL_MIGRATIONS });
-  const { boardBitrix: store, boardBitrixSchema: schemaStore }
-    = h.loadDataLayer(['boardBitrix', 'boardBitrixSchema']);
-  return { h, store, schemaStore };
+  const { boardBitrix: store, boardBitrixSchema: schemaStore, boardBitrixAdvice: advice }
+    = h.loadDataLayer(['boardBitrix', 'boardBitrixSchema', 'boardBitrixAdvice']);
+  return {
+    h, store, schemaStore, advice,
+  };
 }
 
 test('the switch is OFF after the migration and remembers who turned it on', { skip: skipWithoutPg() }, async (t) => {
@@ -213,4 +215,22 @@ test('a question that reached nobody goes back in line', { skip: skipWithoutPg()
   const back = await store.nextToAsk();
   assert.equal(back.id, q.id);
   assert.equal(back.askCount, 0);
+});
+
+test('who may answer, and the advice a question showed, are kept (migration 0102)', { skip: skipWithoutPg() }, async (t) => {
+  const { h, store, advice } = await setup(t);
+  assert.deepEqual(await advice.getResponderIds(), []);
+  assert.deepEqual(await advice.setResponderIds('8245947790, 6504395610 ,8245947790'), ['8245947790', '6504395610']);
+  assert.deepEqual(await advice.getResponderIds(), ['8245947790', '6504395610']);
+
+  await store.applyPass([found('not_on_board:deal:1')]);
+  const [{ id }] = (await h.pool.query('SELECT id FROM board_bitrix_discrepancies')).rows;
+  const shown = { recommendation: 'Close it.', actions: [{ type: 'set_stage', label: 'x', params: { dealId: 1, stageId: 'C3:LOSE' } }] };
+  await advice.saveAdvice(id, shown);
+  assert.deepEqual(await advice.getAdvice(id), shown);
+
+  await h.pool.query(`INSERT INTO operational_notifications (notice_key, category, chat_id, routed_via, body, reply_markup_json)
+                      VALUES ('k1', 'needs_attention', '-100', 'default', 'b', '{"inline_keyboard":[[]]}'::jsonb)`);
+  const row = (await h.pool.query("SELECT reply_markup_json FROM operational_notifications WHERE notice_key = 'k1'")).rows[0];
+  assert.deepEqual(row.reply_markup_json, { inline_keyboard: [[]] });
 });

@@ -21,8 +21,12 @@ const reply = (over = {}) => ({
   chatId: -100, chatType: 'supergroup', messageId: 900, repliedToMessageId: 77, text: 'done', telegramUserId: OWNER, fromIsBot: false, ...over,
 });
 
-function fakes({ state = 'asked', after = 'resolved', claim = true, recheck = { discrepancies: 0 }, notice = { subjectType: 'board_bitrix_question', subjectId: '7' } } = {}) {
-  const calls = { said: [], asked: 0, rechecks: [], snoozed: [] };
+function fakes({
+  state = 'asked', after = 'resolved', claim = true, recheck = { discrepancies: 0 },
+  notice = { subjectType: 'board_bitrix_question', subjectId: '7' }, responders = [], aiRead = null, advice = null,
+  applied = { ok: true, done: 'truck 310 assigned' },
+} = {}) {
+  const calls = { said: [], asked: 0, rechecks: [], snoozed: [], applied: [], aiReads: [] };
   let reads = 0;
   const deps = {
     notices: { findNoticeByTelegramMessage: async () => notice },
@@ -39,6 +43,9 @@ function fakes({ state = 'asked', after = 'resolved', claim = true, recheck = { 
     askNext: async () => { calls.asked += 1; return { asked: true }; },
     say: async (args) => { calls.said.push(args); },
     portalOrigin: async () => null,
+    advice: { getResponderIds: async () => responders, getAdvice: async () => advice },
+    readWithAi: async (args) => { calls.aiReads.push(args); return aiRead; },
+    apply: async (action) => { calls.applied.push(action); return applied; },
   };
   return { deps, calls };
 }
@@ -100,11 +107,13 @@ test('economy mode: "skip" is still honoured (the owner\'s own action) — snooz
   assert.equal(calls.rechecks.length, 0, 'nothing read from Bitrix');
 });
 
-test('anything else: one line on what to type; nothing re-read, nothing moved', async () => {
+test('anything else, with no model to read it: one line on what to type; nothing re-read, nothing moved', async () => {
   const { deps, calls } = fakes();
   const out = await handleBoardBitrixReply(reply({ text: 'who is this?' }), deps);
   assert.equal(out.outcome, 'unclear');
   assert.match(calls.said[0].text, /reply "done"/);
+  assert.equal(calls.aiReads[0].text, 'who is this?', 'the model was asked, with the question\'s facts');
+  assert.deepEqual(calls.aiReads[0].details, DETAILS);
   assert.equal(calls.rechecks.length + calls.snoozed.length + calls.asked, 0);
 });
 
@@ -153,4 +162,34 @@ test('the handler lets every message that is not one of our answers through', as
   let nextCalled = false;
   await consumed[0](ctx({ message_id: 3, text: 'done', reply_to_message: { message_id: 1 } }), () => { nextCalled = true; });
   assert.equal(nextCalled, false);
+});
+
+const ADVICE = {
+  recommendation: 'Assign truck 310 to the deal.',
+  actions: [{ type: 'set_truck', label: 'Assign truck 310 to "A B"', params: { dealId: 321, truckNumber: '310' } }],
+};
+
+test('SOMEBODY ON THE "MAY ANSWER" LIST counts: their "skip" puts it back and asks the next', async () => {
+  const { deps, calls } = fakes({ responders: ['555'] });
+  const out = await handleBoardBitrixReply(reply({ telegramUserId: 555, text: 'skip' }), deps);
+  assert.deepEqual(out, { handled: true, outcome: 'skipped' });
+  assert.deepEqual(calls.snoozed, [24]);
+  assert.equal(calls.asked, 1, 'the next question goes out at once');
+});
+
+test('THEIR OWN WORDS: an explanation is answered in a sentence; nothing written to Bitrix', async () => {
+  const aiRead = { intent: 'info', action: null, answer: 'Then the Board is missing her as the team driver on truck 012 — add her there.' };
+  const { deps, calls } = fakes({ aiRead, advice: ADVICE });
+  const out = await handleBoardBitrixReply(reply({ text: 'They are company team drivers, each has a separate card in Bitrix' }), deps);
+  assert.equal(out.outcome, 'answered');
+  assert.match(calls.said[0].text, /missing her as the team driver/);
+  assert.equal(calls.applied.length + calls.rechecks.length + calls.snoozed.length, 0);
+});
+
+test('THEIR OWN WORDS asking for a listed fix: it is done (Bitrix re-read by apply), then re-checked', async () => {
+  const { deps, calls } = fakes({ aiRead: { intent: 'do', action: 0, answer: null }, advice: ADVICE });
+  const out = await handleBoardBitrixReply(reply({ text: 'yes please assign the truck' }), deps);
+  assert.equal(out.outcome, 'confirmed');
+  assert.deepEqual(calls.applied, [ADVICE.actions[0]]);
+  assert.match(calls.said[0].text, /Done — assign truck 310 to "A B": truck 310 assigned/);
 });
