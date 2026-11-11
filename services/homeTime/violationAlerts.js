@@ -25,7 +25,8 @@ const V = require('../../lib/homeTime/violations');
 const defaultStore = require('../../database/homeTime/violationNotices');
 const { callBitrix } = require('../bitrix24DealStages');
 const { ACCOUNTING_MENTIONS } = require('../mileageBonusConstants');
-const { safeSend } = require('../telegramHtml');
+const { postRows, postDue } = require('./violationPosting');
+const { runOwnViolationPass } = require('./ownViolations');
 const { withRunRecord } = require('../operations/runLedger');
 
 const SERVICE_KEY = 'home_time_violation_alerts';
@@ -49,6 +50,8 @@ function defaultDeps() {
     findings,
     mentions: ACCOUNTING_MENTIONS,
     now: () => Date.now(),
+    cycles: (sinceIso) => require('../../database/homeTime/violationCycles').listCyclesByGroup(sinceIso), // eslint-disable-line global-require
+    exceptions: () => require('../../database/homeTime/policyExceptions').listActiveExceptions(), // eslint-disable-line global-require
   };
 }
 
@@ -75,59 +78,6 @@ function schemaBlockedReason({ missingFields, missingStages }) {
   if (missingFields.length) parts.push(`fields ${missingFields.join(', ')}`);
   if (missingStages.length) parts.push(`stages ${missingStages.join(', ')}`);
   return `Bitrix pipeline ${V.CATEGORY_ID} is missing ${parts.join(' and ')}`;
-}
-
-// ── posting ──────────────────────────────────────────────────────────────────
-
-/** Post one message for these rows (one home stay). Never throws. */
-async function postRows(rows, { telegram, chatId, deps }) {
-  const claimed = await deps.store.claimForPosting(rows.map((r) => r.id));
-  if (!claimed.length) return { posted: 0 };
-  const ids = claimed.map((r) => r.id);
-  const first = claimed[0];
-  if (!telegram) {
-    await deps.store.markFailed(ids, 'no telegram client available');
-    return { failed: 1 };
-  }
-  const text = V.buildViolationMessage({
-    driverName: first.driver_name,
-    violations: claimed.map((r) => r.violation),
-    roadDays: first.road_days,
-    homeDays: first.home_days,
-    homeFrom: first.home_from,
-    mentions: deps.mentions,
-  });
-  try {
-    const sent = await safeSend(() => telegram.sendMessage(chatId, text, {
-      parse_mode: 'HTML',
-      link_preview_options: { is_disabled: true },
-      reply_markup: V.keyboardFor(first.id),
-    }));
-    await deps.store.markPosted(ids, { chatId, messageId: sent.message_id });
-    log(`posted ${claimed.map((r) => r.violation).join(' + ')} for deal ${first.deal_id}`);
-    return { posted: 1 };
-  } catch (err) {
-    await deps.store.markFailed(ids, err.message);
-    console.warn(`[HOME-TIME-VIOLATION] could not post deal ${first.deal_id}: ${String(err.message).slice(0, 160)}`);
-    return { failed: 1 };
-  }
-}
-
-/** Retry what a failed or interrupted send left behind, one message per home stay. */
-async function postDue({ telegram, chatId, deps }) {
-  const due = await deps.store.listDue();
-  const byStay = new Map();
-  for (const row of due) {
-    const key = `${row.deal_id}:${row.home_from}`;
-    if (!byStay.has(key)) byStay.set(key, []);
-    byStay.get(key).push(row);
-  }
-  let posted = 0;
-  for (const rows of byStay.values()) {
-    // eslint-disable-next-line no-await-in-loop
-    posted += (await postRows(rows, { telegram, chatId, deps })).posted || 0;
-  }
-  return posted;
 }
 
 // ── one card ─────────────────────────────────────────────────────────────────
@@ -194,6 +144,13 @@ async function runViolationPass({ telegram = null, deps = defaultDeps() } = {}) 
   if (!settings?.violation_alerts_enabled) return { blocked: 'switched off' };
   const chatId = settings.violation_alerts_chat_id;
   if (!chatId) return { blocked: 'no group saved' };
+  // Since 11 November 2026 Wenze decides (services/homeTime/ownViolations.js);
+  // the cards of the abandoned script are read only when switched back.
+  if (settings.violation_source !== 'bitrix') {
+    return runOwnViolationPass({
+      telegram, chatId, settings, deps,
+    });
+  }
 
   let schema;
   try {
@@ -244,6 +201,9 @@ async function handleWebhookDeal(dealId, { telegram = null, deps = defaultDeps()
   try {
     const settings = await deps.store.getViolationSettings();
     if (!settings?.violation_alerts_enabled || !settings.violation_alerts_chat_id) return { outcome: 'switched_off' };
+    // Wenze decides now, and moves the cards itself: a robot firing on a card
+    // Wenze moved must not alert a second time.
+    if (settings.violation_source !== 'bitrix') return { outcome: 'wenze_decides' };
     // Before the baseline the pass has not looked yet; it will, and records this card with the rest.
     if (!settings.violation_alerts_baselined_at) return { outcome: 'awaiting_baseline' };
     const schema = await checkBitrixSchema(deps);

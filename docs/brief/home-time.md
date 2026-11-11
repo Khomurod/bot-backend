@@ -455,16 +455,25 @@ marks the stay closed.
 
 See `docs/architecture/home-time-evidence.md`.
 
-## Violation alerts to accounting come from Bitrix, not from here
+## Violation alerts to accounting — Wenze decides (since 11 November 2026)
 
 A company driver who came home before 28 days on the road, or stayed home more
 than 4 days, is posted in an accounting group to be charged, with Charged /
-Not charging buttons (accounting only). **The verdict is Bitrix pipeline 33's**
-("6. HOMETIME MONITORING", moved by an external script) — this section's own
-tracking, cycles and road bonus are not read and not changed. One alert per
-violation per home stay (`UNIQUE` deal + `UF_CRM_HT_FROM` + violation), a
-go-live baseline that posts nothing already in a violation stage, a webhook
-from a Bitrix robot plus a 30-minute reconciliation pass. Switch, group and
+Not charging buttons (accounting only). Until 31 October the verdict was
+Bitrix pipeline 33's, moved by an external script; that script was switched
+off and abandoned, so **Wenze now decides from this section's own record**
+(`driver_road_history` — the Dispatcher Board, where only HOME is home, and
+the drivers' messages; `lib/homeTime/ownViolations.js`): a stay shorter than
+12 hours is a flap, not a stay, and does not cut a road leg; owner-operators
+and stays linked to an approved request are not judged; a driver's own rule
+("3 weeks / 3 days", Home Time → Settings & Alerts, anyone with access)
+replaces the policy while it is valid; only stays that began after Wenze
+started are judged (no backlog). One alert per violation per stay (`UNIQUE`
+group + home-since date + violation), every 30 minutes, and the driver's
+pipeline-33 card is moved to the matching violation stage by Wenze itself
+(found by name; one letter may differ; none or two matching → not moved, and
+the row says so). The old Bitrix-driven path and its webhook stand down while
+`violation_source` is `wenze`. Switch, group and
 the robot's webhook link (created there, shown once, stored encrypted) on Home
 Time → Settings & Alerts (`#home_time/settings`); nothing is sent until the switch and group are saved. See
 `docs/architecture/home-time-violation-alerts.md`.

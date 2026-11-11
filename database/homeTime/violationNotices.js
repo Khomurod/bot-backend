@@ -27,11 +27,13 @@ const LEASE_SECONDS = 120;
  */
 const COLUMNS = `id, deal_id::text AS deal_id, home_from::text AS home_from, violation, stage_id,
   driver_name, road_days, home_days, state, chat_id, telegram_message_id, attempts, last_error,
-  decision, decided_by_id, decided_by_name, decided_at, decision_reason, reason_prompt_message_id`;
+  decision, decided_by_id, decided_by_name, decided_at, decision_reason, reason_prompt_message_id,
+  source, group_id, rule_road_days, rule_home_days`;
 
 async function getViolationSettings() {
   const res = await query(
-    `SELECT violation_alerts_enabled, violation_alerts_chat_id, violation_alerts_baselined_at
+    `SELECT violation_alerts_enabled, violation_alerts_chat_id, violation_alerts_baselined_at,
+            violation_source, own_violations_since
        FROM home_time_settings WHERE id = 1`
   );
   return res.rows[0] || null;
@@ -73,6 +75,47 @@ async function recordViolations({ deal, violations, state = 'pending' }) {
       deal.roadDays, deal.homeDays, state]
   );
   return res.rows;
+}
+
+/**
+ * Wenze's own verdict for one home stay (migration 0103): one row per driver
+ * group + home-since date + violation, inserted once. @returns the rows THIS
+ * call created — only those may be posted.
+ */
+async function recordOwnViolations({
+  groupId, homeFrom, violations, driverName, roadDays, homeDays, rule = null,
+}) {
+  if (!violations?.length) return [];
+  const res = await query(
+    `INSERT INTO home_time_violation_notices
+       (source, group_id, home_from, violation, stage_id, driver_name, road_days, home_days, state,
+        rule_road_days, rule_home_days)
+     SELECT 'wenze', $1, $2::date, v, 'wenze', $4, $5, $6, 'pending', $7, $8
+       FROM unnest($3::text[]) AS v
+     ON CONFLICT (group_id, home_from, violation) WHERE source = 'wenze' DO NOTHING
+     RETURNING ${COLUMNS}`,
+    [Number(groupId), homeFrom, violations, driverName, roadDays, homeDays,
+      rule?.exception ? rule.roadDays : null, rule?.exception ? rule.homeDays : null],
+  );
+  return res.rows;
+}
+
+/** Which pipeline-33 card the stay's rows went to, and what happened to it. */
+async function setBitrixNote(ids, { dealId = null, note }) {
+  if (!ids?.length) return;
+  await query(
+    'UPDATE home_time_violation_notices SET deal_id = COALESCE($2, deal_id), bitrix_note = $3 WHERE id = ANY($1::bigint[])',
+    [ids.map(Number), dealId, String(note || '').slice(0, 300)],
+  );
+}
+
+/** When Wenze started deciding: set once, by the first pass. */
+async function startOwnViolations() {
+  const res = await query(
+    `UPDATE home_time_settings SET own_violations_since = COALESCE(own_violations_since, NOW())
+      WHERE id = 1 RETURNING own_violations_since`,
+  );
+  return res.rows[0]?.own_violations_since || null;
 }
 
 /** Take the lease on these rows for one send. Rows another poster holds are left out. */
@@ -203,6 +246,9 @@ async function recordReason({
 }
 
 module.exports = {
+  recordOwnViolations,
+  setBitrixNote,
+  startOwnViolations,
   MAX_ATTEMPTS,
   LEASE_SECONDS,
   getViolationSettings,
