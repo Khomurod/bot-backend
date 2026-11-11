@@ -11,6 +11,7 @@
  */
 
 const path = require('node:path');
+const { createCardStore } = require('./hiringStageCardStore');
 
 const ROOT = path.resolve(__dirname, '..', '..');
 function stub(rel, exports) {
@@ -25,7 +26,7 @@ const SETTINGS = {
 };
 
 const state = {
-  messages: [], finished: [], retried: [], proposals: [], records: [], notices: [], sent: [],
+  messages: [], finished: [], retried: [], proposals: [], records: [], notices: [], sent: [], edits: [], deleted: [],
   contacts: [], deals: [], calls: [], fail: {}, nextId: 500, aiAnswer: null,
 };
 
@@ -86,6 +87,8 @@ stub('database/hiringStages/crmRecords.js', {
     return { ...row };
   },
 });
+const cardStore = createCardStore();
+stub('database/hiringStages/cards.js', cardStore.store);
 stub('database/hiringStages/notices.js', {
   reserve: async (chatId, root, key) => {
     if (state.notices.some((n) => n.root === root && n.key === key)) return null;
@@ -108,6 +111,7 @@ const STAGE_ROWS = [
   { STATUS_ID: 'NEW', NAME: 'New Lead', SORT: 10 },
   { STATUS_ID: 'PREPARATION', NAME: 'Contacting', SORT: 20 },
   { STATUS_ID: 'UC_SAFETY', NAME: 'Sent to Safety', SORT: 30 },
+  { STATUS_ID: 'UC_DRUG', NAME: 'Ready to Drug Test', SORT: 35 },
   { STATUS_ID: 'WON', NAME: 'Hired', SORT: 40, EXTRA: { SEMANTICS: 'S' } },
   { STATUS_ID: 'LOSE', NAME: 'Lost', SORT: 50, EXTRA: { SEMANTICS: 'F' } },
 ];
@@ -180,7 +184,8 @@ stub('services/bitrix24DealStages.js', {
 // ── Telegram and the conversation ───────────────────────────────────────────
 const telegram = {
   sendMessage: async (chatId, text, extra) => { state.sent.push({ chatId, text, extra }); return { message_id: 9000 + state.sent.length }; },
-  editMessageText: async () => true,
+  editMessageText: async (chatId, messageId, _i, text, extra) => { state.edits.push({ messageId, text, extra }); return true; },
+  deleteMessage: async (chatId, messageId) => { state.deleted.push(messageId); return true; },
 };
 const m = (messageId, over = {}) => ({
   messageId, fromUserId: '500', fromName: 'Kim R', text: null, photos: [], documents: [],
@@ -193,8 +198,9 @@ const conversation = (postText, root = 169) => [
 const thread = (over = {}) => ({ id: 1, chatId: CHAT, rootMessageId: 169, lastMessageId: 172, attempts: 1, revision: 1, ...over });
 
 function reset() {
+  cardStore.reset();
   Object.assign(state, {
-    messages: [], finished: [], retried: [], proposals: [], records: [], notices: [], sent: [],
+    messages: [], finished: [], retried: [], proposals: [], records: [], notices: [], sent: [], edits: [], deleted: [],
     contacts: [], deals: [], calls: [], fail: {}, nextId: 500,
     aiAnswer: { move: true, stage_id: 'UC_SAFETY', driver_name: null, evidence: 'CLH sent' },
   });
@@ -206,5 +212,6 @@ const readStage = async () => ({ parsed: state.aiAnswer, model: 'fake' });
 const run = (t = thread()) => processThread(t, { settings: SETTINGS, telegram, readStage });
 
 module.exports = {
+  cardStore,
   CHAT, SAFETY, SETTINGS, ORIGINATOR, BitrixError, state, telegram, m, conversation, thread, reset, run,
 };

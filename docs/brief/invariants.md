@@ -243,7 +243,7 @@ repository-wide working rules. The highest-consequence items:
   the post by rules, one typed phone, no other contact holding either; the
   creation is claimed (`hiring_stage_crm_records`) and every step recorded
   before its Bitrix call, so a retry or timeout searches before it adds. A
-  created deal starts at the first stage — a stage MOVE is still a person's
+  created deal starts at "Sent to Safety" — a stage MOVE is still a person's
   press. Bitrix messages go to the Bitrix topic only, never General.
   `tests/hiringStageCrmCreate.test.js`. **A possessive or labelled line
   ("Matthew's referral") is never a driver** of a Safety post

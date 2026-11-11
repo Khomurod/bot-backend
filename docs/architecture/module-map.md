@@ -188,6 +188,7 @@ organization should converge toward.
 | Whether a candidate is certain enough to create a Bitrix record for | `lib/hiringStages/identity.js` (pure) |
 | The conversation queue, the proposals, the creation claim, the notices | `database/hiringStages/{threads,proposals,crmRecords,notices}.js`, migrations 0076, 0100 |
 | Bitrix deals: find, stages, the one update, the two adds | `services/bitrix24DealStages.js`, `services/hiringStages/{dealFinder,stagePlan}.js` |
+| One card per driver in the Bitrix topic (re-post on a question, edit on an answer) | `services/hiringStages/card.js`, `database/hiringStages/cards.js`, migration 0101 |
 | Creating a missing contact + deal, at most once | `services/hiringStages/crmCreate.js` (the only caller of `crm.contact.add` / `crm.deal.add`) |
 | Queueing from capture; reading and proposing | `services/hiringStages/{conversationQueue,reviewer,propose,aiReading,groupMessages}.js`; worker `services/hiringStages/worker.js`, key `hiring_stage_proposals`, capability `hiring_stage_reading` |
 | The buttons | `bot/handlers/hiringStageHandlers.js` (thin) → `services/hiringStages/actions.js` |

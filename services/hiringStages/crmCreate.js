@@ -11,7 +11,7 @@
  *       contact under another phone: nothing is created (`blocked`), a person
  *       is asked; none at all: a NEW contact
  *     → DEAL: that contact's open deal if one appeared meanwhile; else a NEW
- *       deal at the pipeline's first stage
+ *       deal at "Sent to Safety" (startStage)
  *     → `created` — and the reviewer proposes the stage move as usual: a
  *       person still presses Move.
  *
@@ -31,7 +31,7 @@ const records = require('../../database/hiringStages/crmRecords');
 const bitrix = require('../bitrix24DealStages');
 const { getBitrixConfig } = require('../../database/bitrix');
 const { postLink } = require('../../lib/safetyApprovals/announcement');
-const { nameParts } = require('../../lib/hiringStages/proposal');
+const { nameParts, stageByName } = require('../../lib/hiringStages/proposal');
 const { splitName } = require('../../lib/hiringStages/identity');
 const { findContactsByName, contactMatches } = require('./dealFinder');
 
@@ -39,9 +39,17 @@ const IN_FLIGHT = ['claimed', 'creating_contact', 'creating_deal'];
 
 const originOf = (chatId, rootMessageId) => `tg:${chatId}:${Number(rootMessageId)}`;
 
-/** The pipeline's first stage that neither wins nor loses — where a new deal starts. */
-function firstOpenStage(stages) {
-  return (stages || []).find((s) => s.semantics !== 'S' && s.semantics !== 'F') || null;
+/**
+ * Where a new deal starts: "Sent to Safety" (owner, 11 November 2026). A
+ * candidate posted in the recruiting group IS a candidate sent to Safety, and
+ * Bitrix's own automation carries a deal from that stage into the Safety
+ * pipeline — so the next step is asked there, never "Hired" from New Lead.
+ * A pipeline without that stage creates nothing (a person is asked).
+ */
+const START_STAGE_NAME = 'Sent to Safety';
+
+function startStage(stages) {
+  return stageByName(stages || [], START_STAGE_NAME);
 }
 
 const newestFirst = (a, b) => String(b.modifiedAt || '').localeCompare(String(a.modifiedAt || '')) || b.id - a.id;
@@ -105,8 +113,8 @@ async function openDealOf(record, contactId, origin, opts) {
 async function ensureCandidateDeal({
   chatId, rootMessageId, identity, categoryId, stages,
 }, opts = {}) {
-  const stage = firstOpenStage(stages);
-  if (!stage) return { status: 'blocked', reason: 'the pipeline has no open stage to start a deal in' };
+  const stage = startStage(stages);
+  if (!stage) return { status: 'blocked', reason: `the pipeline has no "${START_STAGE_NAME}" stage to start a deal in` };
 
   const claimed = await records.claim({
     chatId, rootMessageId, phone: identity.phone, driverName: identity.name,
@@ -190,5 +198,5 @@ async function resumeInFlight({
 }
 
 module.exports = {
-  ensureCandidateDeal, resumeInFlight, firstOpenStage, originOf,
+  ensureCandidateDeal, resumeInFlight, startStage, originOf, START_STAGE_NAME,
 };

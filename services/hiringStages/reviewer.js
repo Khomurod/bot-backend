@@ -55,9 +55,13 @@ function isCandidatePost(post) {
     || extractPhones(m.text || '').length > 0);
 }
 
-const notice = (thread, deps, key, text) => group.sendNotice(deps.telegram, deps.settings?.bitrixTopicId, {
-  chatId: thread.chatId, rootMessageId: thread.rootMessageId, key, text,
+/** A line of news on the driver's card in the Bitrix topic, once per key. */
+const notice = (thread, deps, key, line, driverName) => group.sendNotice(deps.telegram, deps.settings?.bitrixTopicId, {
+  chatId: thread.chatId, rootMessageId: thread.rootMessageId, driverName, key, line,
 });
+
+/** After a deal is created, read again this long after — once Bitrix's own automation has moved it. */
+const REREAD_AFTER_CREATE_SECONDS = 120;
 
 /** Not a failure — somebody else's step must finish first. Retried on the same schedule. */
 class RetryLater extends Error {}
@@ -65,17 +69,13 @@ class RetryLater extends Error {}
 /** "Created a deal for X" — once per conversation, whichever read finished the creation. */
 async function sayCreated(thread, deps, made, stages) {
   if (made?.status !== 'created') return;
-  await notice(thread, deps, 'created', msg.createdText({
-    chatId: thread.chatId,
-    rootMessageId: thread.rootMessageId,
-    driverName: made.driverName,
-    driverPhone: made.phone,
+  await notice(thread, deps, 'created', msg.createdLine({
     dealId: made.deal.id,
     dealTitle: made.deal.title,
     dealUrl: await dealUrl(made.deal.id),
     stageName: stages.find((s) => s.id === made.deal.stageId)?.name || made.deal.stageId,
     contactReused: made.contactReused,
-  }));
+  }), made.driverName);
 }
 
 /**
@@ -130,6 +130,10 @@ async function readAndPropose(thread, deps, seen) {
     loadStages: () => stagesFor(newDealCategory, opts),
   }, opts);
   if (resumed) await sayCreated(thread, deps, resumed, resumed.stages);
+  if (resumed?.status === 'created') {
+    await threads.retryThread(thread, { delaySeconds: REREAD_AFTER_CREATE_SECONDS, error: null });
+    return 'retry';
+  }
   let lookup;
   if (resumed?.deal) lookup = { status: 'found', deal: resumed.deal };
   else lookup = phones.length ? await findCandidateDeal({ phones }, opts) : { status: 'none' };
@@ -151,13 +155,12 @@ async function readAndPropose(thread, deps, seen) {
   if (!verified.move) return done(thread, { result: verified.reason, model: answer.model });
 
   const identity = candidateIdentity({ postText, phones, modelName: verified.driverName });
-  const name = verified.driverName || identity.name || null;
+  // ONE NAME: the post's, when it has one certain name; the model's only otherwise.
+  const name = identity.name || verified.driverName || null;
   if (name) seen.driverName = name;
   if (!lookup.deal && name) lookup = await findCandidateDeal({ name }, opts);
   if (lookup.status === 'ambiguous') {
-    await notice(thread, deps, 'ambiguous', msg.ambiguousText({
-      chatId: thread.chatId, rootMessageId: thread.rootMessageId, driverName: name, count: lookup.count,
-    }));
+    await notice(thread, deps, 'ambiguous', msg.ambiguousLine({ count: lookup.count }), name);
     return done(thread, { result: 'ambiguous', people: lookup.count });
   }
 
@@ -169,12 +172,18 @@ async function readAndPropose(thread, deps, seen) {
     if (!name && !phones.length) return done(thread, { result: 'no_identity' });
     const missing = await whenNoDeal(thread, ctx, { identity, categoryId, stages }, deps, opts);
     if (missing.outcome) return done(thread, missing.outcome);
+    if (missing.created) {
+      // A new deal starts at "Sent to Safety", and Bitrix's own automation may
+      // carry it into the Safety pipeline at once: the next step is proposed
+      // on a fresh read, in whatever pipeline the deal is then — never now.
+      await threads.retryThread(thread, { delaySeconds: REREAD_AFTER_CREATE_SECONDS, error: null });
+      return 'retry';
+    }
     deal = missing.deal || null;
-    ctx.created = Boolean(missing.created);
   }
   if (deal) {
     const plan = await planForDeal(deal, verified.stage, { stages, categoryId }, opts);
-    if (!plan.ok) return done(thread, { result: plan.reason, dealId: deal.id, ...(ctx.created ? { created: true } : {}) });
+    if (!plan.ok) return done(thread, { result: plan.reason, dealId: deal.id });
     Object.assign(ctx, { deal, plan });
   }
   return propose(thread, ctx, deps);
@@ -189,9 +198,7 @@ function retryable(err) {
 /** A Bitrix failure that ends this read is said in the Bitrix topic — once per revision. */
 async function sayBitrixFailed(thread, deps, err, seen) {
   if (!(err instanceof BitrixError)) return;
-  await notice(thread, deps, `bitrix_error:${thread.revision}`, msg.bitrixErrorText({
-    chatId: thread.chatId, rootMessageId: thread.rootMessageId, driverName: seen.driverName, error: stripUrls(err.message),
-  }));
+  await notice(thread, deps, `bitrix_error:${thread.revision}`, msg.bitrixErrorLine({ error: stripUrls(err.message) }), seen.driverName);
 }
 
 /** @returns {Promise<'done'|'retry'|'gave_up'>} */

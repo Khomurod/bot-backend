@@ -12,6 +12,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
+const { createCardStore } = require('./helpers/hiringStageCardStore');
 
 const ROOT = path.resolve(__dirname, '..');
 function stub(rel, exports) {
@@ -61,6 +62,8 @@ stub('database/hiringStages/proposals.js', {
   },
 });
 stub('database/safetyApprovals/settings.js', { getSafetyApprovalSettings: async () => SETTINGS });
+const cardStore = createCardStore();
+stub('database/hiringStages/cards.js', cardStore.store);
 let noticeKeys = new Set();
 stub('database/hiringStages/notices.js', {
   reserve: async (chatId, root, key) => (noticeKeys.has(`${root}:${key}`) ? null : (noticeKeys.add(`${root}:${key}`), noticeKeys.size)),
@@ -107,10 +110,12 @@ const { AiUnavailableError } = require('../services/ai/router');
 // ── a fake Telegram ─────────────────────────────────────────────────────────
 let sent = [];
 let edits = [];
+let deleted = [];
 const send = async (chatId, text, extra) => { sent.push({ chatId, text, extra }); return { message_id: 9000 + sent.length }; };
 const telegram = {
   sendMessage: send,
   editMessageText: async (chatId, mid, _i, text, extra) => { edits.push({ mid, text, extra }); return true; },
+  deleteMessage: async (chatId, mid) => { deleted.push(mid); return true; },
 };
 
 const m = (messageId, over = {}) => ({
@@ -134,6 +139,8 @@ const press = (action, id, chatId = CHAT, from = ANN) => handleStageButton({ act
 function reset() {
   threadMessages = [POST, CLH, CLEAN]; finished = []; retried = []; rows = []; sent = []; edits = []; moves = [];
   noticeKeys = new Set();
+  deleted = [];
+  cardStore.reset();
   creation = { status: 'blocked', reason: 'a contact named Phillips Samuel is already in Bitrix under another phone' };
   failMove = false;
   telegram.sendMessage = send;
@@ -149,8 +156,9 @@ test('a conversation that moved on posts ONE proposal, IN THE BITRIX TOPIC, and 
   assert.equal(sent[0].chatId, CHAT);
   assert.equal(sent[0].extra.message_thread_id, 77, 'the Bitrix topic, never General');
   assert.equal(sent[0].extra.reply_to_message_id, undefined, 'a reply would land in General');
-  assert.ok(sent[0].text.includes(`<a href="${POST_LINK}">The post in General</a>`), 'it links the post');
-  assert.match(sent[0].text, /move <b>Samuel Phillips<\/b> to <b>MVR \+ PSP CHECK<\/b>\?/);
+  assert.ok(sent[0].text.startsWith(`👤 <b>Phillips Samuel</b> · <a href="${POST_LINK}">post in General</a>`),
+    'one card: the driver and a link to the post');
+  assert.match(sent[0].text, /📋 Move to <b>MVR \+ PSP CHECK<\/b>\?/);
   assert.match(sent[0].text, /Now: CLEARINGHOUSE CHECK/);
   assert.deepEqual(moves, [], 'A MODEL NEVER MOVES A DEAL');
   assert.equal(rows[0].botMessageId, 9001);
@@ -169,7 +177,9 @@ test('ANYONE IN THE GROUP may confirm — once — and the deal moves', async ()
   assert.match(out.text, /moved to MVR \+ PSP CHECK/);
   assert.deepEqual(moves, [{ id: 12, stageId: 'EXECUTING' }]);
   assert.equal(rows[0].status, 'applied');
-  assert.match(edits.at(-1).text, /moved to <b>MVR \+ PSP CHECK<\/b> in Bitrix — Ann/);
+  assert.match(edits.at(-1).text, /✅ Moved to <b>MVR \+ PSP CHECK<\/b> — Ann/);
+  assert.equal(edits.at(-1).mid, 9001, 'the answer edits the card in place — no new message');
+  assert.equal(sent.length, 1);
   assert.equal(edits.at(-1).extra.reply_markup, undefined, 'the buttons go for everybody');
 
   assert.equal((await press('ok', 1, CHAT, { id: 5, first_name: 'Bo' })).text, 'Already answered.');
@@ -212,7 +222,7 @@ test('"No" closes it, and that stage is never proposed again for the conversatio
   await run();
   await press('no', 1);
   assert.equal(rows[0].status, 'declined');
-  assert.match(edits.at(-1).text, /not moved to <b>MVR \+ PSP CHECK<\/b> — Ann/);
+  assert.match(edits.at(-1).text, /✖ Not moved to <b>MVR \+ PSP CHECK<\/b> — Ann/);
   await run();
   assert.equal(sent.length, 1);
 });
@@ -224,9 +234,11 @@ test('a LATER stage supersedes the open proposal', async () => {
   aiAnswer = { move: true, stage_id: 'FINAL_INVOICE', driver_name: 'Samuel Phillips', evidence: 'Approved' };
   await run(thread({ lastMessageId: 180, revision: 2 }));
   assert.equal(rows[0].status, 'superseded');
-  assert.match(edits.at(-1).text, /replaced by a newer proposal/);
   assert.equal(rows[1].status, 'pending');
   assert.equal(sent[1].extra.message_thread_id, 77);
+  assert.match(sent[1].text, /📋 Move to <b>READY<\/b>\?/);
+  assert.doesNotMatch(sent[1].text, /MVR \+ PSP CHECK<\/b>\?/, 'the replaced question is gone, not stacked');
+  assert.deepEqual(deleted, [9001], 'the card moved to the bottom: still one message for this driver');
 });
 
 test('NO DEAL the bot may not create: the recruiter is asked ONCE, with why; "search again" turns it into a proposal', async () => {
@@ -235,7 +247,7 @@ test('NO DEAL the bot may not create: the recruiter is asked ONCE, with why; "se
   await run();
   assert.equal(rows[0].kind, 'create_deal');
   assert.equal(sent[0].extra.message_thread_id, 77, 'asked in the Bitrix topic');
-  assert.match(sent[0].text, /no open deal found for <b>Samuel Phillips<\/b>/);
+  assert.match(sent[0].text, /^👤 <b>Phillips Samuel<\/b>[\s\S]*⚠️ No open deal in Bitrix/);
   assert.match(sent[0].text, /Not created automatically: a contact named Phillips Samuel is already in Bitrix/);
   assert.match(sent[0].text, /tg:\/\/user\?id=500/);
   assert.ok(sent[0].text.includes(POST_LINK));
@@ -272,7 +284,7 @@ test('not a candidate post, a lone post, or an unverified answer posts nothing',
   await run();
   assert.equal(finished.at(-1).outcome.result, 'ambiguous');
   assert.equal(sent.length, 1, 'said once in the Bitrix topic — no proposal');
-  assert.match(sent[0].text, /2 different people in Bitrix match <b>Samuel Phillips<\/b> — nothing was moved or created/);
+  assert.match(sent[0].text, /^👤 <b>Phillips Samuel<\/b>[\s\S]*2 different people in Bitrix match this name — nothing was moved or created/);
   assert.equal(sent[0].extra.message_thread_id, 77);
   assert.equal(rows.length, 0);
   await run();

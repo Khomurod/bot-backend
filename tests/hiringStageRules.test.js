@@ -120,13 +120,13 @@ test('a refusal may end a candidate from anywhere; a closed deal is never reopen
   assert.equal(isForwardMove(STAGES, null, STAGES[0]), true, 'no deal yet: any stage may be named');
 });
 
-test('the group message quotes, escapes, and carries the right buttons', () => {
+test('the card: one name in the header, the question quoted and escaped, the right buttons', () => {
   const p = {
     id: 7, driverName: '<b>Sam</b>', dealId: 12, dealTitle: 'Facebook Lead – Sam & Co', dealUrl: 'https://x.bitrix24.com/crm/deal/details/12/',
     fromStageName: 'CLEARINGHOUSE CHECK', toStageName: 'MVR + PSP CHECK', evidence: 'CLEAN',
   };
   const text = msg.moveText(p);
-  assert.match(text, /move <b>&lt;b&gt;Sam&lt;\/b&gt;<\/b> to <b>MVR \+ PSP CHECK<\/b>\?/);
+  assert.match(text, /📋 Move to <b>MVR \+ PSP CHECK<\/b>\?/);
   assert.match(text, /Sam &amp; Co/);
   assert.match(text, /Why: “CLEAN”/);
   const kb = msg.moveKeyboard(7, p.toStageName).inline_keyboard[0];
@@ -136,10 +136,32 @@ test('the group message quotes, escapes, and carries the right buttons', () => {
   assert.doesNotMatch('hst:ok:12x', msg.CALLBACK_PATTERN);
 
   const ask = msg.createDealText({ ...p, dealId: null, recruiterUserId: '500', recruiterName: 'Kim R', driverPhone: '4045550134' });
-  assert.match(ask, /no open deal found/);
+  assert.match(ask, /No open deal in Bitrix \(4045550134\)/);
   assert.match(ask, /<a href="tg:\/\/user\?id=500">Kim R<\/a>, please create the deal/);
   assert.deepEqual(msg.createDealKeyboard(9).inline_keyboard[0].map((b) => b.callback_data), ['hst:re:9', 'hst:no:9']);
 
-  assert.match(msg.closedText(p, 'applied', { byName: 'Ann' }), /moved to <b>MVR \+ PSP CHECK<\/b> in Bitrix — Ann/);
-  assert.match(msg.closedText(p, 'stale', { detail: 'READY' }), /is now at <b>READY<\/b>/);
+  assert.equal(msg.outcomeLine(p, 'applied', { byName: 'Ann' }), '✅ Moved to <b>MVR + PSP CHECK</b> — Ann');
+  assert.match(msg.outcomeLine(p, 'stale', { detail: 'READY' }), /the deal is now at <b>READY<\/b>/);
+  assert.equal(msg.outcomeLine(p, 'superseded'), null, 'a replaced question leaves no line');
+  assert.match(msg.closedText(p, 'applied', { byName: 'Ann' }), /^<b>&lt;b&gt;Sam&lt;\/b&gt;<\/b>: ✅ Moved/, 'an old message names the driver');
+
+  const card = msg.cardText({
+    driverName: '<b>Sam</b>', chatId: '-1001234567890', rootMessageId: 169,
+    history: Array.from({ length: 8 }, (_, i) => `line ${i + 1}`), current: text,
+  });
+  assert.match(card, /^👤 <b>&lt;b&gt;Sam&lt;\/b&gt;<\/b> · <a href="https:\/\/t\.me\/c\/1234567890\/169">post in General<\/a>\n\nline 3\n/);
+  assert.doesNotMatch(card, /line 2\n/, `only the last ${msg.HISTORY_SHOWN} lines are shown`);
+  assert.ok(card.endsWith(text));
+});
+
+test('a "Hired" stage is proposed only when the words say hired or arrived — never for an approval', () => {
+  const stages = [
+    { id: 'NEW', name: 'New Lead', sort: 10, semantics: '' },
+    { id: 'UC_SAFETY', name: 'Sent to Safety', sort: 30, semantics: '' },
+    { id: 'WON', name: 'Hired', sort: 40, semantics: 'S' },
+  ];
+  const searchable = 'we can hire him #approved driver arrived for orientation';
+  const v = (evidence) => verifyStageAnswer({ move: true, stage_id: 'WON', evidence }, { stages, currentStageId: 'NEW', searchable });
+  assert.deepEqual(v('we can hire him #approved'), { move: false, reason: 'hired_needs_arrival' });
+  assert.equal(v('driver arrived for orientation').move, true);
 });

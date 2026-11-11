@@ -42,8 +42,8 @@ to make one.
 1. **A model proposes; a person moves the deal.** `crm.deal.update` is called
    from exactly one place (`services/hiringStages/actions.js`), after somebody
    in the group pressed **Move**. There is no automatic mode. Creating a
-   missing deal (rule 13) is not moving one: a created deal starts at the
-   first stage, and the stage the conversation reached is still a proposal.
+   missing deal (rule 13) is not moving one: a created deal starts at "Sent
+   to Safety", and every later stage is still a proposal.
    No model decides a creation — the identity is read off the post by rules.
 2. **The deal is read again at the press.** If somebody moved it by hand since
    the proposal, it is not moved (`stale`, and the message says where it is
@@ -90,13 +90,21 @@ to make one.
     (the state right after the November 2026 deploy) the worker is `blocked`
     and conversations wait in the queue. Nothing Bitrix is ever posted in
     General.
-12. **Read in General, written in the Bitrix topic.** Every new message —
-    proposal, "please create it", deal created, two people matching, Bitrix
-    error — is sent with `message_thread_id` = `safety_approval_settings.
-    bitrix_topic_id` and never as a reply (a reply cannot cross topics). Each
-    names the driver and ends with a link to the post in General. Move / No
-    results are edits of the proposal's own message. A notice is posted once
-    per conversation (`hiring_stage_notices`, reserved before the send).
+12. **Read in General, written in the Bitrix topic — ONE CARD PER DRIVER**
+    (owner, 11 November 2026: "the bot must not spam the group"). Everything
+    about one candidate is one message (`services/hiringStages/card.js`,
+    `hiring_stage_cards`, migration 0101): the driver's name — set once, from
+    the post — with a link to the post in General, a short history (the last
+    six lines) and the question open now with its buttons. A new question or
+    a line of news (deal created, two people match, a Bitrix error) re-posts
+    the card at the BOTTOM of the topic and deletes the previous copy (one
+    Telegram will not delete is edited to point below); an answer — Move, No,
+    Skip, search again — edits the card in place. Sent with
+    `message_thread_id` = `safety_approval_settings.bitrix_topic_id`, never as
+    a reply (a reply cannot cross topics). A line of news is shown once per
+    conversation and key (`hiring_stage_notices`, reserved before the send).
+    A question posted before cards existed (some still sit in General) is
+    closed by editing its own message.
 13. **A missing deal is created only for a CERTAIN candidate**
     (`lib/hiringStages/identity.js`): exactly one driver's name read off the
     post without a model (not a team, no name-shaped line in small letters),
@@ -106,10 +114,14 @@ to make one.
     reused when its first and last name are among the post's words; two
     contacts holding it, another person's name on it, or this name on a
     contact under another phone **creates nothing** (`blocked`) — the recruiter
-    is asked, with the reason. A new deal starts at the pipeline's **first
-    open stage** (New Lead), titled with the name as posted, on the configured
-    deal pipeline (default 0); the stage the conversation reached is then
-    PROPOSED with Move / No like any other — creating never moves a deal. A
+    is asked, with the reason. A new deal starts at **"Sent to Safety"**
+    (owner, 11 November 2026 — a candidate posted in the recruiting group IS
+    one sent to Safety; a pipeline without that stage creates nothing), titled
+    with the name as posted, on the configured deal pipeline (default 0).
+    Bitrix's own automation carries a deal from that stage into the Safety
+    pipeline, so nothing more is proposed in the read that created it: the
+    conversation is read again two minutes later, and the next step is
+    PROPOSED with Move / No in whatever pipeline the deal is then. A
     recruiter's earlier **Skip** stops the bot creating it too.
 14. **Never two records.** `hiring_stage_crm_records` claims the creation per
     conversation (and at most one in flight per phone — a second post of the
@@ -121,6 +133,11 @@ to make one.
     (`wenze_recruiting`, `tg:<chat>:<post>`) — and adds only when that finds
     nothing. A refusal (`failed`) or a block may be tried again on a later
     message; a conversation already `created` never creates again.
+15. **Approval is not hiring.** A stage whose name says "hire" is proposed
+    only when the quoted words say the driver was hired, arrived or started
+    orientation (`lib/hiringStages/proposal.js`, `hired_needs_arrival`); the
+    model is told the same. Until 11 November 2026 every `#Approved` on a new
+    deal became "move to Hired?".
 
 ## How it flows
 
@@ -136,9 +153,10 @@ captured General message (services/safetyApprovals/captureService.js)
        → verifyStageAnswer → deal by name (if none yet) → no deal and certain? crmCreate.js (contact + deal)
        → stagePlan.js (carry the stage to the deal's pipeline by NAME)
        → propose.js, in the Bitrix topic (groupMessages.js), each with the driver and a link to the post:
-         "created a deal for X" (once) · "move X to STAGE?" [Move] [No]
-         or "no deal — <reason> — <recruiter>, please create it" [Deal created — search again] [Skip]
-         or "N people in Bitrix match X" · "Bitrix error while handling X" (once)
+         ONE CARD per driver (card.js): 👤 name · post link / history / the open question
+           "Move to STAGE?" [Move] [No]
+           or "No open deal — <reason> — <recruiter>, please create it" [Deal created — search again] [Skip]
+           lines once each: "Deal created …" · "N people in Bitrix match this name" · "Bitrix error …"
   → button press: bot/handlers/hiringStageHandlers.js (thin) → services/hiringStages/actions.js
 ```
 
@@ -146,7 +164,8 @@ captured General message (services/safetyApprovals/captureService.js)
   back to; an album by its first item, so replies to the CDL's front and back
   are one conversation. A chain that leads to a message the bot never saw is
   not queued.
-- **A burst is read once.** Every new message re-arms a 90-second settle delay
+- **A burst is read once.** Every new message re-arms a TEN-MINUTE settle delay
+  (90 seconds until 11 November 2026)
   and bumps the row's `revision`; a worker finishes only the revision it
   claimed.
 - **Failures retry, then stop.** A model or Bitrix outage, or Telegram refusing
@@ -170,7 +189,8 @@ Migrations `0076_hiring_stage_proposals.sql` and
 | `hiring_stage_threads` | one row per conversation: the queue, and what the last read concluded (never the raw model answer) |
 | `hiring_stage_proposals` | what the bot posted and what became of it — who pressed, when, from which stage to which; `note` is why a deal was not created automatically |
 | `hiring_stage_crm_records` | the claim on creating a contact + deal: one per conversation, at most one in flight per phone, each step recorded before its Bitrix call |
-| `hiring_stage_notices` | which notice ("created", "ambiguous", "bitrix_error:<revision>") was posted about a conversation |
+| `hiring_stage_notices` | which line of news ("created", "ambiguous", "bitrix_error:<revision>") was shown about a conversation |
+| `hiring_stage_cards` (migration 0101) | the one card per driver: its message now, the name (set once), the history, the question it shows |
 
 Proposals, creation records and notices carry a driver's name and phone, so
 closed ones are **deleted after 60 days**, like the captured messages;
@@ -207,6 +227,8 @@ contact nor deal, an existing contact, an existing deal, every ambiguous and
 not-certain case, timeouts before and after Bitrix acted, a refusal, the same
 driver posted twice, Skip), `tests/hiringStageIdentity.test.js`,
 `tests/hiringStageWorker.test.js` (blocked without the topic),
+`tests/hiringStageCard.test.js` (one message per driver: re-post and delete,
+edit in place, once per key),
 `tests/hiringStageQueue.test.js`, `tests/hiringStageStorePg.test.js`,
 `tests/hiringStageCrmRecordsPg.test.js` (the claim, busy per phone, notices,
 the topic setting), `tests/safetyApprovalSettingsRoute.test.js` and

@@ -16,11 +16,11 @@ npm run build:schema:check                        # schema.sql is in sync with b
 ```
 
 - **The Node suite passes clean with no secrets and no database.** Verified
-  baseline (2026-11-10, with the Bitrix topic and the bot-created contact + deal — deps installed):
-  the 430 non-`*Pg` files
-  with no application env — **4333 tests, 4333 pass, 0 fail, 0 skipped**, exactly what CI's unit job
-  runs — and the 111 `*Pg` files against a local PostgreSQL 16 — **815 tests,
-  815 pass, 0 fail, 0 skipped**. CI runs the non-`*Pg` files with no
+  baseline (2026-11-11, with one Bitrix card per driver — deps installed):
+  the 431 non-`*Pg` files
+  with no application env — **4338 tests, 4338 pass, 0 fail, 0 skipped**, exactly what CI's unit job
+  runs — and the 111 `*Pg` files against a local PostgreSQL 16 — **816 tests,
+  816 pass, 0 fail, 0 skipped**. CI runs the non-`*Pg` files with no
   application env at all and the `*Pg` files against a real Postgres; both jobs
   fail on any skip. The admin suite is **683 pass in 95 files**; the Python
   leads tests are **112 pass**.
