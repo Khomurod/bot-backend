@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import * as api from "../../../api";
+import BoardBitrixResponders from "./BoardBitrixResponders";
 
 /**
  * Settings → Dispatcher Board → Board ↔ Bitrix check.
@@ -212,7 +213,8 @@ export default function BoardBitrixCard() {
       <div style={{ fontWeight: 600, marginBottom: 6 }}>Board ↔ Bitrix check</div>
       <p style={{ color: "var(--text-muted)", fontSize: 13, marginTop: 0 }}>
         Compares the board (the source of truth) with Bitrix24 — active drivers, their trucks and
-        their status — every 15 minutes. Read-only mode asks about differences one at a time.
+        their status — every 15 minutes, and asks about differences one at a time, each with a
+        recommendation and, when Wenze can do the fix itself, a button.
         Dry run records the exact HOME/WORKING changes without writing. Live mode changes only
         <strong> STAGE_ID</strong>, after a fresh schema and deal check.
       </p>
@@ -254,6 +256,8 @@ export default function BoardBitrixCard() {
         )}
         <SchemaCandidate candidate={view.schema?.candidate} busy={busy} onApprove={approveSchema} />
       </div>
+
+      <BoardBitrixResponders ids={view.responderIds || []} />
 
       <Row label="Question out now" value={view.current ? `${view.current.label} (since ${new Date(view.current.askedAt).toLocaleString()})` : "none"} />
       <Row label="Waiting to be asked" value={c.waiting ?? 0} />

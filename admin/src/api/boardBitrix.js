@@ -49,3 +49,13 @@ export async function runBoardBitrixCheck() {
   if (!res.ok) { await handleApiError(res); }
   return res.json();
 }
+
+/** Who may answer the questions: Telegram user ids. → the ids saved */
+export async function setBoardBitrixResponders(ids) {
+  const res = await fetch(`${API_BASE}/settings/board-bitrix/responders`, {
+    method: 'PUT', headers: getHeaders(), body: JSON.stringify({ ids }),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  const data = await res.json();
+  return data.responderIds || [];
+}

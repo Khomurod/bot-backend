@@ -9,6 +9,7 @@
  *   PUT  /board-bitrix/sync     → off / dry-run / explicitly confirmed live
  *   POST /board-bitrix/schema/approve → approve a twice-seen structural candidate
  *   POST /board-bitrix/run      → one pass now (rate-limited: it reads Bitrix)
+ *   PUT  /board-bitrix/responders → who may answer the questions (Telegram ids)
  *
  * The logic is services/boardBitrix/admin.js. Live writes can change STAGE_ID
  * only and remain off until explicitly confirmed.
@@ -69,6 +70,14 @@ function createBoardBitrixSettingsRouter({ authMiddleware, adminService = servic
       });
     } catch (err) {
       return failed(res, err, 'approve schema');
+    }
+  });
+
+  router.put('/board-bitrix/responders', authMiddleware, async (req, res) => {
+    try {
+      return res.json({ responderIds: await adminService.setResponders(req.body?.ids, { by: who(req) }) });
+    } catch (err) {
+      return failed(res, err, 'save who may answer');
     }
   });
 

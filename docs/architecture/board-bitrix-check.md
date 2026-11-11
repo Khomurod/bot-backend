@@ -16,9 +16,13 @@ Decided with the owner the same day:
   **Needs-attention** group, as soon as it is found when nothing else is out.
   An administrator may separately put status differences into dry-run or live
   sync; every other kind always remains a question.
-- In read-only mode the owner fixes Bitrix and **replies "done"** to the
+- In read-only mode a person fixes Bitrix and **replies "done"** to the
   question; Wenze re-reads Bitrix at once, **confirms** and asks the next — or
-  says what is still different. "skip" brings it back tomorrow.
+  says what is still different. "skip" brings it back tomorrow and asks the
+  next at once.
+- **Since 11 November 2026 every question says what to do**: a plain
+  recommendation (💡) and, when the bot can do the fix itself, a **button per
+  fix** plus **Skip** — see "Advice and buttons" below.
 - A difference of a letter or two, an extra space or the other word order in a
   name is the **same person** and is not asked about. Per word: none in a word
   shorter than four letters ("ALI" and "ALX" are different people), one letter
@@ -232,18 +236,49 @@ driver's fleet plus that number.
 - **Links go on their own lines.** The composer clips a line at 160 characters;
   a link at the end of a long line would lose the end of its deal id, and
   Telegram would still link what was left — to a different deal.
-- **Only an operator is listened to.** The reply handler uses the control
-  channel's allow-list (`control_operators`); a stranger's reply is consumed and
-  never answered. A redelivered Telegram reply is claimed once per question
-  (`claimReply`). The handler sits right after the learning questions' handler
-  (`tests/boardBitrixReply.test.js` asserts the order).
-- **No model reads the reply.** "done" / "skip" in English or Russian
+- **Only the people allowed are listened to**: the control channel's
+  operators (`control_operators`) and, since 11 November 2026, the Telegram
+  ids typed in Settings → Dispatcher Board → "Who may answer the questions"
+  (`board_bitrix_settings.responder_ids`, migration 0102). Until then only the
+  owner counted, and a teammate's "done" / "skip" was silently ignored —
+  which is why a "skip" once asked no next question. A stranger's reply or tap
+  is consumed and never acted on. A redelivered Telegram reply is claimed
+  once per question (`claimReply`). The handler sits right after the learning
+  questions' handler (`tests/boardBitrixReply.test.js` asserts the order).
+- **"done" / "skip" are read by rules** in English or Russian
   (`lib/boardBitrix/replyIntent.js`); **any negation makes a reply unclear**
-  ("haven't fixed it yet", "не всё готово") — never "done"; anything unclear
-  gets one line saying what to type.
+  ("haven't fixed it yet", "не всё готово") — never "done". **Anything else is
+  read by a model** with the question's facts (`readReplyWithAi`): it may be
+  done, skip, "do fix N" (the same as tapping it), or information, which the
+  bot answers in a sentence — "they are a team" → "then the Board is missing
+  her as the team driver". With no model it gets the one line saying what to
+  type.
 - **A "done" that the timer's pass beat to it says nothing more**: the pass has
   already said "Fixed" under the question and asked the next; a second
   confirmation would arrive after the next question.
+- **Advice and buttons** (owner, 11 November 2026). The fixes the bot can do
+  are built BY RULES from the difference (`lib/boardBitrix/actions.js`, the
+  Board being the truth): move the deal to the stage the Board's status maps
+  to, close a deal not on the Board (its pipeline's closing stages, by their
+  Bitrix names — TERMINATED / LEFT / RESIGNED), rename the deal to the Board's
+  name, set its driver type, point it at the Board's truck, or move a truck to
+  "On the road". A model (`board_bitrix_advice`, `services/boardBitrix/
+  advice.js`) **sees everything about the question** — the difference, the
+  Board lines on the same truck or with a similar name, the deal (owner, 11
+  November 2026) — writes the recommendation and CHOOSES which fixes get a
+  button; it cannot add one, and an index it names that is not offered is
+  dropped. No model: every rule-built fix, no recommendation. The advice is
+  stored with the question (`advice_json`), so a tap means exactly what it
+  showed; a reminder keeps it, a question asked again is advised again.
+- **A tap writes only after Bitrix is read again** (`services/boardBitrix/
+  apply.js`): each fix carries where Bitrix stood when it was offered, and a
+  deal or truck changed meanwhile is refused ("changed meanwhile") with
+  nothing written. One write per tap — `crm.deal.update` with that one field
+  (`STAGE_ID`, `TITLE`, the driver-type or truck field) or `crm.item.update`
+  with a truck's stage — and only with a **validated** schema (never the
+  static fallback). Then the same re-check as "done". The owner allowed these
+  writes on 11 November 2026 ("if it is something I do not want, I answer
+  skip"); the guarded automatic status sync below is unchanged.
 - **The questions carry no `question_json`**, so the control channel's buttons,
   standing cap, daily budget and morning summary never touch them — the same
   arrangement as the AI learning questions (`docs/architecture/ai-learning.md`).
@@ -306,17 +341,20 @@ Board status Wenze does not know is never compared.
 | `services/boardBitrix/schemaDiscovery.js`, `schemaAi.js` | exact live schema discovery; bounded AI interpretation of catalogue labels/opaque ids, safe schema metadata and aggregate counts only |
 | `services/boardBitrix/stageSync.js` | dry-run/live status plan, strict identity guard, fresh Board/deal checks, the only `STAGE_ID` write |
 | `services/boardBitrix/pass.js`, `timer.js` | one pass; the 15-minute timer, `board_bitrix_check` in the roster |
-| `services/boardBitrix/ask.js`, `reply.js` | one question at a time; "done" / "skip" |
+| `services/boardBitrix/ask.js`, `reply.js` | one question at a time, with its advice and buttons; "done" / "skip" / own words |
+| `lib/boardBitrix/actions.js`, `services/boardBitrix/advice.js` | the rule-built fixes; the model's recommendation and choice; reading a reply in own words |
+| `services/boardBitrix/answer.js`, `buttons.js`, `apply.js` | who may answer, skip / done / do a fix (shared by replies and taps); the tap; the one write, after a fresh read |
+| `database/boardBitrixAdvice.js`, migration 0102 | who may answer; the advice a question showed; a notice's own buttons (`reply_markup_json`) |
 | `database/boardBitrix.js` | the switch, the one-transaction pass, the queue |
 | `database/boardBitrixSchema.js` | locked last-known-good refresh, candidate observation/promotion and explicit approval |
-| `bot/handlers/boardBitrixReplyHandlers.js` | registers the reply handler |
-| `services/boardBitrix/admin.js`, `server/routes/settings/boardBitrixRoutes.js` | `GET /board-bitrix`, `PUT /board-bitrix/enabled`, `PUT /board-bitrix/sync`, `POST /board-bitrix/run`, `POST /board-bitrix/schema/approve` under `/api/settings` |
+| `bot/handlers/boardBitrixReplyHandlers.js`, `boardBitrixButtonHandlers.js` | register the reply handler and the buttons (`bbx:<question>:<fix or s>`) |
+| `services/boardBitrix/admin.js`, `server/routes/settings/boardBitrixRoutes.js` | `GET /board-bitrix`, `PUT /board-bitrix/enabled`, `PUT /board-bitrix/sync`, `PUT /board-bitrix/responders`, `POST /board-bitrix/run`, `POST /board-bitrix/schema/approve` under `/api/settings` |
 | `admin/src/pages/settings/dispatcherBoard/BoardBitrixCard.jsx` | the card under the Feed card |
 
 ## Tests
 
 ```
-node --test tests/boardBitrixNames.test.js tests/boardBitrixCompare.test.js tests/boardBitrixPass.test.js tests/boardBitrixSync.test.js tests/boardBitrixReply.test.js tests/boardBitrixAdmin.test.js
+node --test tests/boardBitrixNames.test.js tests/boardBitrixCompare.test.js tests/boardBitrixPass.test.js tests/boardBitrixSync.test.js tests/boardBitrixReply.test.js tests/boardBitrixAdmin.test.js tests/boardBitrixAdvice.test.js
 node --test tests/boardBitrixSchemaBootstrap.test.js tests/boardBitrixStageCodes.test.js   # production-shaped catalogue
 TEST_DATABASE_URL=… node --test tests/boardBitrixPg.test.js
 npm test --prefix admin -- --run src/pages/settings/dispatcherBoard/BoardBitrixCard.test.jsx

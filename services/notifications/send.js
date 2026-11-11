@@ -116,7 +116,7 @@ async function notify(notice, deps = defaultDeps()) {
     personId = null, groupId = null, evidence = null,
     severity = null, facts = null,
     question = null, findingId = null, inReplyTo = null,
-    parentNoticeId = null, clarifyRound = 0,
+    parentNoticeId = null, clarifyRound = 0, replyMarkup = null,
   } = notice || {};
 
   if (!isKnownCategory(category)) {
@@ -260,6 +260,7 @@ async function notify(notice, deps = defaultDeps()) {
       replyToMessageId: inReplyTo?.messageId ?? null,
       parentNoticeId,
       clarifyRound,
+      replyMarkup,
     });
   } catch (err) {
     console.warn(`[NOTIFY] could not record "${noticeKey}":`, err.message);
@@ -306,6 +307,8 @@ async function deliverOne(notice, deps = defaultDeps()) {
   // only the notice id and a letter in each. See lib/control/buttons.js.
   const buttons = notice.question ? keyboardFor(notice.id, notice.question.offeredActions) : null;
   if (buttons) options.reply_markup = buttons;
+  // A feature's own buttons (Board ↔ Bitrix advice) — never with a control question's.
+  else if (notice.replyMarkup?.inline_keyboard) options.reply_markup = notice.replyMarkup;
   try {
     let sent;
     try {

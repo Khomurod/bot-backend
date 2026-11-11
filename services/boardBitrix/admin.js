@@ -28,6 +28,7 @@ function defaultDeps() {
     getRun: require('../../database/backgroundRuns').getRun,
     recentActions: require('../../database/boardBitrix').recentStageSyncActions,
     runNow: () => require('./timer').runNow(),
+    advice: require('../../database/boardBitrixAdvice'),
   };
   /* eslint-enable global-require */
 }
@@ -146,7 +147,16 @@ async function getView({ deps = defaultDeps() } = {}) {
     byKind: (summary.byKind || []).map((k) => ({ kind: k.kind, label: KIND_LABELS[k.kind] || k.kind, count: num(k.count) })),
     current: current ? { kind: current.kind, label: KIND_LABELS[current.kind] || current.kind, askedAt: current.askedAt } : null,
     lastRun: lastRunView(await deps.getRun(SERVICE_KEY)),
+    responderIds: deps.advice ? await deps.advice.getResponderIds() : [],
   };
+}
+
+/** Who may answer the questions, beside the owner: Telegram user ids. */
+async function setResponders(ids, { deps = defaultDeps(), by = null } = {}) {
+  const clean = deps.advice.normaliseIds(ids);
+  const raw = Array.isArray(ids) ? ids : String(ids || '').split(/[\s,;]+/).filter(Boolean);
+  if (raw.length !== clean.length) throw invalid('Telegram user ids are numbers, separated by commas.');
+  return deps.advice.setResponderIds(clean, by);
 }
 
 async function setSyncSettings({ syncMode, maxUpdatesPerPass, confirmLive = false } = {}, {
@@ -206,5 +216,5 @@ async function runNow({ deps = defaultDeps() } = {}) {
 }
 
 module.exports = {
-  getView, setEnabled, setSyncSettings, approveSchema, runNow, lastRunView, SERVICE_KEY,
+  getView, setEnabled, setSyncSettings, approveSchema, runNow, setResponders, lastRunView, SERVICE_KEY,
 };
