@@ -1,9 +1,10 @@
 'use strict';
 
 /**
- * Migration 0100 against a real PostgreSQL: the claim that makes a Bitrix
- * contact + deal creation happen at most once, the notices posted once, and
- * the Bitrix topic setting. Names and numbers are made up.
+ * Migrations 0100 and 0101 against a real PostgreSQL: the claim that makes a
+ * Bitrix contact + deal creation happen at most once, the notices posted
+ * once, the Bitrix topic setting, and the one card per driver. Names and
+ * numbers are made up.
  */
 
 const test = require('node:test');
@@ -17,9 +18,15 @@ const PHONE = '5552013344';
 
 async function setup(t) {
   const h = await createPgHarness(t, { extraDdl: ALL_MIGRATIONS });
-  const layer = h.loadDataLayer(['hiringStages/crmRecords', 'hiringStages/notices', 'safetyApprovals/settings']);
+  const layer = h.loadDataLayer([
+    'hiringStages/crmRecords', 'hiringStages/notices', 'hiringStages/cards', 'safetyApprovals/settings',
+  ]);
   return {
-    h, records: layer['hiringStages/crmRecords'], notices: layer['hiringStages/notices'], settings: layer['safetyApprovals/settings'],
+    h,
+    records: layer['hiringStages/crmRecords'],
+    notices: layer['hiringStages/notices'],
+    cards: layer['hiringStages/cards'],
+    settings: layer['safetyApprovals/settings'],
   };
 }
 
@@ -101,4 +108,21 @@ test('after sixty days records and notices are deleted — a creation in flight 
   assert.equal(await records.purgeOldRecords(60), 1);
   assert.deepEqual((await records.listRecentRecords(10)).map((r) => r.rootMessageId), [300]);
   assert.equal(await notices.purgeOldNotices(60), 1);
+});
+
+test('ONE CARD PER DRIVER: the name set once, lines appended, the question replaced or cleared', { skip: skipWithoutPg() }, async (t) => {
+  const { h, cards } = await setup(t);
+  await cards.ensureCard(CHAT, 169, 'Kwame Asante');
+  await cards.ensureCard(CHAT, 169, 'K. Asante');
+  let card = await cards.updateCard(CHAT, 169, { current: { text: 'q1', keyboard: { inline_keyboard: [[]] } }, messageId: 101 });
+  assert.deepEqual([card.driverName, card.currentText, card.messageId], ['Kwame Asante', 'q1', 101]);
+  assert.deepEqual(card.currentKeyboard, { inline_keyboard: [[]] });
+  card = await cards.updateCard(CHAT, 169, { line: '✅ Moved', current: null });
+  assert.deepEqual([card.history, card.currentText, card.currentKeyboard, card.messageId], [['✅ Moved'], null, null, 101]);
+  await Promise.all([cards.updateCard(CHAT, 169, { line: 'a' }), cards.updateCard(CHAT, 169, { line: 'b' })]);
+  assert.equal((await cards.getCard(CHAT, 169)).history.length, 3, 'two writers lose no line');
+  assert.equal(await cards.updateCard(CHAT, 999, { line: 'x' }), null);
+
+  await h.pool.query("UPDATE hiring_stage_cards SET updated_at = NOW() - INTERVAL '61 days'");
+  assert.equal(await cards.purgeOldCards(60), 1);
 });

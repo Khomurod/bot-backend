@@ -28,12 +28,13 @@ export default function HiringStagesCard({
     <div className="card" style={{ marginTop: 16 }}>
       <h3 style={{ marginTop: 0 }}>5. Bitrix stages</h3>
       <p className="muted" style={{ marginTop: 0 }}>
-        The bot reads each candidate&apos;s conversation in General and, when it shows the candidate has
-        reached a later Bitrix stage, posts a <b>Move</b> button in the Bitrix topic below — with the
-        driver&apos;s name and a link to the post. Nothing moves in Bitrix until somebody presses it. With no
-        open deal, the bot creates the contact and deal itself when the post names one driver and has one
-        phone number; otherwise it asks the recruiter, with the reason. SSNs, birth dates and phone numbers
-        are removed before AI reads the text.
+        The bot reads each candidate&apos;s conversation in General and keeps <b>one card per driver</b> in the
+        Bitrix topic below: the name, a link to the post, a short history and the question open now with a
+        <b>Move</b> button. A new question moves the card to the bottom; an answer edits it. Nothing moves in
+        Bitrix until somebody presses Move. With no open deal, the bot creates the contact and a deal at
+        &ldquo;Sent to Safety&rdquo; when the post names one driver and has one phone number; otherwise it asks the
+        recruiter, with the reason. It waits 10 minutes after the last message, and never proposes
+        &ldquo;Hired&rdquo; for an approval alone. SSNs, birth dates and phone numbers are removed before AI reads the text.
       </p>
       <div className="form-group">
         <label htmlFor="sa-bitrix-topic">Bitrix topic link or number</label>

@@ -20,8 +20,12 @@
 const messages = require('../../database/safetyApprovals/messages');
 const threads = require('../../database/hiringStages/threads');
 
-/** Long enough for Safety's PDFs and then the sentence to arrive as one burst. */
-const SETTLE_SECONDS = 90;
+/**
+ * Ten minutes of quiet before a conversation is read (owner, 11 November
+ * 2026: one proposal for a burst — Safety's PDFs, the hashtag, the recruiter's
+ * "ok" — not one per message). It was 90 seconds.
+ */
+const SETTLE_SECONDS = 600;
 const MAX_HOPS = 15;
 
 async function resolveRoot(chatId, replyToMessageId) {

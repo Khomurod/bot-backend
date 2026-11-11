@@ -207,7 +207,11 @@ the same treatment home time got, and for the same reason.
   "CLEAN", "Approved") and, when it shows the candidate has reached a later
   stage of the Bitrix deal pipeline, **posts "move <driver> to <stage>?" with a
   Move / No button in the group's Bitrix topic** — since November 2026 never
-  in General; every message names the driver and links the post. Anyone in
+  in General. Since 11 November 2026 that is **one card per driver**: the
+  name, a link to the post, a short history and the open question — a new
+  question moves the card to the bottom, an answer edits it; a conversation is
+  read 10 minutes after its last message; an approval is never proposed as
+  "Hired" (only words saying the driver was hired or arrived). Anyone in
   the group may press it; only then does the deal move (`crm.deal.update`),
   after it is read again — a deal moved by hand meanwhile is not moved. The
   owner's request, 20 October 2026; the topic, November 2026. With no topic
@@ -217,7 +221,7 @@ the same treatment home time got, and for the same reason.
   topic). **With no open deal, the bot creates the contact and the deal
   itself** (November 2026) — only when the post names ONE driver (read by
   rules) with ONE phone, reusing the contact that holds that phone when its
-  name agrees; the deal starts at the pipeline's first stage and the reached
+  name agrees; the deal starts at "Sent to Safety" and the next
   stage is proposed as usual. Anything ambiguous (two contacts on the phone,
   another person's name on it, this name under another phone) or missing (a
   team, no phone, two phones) creates nothing: the recruiter who posted is

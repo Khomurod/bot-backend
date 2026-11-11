@@ -245,7 +245,9 @@ not `facebookCrypto` — the poller holds none of this app's secrets.
   `hiring_stage_crm_records` (the claim on creating a missing contact + deal:
   one per conversation, at most one in flight per phone, each step recorded
   before its Bitrix call) and `hiring_stage_notices` (which notice was posted
-  about a conversation, once), plus `safety_approval_settings.
+  about a conversation, once) and `hiring_stage_cards` (migration 0101: the
+  one card per driver in the Bitrix topic — its message, the name set once,
+  the history, the open question), plus `safety_approval_settings.
   stage_proposals_enabled` and `.bitrix_topic_id`. The Bitrix deal and
   contact are referenced by id only; nothing is copied from Bitrix but a
   deal's title and stage names. Closed rows are deleted after 60 days

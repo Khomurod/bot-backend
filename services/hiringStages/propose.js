@@ -88,7 +88,6 @@ async function propose(thread, ctx, deps) {
   return done(thread, {
     result: reserved.kind === 'move' ? 'proposed' : 'asked_to_create',
     proposalId: reserved.id,
-    ...(ctx.created ? { created: true } : {}),
   });
 }
 

@@ -22,6 +22,7 @@ const threads = require('../../database/hiringStages/threads');
 const { purgeOldProposals } = require('../../database/hiringStages/proposals');
 const { purgeOldRecords } = require('../../database/hiringStages/crmRecords');
 const { purgeOldNotices } = require('../../database/hiringStages/notices');
+const { purgeOldCards } = require('../../database/hiringStages/cards');
 const { processThread } = require('./reviewer');
 
 const SERVICE_KEY = 'hiring_stage_proposals';
@@ -50,7 +51,8 @@ async function drainHiringStages(deps = {}) {
     const purged = (await purgeOldProposals(RETENTION_DAYS).catch(() => 0))
       + (await threads.purgeOldThreads(RETENTION_DAYS).catch(() => 0))
       + (await purgeOldRecords(RETENTION_DAYS).catch(() => 0))
-      + (await purgeOldNotices(RETENTION_DAYS).catch(() => 0));
+      + (await purgeOldNotices(RETENTION_DAYS).catch(() => 0))
+      + (await purgeOldCards(RETENTION_DAYS).catch(() => 0));
     if (purged) console.log(`[HIRING STAGES] deleted ${purged} proposal/queue/record row(s) older than ${RETENTION_DAYS} days`);
   }
   if (!settings.enabled) return { blocked: 'Safety Approvals is switched off' };
