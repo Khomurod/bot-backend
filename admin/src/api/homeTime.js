@@ -105,3 +105,31 @@ export async function getHomeTimeEfficiency(range = 'all') {
   return res.json();
 }
 
+
+/** Drivers' own home-time rules. → { exceptions, groups, policy } */
+export async function getPolicyExceptions() {
+  const res = await fetch(`${API_BASE}/home-time/policy-exceptions`, { headers: getHeaders() });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+export async function savePolicyException(rule) {
+  const res = await fetch(`${API_BASE}/home-time/policy-exceptions`, {
+    method: 'PUT', headers: getHeaders(), body: JSON.stringify(rule),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return (await res.json()).exception;
+}
+
+export async function removePolicyException(id) {
+  const res = await fetch(`${API_BASE}/home-time/policy-exceptions/${Number(id)}`, { method: 'DELETE', headers: getHeaders() });
+  if (!res.ok) { await handleApiError(res); }
+  return true;
+}
+
+/** The old exceptions on Bitrix pipeline-33 cards, read only. → cards */
+export async function previewBitrixExceptions() {
+  const res = await fetch(`${API_BASE}/home-time/policy-exceptions/bitrix-preview`, { headers: getHeaders() });
+  if (!res.ok) { await handleApiError(res); }
+  return (await res.json()).cards || [];
+}

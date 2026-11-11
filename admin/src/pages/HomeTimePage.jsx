@@ -3,6 +3,7 @@ import useTabRoute from "../navigation/useTabRoute";
 import HomeTimeEfficiencyTab from "./HomeTimeEfficiencyTab";
 import HomeTimeSettingsCard from "./HomeTimeSettingsCard";
 import ViolationAlertsCard from "./homeTime/ViolationAlertsCard";
+import DriverRulesCard from "./homeTime/DriverRulesCard";
 import { useHomeTimeOverview } from "./homeTime/useHomeTimeOverview";
 import { useHomeTimeImport } from "./homeTime/useHomeTimeImport";
 import { DriverListCard } from "./homeTime/DriverListCard";
@@ -108,6 +109,7 @@ export default function HomeTimePage({ tab: routeTab, onTabChange }) {
       <HomeTimeSettingsCard settings={settings} saving={saving} onSave={saveSettings} />
 
       <ViolationAlertsCard settings={settings} saving={saving} onSave={saveSettings} />
+      <DriverRulesCard />
       </>
       )}
       </div>

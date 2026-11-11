@@ -1,11 +1,55 @@
-# Home-time violation alerts — Bitrix pipeline 33 → accounting
+# Home-time violation alerts → accounting
 
 When a **company** driver breaks Wenze's home-time policy — home after fewer
 than **28 days** on the road, or home for more than **4 days** — accounting is
 told in a Telegram group to charge the driver, and marks the outcome with a
 button. Owner's request, 21 October 2026.
 
-## The verdict is Bitrix's, never the app's
+## Since 11 November 2026 Wenze decides
+
+The external script that moved Bitrix pipeline 33's cards was switched off and
+abandoned (the last alert went out on 31 October: every pass since found no
+card in a violation stage). The owner's decisions, 11 November 2026: Wenze
+decides itself, from launch, straight to accounting; only HOME on the Board is
+home; one rule for both drivers of a team; drivers may have their own rule;
+Wenze moves the pipeline-33 cards; a card name one letter off is still the
+driver's.
+
+- **The record** — `driver_road_history`, the home/road cycles this app keeps
+  from the Dispatcher Board and the drivers' own messages
+  (`database/homeTime/violationCycles.js`).
+- **The verdict** — `lib/homeTime/ownViolations.js` (pure): came home early
+  (the road leg < the allowed road days) and overstayed (the stay > the allowed
+  home days, judged while it is still open). A stay shorter than **12 hours**
+  is a Board flap, not a stay, and the road leg runs on through it; a road leg
+  whose start is unknown says nothing about "early"; whole days. Not judged:
+  owner-operators and lease drivers, a stay linked to an **approved** home-time
+  request (agreed), and any stay that began before `own_violations_since` —
+  set by the first pass after switching on, so there is **no backlog**.
+- **A driver's own rule** — `home_time_policy_exceptions` (migration 0103):
+  road days and/or home days, optionally until a date, one per driver group,
+  set by anyone with access on Home Time → Settings & Alerts
+  (`admin/src/pages/homeTime/DriverRulesCard.jsx`). The alert then says "their
+  own rule: 3" instead of "policy: 4". The old exceptions on the pipeline-33
+  cards (allowed days, home until, Agreed) are SHOWN there, matched to drivers
+  by name — never imported by themselves.
+- **Once** — `recordOwnViolations` inserts one row per driver group + home-since
+  date + violation (`source = 'wenze'`, a partial UNIQUE index); only rows an
+  insert created are posted, through the same posting as before
+  (`services/homeTime/violationPosting.js`).
+- **The card** — after posting, the driver's pipeline-33 card is moved to
+  EARLY / OVERSTAY / EARLY & OVERSTAYED with `UF_CRM_HT_FROM`,
+  `UF_CRM_HT_LAST_DAYS` and `UF_CRM_HT_ROAD_BEFORE` filled
+  (`services/homeTime/ownViolations.js`). It is found by name
+  (`lib/homeTime/cardMatch.js`): the same words in any order, or one letter
+  different in one word of four letters or more. No card or two cards
+  matching: nothing is moved, and the row's `bitrix_note` says so.
+- **One decider** — `home_time_settings.violation_source` (`wenze` by default
+  since migration 0103). While it is `wenze`, the card-reading pass and the
+  Bitrix robot's webhook below stand down — a card Wenze moved must never be
+  alerted on a second time. Setting it to `bitrix` brings the old path back.
+
+## The old path: the verdict was Bitrix's (until 31 October 2026)
 
 An external Google Apps Script moves each company driver's card in Bitrix24
 pipeline **CATEGORY_ID 33** ("6. HOMETIME MONITORING"). Three of its stages are
@@ -150,6 +194,10 @@ robots.
 
 ## Tests
 
+`tests/homeTimeOwnViolations.test.js` (the verdict, flaps, owner-operators,
+no backlog, agreed, own rules, the card match, the pass: posted once, card
+moved or not), `tests/homeTimeOwnViolationsPg.test.js` (migration 0103),
+`admin/src/pages/homeTime/DriverRulesCard.test.jsx`,
 `tests/homeTimeViolations.test.js` (stages, reading a card, which violations to
 post, the message, the buttons, the footer, the secret, the deal id),
 `tests/homeTimeViolationAlerts.test.js` (the pass, the baseline, once-only

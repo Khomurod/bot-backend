@@ -98,7 +98,9 @@ function deps(store, cards, { fields = FIELDS, stages = STAGES } = {}) {
   };
 }
 
-const ON = () => ({ violation_alerts_enabled: true, violation_alerts_chat_id: '-1009', violation_alerts_baselined_at: new Date() });
+const ON = () => ({
+  violation_alerts_enabled: true, violation_alerts_chat_id: '-1009', violation_alerts_baselined_at: new Date(), violation_source: 'bitrix',
+});
 
 test.beforeEach(() => alerts.__resetSchemaCacheForTests());
 

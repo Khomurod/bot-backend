@@ -31,6 +31,7 @@ const { createHomeTimeTrackerRoutes } = require('./homeTime/trackerRoutes');
 const { createHomeTimeImportRoutes } = require('./homeTime/importRoutes');
 const { createHomeTimeSettingsRoutes } = require('./homeTime/settingsRoutes');
 const { createHomeTimeGroupAccessRoutes } = require('./homeTime/groupAccessRoutes');
+const { createPolicyExceptionRoutes } = require('./homeTime/policyExceptionRoutes');
 
 function createHomeTimeRouter({ authMiddleware, telegram }) {
   const router = express.Router();
@@ -52,6 +53,7 @@ function createHomeTimeRouter({ authMiddleware, telegram }) {
   // Telegram to confirm an id it has never seen.
   router.use(createHomeTimeSettingsRoutes({ authMiddleware, telegram }));
   router.use(createHomeTimeGroupAccessRoutes({ authMiddleware }));
+  router.use(createPolicyExceptionRoutes({ authMiddleware }));
 
   return router;
 }
