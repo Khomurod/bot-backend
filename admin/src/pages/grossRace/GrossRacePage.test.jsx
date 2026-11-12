@@ -134,7 +134,7 @@ describe("GrossRacePage", () => {
     expect(screen.getByText(/Waiting for the next move/)).toBeInTheDocument();
   });
 
-  test("the dispatchers' board: gross only, five to a screen, turning like an airport board", async () => {
+  test("the dispatchers' board: gross only, everybody on one screen — the top five race, the rest in a list", async () => {
     const names = ["Ann", "Bo", "Cy", "Di", "Ed", "Flo", "Gus"].map((n) => `${n} Example`);
     const racers = names.map((name, i) => ({
       id: name, name, rank: i + 1, gross: 70000 - i * 10000, loads: 7 - i, miles: 20000, rpm: 3, gap: i * 10000,
@@ -143,20 +143,24 @@ describe("GrossRacePage", () => {
       ...live, view: "dispatchers", targets: null,
       race: { racers, lead: 70000, topRpmId: null, rankBy: "gross" },
     });
-    render(<GrossRacePage view="dispatchers" pageMs={60} />);
+    render(<GrossRacePage view="dispatchers" />);
 
-    expect(await screen.findByText("Board 1 of 2")).toBeInTheDocument();
-    for (const name of names.slice(0, 5)) expect(screen.getAllByText(name).length).toBeGreaterThan(0);
-    expect(screen.queryByText("Flo Example")).not.toBeInTheDocument();
+    const list = await screen.findByRole("region", { name: "Places 6 and on" });
+    expect(list).toHaveTextContent("Places 6–7");
+    expect(list).toHaveTextContent("Flo Example");
+    expect(list).toHaveTextContent("Gus Example");
+    expect(list).toHaveTextContent("$20,000");
+    expect(list).not.toHaveTextContent("Ann Example");
+    const lanes = document.querySelectorAll(".gr-lane");
+    expect([...lanes].map((lane) => lane.querySelector(".gr-racer-name").textContent)).toEqual(names.slice(0, 5));
+    expect(screen.getByText("Top 5")).toBeInTheDocument();
     expect(screen.getByText("Ranked by gross")).toBeInTheDocument();
     expect(screen.getByText(/credited to whoever created the load/)).toBeInTheDocument();
     expect(screen.getAllByText("$70,000").length).toBeGreaterThan(0);
     expect(screen.queryByText(/%|target/i)).not.toBeInTheDocument();
-
-    expect(await screen.findByText("Board 2 of 2")).toBeInTheDocument();
-    expect(screen.getByText("Flo Example")).toBeInTheDocument();
-    expect(screen.getByText("Gus Example")).toBeInTheDocument();
-    expect(await screen.findByText("Board 1 of 2")).toBeInTheDocument();
+    expect(screen.queryByText(/^Board \d/)).not.toBeInTheDocument();
+    expect(screen.queryByText("Podium")).not.toBeInTheDocument();
+    expect(document.querySelector(".gr-ticker")).toHaveTextContent(/Race feed.*Waiting for the next move/);
   });
 
   test("?celebrate previews the 4 PM celebration of the race leader", async () => {

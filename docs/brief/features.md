@@ -473,15 +473,15 @@ every dispatched load counts in exactly one week, whenever it was created or
 delivers (the owner, 16 October 2026). Datatruck's driver board files loads by
 DEL date instead, so the totals differ around a weekend. The rule is printed on
 the board.
-`/dispatchteam` races the dispatch teams by the share of a
-$15,000-per-solo / $20,000-per-team-truck target; `/dispatch` races whoever
-created the loads, by gross alone, five to a screen. At 4:00 PM Chicago, every
-day, each board celebrates its leader for twelve seconds over a 3D car
-(`?celebrate` previews it); on `/dispatchteam` only, the company's video kept
-on the server follows the car, and a **Test sound** button shows what the
-screen can do. When a racer climbs, both boards chime and show a big card for
-seven seconds — at most one a minute, never over the celebration; `/dispatch`
-turns to the climber's five, and its own **Test sound** shows that card.
+`/dispatchteam` races the dispatch teams by the share of a $15,000-per-solo /
+$20,000-per-team-truck target; `/dispatch` races whoever created the loads, by
+gross alone, all on one screen (top five in lanes, the rest in a list). At 4:00
+PM Chicago, every day, each board celebrates its leader for twelve seconds over
+a 3D car (`?celebrate` previews it); on `/dispatchteam` only, the company's
+video kept on the server follows the car, and a **Test sound** button shows
+what the screen can do. When a racer climbs, both boards chime and show a big
+card for seven seconds — at most one a minute, never over the celebration —
+and `/dispatch`'s own **Test sound** shows that card.
 Today's birthdays follow the Telegram post on both boards — an employee with
 the card that went to the employee group, a driver with their name and truck —
 fifteen seconds each, once per screen, after the celebration and before a

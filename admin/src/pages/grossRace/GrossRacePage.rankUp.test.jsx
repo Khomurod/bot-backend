@@ -1,12 +1,12 @@
 /**
  * The climb card on the boards (rankUp/; the owner, 6 November 2026): it shows
  * on an overtake in place of the bottom banner, never over the celebration, on
- * /dispatch it turns the board to the climber and holds it there, holds back a
+ * /dispatch the climber's row is already in its new place, it holds back a
  * reload, and /dispatch's Test sound shows it with the chime.
  */
 import React from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { act, render, screen } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import GrossRacePage from "./GrossRacePage";
 
@@ -92,17 +92,18 @@ describe("the climb card", () => {
     expect(card()).toBe(null);
   });
 
-  test("/dispatch: the board turns to the climber's five and waits there while the card shows", async () => {
+  test("/dispatch: a climb in the list gets the card, and the climber's row has moved up", async () => {
     respond(dispatchers(NAMES));
-    render(<GrossRacePage view="dispatchers" pageMs={60} />);
-    await screen.findByText(/Board \d of 2/);
+    render(<GrossRacePage view="dispatchers" />);
+    await screen.findByRole("region", { name: "Places 6 and on" });
     const climbed = [...NAMES.slice(0, 5), NAMES[6], NAMES[5]]; // Gus 7th → 6th, past Flo
     respond(dispatchers(climbed));
     await poll();
     expect(card()).toHaveTextContent("Gus Example");
     expect(card()).toHaveTextContent("↑ 7th → 6th");
-    await new Promise((resolve) => setTimeout(resolve, 300)); // five page turns' worth
-    expect(screen.getByText("Board 2 of 2")).toBeInTheDocument();
+    const row = (name) => within(screen.getByRole("region", { name: "Places 6 and on" })).getByText(name).closest(".gr-list-item");
+    expect(row("Gus Example").style.top).toBe("0%");
+    expect(row("Flo Example").style.top).toBe("50%");
   });
 
   test("a newer build waits while the card is on screen", async () => {
@@ -110,7 +111,7 @@ describe("the climb card", () => {
     vi.useFakeTimers({ toFake: ["Date"], shouldAdvanceTime: true, now: new Date("2026-10-14T15:00:00Z") });
     const reload = vi.fn();
     respond({ ...dispatchers(NAMES), page: "GrossRacePage-new2.js" });
-    render(<GrossRacePage view="dispatchers" ownChunk="GrossRacePage-old1.js" reload={reload} pageMs={60_000} />);
+    render(<GrossRacePage view="dispatchers" ownChunk="GrossRacePage-old1.js" reload={reload} />);
     await screen.findAllByText("Ann Example");
     respond({ ...dispatchers([NAMES[1], NAMES[0], ...NAMES.slice(2)]), page: "GrossRacePage-new2.js" });
     await poll();

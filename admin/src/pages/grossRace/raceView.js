@@ -56,25 +56,25 @@ export function ranked(race) {
 
 const loadCount = (n) => n + (n === 1 ? " load" : " loads");
 
-/** How many screens the racers take, `pageSize` lanes to a screen. */
-export function pageCount(race, pageSize = Infinity) {
-  return race && race.racers.length > pageSize ? Math.ceil(race.racers.length / pageSize) : 1;
-}
+/** How many lanes the dispatchers' board gives its leaders; everybody after them is in the list. */
+export const SPOTLIGHT = 5;
 
 /**
  * One lane per racer on screen, in the racers' stable order; `top` places it
- * by rank. With a `pageSize`, only the ranks on `page` are on screen, the way
- * an airport board shows a few flights at a time.
+ * by rank. With a `limit`, only the first `limit` ranks get a lane (the
+ * dispatchers' board: its leaders race, everybody else is in the list).
  */
-export function lanesView(race, { now, flashUntil = {}, page = 0, pageSize = Infinity }) {
+export function lanesView(race, { now, flashUntil = {}, limit = Infinity }) {
   if (!race) return [];
   const byPct = race.rankBy !== "gross";
   const max = byPct ? Math.max(1.12, race.leadPct * 1.22) : scale(Math.max(race.lead * 1.15, 5000));
-  const first = Number.isFinite(pageSize) ? page * pageSize + 1 : 1;
-  const last = Number.isFinite(pageSize) ? first + pageSize - 1 : race.racers.length;
-  const n = Math.max(Math.min(race.racers.length, Number.isFinite(pageSize) ? pageSize : race.racers.length), 1);
-  const along = (x) => "calc((100% - 2.3em) * " + x.toFixed(4) + ")";
-  return race.racers.filter((racer) => racer.rank >= first && racer.rank <= last).map((racer) => {
+  const last = Math.min(race.racers.length, limit);
+  const n = Math.max(last, 1);
+  // A race by gross writes the gross after the token ("$72,250"), so the token
+  // stops short of the end of the road by the label's width, and the leader's
+  // label never runs into the next column.
+  const along = (x) => "calc((100% - " + (byPct ? "2.3em" : "7.3em") + ") * " + x.toFixed(4) + ")";
+  return race.racers.filter((racer) => racer.rank <= last).map((racer) => {
     const value = byPct ? racer.pct : racer.gross;
     const p = Math.min(1, value / max);
     const leader = racer.rank === 1;
@@ -84,7 +84,7 @@ export function lanesView(race, { now, flashUntil = {}, page = 0, pageSize = Inf
       id: racer.id,
       name: racer.name,
       rank: racer.rank,
-      top: ((racer.rank - first) * 100) / n + "%",
+      top: ((racer.rank - 1) * 100) / n + "%",
       height: 100 / n + "%",
       rowBg: (flashUntil[racer.id] || 0) > now ? "var(--color-accent-100)" : "transparent",
       trailWidth: along(p).replace(/\)$/, " + 1.15em)"),
@@ -108,9 +108,37 @@ export function lanesView(race, { now, flashUntil = {}, page = 0, pageSize = Inf
 }
 
 /** Lane text size: as large as the screen allows for this many lanes on it. */
-export function laneFontSize(race, pageSize = Infinity) {
-  const n = Math.max(Math.min(race ? race.racers.length : 0, pageSize), 1);
+export function laneFontSize(race, limit = Infinity) {
+  const n = Math.max(Math.min(race ? race.racers.length : 0, limit), 1);
   return "clamp(14px, calc((100vh - 240px) * " + (0.28 / Math.max(n, 3)).toFixed(4) + "), 38px)";
+}
+
+/**
+ * The dispatchers' list: one row per racer after the leaders' lanes, placed by
+ * rank (rows move when places change), each with a bar of its gross against
+ * the leader's. Never names a driver: the payload has none for this board.
+ */
+export function listView(race, { now, flashUntil = {}, after = SPOTLIGHT }) {
+  if (!race) return [];
+  const rows = race.racers.filter((racer) => racer.rank > after);
+  const n = Math.max(rows.length, 1);
+  return rows.map((racer) => ({
+    id: racer.id,
+    name: racer.name,
+    rank: racer.rank,
+    top: ((racer.rank - after - 1) * 100) / n + "%",
+    height: 100 / n + "%",
+    rowBg: (flashUntil[racer.id] || 0) > now ? "var(--color-accent-100)" : "transparent",
+    bar: (race.lead > 0 ? Math.min(100, (racer.gross / race.lead) * 100) : 0).toFixed(1) + "%",
+    gross: money(racer.gross),
+    loads: String(racer.loads),
+    topRpm: racer.id === race.topRpmId,
+  }));
+}
+
+/** List text size: as large as the screen allows for this many rows, never larger than the lanes'. */
+export function listFontSize(rows) {
+  return "clamp(12px, calc((100vh - 300px) * " + (0.6 / Math.max(rows, 12)).toFixed(4) + "), 26px)";
 }
 
 /** The podium, drawn 2 · 1 · 3. */

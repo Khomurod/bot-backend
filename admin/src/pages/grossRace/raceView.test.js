@@ -3,7 +3,7 @@
  * where, for the teams' race to a target and the dispatchers' race by gross.
  */
 import { describe, expect, test } from "vitest";
-import { lanesView, pageCount, podiumView } from "./raceView";
+import { lanesView, listView, podiumView, SPOTLIGHT } from "./raceView";
 
 const gross = (n) => ({
   racers: Array.from({ length: n }, (_, i) => ({
@@ -13,15 +13,27 @@ const gross = (n) => ({
 });
 
 describe("lanesView", () => {
-  test("five lanes to a screen, placed by rank within the screen", () => {
+  test("the dispatchers' leaders: five lanes placed by rank, everybody after them in the list", () => {
     const race = gross(7);
-    expect(pageCount(race, 5)).toBe(2);
-    expect(pageCount(gross(5), 5)).toBe(1);
-    const first = lanesView(race, { now: 0, page: 0, pageSize: 5 });
-    expect(first.map((l) => l.rank)).toEqual([1, 2, 3, 4, 5]);
-    expect(first.map((l) => l.top)).toEqual(["0%", "20%", "40%", "60%", "80%"]);
-    const second = lanesView(race, { now: 0, page: 1, pageSize: 5 });
-    expect(second.map((l) => [l.rank, l.top, l.height])).toEqual([[6, "0%", "20%"], [7, "20%", "20%"]]);
+    const lanes = lanesView(race, { now: 0, limit: SPOTLIGHT });
+    expect(lanes.map((l) => l.rank)).toEqual([1, 2, 3, 4, 5]);
+    expect(lanes.map((l) => l.top)).toEqual(["0%", "20%", "40%", "60%", "80%"]);
+    const rows = listView(race, { now: 0, flashUntil: { R7: 10 } });
+    expect(rows.map((r) => [r.rank, r.top, r.height])).toEqual([[6, "0%", "50%"], [7, "50%", "50%"]]);
+    expect(rows[0]).toMatchObject({ name: "R6", gross: "$25,000", loads: "3", bar: "50.0%", rowBg: "transparent" });
+    expect(rows[1].rowBg).toBe("var(--color-accent-100)", "a gain lights the row up, as it does a lane");
+    expect(listView(gross(SPOTLIGHT), { now: 0 })).toEqual([]);
+    expect(lanesView(gross(3), { now: 0, limit: SPOTLIGHT }).map((l) => l.height)).toEqual(["33.333333333333336%", "33.333333333333336%", "33.333333333333336%"]);
+  });
+
+  test("a gross label never runs past the end of the road: the token stops short by its width", () => {
+    const [leader] = lanesView(gross(2), { now: 0 });
+    expect(leader.tokenLeft).toMatch(/^calc\(\(100% - 7\.3em\) \* 0\.\d+\)$/);
+    const team = lanesView({
+      racers: [{ id: "T", name: "T", rank: 1, gross: 1, target: 2, pct: 0.5, gapPct: 0, gap: 0, loads: 1, miles: 1, rpm: 1, lights: [], hitNames: [] }],
+      lead: 1, leadPct: 0.5, maxTarget: 2, topRpmId: null, rankBy: "percent",
+    }, { now: 0 });
+    expect(team[0].tokenLeft).toMatch(/^calc\(\(100% - 2\.3em\)/, "the teams' percent is short: their road is unchanged");
   });
 
   test("a race by gross has no flag, no target and no percent", () => {

@@ -6,13 +6,13 @@ import { moneyK } from "./raceFormat";
 /**
  * The track: one lane per racer on screen, the token moving toward the
  * checkered flag (teams) or out ahead by gross (dispatchers), and the banner
- * that slides up for a new leader, an overtake or a finish. With more racers
- * than fit, it shows `pageSize` at a time and each new screen flips in, the
- * way an airport board turns over.
+ * that slides up for a new leader, an overtake or a finish. With a `limit`
+ * only the leaders race here (the dispatchers' board; RaceList holds the
+ * rest), and a racer who climbs into the lanes flips in.
  */
-export default function RaceTrack({ view, data, now, flashUntil, banner, page = 0, pages = 1, pageSize = Infinity }) {
+export default function RaceTrack({ view, data, now, flashUntil, banner, limit = Infinity }) {
   const race = data && data.race;
-  const lanes = lanesView(race, { now, flashUntil, page, pageSize });
+  const lanes = lanesView(race, { now, flashUntil, limit });
   const empty = emptyText(data);
   const teams = view === "teams";
   const targets = (data && data.targets) || { solo: 15000, team: 20000 };
@@ -24,20 +24,17 @@ export default function RaceTrack({ view, data, now, flashUntil, banner, page = 
   return (
     <section className="gr-track">
       <div className="gr-columns gr-track-head gr-kicker">
-        <div>{teams ? "Team · trucks" : "Dispatcher"}</div>
-        <div className="gr-finish-note">
-          {note}
-          {pages > 1 && <span className="gr-board-page">Board {page + 1} of {pages}</span>}
-        </div>
+        <div>{teams ? "Team · trucks" : Number.isFinite(limit) ? `Top ${limit}` : "Dispatcher"}</div>
+        <div className="gr-finish-note">{note}</div>
         <div>{teams ? "Gross / target" : "Loads"}</div>
       </div>
 
       <div className="gr-lanes">
         {lanes.map((lane, i) => (
-          <div key={`${page}:${lane.id}`} className="gr-columns gr-lane gr-flip"
+          <div key={lane.id} className="gr-columns gr-lane gr-flip"
             style={{
               top: lane.top, height: lane.height, background: lane.rowBg,
-              fontSize: laneFontSize(race, pageSize), animationDelay: `${i * 70}ms`,
+              fontSize: laneFontSize(race, limit), animationDelay: `${i * 70}ms`,
             }}>
             <div className="gr-racer">
               <span className="gr-racer-name">{lane.name}</span>

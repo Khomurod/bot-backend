@@ -16,16 +16,15 @@ export const TEST_CLIMB = { name: "Sound test", rank: 3, from: 5, passed: "", le
  * `offer(events, now)` is called with each reading's events. It stands down
  * while something more important holds the screen — the 4 PM celebration, the
  * video, the sound test (`isBusy`) — and the climb stays in the feed. `showing`
- * is a ref so the page's reload check and page turning, which run in the same
- * pass, see a card the moment it is set. On the dispatchers' board the card
- * turns the board to the climber's page (`setPage`); the page holds it there
- * while it shows.
+ * is a ref so the page's reload check, which runs in the same pass, sees a
+ * card the moment it is set. Both boards show everybody on one screen, so the
+ * climber is always in view.
  *
  * `offer` and `test` keep their identity across renders (the page's reading
  * callback depends on them), so `isBusy` is read through a ref.
  */
 export default function useRankUp({
-  isBusy = () => false, pageSize = Infinity, setPage = null, probe = probeAutoplay, chime = playChime, probeOnLoad = false,
+  isBusy = () => false, probe = probeAutoplay, chime = playChime, probeOnLoad = false,
 }) {
   const [card, setCard] = useState(null);
   const [autoplay, setAutoplay] = useState("checking");
@@ -48,12 +47,11 @@ export default function useRankUp({
     const until = now + RANK_UP_MS;
     showing.current = true;
     setCard({ ...next, until });
-    if (setPage && Number.isFinite(pageSize) && next.rank > 0) setPage(Math.floor((next.rank - 1) / pageSize));
     Promise.resolve().then(() => chime()).then(
       (played) => setCard((held) => (held && held.until === until ? { ...held, chimed: Boolean(played) } : held)),
       () => setCard((held) => (held && held.until === until ? { ...held, chimed: false } : held)),
     );
-  }, [chime, pageSize, setPage]);
+  }, [chime]);
 
   const offer = useCallback((events, now = Date.now()) => {
     if (showing.current || busy.current()) return null;
