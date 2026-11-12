@@ -1,7 +1,6 @@
 /**
  * The climb card's timing: one card for seven seconds, at most one a minute,
- * never while the screen is busy, the board turned to the climber's page, and
- * the chime's answer on the card.
+ * never while the screen is busy, and the chime's answer on the card.
  */
 import { describe, expect, test, vi } from "vitest";
 import { act, renderHook, waitFor } from "@testing-library/react";
@@ -12,14 +11,12 @@ const T = 9_000_000;
 const overtake = (name, from, rank) => ({ type: rank === 1 ? "leader" : "overtake", name, from, rank, passed: "Bo", at: T });
 
 describe("useRankUp", () => {
-  test("a climb shows the card for seven seconds, chimes once, and turns the board to the climber's page", async () => {
+  test("a climb shows the card for seven seconds and chimes once", async () => {
     const chime = vi.fn(async () => true);
-    const setPage = vi.fn();
-    const { result } = renderHook(() => useRankUp({ chime, setPage, pageSize: 5 }));
+    const { result } = renderHook(() => useRankUp({ chime }));
     act(() => { result.current.offer([overtake("Gus", 9, 7)], T); });
     expect(result.current.card).toMatchObject({ name: "Gus", rank: 7, from: 9, until: T + RANK_UP_MS });
     expect(result.current.showing.current).toBe(true);
-    expect(setPage).toHaveBeenCalledWith(1);
     await waitFor(() => expect(result.current.card.chimed).toBe(true));
     expect(chime).toHaveBeenCalledTimes(1);
 
@@ -28,14 +25,6 @@ describe("useRankUp", () => {
     act(() => { result.current.tick(T + RANK_UP_MS); });
     expect(result.current.card).toBe(null);
     expect(result.current.showing.current).toBe(false);
-  });
-
-  test("the teams' board has one page: nothing to turn", () => {
-    const setPage = vi.fn();
-    const { result } = renderHook(() => useRankUp({ chime: async () => true, setPage }));
-    act(() => { result.current.offer([overtake("Cy", 3, 2)], T); });
-    expect(result.current.card).toMatchObject({ name: "Cy" });
-    expect(setPage).not.toHaveBeenCalled();
   });
 
   test("at most one card a minute, and none over another", () => {

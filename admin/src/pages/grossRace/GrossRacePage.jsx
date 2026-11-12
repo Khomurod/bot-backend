@@ -3,11 +3,13 @@ import { getGrossRace } from "../../api/grossRace";
 import useVisibleInterval from "../../utils/useVisibleInterval";
 import useFullscreen from "./useFullscreen";
 import { EVENT_LIMIT, FLASH_MS, raceEvents } from "./raceEvents";
-import { bannerView, pageCount, ranked } from "./raceView";
+import { bannerView, ranked, SPOTLIGHT } from "./raceView";
 import RaceHeader from "./RaceHeader";
 import RaceRules from "./RaceRules";
 import RaceTrack from "./RaceTrack";
 import RaceSidebar from "./RaceSidebar";
+import RaceList from "./RaceList";
+import RaceTicker from "./RaceTicker";
 import CelebrationOverlay from "./celebration/CelebrationOverlay";
 import { CELEBRATION_MS, celebrationTick, celebrationWinner } from "./celebration/celebrationTime";
 import { preloadCar } from "./celebration/carScene";
@@ -22,6 +24,7 @@ import useRankUp from "./rankUp/useRankUp";
 import BirthdayOverlay from "./birthday/BirthdayOverlay";
 import useBirthdays from "./birthday/useBirthdays";
 import "./grossRace.css";
+import "./dispatchersBoard.css";
 
 /**
  * The Gross Grand Prix: this week's gross race for the office screens.
@@ -34,9 +37,11 @@ import "./grossRace.css";
  * server is still reading the week. The race feed and the banner
  * come from comparing one reading with the last, here, as in the design.
  *
- * The dispatchers' board shows five racers at a time and turns to the next
- * five every ten seconds, round and round, like an airport departures board
- * (the owner, 12 October 2026). The teams fit on one screen.
+ * Both boards show everybody on one screen. The dispatchers' board gives its
+ * top five the race lanes and lists everybody else beside them, with the race
+ * feed along the bottom (the owner, 12 November 2026; until then it showed
+ * five at a time and turned every ten seconds). The teams' board has a lane
+ * for every team, and the podium and the feed in its sidebar.
  *
  * At 4:00 PM in Chicago, every day, the leader is celebrated for twelve seconds
  * over a 3D car (celebration/). `?celebrate` in the address shows it at once,
@@ -46,9 +51,8 @@ import "./grossRace.css";
  * a clip with sound, and says what the screen can do (soundTest/).
  *
  * A racer who climbs gets a chime and a big card in the middle of the screen
- * for seven seconds, on both boards (rankUp/; the owner, 6 November 2026); on
- * /dispatch the board turns to the climber's five and waits there, and its
- * "Test sound" button shows the card with the chime.
+ * for seven seconds, on both boards (rankUp/; the owner, 6 November 2026), and
+ * /dispatch's "Test sound" button shows the card with the chime.
  *
  * Today's birthdays — an employee with the card that went to Telegram, a driver
  * with their truck — follow the Telegram post within one poll, fifteen seconds
@@ -64,20 +68,17 @@ const POLL_MS = 30_000;
 const DEFAULT_TZ = "America/Chicago";
 const WARMING_POLL_MS = 5_000;
 const OFFLINE = "No connection to the server";
-export const PAGE_SIZE = { dispatchers: 5, teams: Infinity };
-export const PAGE_MS = 10_000;
 const NO_BANNER = { current: null, shown: null };
 // The build this screen is running: the chunk Vite put this module in.
 const OWN_CHUNK = chunkOf(import.meta.url);
 const reloadPage = () => window.location.reload();
 
-export default function GrossRacePage({ view, pageMs = PAGE_MS, ownChunk = OWN_CHUNK, reload = reloadPage }) {
+export default function GrossRacePage({ view, ownChunk = OWN_CHUNK, reload = reloadPage }) {
   const [data, setData] = useState(null);
   const [now, setNow] = useState(() => Date.now());
   const [events, setEvents] = useState([]);
   const [flashUntil, setFlashUntil] = useState({});
   const [banner, setBanner] = useState({ current: null, shown: null });
-  const [page, setPage] = useState(0);
   const [celebration, setCelebrationState] = useState(null);
   // Mirrors `celebration` the moment it is set, for the reload check, which
   // runs in the same pass and would otherwise see the state before it changed.
@@ -98,8 +99,6 @@ export default function GrossRacePage({ view, pageMs = PAGE_MS, ownChunk = OWN_C
   const withVideo = view === "teams";
   const sound = useSoundTest({ race: data && data.race, celebration, setCelebration, enabled: withVideo });
   const video = useCelebrationVideo({ enabled: withVideo, available: Boolean(data && data.video), celebration, testing: sound.active });
-  const pageSize = PAGE_SIZE[view] || Infinity;
-  const pages = pageCount(data && data.race, pageSize);
   // Birthdays wait for anything else that holds the screen; a climb waits for a birthday.
   const birthday = useBirthdays({
     isBusy: () => celebrating.current || sound.active.current || video.active.current || rankUp.showing.current,
@@ -107,7 +106,7 @@ export default function GrossRacePage({ view, pageMs = PAGE_MS, ownChunk = OWN_C
   // A climb: never over the celebration, the video, the sound test or a birthday, which hold the screen.
   const rankUp = useRankUp({
     isBusy: () => celebrating.current || sound.active.current || video.active.current || birthday.active.current,
-    pageSize, setPage, probeOnLoad: !withVideo,
+    probeOnLoad: !withVideo,
   });
   const { offer: offerRankUp, clear: clearRankUp } = rankUp;
 
@@ -224,23 +223,25 @@ export default function GrossRacePage({ view, pageMs = PAGE_MS, ownChunk = OWN_C
     reload();
   }, [data, now, ownChunk, reload, sound.active, video.active, rankUp.showing, birthday.active]);
 
-  useEffect(() => {
-    setPage((held) => (held < pages ? held : 0));
-    if (pages <= 1) return undefined;
-    // A climb card holds the board on the climber's page until it is gone.
-    const turn = setInterval(() => setPage((held) => (rankUp.showing.current ? held : (held + 1) % pages)), pageMs);
-    return () => clearInterval(turn);
-  }, [pages, pageMs, rankUp.showing]);
-
   return (
-    <div className="gross-race">
+    <div className={`gross-race gross-race--${view}`}>
       <RaceHeader view={view} data={data} now={now} fullscreen={fullscreen} onSoundTest={withVideo ? sound.start : rankUp.test} />
       <RaceRules view={view} data={data} />
-      <div className="gr-body">
-        <RaceTrack view={view} data={data} now={now} flashUntil={flashUntil} banner={rankUp.card ? NO_BANNER : banner}
-          page={Math.min(page, pages - 1)} pages={pages} pageSize={pageSize} />
-        <RaceSidebar data={data} now={now} events={events} />
-      </div>
+      {view === "teams" ? (
+        <div className="gr-body">
+          <RaceTrack view={view} data={data} now={now} flashUntil={flashUntil} banner={rankUp.card ? NO_BANNER : banner} />
+          <RaceSidebar data={data} now={now} events={events} />
+        </div>
+      ) : (
+        <>
+          <div className="gr-body gr-body--spotlight">
+            <RaceTrack view={view} data={data} now={now} flashUntil={flashUntil} banner={rankUp.card ? NO_BANNER : banner}
+              limit={SPOTLIGHT} />
+            <RaceList data={data} now={now} flashUntil={flashUntil} />
+          </div>
+          <RaceTicker now={now} events={events} />
+        </>
+      )}
       {rankUp.card && !celebration && !video.stage && !sound.test && <RankUpOverlay card={rankUp.card} />}
       {birthday.current && !celebration && !video.stage && !sound.test && (
         <BirthdayOverlay key={birthday.current.key} birthday={birthday.current} />

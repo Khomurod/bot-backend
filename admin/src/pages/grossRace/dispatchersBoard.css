@@ -1,0 +1,76 @@
+/* The dispatchers' board (/dispatch) on one screen (the owner, 12 November
+ * 2026, "variant B"): a shorter header, the top five racing on the left,
+ * everybody else in a list on the right, the race feed along the bottom.
+ * The teams' board (/dispatchteam) keeps grossRace.css alone. */
+
+.gross-race--dispatchers { grid-template-rows: auto auto minmax(0, 1fr) auto; }
+
+/* ── a shorter header: everything on screen goes to the racers ── */
+.gross-race--dispatchers .gr-header {
+  grid-template-columns: minmax(0, 1.9fr) minmax(0, 1fr) minmax(0, .9fr) minmax(0, 1.2fr);
+}
+.gross-race--dispatchers .gr-cell { padding: clamp(10px, .8vw, 16px) clamp(16px, 1.8vw, 36px); gap: 8px; }
+.gross-race--dispatchers .gr-cell--title { align-items: center; }
+.gross-race--dispatchers .gr-title { font-size: clamp(22px, 2.6vw, 54px); }
+.gross-race--dispatchers .gr-view-badge { font-size: clamp(12px, 1.1vw, 24px); margin-bottom: 0; }
+.gross-race--dispatchers .gr-laps { height: clamp(14px, 1.3vw, 26px); }
+.gross-race--dispatchers .gr-countdown { font-size: clamp(20px, 2.1vw, 44px); }
+.gross-race--dispatchers .gr-status-line { flex-basis: auto; }
+
+/* ── the body: lanes for the top five, the list beside them ── */
+.gross-race .gr-body--spotlight { grid-template-columns: minmax(0, 1.45fr) minmax(300px, 1fr); }
+.gross-race .gr-body--spotlight .gr-columns {
+  grid-template-columns: minmax(150px, 16vw) minmax(0, 1fr) minmax(170px, 13vw);
+}
+
+.gross-race .gr-list {
+  border-left: 2px solid var(--color-text); display: grid; grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0; overflow: hidden;
+}
+.gross-race .gr-list-row {
+  display: grid; align-items: center; column-gap: clamp(8px, .8vw, 16px);
+  grid-template-columns: clamp(28px, 2.3vw, 46px) minmax(0, 1fr) clamp(56px, 7vw, 150px) clamp(80px, 6.8vw, 132px) clamp(36px, 3.6vw, 70px);
+  padding: 0 clamp(16px, 1.8vw, 36px);
+}
+.gross-race .gr-list-head {
+  grid-template-columns: minmax(0, 1fr) clamp(80px, 6.8vw, 132px) clamp(36px, 3.6vw, 70px);
+  align-items: end; padding-top: clamp(10px, 1vw, 20px); padding-bottom: clamp(6px, .6vw, 12px);
+}
+.gross-race .gr-list-rows { position: relative; border-top: 2px solid var(--color-divider); min-height: 0; }
+.gross-race .gr-list-item {
+  position: absolute; left: 0; right: 0; border-bottom: 1px solid var(--color-divider);
+  transition: top 1.3s cubic-bezier(.3, 1.3, .5, 1), background-color .8s;
+}
+.gross-race .gr-list-rank {
+  width: 1.6em; height: 1.6em; display: grid; place-items: center; background: var(--color-text);
+  color: var(--color-bg); font-weight: 800; font-size: .9em; line-height: 1;
+}
+.gross-race .gr-list-name {
+  min-width: 0; font-weight: 700; letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.gross-race .gr-list-name .gr-tag { vertical-align: middle; }
+.gross-race .gr-list-bar { position: relative; height: .4em; background: var(--color-neutral-200); }
+.gross-race .gr-list-bar > span {
+  position: absolute; left: 0; top: 0; bottom: 0; background: var(--color-neutral-500);
+  transition: width 1.8s cubic-bezier(.2, .8, .2, 1);
+}
+.gross-race .gr-list-num { text-align: right; white-space: nowrap; }
+.gross-race .gr-list-gross { font-weight: 800; }
+.gross-race .gr-list-loads { font-weight: 600; font-size: .85em; color: var(--color-neutral-700); }
+.gross-race .gr-list-empty {
+  position: absolute; left: clamp(16px, 1.8vw, 36px); right: clamp(16px, 1.8vw, 36px); top: clamp(12px, 1.2vw, 24px);
+  font-size: clamp(14px, 1.1vw, 22px); font-weight: 700; color: var(--color-neutral-700);
+}
+
+/* ── the race feed, one line along the bottom ── */
+.gross-race .gr-ticker {
+  display: flex; align-items: center; gap: clamp(14px, 1.8vw, 36px); min-width: 0; overflow: hidden; white-space: nowrap;
+  padding: clamp(10px, .9vw, 18px) clamp(16px, 1.8vw, 36px); border-top: 2px solid var(--color-text);
+  background: var(--color-neutral-100); font-size: clamp(13px, 1.1vw, 21px);
+}
+.gross-race .gr-ticker > .gr-kicker { flex: none; }
+.gross-race .gr-ticker-item { flex: none; display: inline-flex; align-items: center; gap: .45em; padding: .2em .4em; transition: background-color 1s; }
+.gross-race .gr-ticker .gr-event-icon { padding-top: 0; }
+.gross-race .gr-ticker .gr-event-text { font-weight: 700; }
+.gross-race .gr-ticker .gr-event-ago { font-size: .8em; color: var(--color-neutral-700); }
+.gross-race .gr-ticker-empty { font-weight: 600; color: var(--color-neutral-700); }

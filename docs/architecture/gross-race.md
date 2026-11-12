@@ -63,10 +63,23 @@ Chicago) is read and then placed on its day by `stopDate()`.
   loads still count for any team that ran them, as on Datatruck's board. No
   field in the API tells the other MC's people apart — they create loads under
   both MCs — so the list is by name.
-- **Five to a screen, turning every ten seconds** on the dispatchers' board,
-  round and round, each new screen flipping in like an airport departures
-  board. The podium and the race feed always cover everybody. The teams fit on
-  one screen.
+- **Everybody on one screen, on both boards.** The dispatchers' board (the
+  owner, 12 November 2026, "variant B" of four offers) has a shorter header,
+  the **top five** racing in lanes on the left, **everybody else in a list** on
+  the right — place, name, a bar of their gross against the leader's, gross,
+  loads — and the race feed as one line along the bottom; no podium (the top
+  five are it). The list's rows shrink to fit however many there are (20 today;
+  28 still fit a laptop screen), a row slides to its new place when places
+  change and lights up on a gain, as a lane does, and a dispatcher who climbs
+  into the top five flips into the lanes. A gross label is written after its
+  token, so on this board the token stops short of the road's end by the
+  label's width (`lanesView`), and the leader's figure never runs into the
+  next column. `dispatchersBoard.css` holds this layout; the teams' board —
+  a lane for every team, the podium and the feed in the sidebar — is
+  unchanged.
+- **Before 12 November 2026** the dispatchers' board showed five at a time and
+  turned every ten seconds, so each dispatcher was on screen ten seconds in
+  forty (four screens for 20 people), and the podium repeated the first three.
 
 `services/grossRace/standings.js`.
 
@@ -213,8 +226,9 @@ The owner (6 November 2026): when somebody climbs, an airport-style
 - **Never over something that holds the screen**: the 4 PM celebration, the
   video, the sound test. A climb then stays in the feed only. A new week clears
   the card with the rest of last week's race.
-- **On `/dispatch`** the board turns to the climber's five
-  (`floor((rank − 1) / 5)`) and does not turn on until the card is gone.
+- **The climber is always on screen**: both boards show everybody, so there is
+  nothing to turn to (until 12 November 2026 `/dispatch` turned to the
+  climber's five and held there while the card showed).
 - The page does not reload itself for a new build while the card shows.
 - **`/dispatch`'s Test sound** shows the card with the chime and says whether
   the chime played and whether sound may start by itself (the same
@@ -326,7 +340,7 @@ the owner, 2 November 2026), while `/dispatch/` still meets the server's 410.
 | `services/grossRace/birthdays.js`, `birthdayRestore.js`, `database/raceBirthdays.js` | today's birthdays: the holder, its restore after a restart, the reads both need |
 | `services/grossRace/celebrationVideo.js`, `videoPause.js` | the video on the server's disk, and whether it is paused |
 | `admin/src/pages/settings/GrossRaceTab.jsx`, `settings/grossRace/` | Settings → Gross Grand Prix: the video console and the Windows sound set-up |
-| `admin/src/pages/grossRace/` | the page, its stylesheet and fonts (Archivo, SIL OFL), the race feed; `pageVersion.js` decides when a screen reloads itself |
+| `admin/src/pages/grossRace/` | the page, its stylesheets (`dispatchersBoard.css` is `/dispatch`'s one-screen layout) and fonts (Archivo, SIL OFL), the race feed; `RaceList.jsx` and `RaceTicker.jsx` are the dispatchers' list and feed line; `pageVersion.js` decides when a screen reloads itself |
 | `admin/src/pages/grossRace/celebration/` | the 4 PM celebration: when and whom (pure), the three.js scene, the overlay, the car and its credits |
 | `admin/src/pages/grossRace/rankUp/` | a racer moves up: which climb (pure), the chime, the card, and its timing (`useRankUp.js`) |
 | `admin/src/pages/grossRace/birthday/` | birthdays: whose next, once per tab (pure), the overlay, its timing (`useBirthdays.js`) |
