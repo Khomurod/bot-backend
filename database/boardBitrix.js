@@ -124,6 +124,14 @@ async function recordPlannedStageSync(action) {
  * Claim one live transition across every process sharing the database. A failed
  * or abandoned claim may be retried; an applied action never can.
  */
+/**
+ * A failed update is tried again on later passes, but not forever: after
+ * MAX_STAGE_SYNC_ATTEMPTS the action stays `failed` and the difference stays a
+ * question for a person (it was retried on every pass, 157 times for one deal,
+ * while a bug stopped every attempt).
+ */
+const MAX_STAGE_SYNC_ATTEMPTS = 5;
+
 async function claimStageSync(action, { leaseMinutes = 5 } = {}) {
   const res = await query(
     `INSERT INTO board_bitrix_stage_sync_actions
@@ -135,13 +143,14 @@ async function claimStageSync(action, { leaseMinutes = 5 } = {}) {
        state = 'claimed', attempts = board_bitrix_stage_sync_actions.attempts + 1,
        claimed_until = NOW() + make_interval(mins => $7::int),
        last_error = NULL, updated_at = NOW()
-     WHERE board_bitrix_stage_sync_actions.state = 'failed'
+     WHERE (board_bitrix_stage_sync_actions.state = 'failed'
+            AND board_bitrix_stage_sync_actions.attempts < $8)
         OR (board_bitrix_stage_sync_actions.state = 'claimed'
             AND board_bitrix_stage_sync_actions.claimed_until < NOW())
      RETURNING id`,
     [action.actionKey, action.dealId, action.boardStatus, action.beforeStageId,
       action.targetStageId, action.schemaFingerprint || null,
-      Math.max(1, Math.round(Number(leaseMinutes) || 5))]
+      Math.max(1, Math.round(Number(leaseMinutes) || 5)), MAX_STAGE_SYNC_ATTEMPTS]
   );
   return res.rows[0] ? Number(res.rows[0].id) : null;
 }
@@ -457,6 +466,7 @@ module.exports = {
   recentStageSyncActions,
   confirmBoardStatus,
   isLiveSyncEnabled,
+  MAX_STAGE_SYNC_ATTEMPTS,
   applyPass,
   getDiscrepancy,
   currentQuestion,
