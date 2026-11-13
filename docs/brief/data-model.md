@@ -250,7 +250,8 @@ not `facebookCrypto` — the poller holds none of this app's secrets.
   the history, the open question; since 0104 an `aside` — the rename offer),
   `hiring_stage_renames` (migration 0104: a placeholder deal title offered for
   renaming, once per conversation and deal, and who pressed Rename / Keep as
-  is), `hiring_stage_crm_records.display_name` (0104: the name a creation
+  is — rename decisions are recorded HERE, not in `hiring_stage_proposals`'
+  `decided_by_*`; `title_written` marks a confirmed TITLE write), `hiring_stage_crm_records.display_name` (0104: the name a creation
   writes, in Safety's spelling), plus `safety_approval_settings.
   stage_proposals_enabled` and `.bitrix_topic_id`. The Bitrix deal and
   contact are referenced by id only; nothing is copied from Bitrix but a

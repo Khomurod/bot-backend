@@ -10,7 +10,7 @@
  * a CLAIM — `pending → applying` in one UPDATE — so a second press is told it
  * was already answered. `applying` goes to `applied`, `declined`, `stale`, or
  * back to `pending` when Bitrix could not be asked. Who pressed is kept in
- * `decided_by_*`.
+ * `decided_by_*`; `title_written` says this offer's TITLE write went through.
  */
 
 const { query } = require('../pool');
@@ -31,6 +31,7 @@ function mapRename(row) {
     status: row.status,
     contactId: num(row.contact_id),
     contactRenamed: Boolean(row.contact_renamed),
+    titleWritten: Boolean(row.title_written),
     botMessageId: num(row.bot_message_id),
     decidedByName: row.decided_by_name || null,
     decidedAt: row.decided_at || null,
@@ -79,6 +80,20 @@ async function recordSent(id, botMessageId) {
 }
 
 /**
+ * This offer's TITLE write was confirmed by Bitrix — recorded at once, while
+ * the press still holds the claim, so a press that then fails at the contact
+ * never writes the title twice, and a person's own identical rename is never
+ * mistaken for the bot's.
+ */
+async function markTitleWritten(id) {
+  await query(
+    `UPDATE hiring_stage_renames SET title_written = TRUE, updated_at = NOW()
+      WHERE id = $1 AND status = 'applying'`,
+    [Number(id)],
+  );
+}
+
+/**
  * Move a rename from one status to another, only if it is still in `from`.
  * @returns the updated row, or null when somebody else got there first
  */
@@ -120,5 +135,5 @@ async function purgeOldRenames(days = 60) {
 }
 
 module.exports = {
-  getRename, reserveRename, recordSent, transition, purgeOldRenames,
+  getRename, reserveRename, recordSent, markTitleWritten, transition, purgeOldRenames,
 };

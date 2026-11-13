@@ -98,13 +98,17 @@ stub('database/hiringStages/renames.js', {
     if (same && same.status !== 'unsent') return null;
     if (!same && state.renames.some((x) => x.rootMessageId === r.rootMessageId && OPEN_RENAME.has(x.status))) return null;
     const row = same || {
-      id: state.renames.length + 1, chatId: String(r.chatId), contactRenamed: false, botMessageId: null,
+      id: state.renames.length + 1, chatId: String(r.chatId), contactRenamed: false, titleWritten: false, botMessageId: null,
     };
     Object.assign(row, { ...r, chatId: String(r.chatId), status: 'pending' });
     if (!same) state.renames.push(row);
     return { ...row };
   },
   recordSent: async (id, mid) => { state.renames.find((x) => x.id === id).botMessageId = mid; },
+  markTitleWritten: async (id) => {
+    const row = state.renames.find((x) => x.id === id);
+    if (row && row.status === 'applying') row.titleWritten = true;
+  },
   transition: async (id, from, to, extra = {}) => {
     const row = state.renames.find((x) => x.id === id);
     if (!row || ![].concat(from).includes(row.status)) return null;
@@ -158,7 +162,9 @@ function maybeFail(method, { before }) {
   throw new BitrixError(`Bitrix did not answer ${method} in 15000ms`, { retryable: true });
 }
 const record = (method) => state.calls.push(method);
-const openDeals = (pred) => state.deals.filter((d) => !d.closed && pred(d)).map((d) => ({ ...d }));
+/** As services/bitrix24DealStages.js `mapDeal` reads it: an empty TITLE comes back null. */
+const asRead = (d) => ({ ...d, title: d.title || null });
+const openDeals = (pred) => state.deals.filter((d) => !d.closed && pred(d)).map(asRead);
 
 stub('services/bitrix24DealStages.js', {
   BitrixError,
@@ -177,9 +183,15 @@ stub('services/bitrix24DealStages.js', {
     record('crm.deal.list');
     return openDeals((d) => String(d.title).toLowerCase().includes(word));
   },
-  getDeal: async (id) => { record('crm.deal.get'); const d = state.deals.find((x) => x.id === Number(id)); return d ? { ...d } : null; },
+  getDeal: async (id) => {
+    record('crm.deal.get');
+    maybeFail('crm.deal.get', { before: true });
+    const d = state.deals.find((x) => x.id === Number(id));
+    return d ? asRead(d) : null; // a deleted deal: null, as the real client reads Bitrix's "Not found"
+  },
   getContact: async (id) => {
     record('crm.contact.get');
+    maybeFail('crm.contact.get', { before: true });
     const c = state.contacts.find((x) => x.id === Number(id));
     return c ? { ...c, name: `${c.first} ${c.last}` } : null;
   },

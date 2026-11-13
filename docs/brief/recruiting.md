@@ -240,7 +240,8 @@ the same treatment home time got, and for the same reason.
   nothing created. A deal titled **"No name"** (or empty, or digits) in a
   hiring pipeline — never the Board's DRIVER RELATION pipeline — is offered
   `✏️ Name in Bitrix: “No name” → “…”?` [✏️ Rename] [Keep as is]; only a press
-  writes the TITLE (re-read first, refused if renamed meanwhile) and a
+  writes the TITLE (re-read first; refused if renamed meanwhile, closed, or
+  moved out of the hiring pipeline since the offer) and a
   placeholder contact's NAME / LAST_NAME — never a real name.
 - A model picks the stage by meaning; `lib/hiringStages/proposal.js` keeps only
   a stage of that pipeline, forward of where the deal is (or a lost stage),

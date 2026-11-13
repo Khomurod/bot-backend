@@ -64,8 +64,15 @@ test('A RENAME OFFER: once per conversation and deal, one open per conversation,
   assert.ok(await offer(42, 300), 'another conversation');
 
   const by = { userId: 4242, userName: 'Ann' };
+  assert.equal(first.titleWritten, false);
+  await renames.markTitleWritten(first.id);
+  assert.equal((await renames.getRename(first.id)).titleWritten, false, 'recorded only under a press\'s claim');
   assert.ok(await renames.transition(first.id, 'pending', 'applying', by));
   assert.equal(await renames.transition(first.id, 'pending', 'applying', by), null, 'a second press finds nothing to claim');
+  await renames.markTitleWritten(first.id);
+  assert.equal((await renames.getRename(first.id)).titleWritten, true, 'the TITLE write, recorded at once');
+  assert.equal((await renames.transition(first.id, 'applying', 'pending', { error: 'contact timed out' })).titleWritten, true, 'kept when the claim goes back');
+  assert.ok(await renames.transition(first.id, 'pending', 'applying', by));
   const done = await renames.transition(first.id, 'applying', 'applied', { ...by, contactRenamed: true });
   assert.deepEqual([done.status, done.decidedByName, done.contactRenamed, Boolean(done.decidedAt)], ['applied', 'Ann', true, true]);
   assert.equal(await offer(41), null, 'answered: never offered again');

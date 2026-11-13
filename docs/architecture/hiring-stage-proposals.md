@@ -175,7 +175,9 @@ to make one.
     (`crm.deal.get`, read only). Open: it is the deal, and the stage is
     proposed on it. Closed: nothing is created, nobody is asked, and ONE card
     line says `the deal "<title>" is closed (<stage>) — nothing to create`
-    (once per deal).
+    (once per deal). A known deal Bitrix no longer has (deleted — Bitrix
+    answers `crm.deal.get` with HTTP 400 "Not found", which the client reads
+    as "no such deal", not as Bitrix failing) is skipped like one never known.
 18. **A rejected candidate with no deal gets nothing** (owner decision g):
     Safety's newest hashtag in the conversation is `#NotApproved` (by rule,
     `lib/hiringStages/conversation.js` `safetyRejected`), or the stage read is
@@ -189,19 +191,31 @@ to make one.
     a placeholder — empty, "No name" in any spacing (production has "No name"
     and two spaces), or digits only — and is in a hiring pipeline (never
     pipeline 3 "DRIVER RELATION", whose titles the Board ↔ Bitrix check owns,
-    nor 33 "HOMETIME MONITORING"), and the candidate is certain (rule 13), the
-    card offers `✏️ Name in Bitrix: “No name” → “<display name>”?` with
+    nor 33 "HOMETIME MONITORING"), and the post has ONE certain driver's name
+    (`lib/hiringStages/identity.js` `certainDisplayName` — no phone count and
+    no model needed; a deal found by phone is offered right after the read,
+    whatever the read says), the card offers `✏️ Name in Bitrix: “No name” → “<display name>”?` with
     **[✏️ Rename] [Keep as is]** — once per conversation and deal, under the
     stage question and kept while it changes (the card's "aside", edited in
     place). Anyone the Move button allows may press; the press is claimed once
-    (`hiring_stage_renames`, `pending → applying`), the deal is READ AGAIN and
-    its TITLE written only while it is still exactly the placeholder shown —
-    otherwise "renamed meanwhile — left as is". The deal's contact
+    (`hiring_stage_renames`, `pending → applying`), the deal is READ AGAIN:
+    gone, closed, or no longer in a hiring pipeline (moved into pipeline 3
+    since the offer) → nothing is written. Its TITLE is written only while it
+    is still exactly the placeholder shown (compared as text: Bitrix reads an
+    empty TITLE back as null) — otherwise "renamed meanwhile — left as is",
+    even when a person typed the very same name. The title write is recorded
+    the moment Bitrix confirms it (`title_written`), so a press that then
+    fails at the contact says the deal WAS renamed, and the next press
+    finishes the contact without writing the title twice. The deal's contact
     (`CONTACT_ID`) is then read and its NAME / LAST_NAME written only when its
     own name is a placeholder too (both empty, or "No name") — a real name is
     never overwritten. One write per field. Who pressed and the outcome are
     kept on the row (`decided_by_*`, `contact_renamed`); **Keep as is** is
-    recorded and the buttons go. Bitrix failing gives the claim back.
+    recorded and the buttons go. Bitrix failing gives the claim back. Rename
+    decisions live in `hiring_stage_renames`, NOT in `hiring_stage_proposals`:
+    a conversation has at most one open proposal, and a rename question stays
+    open beside a Move question — an audit of who acted on a candidate reads
+    both tables.
 
 ## How it flows
 
@@ -263,7 +277,7 @@ and `0104_hiring_display_names_and_renames.sql`:
 | `hiring_stage_notices` | which line of news ("created", "ambiguous", "bitrix_error:<revision>") was shown about a conversation |
 | `hiring_stage_cards` (migration 0101) | the one card per driver: its message now, the name (set once), the history, the question it shows — and since 0104 the `aside` (the rename offer) |
 | `hiring_stage_crm_records.display_name` (0104) | the name a creation writes (rule 16), stored at the claim; `driver_name` stays the post's, to find by |
-| `hiring_stage_renames` (0104) | a placeholder-title rename offered, and who answered it how: once per conversation and deal, one open per conversation |
+| `hiring_stage_renames` (0104) | a placeholder-title rename offered, and who answered it how (`decided_by_*`, `title_written`, `contact_renamed`): once per conversation and deal, one open per conversation |
 
 Proposals, creation records, notices and rename offers carry a driver's name and phone, so
 closed ones are **deleted after 60 days**, like the captured messages;
@@ -311,7 +325,11 @@ model's spelling — Safety's #NotApproved, placeholders and pipelines, the
 card's words), `tests/hiringStageDealNames.test.js` (end to end: the created
 title, a resumed creation, the conversation's own closed or open deal, a
 rejection, the rename offered and pressed, renamed meanwhile, a real contact
-name, Keep as is, the Board's pipeline), `tests/hiringStageRenamesPg.test.js`
+name, Keep as is, the Board's pipeline), `tests/hiringStageRenamePress.test.js`
+(an empty title, a deal moved into pipeline 3 or closed after the offer, the
+same name typed by a person, the title written before the contact failed, a
+deleted deal, offered with no move and with two phones, a deleted known deal),
+`tests/hiringStageRenamesPg.test.js`
 (migration 0104),
 `tests/hiringStageQueue.test.js`, `tests/hiringStageStorePg.test.js`,
 `tests/hiringStageCrmRecordsPg.test.js` (the claim, busy per phone, notices,

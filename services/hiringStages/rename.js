@@ -12,27 +12,33 @@
  *           Safety's spelling (lib/hiringStages/displayName.js). Offered once
  *           per conversation and deal. Nothing is written.
  *   press   anyone the Move button allows. The press CLAIMS the offer once,
- *           then the deal is READ AGAIN: its TITLE is written only while it is
- *           still exactly the placeholder shown ("renamed meanwhile — left as
- *           is" otherwise). Then the deal's contact is read, and its NAME /
- *           LAST_NAME written only when its own name is a placeholder too — a
- *           real name is never overwritten. One write per field.
+ *           then the deal is READ AGAIN: gone, closed, or no longer in a
+ *           hiring pipeline (moved into the Board's pipeline 3 since the
+ *           offer) → nothing is written. Its TITLE is written only while it
+ *           is still exactly the placeholder shown ("renamed meanwhile — left
+ *           as is" otherwise, even when a person typed the same name). Then
+ *           the deal's contact is read, and its NAME / LAST_NAME written only
+ *           when its own name is a placeholder too — a real name is never
+ *           overwritten. One write per field.
  *   keep    recorded, the buttons go.
  *
- * Bitrix failing gives the claim back (`pending`), as a Move does; a title
- * already written by an earlier press that failed at the contact is not
- * written again.
+ * Bitrix failing gives the claim back (`pending`), as a Move does. A title
+ * write is recorded the moment Bitrix confirms it (`title_written`): a press
+ * that then failed at the contact says so, and the next press finishes the
+ * contact without writing the title again.
  */
 
 const renames = require('../../database/hiringStages/renames');
 const bitrix = require('../bitrix24DealStages');
-const { mayOfferRename, isPlaceholderContact } = require('../../lib/hiringStages/placeholder');
+const { mayOfferRename, isPlaceholderContact, isHiringPipeline } = require('../../lib/hiringStages/placeholder');
 const { splitName } = require('../../lib/hiringStages/identity');
 const msg = require('../../lib/hiringStages/messages');
 const card = require('./card');
 
 const convOf = (r, driverName = null) => ({ chatId: r.chatId, rootMessageId: r.rootMessageId, driverName });
 const answer = (text, alert = false) => ({ text, alert });
+/** Bitrix reads an empty TITLE back as null: what is stored and what is read are compared as text. */
+const titleOf = (title) => String(title ?? '');
 
 /**
  * Offer the rename on the driver's card, when the deal's title is a placeholder.
@@ -48,7 +54,7 @@ async function offerRename(thread, deps, { deal, displayName, driverName }) {
       rootMessageId: thread.rootMessageId,
       dealId: deal.id,
       categoryId: deal.categoryId,
-      fromTitle: deal.title ?? '',
+      fromTitle: titleOf(deal.title),
       toName: displayName,
       contactId: deal.contactId,
     });
@@ -69,12 +75,20 @@ async function close(telegram, row, outcome, extra = {}) {
   await card.closeAside(telegram, convOf(row), `${msg.CALLBACK_PREFIX}:rn:${row.id}`, msg.renameOutcomeLine(row, outcome, extra));
 }
 
-async function bitrixFailed(row, err) {
+/**
+ * Bitrix failed: the claim goes back. A title an earlier step of THIS press
+ * already wrote is said — it was renamed, only its contact was not.
+ */
+async function bitrixFailed(row, err, titleWritten = false) {
   await renames.transition(row.id, 'applying', 'pending', { error: String(err.message).slice(0, 300) });
-  return answer(`Bitrix did not answer — nothing changed. Try again in a minute.\n${String(err.message).slice(0, 150)}`, true);
+  const why = String(err.message).slice(0, 150);
+  if (titleWritten) {
+    return answer(`The deal is renamed to ${row.toName}, but Bitrix did not answer for its contact. Press again in a minute.\n${why}`, true);
+  }
+  return answer(`Bitrix did not answer — nothing changed. Try again in a minute.\n${why}`, true);
 }
 
-/** The deal's contact, renamed only when its own name is a placeholder. @returns whether it was */
+/** The contact's name, renamed only when its own name is a placeholder. @returns whether it was */
 async function renameContactIfPlaceholder(contactId, toName, opts) {
   if (!contactId) return false;
   const contact = await bitrix.getContact(contactId, opts);
@@ -85,27 +99,44 @@ async function renameContactIfPlaceholder(contactId, toName, opts) {
   return true;
 }
 
+/** Ends the press without writing: the row goes `stale` with `error`, the aside closes with `outcome`. */
+async function leave(row, by, deps, { outcome, error, text }) {
+  const stale = await renames.transition(row.id, 'applying', 'stale', { ...by, error });
+  await close(deps.telegram, stale || row, outcome);
+  return answer(text, true);
+}
+
 async function confirmRename(row, by, deps) {
   let contactRenamed;
   let deal;
+  let titleWritten = row.titleWritten;
   try {
     deal = await bitrix.getDeal(row.dealId, deps.opts);
-    if (deal && deal.title !== row.toName && deal.title !== row.fromTitle) {
-      const stale = await renames.transition(row.id, 'applying', 'stale', { ...by, error: 'renamed meanwhile' });
-      await close(deps.telegram, stale || row, 'stale');
-      return answer('Renamed meanwhile — left as is.', true);
+    if (!deal) return leave(row, by, deps, { outcome: 'gone', error: 'deal not found', text: 'That deal no longer exists in Bitrix.' });
+    // What made the offer allowed is checked again: a deal moved into the
+    // Board's pipeline 3 (or 33), or closed, since the offer is never written.
+    if (deal.closed || !isHiringPipeline(deal.categoryId)) {
+      return leave(row, by, deps, {
+        outcome: 'left', error: 'deal closed or left the hiring pipeline', text: 'Not renamed: the deal is closed or no longer in a hiring pipeline.',
+      });
     }
-    if (!deal) {
-      const gone = await renames.transition(row.id, 'applying', 'stale', { ...by, error: 'deal not found' });
-      await close(deps.telegram, gone || row, 'gone');
-      return answer('That deal no longer exists in Bitrix.', true);
+    const now = titleOf(deal.title);
+    // The new name is ours only when THIS offer wrote it (an earlier press
+    // that then failed at the contact) — a person typing the same name is
+    // "renamed meanwhile", like any other change.
+    const ours = titleWritten && now === row.toName;
+    if (!ours && now !== titleOf(row.fromTitle)) {
+      return leave(row, by, deps, { outcome: 'stale', error: 'renamed meanwhile', text: 'Renamed meanwhile — left as is.' });
     }
-    // Still the placeholder shown: the one TITLE write. Already the new name
-    // (an earlier press failed at the contact): not written again.
-    if (deal.title === row.fromTitle) await bitrix.renameDeal(row.dealId, row.toName, deps.opts);
+    if (!ours) {
+      // Still exactly the placeholder shown: the one TITLE write, recorded at once.
+      await bitrix.renameDeal(row.dealId, row.toName, deps.opts);
+      titleWritten = true;
+      await renames.markTitleWritten(row.id);
+    }
     contactRenamed = await renameContactIfPlaceholder(deal.contactId, row.toName, deps.opts);
   } catch (err) {
-    return bitrixFailed(row, err);
+    return bitrixFailed(row, err, titleWritten);
   }
   const applied = await renames.transition(row.id, 'applying', 'applied', { ...by, contactRenamed, contactId: deal.contactId });
   await close(deps.telegram, applied || { ...row, contactRenamed }, 'applied', { byName: by.userName });

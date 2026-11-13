@@ -77,6 +77,15 @@ test('a Bitrix refusal, a 5xx and a hang are BitrixErrors — only the last two 
   await assert.rejects(bitrix.getDeal(1, { fetchImpl: hang, timeoutMs: 20 }), (e) => e.retryable && /did not answer/.test(e.message));
 });
 
+test('a DELETED deal or contact reads as null (Bitrix answers 400 "Not found"); a 5xx saying so still throws', async () => {
+  // Bitrix's own body for a deleted id: an EMPTY `error` and HTTP 400.
+  const gone = { fetchImpl: async () => new Response(JSON.stringify({ error: '', error_description: 'Not found' }), { status: 400 }) };
+  assert.equal(await bitrix.getDeal(6533, gone), null);
+  assert.equal(await bitrix.getContact(40, gone), null);
+  const down = fakeBitrix({ 'crm.deal.get': () => ({ error: 'Not found', status: 503 }) });
+  await assert.rejects(bitrix.getDeal(6533, down.opts), (e) => e.retryable === true);
+});
+
 test('no webhook, or Bitrix switched off, is said plainly and asks nothing', async () => {
   const saved = config;
   config = { enabled: false, webhookUrl: saved.webhookUrl };

@@ -8,7 +8,9 @@
  *     → model (redacted words) → verified stage → deal by name (if none yet)
  *     → no deal? the conversation's own deal, closed, rejected, or CREATE
  *       contact + deal when the candidate is certain (noDeal.js, crmCreate.js)
- *     → a placeholder deal title ("No name")? offer ✏️ Rename (rename.js)
+ *     → a deal with a placeholder title ("No name")? offer ✏️ Rename
+ *       (rename.js) — a deal found by phone is offered right after the read,
+ *       whatever the read says, and whether or not a creation would be certain
  *     → "move X to STAGE?"  or  "no deal — recruiter, please create it"
  *       (both in the Bitrix topic: propose.js)
  *
@@ -33,7 +35,7 @@
 const threads = require('../../database/hiringStages/threads');
 const conversation = require('../../lib/hiringStages/conversation');
 const { verifyStageAnswer } = require('../../lib/hiringStages/proposal');
-const { candidateIdentity } = require('../../lib/hiringStages/identity');
+const { candidateIdentity, certainDisplayName } = require('../../lib/hiringStages/identity');
 const { extractPhones } = require('../../lib/hiringStages/redact');
 const { isImageDocument } = require('../../lib/safetyApprovals/messageShape');
 const { namesInPost } = require('../../lib/safetyApprovals/postDetails');
@@ -110,12 +112,23 @@ async function readAndPropose(thread, deps, seen) {
   const verified = verifyStageAnswer(answer.parsed, {
     stages, currentStageId: lookup.deal?.stageId ?? null, searchable: conversation.searchableText(messages),
   });
-  if (!verified.move) return done(thread, { result: verified.reason, model: answer.model });
 
   const who = { rootMessageId: thread.rootMessageId, safetyUserIds: settings.safetyUserIds };
   // The spelling written to Bitrix comes from Safety's own words, by rules — never the model's.
+  const safetyTexts = conversation.safetyTexts(messages, who);
+  const offered = new Set();
+  // A placeholder title ("No name") on the deal this card is about is offered
+  // a name whatever the stage read says — and only once per deal per read.
+  const offerFor = async (deal, driverName) => {
+    if (!deal || offered.has(deal.id)) return;
+    offered.add(deal.id);
+    await offerRename(thread, deps, { deal, displayName: certainDisplayName({ postText, safetyTexts }), driverName });
+  };
+  await offerFor(lookup.deal, seen.driverName);
+  if (!verified.move) return done(thread, { result: verified.reason, model: answer.model });
+
   const identity = candidateIdentity({
-    postText, phones, modelName: verified.driverName, safetyTexts: conversation.safetyTexts(messages, who),
+    postText, phones, modelName: verified.driverName, safetyTexts,
   });
   // ONE NAME: the post's, when it has one certain name; the model's only otherwise.
   const name = identity.name || verified.driverName || null;
@@ -147,7 +160,7 @@ async function readAndPropose(thread, deps, seen) {
     deal = missing.deal || null;
   }
   if (deal) {
-    await offerRename(thread, deps, { deal, displayName: identity.ok ? identity.displayName : null, driverName: name });
+    await offerFor(deal, name);
     const plan = await planForDeal(deal, verified.stage, { stages, categoryId }, opts);
     if (!plan.ok) return done(thread, { result: plan.reason, dealId: deal.id });
     Object.assign(ctx, { deal, plan });

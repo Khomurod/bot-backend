@@ -166,8 +166,23 @@ async function listOpenDealsByTitle(word, opts) {
   return (Array.isArray(rows) ? rows : []).slice(0, MAX_ROWS + 1).map(mapDeal).filter(Boolean);
 }
 
+/**
+ * A `.get` of one record, or null when Bitrix says it does not exist. Bitrix
+ * answers a deleted id with HTTP 400 "Not found" — a refusal like any other
+ * to `call`, but to a reader it means "gone", not "Bitrix is broken".
+ */
+async function getOrNull(method, id, opts) {
+  try {
+    return await call(method, { id: Number(id) }, opts);
+  } catch (err) {
+    if (err instanceof BitrixError && !err.retryable && /\bnot found\b/i.test(err.message)) return null;
+    throw err;
+  }
+}
+
+/** One deal, or null when it no longer exists. */
 async function getDeal(dealId, opts) {
-  return mapDeal(await call('crm.deal.get', { id: Number(dealId) }, opts));
+  return mapDeal(await getOrNull('crm.deal.get', dealId, opts));
 }
 
 /** The stages of one pipeline (category 0 is the default one), as Bitrix rows. */
@@ -188,8 +203,9 @@ function phoneDigits(multifield) {
     .filter((d) => d.length === 10);
 }
 
+/** One contact, or null when it no longer exists. */
 async function getContact(contactId, opts) {
-  const r = await call('crm.contact.get', { id: Number(contactId) }, opts);
+  const r = await getOrNull('crm.contact.get', contactId, opts);
   if (!r || !r.ID) return null;
   return {
     id: Number(r.ID),

@@ -53,6 +53,8 @@ CREATE TABLE IF NOT EXISTS hiring_stage_renames (
   status              TEXT NOT NULL DEFAULT 'pending',
   contact_id          BIGINT,
   contact_renamed     BOOLEAN NOT NULL DEFAULT FALSE,
+  -- This offer's TITLE write was confirmed (a later step of the press may still fail).
+  title_written       BOOLEAN NOT NULL DEFAULT FALSE,
   bot_message_id      BIGINT,
   decided_by_user_id  BIGINT,
   decided_by_name     TEXT,
