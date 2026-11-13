@@ -186,8 +186,12 @@ organization should converge toward.
 | Which answers may become a proposal (real stage, forward only, real quote) | `lib/hiringStages/proposal.js` (pure) |
 | The Bitrix topic's messages and their buttons (each names the driver and links the post) | `lib/hiringStages/messages.js` (pure) |
 | Whether a candidate is certain enough to create a Bitrix record for | `lib/hiringStages/identity.js` (pure) |
-| The conversation queue, the proposals, the creation claim, the notices | `database/hiringStages/{threads,proposals,crmRecords,notices}.js`, migrations 0076, 0100 |
-| Bitrix deals: find, stages, the one update, the two adds | `services/bitrix24DealStages.js`, `services/hiringStages/{dealFinder,stagePlan}.js` |
+| The name a creation writes — the post's words in Safety's spelling and order, by rules | `lib/hiringStages/displayName.js` (pure) |
+| When a placeholder deal title ("No name") may be offered a rename — never the Board's or home time's pipeline | `lib/hiringStages/placeholder.js` (pure) |
+| The conversation queue, the proposals, the creation claim, the notices, the rename offers | `database/hiringStages/{threads,proposals,crmRecords,notices,renames}.js`, migrations 0076, 0100, 0104 |
+| Bitrix deals: find, stages, the stage move, the two adds, the placeholder rename (`crm.deal.update` TITLE, `crm.contact.update` NAME / LAST_NAME) | `services/bitrix24DealStages.js`, `services/hiringStages/{dealFinder,stagePlan}.js` |
+| No open deal: the conversation's own deal, closed, rejected, or create | `services/hiringStages/noDeal.js` |
+| Renaming a placeholder deal, by button only | `services/hiringStages/rename.js` (the only caller of `renameDeal` / `renameContact`) |
 | One card per driver in the Bitrix topic (re-post on a question, edit on an answer) | `services/hiringStages/card.js`, `database/hiringStages/cards.js`, migration 0101 |
 | Creating a missing contact + deal, at most once | `services/hiringStages/crmCreate.js` (the only caller of `crm.contact.add` / `crm.deal.add`) |
 | Queueing from capture; reading and proposing | `services/hiringStages/{conversationQueue,reviewer,propose,aiReading,groupMessages}.js`; worker `services/hiringStages/worker.js`, key `hiring_stage_proposals`, capability `hiring_stage_reading` |
@@ -312,6 +316,7 @@ over `admin/src/pages/<area>/` holding data hooks and presentational sections:
 | `meta_crm_events` UNIQUE `(leadgen_id, event_name)` | A lead's hiring stage being reported to Meta twice |
 | `hiring_stage_crm_records` UNIQUE `(chat_id, root_message_id)` + partial UNIQUE `(phone)` while in flight; each step recorded before its Bitrix call | A second Bitrix contact or deal for the same candidate — on a retry, a timeout or the same driver posted twice |
 | `hiring_stage_notices` UNIQUE `(chat_id, root_message_id, notice_key)` | The same "created" / "ambiguous" / "Bitrix error" notice posted twice in the Bitrix topic |
+| `hiring_stage_renames` UNIQUE `(chat_id, root_message_id, deal_id)` + one open per conversation; a press claims `pending → applying` | A placeholder deal offered for renaming twice, or renamed twice by two presses |
 
 ---
 

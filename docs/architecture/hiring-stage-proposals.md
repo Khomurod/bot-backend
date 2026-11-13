@@ -5,6 +5,13 @@
 `bot/handlers/hiringStageHandlers.js` or
 `admin/src/pages/settings/HiringStagesCard.jsx`.
 
+**Since 13–14 November 2026** (the owner, "hiring deal names"): a deal the bot
+creates is titled in **Safety's spelling and order** (rule 16); a conversation
+that already has a deal — open or closed — **never creates another** and never
+asks for one (rule 17); a **rejected** candidate with no deal gets nothing
+created (rule 18); and a deal titled **"No name"** is offered a rename on the
+card, written only after a press (rule 19).
+
 **Since November 2026** (the owner, in one request): the conversation is still
 READ in General, but everything the bot WRITES about Bitrix goes to a
 **Bitrix topic** of its own; a candidate the conversation identifies for
@@ -39,9 +46,11 @@ A wrong move puts a candidate in the wrong place in the recruiting pipeline —
 skipped checks, or lost from a recruiter's queue. Every rule below closes a way
 to make one.
 
-1. **A model proposes; a person moves the deal.** `crm.deal.update` is called
-   from exactly one place (`services/hiringStages/actions.js`), after somebody
-   in the group pressed **Move**. There is no automatic mode. Creating a
+1. **A model proposes; a person moves the deal.** `crm.deal.update`
+   `STAGE_ID` is called from exactly one place (`services/hiringStages/actions.js`),
+   after somebody in the group pressed **Move**. There is no automatic mode.
+   (`crm.deal.update` `TITLE` and `crm.contact.update` are called only from
+   `services/hiringStages/rename.js`, after a press on ✏️ Rename — rule 19.) Creating a
    missing deal (rule 13) is not moving one: a created deal starts at "Sent
    to Safety", and every later stage is still a proposal.
    No model decides a creation — the identity is read off the post by rules.
@@ -117,7 +126,7 @@ to make one.
     is asked, with the reason. A new deal starts at **"Sent to Safety"**
     (owner, 11 November 2026 — a candidate posted in the recruiting group IS
     one sent to Safety; a pipeline without that stage creates nothing), titled
-    with the name as posted, on the configured deal pipeline (default 0).
+    with the DISPLAY name (rule 16), on the configured deal pipeline (default 0).
     Bitrix's own automation carries a deal from that stage into the Safety
     pipeline, so nothing more is proposed in the read that created it: the
     conversation is read again two minutes later, and the next step is
@@ -138,6 +147,77 @@ to make one.
     orientation (`lib/hiringStages/proposal.js`, `hired_needs_arrival`); the
     model is told the same. Until 11 November 2026 every `#Approved` on a new
     deal became "move to Hired?".
+16. **The name WRITTEN is Safety's spelling, read by rules**
+    (`lib/hiringStages/displayName.js`; owner, 13–14 November 2026: deals were
+    titled "Goowin Leah Ann", "Johnes Destin", "Thelamon Marcson Jose" while
+    Safety wrote "LEAH GOODWIN APPROVED"). Safety's own messages in the
+    conversation (`safety_user_ids`, their TEXT — never a model's answer, never
+    a recruiter's words, never the post) are searched for a run of consecutive
+    words that are the post's name words: equal ignoring case, or — both five
+    letters or more — one letter edit apart. Fewer than TWO matched words is
+    no match. Where they differ, **Safety's spelling wins** (owner decision f).
+    Order: a run covering every post word → Safety's order; a run whose LAST
+    word is the post's FIRST word → the post was surname first, as on a CDL,
+    so "FIRST MIDDLE … LAST" ("Goowin Leah Ann" + "LEAH GOODWIN" → "Leah Ann
+    Goodwin"); anything else → the post's order, never guessed. No Safety run
+    → the post's line exactly as before. Title case and suffixes as before.
+    The contact's NAME is every word but the last, LAST_NAME the last; the
+    deal's TITLE the whole display name. The words a contact or deal is FOUND
+    by stay the post's, and so does the card's header. The display name is
+    stored on the creation claim (`hiring_stage_crm_records.display_name`), so
+    a creation resumed after a timeout writes the name it started with.
+17. **Never create a deal the conversation already has** (owner, 13–14
+    November 2026: a conversation whose deal was moved to Lost was read again
+    on a new reply, saw no OPEN deal and asked people to "create the deal" —
+    and could have created a second). Before any creation
+    (`services/hiringStages/noDeal.js`), the deals this conversation already
+    knows — on its proposals, or created for it — are read again
+    (`crm.deal.get`, read only). Open: it is the deal, and the stage is
+    proposed on it. Closed: nothing is created, nobody is asked, and ONE card
+    line says `the deal "<title>" is closed (<stage>) — nothing to create`
+    (once per deal). A known deal Bitrix no longer has (deleted — Bitrix
+    answers `crm.deal.get` with HTTP 400 "Not found", which the client reads
+    as "no such deal", not as Bitrix failing) is skipped like one never known.
+18. **A rejected candidate with no deal gets nothing** (owner decision g):
+    Safety's newest hashtag in the conversation is `#NotApproved` (by rule,
+    `lib/hiringStages/conversation.js` `safetyRejected`), or the stage read is
+    a failure stage (Lost / REJECTED). No contact, no deal, no "please create
+    it" — one card line "Rejected — no deal created". (Johnes, deal 6533, was
+    created and then moved to REJECTED.)
+19. **A placeholder deal title is renamed BY BUTTON ONLY**
+    (`lib/hiringStages/placeholder.js`, `services/hiringStages/rename.js`;
+    owner, 13–14 November 2026: deals titled "No name" were found by phone and
+    moved but never renamed). When the deal the card is about is titled with
+    a placeholder — empty, "No name" in any spacing (production has "No name"
+    and two spaces), or digits only — and is in a hiring pipeline (never
+    pipeline 3 "DRIVER RELATION", whose titles the Board ↔ Bitrix check owns,
+    nor 33 "HOMETIME MONITORING"), and the post has ONE certain driver's name
+    (`lib/hiringStages/identity.js` `certainDisplayName` — no model needed;
+    a deal found by phone is offered right after the read, whatever the read
+    says) and the conversation has exactly ONE phone (with two, the deal found
+    may be the other number's owner, and a "No name" deal must not take this
+    driver's name), the card offers `✏️ Name in Bitrix: “No name” → “<display name>”?` with
+    **[✏️ Rename] [Keep as is]** — once per conversation and deal, under the
+    stage question and kept while it changes (the card's "aside", edited in
+    place). Anyone the Move button allows may press; the press is claimed once
+    (`hiring_stage_renames`, `pending → applying`), the deal is READ AGAIN:
+    gone, closed, or no longer in a hiring pipeline (moved into pipeline 3
+    since the offer) → nothing is written. Its TITLE is written only while it
+    is still exactly the placeholder shown (compared as text: Bitrix reads an
+    empty TITLE back as null) — otherwise "renamed meanwhile — left as is",
+    even when a person typed the very same name. The title write is recorded
+    the moment Bitrix confirms it (`title_written`), so a press that then
+    fails at the contact says the deal WAS renamed, and the next press
+    finishes the contact without writing the title twice. The deal's contact
+    (`CONTACT_ID`) is then read and its NAME / LAST_NAME written only when its
+    own name is a placeholder too (both empty, or "No name") — a real name is
+    never overwritten. One write per field. Who pressed and the outcome are
+    kept on the row (`decided_by_*`, `contact_renamed`); **Keep as is** is
+    recorded and the buttons go. Bitrix failing gives the claim back. Rename
+    decisions live in `hiring_stage_renames`, NOT in `hiring_stage_proposals`:
+    a conversation has at most one open proposal, and a rename question stays
+    open beside a Move question — an audit of who acted on a candidate reads
+    both tables.
 
 ## How it flows
 
@@ -150,14 +230,20 @@ captured General message (services/safetyApprovals/captureService.js)
        → candidate post? → deal by phone (dealFinder.js) → the pipeline's stages (crm.status.list)
        → model (aiReading.js, capability `hiring_stage_reading`, redacted words only)
        (first: a creation an earlier read left in flight is finished — crmCreate.js resumeInFlight)
-       → verifyStageAnswer → deal by name (if none yet) → no deal and certain? crmCreate.js (contact + deal)
+       → verifyStageAnswer → deal by name (if none yet)
+       → no deal? noDeal.js: Skip → the conversation's own deal (open: use it; closed: one line)
+         → rejected: one line → not certain: ask → certain: crmCreate.js (contact + deal, display name)
+       → a placeholder title? rename.js offers ✏️ Rename / Keep as is on the card (written only on a press)
        → stagePlan.js (carry the stage to the deal's pipeline by NAME)
        → propose.js, in the Bitrix topic (groupMessages.js), each with the driver and a link to the post:
          ONE CARD per driver (card.js): 👤 name · post link / history / the open question
            "Move to STAGE?" [Move] [No]
            or "No open deal — <reason> — <recruiter>, please create it" [Deal created — search again] [Skip]
            lines once each: "Deal created …" · "N people in Bitrix match this name" · "Bitrix error …"
+             · "the deal … is closed (Lost) — nothing to create" · "Rejected — no deal created"
+           aside: "✏️ Name in Bitrix: “No name” → “…”?" [✏️ Rename] [Keep as is]
   → button press: bot/handlers/hiringStageHandlers.js (thin) → services/hiringStages/actions.js
+       (rn / rk → services/hiringStages/rename.js)
 ```
 
 - **A conversation is named by its post** — the message the reply chain leads
@@ -179,8 +265,9 @@ captured General message (services/safetyApprovals/captureService.js)
 
 ## Data
 
-Migrations `0076_hiring_stage_proposals.sql` and
-`0100_hiring_stage_bitrix_topic_and_crm_records.sql`:
+Migrations `0076_hiring_stage_proposals.sql`,
+`0100_hiring_stage_bitrix_topic_and_crm_records.sql`, `0101_hiring_stage_cards.sql`
+and `0104_hiring_display_names_and_renames.sql`:
 
 | Table / column | What it holds |
 |---|---|
@@ -190,9 +277,11 @@ Migrations `0076_hiring_stage_proposals.sql` and
 | `hiring_stage_proposals` | what the bot posted and what became of it — who pressed, when, from which stage to which; `note` is why a deal was not created automatically |
 | `hiring_stage_crm_records` | the claim on creating a contact + deal: one per conversation, at most one in flight per phone, each step recorded before its Bitrix call |
 | `hiring_stage_notices` | which line of news ("created", "ambiguous", "bitrix_error:<revision>") was shown about a conversation |
-| `hiring_stage_cards` (migration 0101) | the one card per driver: its message now, the name (set once), the history, the question it shows |
+| `hiring_stage_cards` (migration 0101) | the one card per driver: its message now, the name (set once), the history, the question it shows — and since 0104 the `aside` (the rename offer) |
+| `hiring_stage_crm_records.display_name` (0104) | the name a creation writes (rule 16), stored at the claim; `driver_name` stays the post's, to find by |
+| `hiring_stage_renames` (0104) | a placeholder-title rename offered, and who answered it how (`decided_by_*`, `title_written`, `contact_renamed`): once per conversation and deal, one open per conversation |
 
-Proposals, creation records and notices carry a driver's name and phone, so
+Proposals, creation records, notices and rename offers carry a driver's name and phone, so
 closed ones are **deleted after 60 days**, like the captured messages;
 finished queue rows too (a creation still in flight is kept). Nothing logs
 message text or a phone number.
@@ -203,8 +292,12 @@ message text or a phone number.
 push (Settings → Bitrix24, which must be **enabled**). The
 webhook needs the `crm` scope with write access. Reads: `crm.duplicate.findbycomm`,
 `crm.contact.list`, `crm.contact.get`, `crm.deal.list`, `crm.deal.get`,
-`crm.status.list`. Writes: `crm.deal.update` (`STAGE_ID` only, after a press —
-the only change to an existing record) and, since November 2026,
+`crm.status.list`. Writes to an existing record, each only after a press and a
+fresh read: `crm.deal.update` `STAGE_ID` (Move); since 13–14 November 2026
+`crm.deal.update` `TITLE` of a placeholder title (✏️ Rename, only from
+`services/hiringStages/rename.js`) and `crm.contact.update` `NAME` /
+`LAST_NAME` of that deal's contact when its own name is a placeholder (the same
+press). And, since November 2026,
 `crm.contact.add` and `crm.deal.add` — new records only, only from
 `services/hiringStages/crmCreate.js`, each stamped `ORIGINATOR_ID =
 wenze_recruiting`, `ORIGIN_ID = tg:<chat>:<post>`, a comment linking the post,
@@ -228,7 +321,18 @@ not-certain case, timeouts before and after Bitrix acted, a refusal, the same
 driver posted twice, Skip), `tests/hiringStageIdentity.test.js`,
 `tests/hiringStageWorker.test.js` (blocked without the topic),
 `tests/hiringStageCard.test.js` (one message per driver: re-post and delete,
-edit in place, once per key),
+edit in place, once per key), `tests/hiringStageNames.test.js` (the display
+name — the Goowin example, post-only order, fewer than two words, never a
+model's spelling — Safety's #NotApproved, placeholders and pipelines, the
+card's words), `tests/hiringStageDealNames.test.js` (end to end: the created
+title, a resumed creation, the conversation's own closed or open deal, a
+rejection, the rename offered and pressed, renamed meanwhile, a real contact
+name, Keep as is, the Board's pipeline), `tests/hiringStageRenamePress.test.js`
+(an empty title, a deal moved into pipeline 3 or closed after the offer, the
+same name typed by a person, the title written before the contact failed, a
+deleted deal, offered with no move but never with two phones, a deleted known deal),
+`tests/hiringStageRenamesPg.test.js`
+(migration 0104),
 `tests/hiringStageQueue.test.js`, `tests/hiringStageStorePg.test.js`,
 `tests/hiringStageCrmRecordsPg.test.js` (the claim, busy per phone, notices,
 the topic setting), `tests/safetyApprovalSettingsRoute.test.js` and

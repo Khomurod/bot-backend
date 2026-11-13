@@ -27,7 +27,7 @@ const SETTINGS = {
 
 const state = {
   messages: [], finished: [], retried: [], proposals: [], records: [], notices: [], sent: [], edits: [], deleted: [],
-  contacts: [], deals: [], calls: [], fail: {}, nextId: 500, aiAnswer: null,
+  contacts: [], deals: [], calls: [], fail: {}, nextId: 500, aiAnswer: null, renames: [],
 };
 
 // ── stores ──────────────────────────────────────────────────────────────────
@@ -60,19 +60,22 @@ stub('database/hiringStages/crmRecords.js', {
     return row ? { ...row } : null;
   },
   claim: async ({
-    chatId, rootMessageId, phone, driverName,
+    chatId, rootMessageId, phone, driverName, displayName = null,
   }) => {
     const own = state.records.find((r) => r.chatId === chatId && r.rootMessageId === rootMessageId);
     const clash = (p) => state.records.some((r) => r !== own && r.phone === p && IN_FLIGHT.has(r.status));
     if (own) {
       const next = ['blocked', 'failed'].includes(own.status) ? 'claimed' : own.status;
       if (IN_FLIGHT.has(next) && clash(own.phone)) return { busy: true };
-      Object.assign(own, { status: next, attempts: own.attempts + 1 });
+      const fresh = ['blocked', 'failed'].includes(own.status);
+      Object.assign(own, {
+        status: next, attempts: own.attempts + 1, displayName: fresh ? displayName : (own.displayName ?? displayName),
+      });
       return { record: { ...own } };
     }
     if (clash(phone)) return { busy: true };
     const row = {
-      id: state.records.length + 1, chatId, rootMessageId, phone, driverName, status: 'claimed',
+      id: state.records.length + 1, chatId, rootMessageId, phone, driverName, displayName, status: 'claimed',
       contactId: null, contactReused: false, dealId: null, dealReused: false, attempts: 1,
     };
     state.records.push(row);
@@ -84,6 +87,37 @@ stub('database/hiringStages/crmRecords.js', {
     const { error, ...rest } = fields;
     Object.assign(row, Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined && v !== null)),
       { status: to, lastError: error ?? null });
+    return { ...row };
+  },
+});
+const OPEN_RENAME = new Set(['pending', 'applying']);
+stub('database/hiringStages/renames.js', {
+  getRename: async (id) => { const r = state.renames.find((x) => x.id === Number(id)); return r ? { ...r } : null; },
+  reserveRename: async (r) => {
+    const same = state.renames.find((x) => x.rootMessageId === r.rootMessageId && x.dealId === r.dealId);
+    if (same && same.status !== 'unsent') return null;
+    if (!same && state.renames.some((x) => x.rootMessageId === r.rootMessageId && OPEN_RENAME.has(x.status))) return null;
+    const row = same || {
+      id: state.renames.length + 1, chatId: String(r.chatId), contactRenamed: false, titleWritten: false, botMessageId: null,
+    };
+    Object.assign(row, { ...r, chatId: String(r.chatId), status: 'pending' });
+    if (!same) state.renames.push(row);
+    return { ...row };
+  },
+  recordSent: async (id, mid) => { state.renames.find((x) => x.id === id).botMessageId = mid; },
+  markTitleWritten: async (id) => {
+    const row = state.renames.find((x) => x.id === id);
+    if (row && row.status === 'applying') row.titleWritten = true;
+  },
+  transition: async (id, from, to, extra = {}) => {
+    const row = state.renames.find((x) => x.id === id);
+    if (!row || ![].concat(from).includes(row.status)) return null;
+    Object.assign(row, {
+      status: to,
+      decidedByName: extra.userName ?? row.decidedByName ?? null,
+      contactRenamed: extra.contactRenamed ?? row.contactRenamed,
+      lastError: extra.error ?? null,
+    });
     return { ...row };
   },
 });
@@ -128,7 +162,9 @@ function maybeFail(method, { before }) {
   throw new BitrixError(`Bitrix did not answer ${method} in 15000ms`, { retryable: true });
 }
 const record = (method) => state.calls.push(method);
-const openDeals = (pred) => state.deals.filter((d) => !d.closed && pred(d)).map((d) => ({ ...d }));
+/** As services/bitrix24DealStages.js `mapDeal` reads it: an empty TITLE comes back null. */
+const asRead = (d) => ({ ...d, title: d.title || null });
+const openDeals = (pred) => state.deals.filter((d) => !d.closed && pred(d)).map(asRead);
 
 stub('services/bitrix24DealStages.js', {
   BitrixError,
@@ -147,9 +183,15 @@ stub('services/bitrix24DealStages.js', {
     record('crm.deal.list');
     return openDeals((d) => String(d.title).toLowerCase().includes(word));
   },
-  getDeal: async (id) => { record('crm.deal.get'); const d = state.deals.find((x) => x.id === Number(id)); return d ? { ...d } : null; },
+  getDeal: async (id) => {
+    record('crm.deal.get');
+    maybeFail('crm.deal.get', { before: true });
+    const d = state.deals.find((x) => x.id === Number(id));
+    return d ? asRead(d) : null; // a deleted deal: null, as the real client reads Bitrix's "Not found"
+  },
   getContact: async (id) => {
     record('crm.contact.get');
+    maybeFail('crm.contact.get', { before: true });
     const c = state.contacts.find((x) => x.id === Number(id));
     return c ? { ...c, name: `${c.first} ${c.last}` } : null;
   },
@@ -176,6 +218,18 @@ stub('services/bitrix24DealStages.js', {
     maybeFail('crm.deal.add', { before: false });
     return id;
   },
+  renameDeal: async (id, title) => {
+    record('crm.deal.update');
+    maybeFail('crm.deal.update', { before: true });
+    state.deals.find((d) => d.id === Number(id)).title = title;
+    return true;
+  },
+  renameContact: async (id, { first, last }) => {
+    record('crm.contact.update');
+    maybeFail('crm.contact.update', { before: true });
+    Object.assign(state.contacts.find((c) => c.id === Number(id)), { first, last });
+    return true;
+  },
   listStageRows: async () => STAGE_ROWS,
   moveDealToStage: async () => { throw new Error('nothing may be moved without a press'); },
   dealUrl: async (id) => `https://acme.bitrix24.com/crm/deal/details/${id}/`,
@@ -201,17 +255,22 @@ function reset() {
   cardStore.reset();
   Object.assign(state, {
     messages: [], finished: [], retried: [], proposals: [], records: [], notices: [], sent: [], edits: [], deleted: [],
-    contacts: [], deals: [], calls: [], fail: {}, nextId: 500,
+    contacts: [], deals: [], calls: [], fail: {}, nextId: 500, renames: [],
     aiAnswer: { move: true, stage_id: 'UC_SAFETY', driver_name: null, evidence: 'CLH sent' },
   });
 }
 
 const { processThread } = require('../../services/hiringStages/reviewer');
+const { handleStageButton } = require('../../services/hiringStages/actions');
 
 const readStage = async () => ({ parsed: state.aiAnswer, model: 'fake' });
 const run = (t = thread()) => processThread(t, { settings: SETTINGS, telegram, readStage });
+const ANN = { id: 4242, first_name: 'Ann', is_bot: false };
+const press = (action, id, from = ANN, chatId = CHAT) => handleStageButton({
+  action, proposalId: id, chatId, from,
+}, { telegram });
 
 module.exports = {
   cardStore,
-  CHAT, SAFETY, SETTINGS, ORIGINATOR, BitrixError, state, telegram, m, conversation, thread, reset, run,
+  CHAT, SAFETY, SETTINGS, ORIGINATOR, BitrixError, state, telegram, m, conversation, thread, reset, run, press,
 };

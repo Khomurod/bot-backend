@@ -120,6 +120,7 @@ retry.**
 | `driver_road_history.bonus_posted_at` (atomic claim) | a completed road leg being announced twice |
 | `hiring_stage_crm_records` UNIQUE `(chat_id, root_message_id)` + partial UNIQUE `(phone)` while in flight; each step recorded before its Bitrix call, an unanswered one searched for before any add | a second Bitrix contact or deal for one candidate — on a retry, a timeout, a redelivered message or the same driver posted twice |
 | `hiring_stage_notices` UNIQUE `(chat_id, root_message_id, notice_key)`, reserved before the send | the same "created" / "ambiguous" / "Bitrix error" notice in the Bitrix topic twice |
+| `hiring_stage_renames` UNIQUE `(chat_id, root_message_id, deal_id)` + partial UNIQUE one open per conversation; a press claims `pending → applying` | a placeholder deal offered for renaming twice, or one press renaming it twice |
 | `responses` UNIQUE `(driver_id, question_id)` | a driver answering one question twice |
 
 `bot_sent_messages` belongs to this family but is **not** a guard — it is the

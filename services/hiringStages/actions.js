@@ -12,6 +12,8 @@
  *   no  leave it. That stage is never proposed again for this conversation.
  *   re  "I created the deal — search again": look the candidate up again; a
  *       deal found turns the same message into a Move / No proposal.
+ *   rn / rk  ✏️ Rename a placeholder deal title / keep it — the same people,
+ *       the same group; the rest is services/hiringStages/rename.js.
  *
  * Bitrix failing gives the claim back (`pending`) and says so to the presser
  * only; the group sees no error. Returns what to answer the press with.
@@ -23,6 +25,7 @@ const bitrix = require('../bitrix24DealStages');
 const { findCandidateDeal } = require('./dealFinder');
 const { planForDeal, dealColumns, stagesFor } = require('./stagePlan');
 const group = require('./groupMessages');
+const { handleRenamePress } = require('./rename');
 
 function personName(from) {
   if (!from) return null;
@@ -118,8 +121,8 @@ async function searchAgain(proposal, deps) {
 }
 
 /**
- * @param {{action: 'ok'|'no'|'re', proposalId: number, chatId: string|number,
- *   from: object}} press
+ * @param {{action: 'ok'|'no'|'re'|'rn'|'rk', proposalId: number, chatId: string|number,
+ *   from: object}} press  for rn / rk, `proposalId` is the rename offer's id
  * @returns {Promise<{text: string, alert: boolean}>}
  */
 async function handleStageButton(press, deps = {}) {
@@ -128,6 +131,11 @@ async function handleStageButton(press, deps = {}) {
     return answer('This button no longer works here.', true);
   }
   if (!press.from || press.from.is_bot) return answer('Only a person can answer this.', true);
+  if (press.action === 'rn' || press.action === 'rk') {
+    return handleRenamePress({ action: press.action, id: press.proposalId, chatId: press.chatId },
+      { userId: press.from.id, userName: personName(press.from) },
+      { telegram: deps.telegram, opts: { fetchImpl: deps.fetchImpl } });
+  }
 
   const current = await proposals.getProposal(press.proposalId);
   if (!current || current.chatId !== String(press.chatId)) return answer('This proposal no longer exists.', true);

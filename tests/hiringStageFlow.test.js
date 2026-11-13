@@ -73,6 +73,7 @@ stub('database/hiringStages/notices.js', {
 // The creation itself is pinned in tests/hiringStageCrmCreate.test.js; here it answers as told.
 let creation = { status: 'blocked', reason: 'a contact named Phillips Samuel is already in Bitrix under another phone' };
 stub('services/hiringStages/crmCreate.js', { ensureCandidateDeal: async () => creation, resumeInFlight: async () => null });
+stub('database/hiringStages/crmRecords.js', { getForRoot: async () => null });
 stub('database/bitrix.js', { getBitrixConfig: async () => ({ enabled: true, webhookUrl: 'https://acme.bitrix24.com/rest/1/s/', dealCategoryId: '' }) });
 
 // ── a fake Bitrix ───────────────────────────────────────────────────────────

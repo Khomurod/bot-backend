@@ -13,6 +13,10 @@
  *   close    the question was answered: its line joins the history and the
  *            buttons go, EDITED IN PLACE — an answer is not news
  *   replace  the question changed in place ("search again" found the deal)
+ *   offerAside / closeAside   a second, smaller question that stays while
+ *            the stage question changes — "✏️ Name in Bitrix: “No name” →
+ *            …?" — added and answered IN PLACE, so the message an open
+ *            proposal points at is never replaced by it
  *
  * A copy Telegram will not delete (too old, no right) is edited to point
  * below instead. A send Telegram refuses THROWS from `ask` (the proposal is
@@ -33,7 +37,11 @@ function topicOptions(topicId) {
   return { message_thread_id: Number(topicId), parse_mode: 'HTML', disable_web_page_preview: true };
 }
 
-const textOf = (card) => msg.cardText({ ...card, current: card.currentText });
+const textOf = (card) => msg.cardText({ ...card, current: card.currentText, aside: card.asideText });
+const markupOf = (card) => {
+  const keyboard = msg.cardKeyboard(card);
+  return keyboard ? { reply_markup: keyboard } : {};
+};
 const warn = (what, err) => console.warn(`[HIRING STAGES] could not ${what}: ${String(err?.message || err).slice(0, 120)}`);
 
 async function retire(telegram, chatId, messageId) {
@@ -51,9 +59,7 @@ async function retire(telegram, chatId, messageId) {
 /** Post the card at the bottom of the topic, then take the previous copy away. @returns the new message id */
 async function repost(telegram, topicId, card) {
   const options = topicOptions(topicId);
-  const sent = await telegram.sendMessage(card.chatId, textOf(card), {
-    ...options, ...(card.currentKeyboard ? { reply_markup: card.currentKeyboard } : {}),
-  });
+  const sent = await telegram.sendMessage(card.chatId, textOf(card), { ...options, ...markupOf(card) });
   await cards.updateCard(card.chatId, card.rootMessageId, { messageId: sent.message_id });
   if (card.messageId && card.messageId !== sent.message_id) await retire(telegram, card.chatId, card.messageId);
   return sent.message_id;
@@ -65,7 +71,7 @@ async function editInPlace(telegram, card) {
     await telegram.editMessageText(card.chatId, card.messageId, undefined, textOf(card), {
       parse_mode: 'HTML',
       disable_web_page_preview: true,
-      ...(card.currentKeyboard ? { reply_markup: card.currentKeyboard } : {}),
+      ...markupOf(card),
     });
   } catch (err) {
     warn(`edit card message ${card.messageId}`, err);
@@ -135,6 +141,35 @@ async function replace(telegram, proposal, question) {
   return true;
 }
 
+/**
+ * Add the aside question to the driver's card: edited in place when the card
+ * is already posted, posted when it is not.
+ * @returns {Promise<number>} the card's message id
+ * @throws when Telegram refuses a NEW card (nothing is shown then)
+ */
+async function offerAside(telegram, topicId, conv, aside) {
+  topicOptions(topicId);
+  await cards.ensureCard(conv.chatId, conv.rootMessageId, conv.driverName);
+  const card = await cards.updateCard(conv.chatId, conv.rootMessageId, { aside });
+  if (!card.messageId) return repost(telegram, topicId, card);
+  await editInPlace(telegram, card);
+  return card.messageId;
+}
+
+/**
+ * The aside was answered: `line` joins the history and its buttons go,
+ * edited in place. Only the aside whose buttons carry `callbackData` is
+ * cleared — a newer one is left alone.
+ * @returns {Promise<boolean>} false when the card has no such aside
+ */
+async function closeAside(telegram, conv, callbackData, line) {
+  const card = await cards.getCard(conv.chatId, conv.rootMessageId).catch(() => null);
+  const showing = card && JSON.stringify(card.asideKeyboard || {}).includes(`"${callbackData}"`);
+  const updated = await cards.updateCard(conv.chatId, conv.rootMessageId, showing ? { line, aside: null } : { line });
+  if (updated) await editInPlace(telegram, updated);
+  return Boolean(showing);
+}
+
 module.exports = {
-  ask, note, close, replace, topicOptions,
+  ask, note, close, replace, offerAside, closeAside, topicOptions,
 };

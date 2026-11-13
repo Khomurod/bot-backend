@@ -30,6 +30,7 @@ stub('database/hiringStages/proposals.js', { purgeOldProposals: async () => 0 })
 stub('database/hiringStages/crmRecords.js', { purgeOldRecords: async () => 0 });
 stub('database/hiringStages/notices.js', { purgeOldNotices: async () => 0 });
 stub('database/hiringStages/cards.js', { purgeOldCards: async () => 0 });
+stub('database/hiringStages/renames.js', { purgeOldRenames: async () => 0 });
 stub('services/hiringStages/reviewer.js', { processThread: async () => { read += 1; return 'done'; } });
 
 const { drainHiringStages } = require('../services/hiringStages/worker');

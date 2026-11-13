@@ -245,7 +245,13 @@ repository-wide working rules. The highest-consequence items:
   before its Bitrix call, so a retry or timeout searches before it adds. A
   created deal starts at "Sent to Safety" — a stage MOVE is still a person's
   press. Bitrix messages go to the Bitrix topic only, never General.
-  `tests/hiringStageCrmCreate.test.js`. **A possessive or labelled line
+  `tests/hiringStageCrmCreate.test.js`. **Never a deal the conversation
+  already has** (open or closed) **nor one for a rejected candidate**; the name
+  written is Safety's spelling read by rules, never a model's; a placeholder
+  title ("No name") is renamed only by a press on ✏️ Rename, after a re-read
+  that finds it still the placeholder, open and in a hiring pipeline, never
+  overwriting a real contact name and never in the Board's DRIVER RELATION
+  pipeline (rules 16–19, `tests/hiringStageDealNames.test.js`). **A possessive or labelled line
   ("Matthew's referral") is never a driver** of a Safety post
   (`tests/safetyApprovalPostNames.test.js`).
 - **The Dispatcher Board is read for Home Time's home-in / home-out and by the
