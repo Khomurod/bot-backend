@@ -15,7 +15,7 @@ const CARD = 'Company Driver - 99 CPM\n\nKWAME ASANTE\n(555) 201-3344\n9+ yrs of
 
 test('one name off the post, one phone: certain — the referral line is not a second driver', () => {
   assert.deepEqual(candidateIdentity({ postText: CARD, phones: ['5552013344'] }), {
-    ok: true, name: 'Kwame Asante', first: 'Kwame', last: 'Asante', phone: '5552013344',
+    ok: true, name: 'Kwame Asante', displayName: 'Kwame Asante', first: 'Kwame', last: 'Asante', phone: '5552013344',
   });
   assert.equal(candidateIdentity({ postText: CARD, phones: ['5552013344', '5552013344'], modelName: 'kwame' }).ok, true);
 });

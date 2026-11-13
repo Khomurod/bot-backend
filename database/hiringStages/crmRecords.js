@@ -34,6 +34,8 @@ function mapRecord(row) {
     rootMessageId: Number(row.root_message_id),
     phone: row.phone,
     driverName: row.driver_name,
+    // What a creation writes to Bitrix (migration 0104); older rows use driverName.
+    displayName: row.display_name || null,
     status: row.status,
     contactId: num(row.contact_id),
     contactReused: Boolean(row.contact_reused),
@@ -62,18 +64,25 @@ async function getForRoot(chatId, rootMessageId) {
  *   own earlier one (a `blocked` / `failed` one is claimed afresh)
  *   | {{busy: true}} another conversation is creating for the same phone
  */
-async function claim({ chatId, rootMessageId, phone, driverName }) {
+async function claim({
+  chatId, rootMessageId, phone, driverName, displayName = null,
+}) {
   try {
+    // The display name is the one the creation started with: a creation in
+    // flight keeps it; only a fresh start (after `blocked` / `failed`) takes the new one.
     const { rows } = await query(
-      `INSERT INTO hiring_stage_crm_records (chat_id, root_message_id, phone, driver_name, attempts)
-       VALUES ($1, $2, $3, $4, 1)
+      `INSERT INTO hiring_stage_crm_records (chat_id, root_message_id, phone, driver_name, display_name, attempts)
+       VALUES ($1, $2, $3, $4, $5, 1)
        ON CONFLICT (chat_id, root_message_id) DO UPDATE
           SET status = CASE WHEN hiring_stage_crm_records.status IN ('blocked', 'failed')
                             THEN 'claimed' ELSE hiring_stage_crm_records.status END,
+              display_name = CASE WHEN hiring_stage_crm_records.status IN ('blocked', 'failed')
+                                  THEN EXCLUDED.display_name
+                                  ELSE COALESCE(hiring_stage_crm_records.display_name, EXCLUDED.display_name) END,
               attempts = hiring_stage_crm_records.attempts + 1,
               updated_at = NOW()
        RETURNING *`,
-      [String(chatId), Number(rootMessageId), String(phone), String(driverName)],
+      [String(chatId), Number(rootMessageId), String(phone), String(driverName), displayName ? String(displayName) : null],
     );
     return { record: mapRecord(rows[0]) };
   } catch (err) {

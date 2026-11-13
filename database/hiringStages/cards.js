@@ -25,6 +25,9 @@ function mapCard(row) {
     history: Array.isArray(row.history) ? row.history : [],
     currentText: row.current_text || null,
     currentKeyboard: row.current_keyboard || null,
+    // A second, smaller question that stays while the stage question changes (migration 0104).
+    asideText: row.aside_text || null,
+    asideKeyboard: row.aside_keyboard || null,
   };
 }
 
@@ -51,18 +54,22 @@ async function ensureCard(chatId, rootMessageId, driverName) {
 
 /**
  * Change a card in one statement: append a history line, replace (or clear)
- * the question, record the message it now is. Omitted fields are kept.
+ * the question or the aside, record the message it now is. Omitted fields
+ * are kept.
  */
 async function updateCard(chatId, rootMessageId, {
-  line, current, messageId,
+  line, current, aside, messageId,
 } = {}) {
   const setCurrent = current !== undefined;
+  const setAside = aside !== undefined;
   const { rows } = await query(
     `UPDATE hiring_stage_cards
         SET history = CASE WHEN $3::text IS NULL THEN history ELSE history || to_jsonb($3::text) END,
             current_text = CASE WHEN $4 THEN $5 ELSE current_text END,
             current_keyboard = CASE WHEN $4 THEN $6::jsonb ELSE current_keyboard END,
             message_id = COALESCE($7, message_id),
+            aside_text = CASE WHEN $8 THEN $9 ELSE aside_text END,
+            aside_keyboard = CASE WHEN $8 THEN $10::jsonb ELSE aside_keyboard END,
             updated_at = NOW()
       WHERE chat_id = $1 AND root_message_id = $2
       RETURNING *`,
@@ -71,6 +78,9 @@ async function updateCard(chatId, rootMessageId, {
       setCurrent ? (current?.text ?? null) : null,
       setCurrent && current?.keyboard ? JSON.stringify(current.keyboard) : null,
       messageId ?? null,
+      setAside,
+      setAside ? (aside?.text ?? null) : null,
+      setAside && aside?.keyboard ? JSON.stringify(aside.keyboard) : null,
     ],
   );
   return mapCard(rows[0]);

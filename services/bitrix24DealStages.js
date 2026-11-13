@@ -10,10 +10,16 @@
  * words only). Every call is bounded by a timeout — a Bitrix that hangs must
  * not hold a queue lease or a button press open.
  *
- * `crm.deal.update` remains the only update to an existing CRM record. Hiring
- * calls it after a person presses the button; the guarded Board sync may call
- * it for STAGE_ID only after a live-schema validation, an exact before-stage
- * re-read and a database idempotency claim.
+ * Updates to an existing CRM record, each only after a person pressed a
+ * button and the record was read again:
+ *   - `crm.deal.update` STAGE_ID (`moveDealToStage`) — hiring's Move; the
+ *     guarded Board sync may call it for STAGE_ID only after a live-schema
+ *     validation, an exact before-stage re-read and a database idempotency
+ *     claim;
+ *   - `crm.deal.update` TITLE (`renameDeal`) — hiring's ✏️ Rename of a
+ *     placeholder title ("No name"), only from services/hiringStages/rename.js;
+ *   - `crm.contact.update` NAME / LAST_NAME (`renameContact`) — the same
+ *     press, only for a contact whose own name is a placeholder.
  *
  * `crm.contact.add` and `crm.deal.add` create NEW records, and only from
  * services/hiringStages/crmCreate.js, after it has proved there is no open
@@ -263,6 +269,35 @@ async function moveDealToStage(dealId, stageId, opts) {
   return true;
 }
 
+/**
+ * A deal's TITLE. Only from services/hiringStages/rename.js, after a person
+ * pressed ✏️ Rename and the deal was read again (see the header).
+ */
+async function renameDeal(dealId, title, opts) {
+  const ok = await call('crm.deal.update', {
+    id: Number(dealId),
+    fields: { TITLE: String(title) },
+    params: { REGISTER_SONET_EVENT: 'Y' },
+  }, opts);
+  if (ok !== true) throw new BitrixError('Bitrix did not confirm the new title');
+  return true;
+}
+
+/**
+ * A contact's NAME and LAST_NAME — nothing else. Only from
+ * services/hiringStages/rename.js, for a contact whose name was read again
+ * and is still a placeholder (see the header).
+ */
+async function renameContact(contactId, { first, last }, opts) {
+  const ok = await call('crm.contact.update', {
+    id: Number(contactId),
+    fields: { NAME: String(first), LAST_NAME: String(last) },
+    params: { REGISTER_SONET_EVENT: 'Y' },
+  }, opts);
+  if (ok !== true) throw new BitrixError('Bitrix did not confirm the contact\'s new name');
+  return true;
+}
+
 module.exports = {
   BitrixError,
   // The bounded call itself, for a reader with its own field list (the
@@ -281,6 +316,8 @@ module.exports = {
   getDeal,
   listStageRows,
   moveDealToStage,
+  renameDeal,
+  renameContact,
   getContact,
   findByOrigin,
   createContact,

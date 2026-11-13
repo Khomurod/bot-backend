@@ -6,7 +6,9 @@
  *
  *   conversation (General) → candidate post? → deal by phone → pipeline stages
  *     → model (redacted words) → verified stage → deal by name (if none yet)
- *     → no deal and the candidate certain? CREATE contact + deal (crmCreate.js)
+ *     → no deal? the conversation's own deal, closed, rejected, or CREATE
+ *       contact + deal when the candidate is certain (noDeal.js, crmCreate.js)
+ *     → a placeholder deal title ("No name")? offer ✏️ Rename (rename.js)
  *     → "move X to STAGE?"  or  "no deal — recruiter, please create it"
  *       (both in the Bitrix topic: propose.js)
  *
@@ -17,9 +19,11 @@
  *
  * A MISSING DEAL IS CREATED ONLY FOR A CERTAIN CANDIDATE: one name read off
  * the post, one phone a recruiter typed (lib/hiringStages/identity.js), and
- * nobody else in Bitrix holding either. Anything less — or a recruiter who
- * already pressed Skip — asks a person instead, with the reason. Two people
- * matching the name is said in the Bitrix topic, and nothing is proposed.
+ * nobody else in Bitrix holding either — and NEVER when the conversation
+ * already has a deal (open or closed) or the candidate was rejected
+ * (noDeal.js). Anything less certain — or a recruiter who already pressed
+ * Skip — asks a person instead, with the reason. Two people matching the
+ * name is said in the Bitrix topic, and nothing is proposed.
  *
  * Returns the queue status it left the row in; never throws for a failure it
  * can name (AI or Bitrix down → retry; after six attempts → gave_up). A Bitrix
@@ -27,7 +31,6 @@
  */
 
 const threads = require('../../database/hiringStages/threads');
-const proposals = require('../../database/hiringStages/proposals');
 const conversation = require('../../lib/hiringStages/conversation');
 const { verifyStageAnswer } = require('../../lib/hiringStages/proposal');
 const { candidateIdentity } = require('../../lib/hiringStages/identity');
@@ -37,13 +40,16 @@ const { namesInPost } = require('../../lib/safetyApprovals/postDetails');
 const msg = require('../../lib/hiringStages/messages');
 const { stripUrls } = require('../../lib/security/redactUrls');
 const { getBitrixConfig } = require('../../database/bitrix');
-const { BitrixError, dealUrl } = require('../bitrix24DealStages');
+const { BitrixError } = require('../bitrix24DealStages');
 const { findCandidateDeal } = require('./dealFinder');
-const { ensureCandidateDeal, resumeInFlight } = require('./crmCreate');
+const { resumeInFlight } = require('./crmCreate');
+const {
+  whenNoDeal, sayCreated, notice, RetryLater,
+} = require('./noDeal');
+const { offerRename } = require('./rename');
 const { stagesFor, planForDeal } = require('./stagePlan');
 const { readConversationStage, AiUnavailableError } = require('./aiReading');
 const { propose, done } = require('./propose');
-const group = require('./groupMessages');
 
 const RETRY_DELAYS_SECONDS = [60, 300, 900, 1800, 3600];
 /** 1 + 5 + 15 + 30 + 60 minutes of trying; a new message in the conversation starts over. */
@@ -55,56 +61,8 @@ function isCandidatePost(post) {
     || extractPhones(m.text || '').length > 0);
 }
 
-/** A line of news on the driver's card in the Bitrix topic, once per key. */
-const notice = (thread, deps, key, line, driverName) => group.sendNotice(deps.telegram, deps.settings?.bitrixTopicId, {
-  chatId: thread.chatId, rootMessageId: thread.rootMessageId, driverName, key, line,
-});
-
 /** After a deal is created, read again this long after — once Bitrix's own automation has moved it. */
 const REREAD_AFTER_CREATE_SECONDS = 120;
-
-/** Not a failure — somebody else's step must finish first. Retried on the same schedule. */
-class RetryLater extends Error {}
-
-/** "Created a deal for X" — once per conversation, whichever read finished the creation. */
-async function sayCreated(thread, deps, made, stages) {
-  if (made?.status !== 'created') return;
-  await notice(thread, deps, 'created', msg.createdLine({
-    dealId: made.deal.id,
-    dealTitle: made.deal.title,
-    dealUrl: await dealUrl(made.deal.id),
-    stageName: stages.find((s) => s.id === made.deal.stageId)?.name || made.deal.stageId,
-    contactReused: made.contactReused,
-  }), made.driverName);
-}
-
-/**
- * No open deal was found. Create one when the candidate is certain, and say
- * so; otherwise leave the reason for the "please create it" request.
- * @returns {Promise<{deal?: object, created?: boolean, outcome?: object}>}
- * @throws {RetryLater} another conversation is creating the same driver
- */
-async function whenNoDeal(thread, ctx, { identity, categoryId, stages }, deps, opts) {
-  const asked = await proposals.listForRoot(thread.chatId, thread.rootMessageId);
-  const skipped = asked.find((p) => p.kind === 'create_deal' && p.status === 'declined');
-  // "Skip" means never — not even by the bot itself.
-  if (skipped) return { outcome: { result: 'already_asked', proposalId: skipped.id } };
-  if (!identity.ok) {
-    ctx.note = identity.note;
-    return {};
-  }
-  const made = await ensureCandidateDeal({
-    chatId: thread.chatId, rootMessageId: thread.rootMessageId, identity, categoryId, stages,
-  }, opts);
-  if (made.status === 'busy') throw new RetryLater('another conversation is creating this driver in Bitrix');
-  if (made.status === 'closed') return { outcome: { result: 'created_deal_closed', dealId: made.dealId } };
-  if (made.status === 'blocked') {
-    ctx.note = made.reason;
-    return {};
-  }
-  await sayCreated(thread, deps, { ...made, driverName: identity.name, phone: identity.phone }, stages);
-  return { deal: made.deal, created: made.status === 'created' };
-}
 
 async function readAndPropose(thread, deps, seen) {
   const { settings } = deps;
@@ -154,7 +112,11 @@ async function readAndPropose(thread, deps, seen) {
   });
   if (!verified.move) return done(thread, { result: verified.reason, model: answer.model });
 
-  const identity = candidateIdentity({ postText, phones, modelName: verified.driverName });
+  const who = { rootMessageId: thread.rootMessageId, safetyUserIds: settings.safetyUserIds };
+  // The spelling written to Bitrix comes from Safety's own words, by rules — never the model's.
+  const identity = candidateIdentity({
+    postText, phones, modelName: verified.driverName, safetyTexts: conversation.safetyTexts(messages, who),
+  });
   // ONE NAME: the post's, when it has one certain name; the model's only otherwise.
   const name = identity.name || verified.driverName || null;
   if (name) seen.driverName = name;
@@ -170,7 +132,10 @@ async function readAndPropose(thread, deps, seen) {
   let deal = lookup.deal || null;
   if (!deal) {
     if (!name && !phones.length) return done(thread, { result: 'no_identity' });
-    const missing = await whenNoDeal(thread, ctx, { identity, categoryId, stages }, deps, opts);
+    const rejected = verified.stage.semantics === 'F' || conversation.safetyRejected(messages, who);
+    const missing = await whenNoDeal(thread, ctx, {
+      identity, categoryId, stages, rejected,
+    }, deps, opts);
     if (missing.outcome) return done(thread, missing.outcome);
     if (missing.created) {
       // A new deal starts at "Sent to Safety", and Bitrix's own automation may
@@ -182,6 +147,7 @@ async function readAndPropose(thread, deps, seen) {
     deal = missing.deal || null;
   }
   if (deal) {
+    await offerRename(thread, deps, { deal, displayName: identity.ok ? identity.displayName : null, driverName: name });
     const plan = await planForDeal(deal, verified.stage, { stages, categoryId }, opts);
     if (!plan.ok) return done(thread, { result: plan.reason, dealId: deal.id });
     Object.assign(ctx, { deal, plan });

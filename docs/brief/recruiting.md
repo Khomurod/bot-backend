@@ -229,11 +229,24 @@ the same treatment home time got, and for the same reason.
   creation is claimed in the database and each step recorded before its
   Bitrix call, so a retry, a timeout or the same driver posted twice never
   makes a second record (`hiring_stage_crm_records`).
+- **Hiring deal names** (owner, 13–14 November 2026). A created deal and
+  contact are named in **Safety's spelling and order**, read by rules from
+  what Safety typed (never a model): "Goowin Leah Ann" posted + "LEAH GOODWIN
+  APPROVED" → "Leah Ann Goodwin"; with no Safety match, the post's line as
+  before. The deal is still FOUND by the post's words. A conversation that
+  already has a deal — open or closed — **never creates another** and never
+  asks for one (a closed one is one line on the card); a **rejected**
+  candidate (Safety's `#NotApproved`, or a lost stage) with no deal gets
+  nothing created. A deal titled **"No name"** (or empty, or digits) in a
+  hiring pipeline — never the Board's DRIVER RELATION pipeline — is offered
+  `✏️ Name in Bitrix: “No name” → “…”?` [✏️ Rename] [Keep as is]; only a press
+  writes the TITLE (re-read first, refused if renamed meanwhile) and a
+  placeholder contact's NAME / LAST_NAME — never a real name.
 - A model picks the stage by meaning; `lib/hiringStages/proposal.js` keeps only
   a stage of that pipeline, forward of where the deal is (or a lost stage),
   quoting words somebody wrote. SSNs, birth dates, licence numbers and phones
   are removed before the text is sent; no photo is.
 - Off by default (Settings → Safety Approvals → 5, needs Safety Approvals on
-  and a saved, tested Bitrix topic). Proposals, creation records and notices
-  are deleted after 60 days. See
+  and a saved, tested Bitrix topic). Proposals, creation records, notices and
+  rename offers are deleted after 60 days. See
   [`docs/architecture/hiring-stage-proposals.md`](../architecture/hiring-stage-proposals.md).
