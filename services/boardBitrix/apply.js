@@ -10,7 +10,9 @@
  * moved since — somebody fixed it by hand, or changed it another way — the
  * action is refused and nothing is written. Already as asked: nothing is
  * written either. Then exactly one write: `crm.deal.update` with the one field
- * the action names, or `crm.item.update` with a truck's stage.
+ * the action names. A truck item is never written (the owner, 13 November
+ * 2026: the Trucks process is not the bot's to touch); a button saved under
+ * an older question that would have moved a truck is refused as unknown.
  *
  * The field ids, pipeline and truck process come from the VALIDATED schema
  * mapping (Settings → Dispatcher Board); without one nothing is written —
@@ -112,20 +114,6 @@ const HANDLERS = {
     }
     return (await updateDeal(deps, p.dealId, { [field]: trucks[0].id }))
       ? { ok: true, done: `truck ${p.truckNumber} assigned` } : refuse('Bitrix did not confirm the change');
-  },
-
-  async truck_on_road(p, deps, schema) {
-    const stages = schema.activeTruckStageIds || [];
-    if (stages.length !== 1) return refuse('Bitrix has more than one "on the road" stage for trucks');
-    const got = await deps.call('crm.item.get', { entityTypeId: schema.truckEntityTypeId, id: Number(p.truckId) });
-    const item = got?.item;
-    if (!item) return refuse('the truck no longer exists in Bitrix');
-    if (item.stageId === stages[0]) return { ok: true, done: 'already on the road' };
-    if (p.fromStageId && item.stageId !== p.fromStageId) return refuse('the truck\'s stage was changed meanwhile');
-    const updated = await deps.call('crm.item.update', {
-      entityTypeId: schema.truckEntityTypeId, id: Number(p.truckId), fields: { stageId: stages[0] },
-    });
-    return updated?.item ? { ok: true, done: 'truck moved to "On the road"' } : refuse('Bitrix did not confirm the change');
   },
 };
 

@@ -213,3 +213,14 @@ test('APPLY re-reads Bitrix: one field written; a moved deal or an unproven layo
   assert.equal((await applyAction(truck, t.deps)).ok, true);
   assert.deepEqual(t.writes[0].params.fields, { [SCHEMA.dealFields.truck]: 31 });
 });
+
+test('THE TRUCKS PROCESS IS NOT TOUCHED (owner, 13 November 2026): no truck button, and an old one writes nothing', async () => {
+  const pair = { board: { name: 'ERIC SPARKS', truck: '329', status: 'DISPATCHED', fleetType: 'company' }, deal: { id: 5969, title: 'ERIC SPARKS', truckId: 427 } };
+  assert.deepEqual(candidateActions({ kind: 'truck_inactive', ...pair, truck: { id: 427, stageId: 'DT1040_17:SHOP' } }, { schema: SCHEMA }), []);
+  const stored = { type: 'truck_on_road', label: 'Move truck 329 to "On the road"', params: { truckId: 427, fromStageId: 'DT1040_17:SHOP' } };
+  const b = bitrix({ ID: '5969', STAGE_ID: 'C3:UC_XZ955I' });
+  assert.deepEqual(await applyAction(stored, b.deps), { ok: false, why: 'this is not something the bot can do' });
+  assert.equal(b.writes.length, 0, 'a button saved under an older question moves no truck');
+  assert.equal(candidateActions({ kind: 'truck_missing', ...pair, deal: { ...pair.deal, truckId: null } }, { schema: SCHEMA })[0].type, 'set_truck',
+    'the "Assign truck" button stays: it writes the deal, not the truck');
+});
