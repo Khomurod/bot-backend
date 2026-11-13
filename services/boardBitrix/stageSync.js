@@ -50,6 +50,20 @@ function writeSafeIdentity(discrepancy) {
   );
 }
 
+/**
+ * A status time as epoch ms, to the MILLISECOND. The Board snapshot comes from
+ * PostgreSQL as a Date; `Date.parse(date)` would go through `String(date)`,
+ * which has no milliseconds — the plan then carried "…:09.000Z" while the row
+ * says "…:09.647", `confirmBoardStatus` never matched, and every live update
+ * from 11 November 2026 stopped itself with "the Dispatcher Board status
+ * changed after the comparison" (157 attempts on one deal).
+ */
+function timeMs(value) {
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === 'number') return value;
+  return Date.parse(value);
+}
+
 function actionKey(mode, item) {
   const event = item.statusChangedAt || 'no-event-time';
   const raw = `${mode}|${item.dealId}|${item.beforeStageId || ''}|${item.targetStageId}|${item.boardStatus}|${event}`;
@@ -73,7 +87,7 @@ function planStageUpdates(discrepancies, schema, {
     const rowKey = d.board?.rowKey || null;
     if (!dealId || !beforeStageId || !targetStageId || !boardStatus || seen.has(dealId)) continue;
     if (!Object.values(schema?.stageByRole || {}).includes(targetStageId)) continue;
-    const changedMs = Date.parse(statusChangedAt);
+    const changedMs = timeMs(statusChangedAt);
     if (!Number.isFinite(changedMs) || now - changedMs < confirmMinutes * 60000) {
       settling += 1;
       continue;
@@ -222,5 +236,7 @@ async function runStageSync({
 
 module.exports = {
   CONFIRM_MINUTES, MAX_ALLOWED_UPDATES, actionKey, writeSafeIdentity, planStageUpdates,
-  runStageSync, defaultDeps, __test: { categoryOf, stageOf, closed, liveStillEnabled },
+  runStageSync, defaultDeps, __test: {
+    categoryOf, stageOf, closed, liveStillEnabled, timeMs,
+  },
 };

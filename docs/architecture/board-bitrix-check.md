@@ -178,12 +178,20 @@ driver's fleet plus that number.
   `status_changed_at`) and `crm.deal.get`; it refuses when the Board changed,
   the deal moved, changed pipeline or closed. It also re-reads the live kill
   switch immediately before the mutation, then verifies the target stage with
-  another `crm.deal.get`.
+  another `crm.deal.get`. **The event time is compared to the millisecond**,
+  so the plan must keep the milliseconds of the Date the snapshot hands it
+  (`timeMs` in `stageSync.js`): from 11 to 13 November 2026 it went through
+  `Date.parse(date)`, lost them, never matched the row, and every live update
+  stopped itself with "the Dispatcher Board status changed after the
+  comparison" — nothing was ever written (`tests/boardBitrixPg.test.js` plans
+  from a real row now).
 - **No mass update and no duplicate update.** More candidates than the
   configured per-pass limit (1–25, default 10) blocks the whole pass. A durable
   database claim makes each Board event/deal transition idempotent across
   processes; applied transitions are terminal and every planned/applied/failed
-  action is audited. If a robot later reverses an applied stage, Wenze asks a
+  action is audited. A failed one is tried again on later passes at most
+  `MAX_STAGE_SYNC_ATTEMPTS` (5) times in all, then left as a question for a
+  person (it used to be retried on every pass — 157 times for one deal). If a robot later reverses an applied stage, Wenze asks a
   person instead of looping forever.
 - **Nothing is decided from an incomplete read.** The pass stops before the
   queue is touched when the check or the Board feed is off (`blocked`), Bitrix

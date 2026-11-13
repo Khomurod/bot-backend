@@ -485,3 +485,11 @@ test('live sync re-reads its kill switch immediately before the Bitrix mutation'
   assert.equal(out.failed, 1);
   assert.match(out.errors[0], /switched off/);
 });
+
+test('a status time handed over as a Date keeps its milliseconds (the 11 November 2026 bug)', () => {
+  const changedAt = new Date(NOW - 60 * 60000 + 647);
+  const plan = planStageUpdates([mismatch({ board: { ...mismatch().board, statusChangedAt: changedAt } })], schema, { now: NOW });
+  assert.equal(plan.candidates.length, 1);
+  assert.equal(plan.candidates[0].statusChangedAt, changedAt.toISOString(), 'not rounded down to the second');
+  assert.match(plan.candidates[0].statusChangedAt, /\.\d{3}Z$/);
+});

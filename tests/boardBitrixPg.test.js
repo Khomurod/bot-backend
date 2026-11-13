@@ -134,6 +134,46 @@ test('the pre-write Board check accepts only the same still-present status event
   assert.equal(await store.confirmBoardStatus(event), false);
 });
 
+test('THE 11 NOVEMBER BUG: a plan made from the snapshot as PostgreSQL returns it (a Date) still confirms the Board row', { skip: skipWithoutPg() }, async (t) => {
+  const { h, store } = await setup(t);
+  const { planStageUpdates } = require('../services/boardBitrix/stageSync');
+  const dispatchBoard = require('../database/dispatchBoard');
+  await h.query(
+    `INSERT INTO dispatch_board_rows
+       (row_key, driver_name_raw, driver_name_clean, fleet_type, truck_raw,
+        truck_norm, status, status_changed_at, present)
+     VALUES ('001|alan brown', 'ALAN BROWN', 'ALAN BROWN', 'owner_operator',
+             '001', '001', 'HOME', '2026-11-09T18:00:00.647924Z', TRUE)`
+  );
+  const row = (await h.query(`SELECT * FROM dispatch_board_rows WHERE row_key = '001|alan brown'`)).rows[0];
+  const changedAt = dispatchBoard.mapRow ? dispatchBoard.mapRow(row).statusChangedAt : row.status_changed_at;
+  assert.ok(changedAt instanceof Date, 'the snapshot hands the comparison a Date, not a string');
+  const plan = planStageUpdates([{
+    kind: 'status_differs', key: 'status_differs:deal:321', expectedStageId: 'C9:H',
+    board: { name: 'ALAN BROWN', status: 'HOME', statusChangedAt: changedAt, rowKey: '001|alan brown', fleetType: 'owner_operator', truck: '001' },
+    deal: { id: 321, title: 'ALAN BROWN', stageId: 'C9:W', fleetType: 'owner_operator', truckNumber: '001' },
+  }], { stageByRole: { HOME: 'C9:H' } }, { now: Date.parse('2026-11-09T19:00:00Z') });
+  assert.equal(plan.candidates.length, 1);
+  assert.equal(plan.candidates[0].statusChangedAt, '2026-11-09T18:00:00.647Z', 'milliseconds kept');
+  assert.equal(await store.confirmBoardStatus(plan.candidates[0]), true);
+});
+
+test('a failed stage update is retried a few times, then left for a person', { skip: skipWithoutPg() }, async (t) => {
+  const { store } = await setup(t);
+  const action = {
+    actionKey: 'stage:test:retry', dealId: 322, boardStatus: 'HOME',
+    beforeStageId: 'C9:W', targetStageId: 'C9:H', schemaFingerprint: 'schema-9',
+  };
+  for (let attempt = 1; attempt <= store.MAX_STAGE_SYNC_ATTEMPTS; attempt += 1) {
+    // eslint-disable-next-line no-await-in-loop
+    const claim = await store.claimStageSync(action);
+    assert.ok(claim, `attempt ${attempt} is claimed`);
+    // eslint-disable-next-line no-await-in-loop
+    await store.finishStageSync(claim, 'failed', 'Bitrix said no');
+  }
+  assert.equal(await store.claimStageSync(action), null, 'no sixth attempt');
+});
+
 test('a pass opens what is new, keeps what is still there, resolves what is gone — and a comeback reopens the same row', { skip: skipWithoutPg() }, async (t) => {
   const { h, store } = await setup(t);
   let out = await store.applyPass([found('not_on_board:deal:1'), found('fleet_missing:deal:2', 60)]);
