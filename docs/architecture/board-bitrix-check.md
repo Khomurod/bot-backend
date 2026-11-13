@@ -261,8 +261,7 @@ driver's fleet plus that number.
   Board being the truth): move the deal to the stage the Board's status maps
   to, close a deal not on the Board (its pipeline's closing stages, by their
   Bitrix names — TERMINATED / LEFT / RESIGNED), rename the deal to the Board's
-  name, set its driver type, point it at the Board's truck, or move a truck to
-  "On the road". A model (`board_bitrix_advice`, `services/boardBitrix/
+  name, set its driver type, or point it at the Board's truck. A model (`board_bitrix_advice`, `services/boardBitrix/
   advice.js`) **sees everything about the question** — the difference, the
   Board lines on the same truck or with a similar name, the deal (owner, 11
   November 2026) — writes the recommendation and CHOOSES which fixes get a
@@ -272,11 +271,10 @@ driver's fleet plus that number.
   showed; a reminder keeps it, a question asked again is advised again.
 - **A tap writes only after Bitrix is read again** (`services/boardBitrix/
   apply.js`): each fix carries where Bitrix stood when it was offered, and a
-  deal or truck changed meanwhile is refused ("changed meanwhile") with
-  nothing written. One write per tap — `crm.deal.update` with that one field
-  (`STAGE_ID`, `TITLE`, the driver-type or truck field) or `crm.item.update`
-  with a truck's stage — and only with a **validated** schema (never the
-  static fallback). Then the same re-check as "done". The owner allowed these
+  deal changed meanwhile is refused ("changed meanwhile") with nothing
+  written. One write per tap — `crm.deal.update` with that one field
+  (`STAGE_ID`, `TITLE`, the driver-type or "Assigned truck" field) — and only
+  with a **validated** schema (never the static fallback). Then the same re-check as "done". The owner allowed these
   writes on 11 November 2026 ("if it is something I do not want, I answer
   skip"); the guarded automatic status sync below is unchanged.
 - **The questions carry no `question_json`**, so the control channel's buttons,
@@ -321,10 +319,19 @@ fleet, then one truck with two different names — and compares each pair.
 | `duplicate_deals` | one Board driver, more than one active deal |
 | `two_names_in_deal` | one deal titled with two drivers ("Prince/Otis") |
 | `truck_differs` / `truck_missing` | the deal's assigned truck is another number / none |
-| `truck_inactive` | the assigned truck is not on the road (not asked for a driver on VACATION) |
-| `truck_without_driver` | an active truck no active deal points at |
 | `status_differs` | the deal's stage is not the one the Board's status maps to |
 | `fleet_differs` / `fleet_missing` | the deal's driver type differs / is empty |
+
+**The Trucks process is not asked about and never written** (the owner, 13
+November 2026: "let it not touch that part of Bitrix at all"). A truck item is
+read only for its number — which truck a driver's deal points at, the
+strongest evidence of who is who. Until then the check also asked "truck not
+on the road" (`truck_inactive`) and "truck on the road with no driver"
+(`truck_without_driver`) and offered a button that moved a truck to "On the
+road"; the Trucks pipeline has since become the people's own (shop,
+inspection, documents, set-up — stages this check does not know), so a truck
+in the shop read as "not on the road". The "Assign truck" button stays: it
+writes the DEAL's "Assigned truck" field, not the truck (the owner).
 
 A Board line naming nobody yet ("OPEN", "AVAILABLE", …) is not a driver. A
 Board status Wenze does not know is never compared.

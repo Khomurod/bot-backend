@@ -90,12 +90,12 @@ test('the November Board statuses COVERED and HOLD FOR LOAD are WORKING in Bitri
   }
 });
 
-test('driver type empty in Bitrix, no truck assigned, the truck not on the road', () => {
+test('driver type empty in Bitrix, no truck assigned; a truck\'s own stage is never asked about', () => {
   assert.deepEqual(kinds(run([row()], [deal({ fleetType: null })], [truck()])), ['fleet_missing:deal:321']);
-  assert.deepEqual(kinds(run([row()], [deal({ truckId: null })], [truck()])).sort(), ['truck_missing:deal:321', 'truck_without_driver:truck:3']);
-  assert.deepEqual(kinds(run([row()], [deal()], [truck({ stageId: 'DT1040_17:FAIL' })])), ['truck_inactive:truck:3']);
-  assert.deepEqual(kinds(run([row({ status: 'VACATION' })], [deal({ stageId: 'C3:UC_XVD661' })], [truck({ stageId: 'DT1040_17:FAIL' })])), [],
-    'a driver on vacation may have handed the truck back');
+  assert.deepEqual(kinds(run([row()], [deal({ truckId: null })], [truck()])), ['truck_missing:deal:321'],
+    'the deal has no truck; the unused truck item is not a question');
+  assert.deepEqual(kinds(run([row()], [deal()], [truck({ stageId: 'DT1040_17:FAIL' })])), [],
+    'the Trucks process is not the check\'s to touch (owner, 13 November 2026): a truck in the shop is no question');
 });
 
 test('on the Board only: closed in Bitrix (newest closed deal named), or no deal at all', () => {
@@ -150,9 +150,9 @@ test('two active deals for one driver, and a deal titled with two people', () =>
   assert.deepEqual(kinds(two), ['two_names_in_deal:deal:4765'], 'the people it names are not also "missing"');
 });
 
-test('an active truck no active deal points at; a placeholder Board line is nobody', () => {
+test('a placeholder Board line is nobody, and a truck no deal points at is no question', () => {
   const out = run([row({ cleanName: 'OPEN', truckNorm: '330' })], [], [truck({ id: 429, title: 'Truck# 330' })]);
-  assert.deepEqual(kinds(out), ['truck_without_driver:truck:429']);
+  assert.deepEqual(kinds(out), []);
 });
 
 test('keys name the subject, never the values: a question whose details change stays one question', () => {
