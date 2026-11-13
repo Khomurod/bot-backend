@@ -11,7 +11,8 @@
  *     never written at the press;
  *   - a person who typed the same name is "renamed meanwhile", not the bot;
  *   - a title written before the contact failed is said, and never written twice;
- *   - offered whatever the stage read says, and with two phones;
+ *   - offered whatever the stage read says, but never with two phones (the
+ *     deal found may be another person's number);
  *   - a deleted known deal neither blocks the read nor a creation.
  *
  * Names and numbers are made up, apart from the examples the owner quoted.
@@ -113,7 +114,7 @@ test('a deal DELETED after the offer: the press says so and writes nothing', asy
   assert.equal(calls('crm.deal.update'), 0);
 });
 
-test('OFFERED WHATEVER THE READ SAYS: no stage move, or two phones (no creation would be certain)', async () => {
+test('OFFERED WHATEVER THE READ SAYS (no stage move) — but NEVER with two phones in the conversation', async () => {
   placeholderDeal();
   state.aiAnswer = {
     move: false, stage_id: null, driver_name: null, evidence: '',
@@ -124,11 +125,14 @@ test('OFFERED WHATEVER THE READ SAYS: no stage move, or two phones (no creation 
   assert.match(state.sent.at(-1).text, /✏️ Name in Bitrix: “No name” → “Leah Ann Goodwin”\?/);
   assert.equal(calls('crm.deal.update'), 0, 'offered, not written');
 
+  h.reset();
   placeholderDeal({ post: 'Company Driver - 99 CPM\nGOOWIN LEAH ANN\n(555) 201-3344\n(555) 201-7788' });
+  state.aiAnswer = {
+    move: false, stage_id: null, driver_name: null, evidence: '',
+  };
   await run();
-  assert.equal(state.renames.length, 1);
-  assert.equal(state.renames[0].toName, 'Leah Ann Goodwin');
-  assert.equal(state.renames[0].dealId, 41);
+  assert.equal(state.renames.length, 0, 'the deal found may be the second number\'s owner: no name offered');
+  assert.equal(calls('crm.deal.update'), 0);
 });
 
 test('a KNOWN DEAL DELETED in Bitrix neither ends the read in an error nor blocks a creation', async () => {

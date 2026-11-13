@@ -192,9 +192,11 @@ to make one.
     and two spaces), or digits only — and is in a hiring pipeline (never
     pipeline 3 "DRIVER RELATION", whose titles the Board ↔ Bitrix check owns,
     nor 33 "HOMETIME MONITORING"), and the post has ONE certain driver's name
-    (`lib/hiringStages/identity.js` `certainDisplayName` — no phone count and
-    no model needed; a deal found by phone is offered right after the read,
-    whatever the read says), the card offers `✏️ Name in Bitrix: “No name” → “<display name>”?` with
+    (`lib/hiringStages/identity.js` `certainDisplayName` — no model needed;
+    a deal found by phone is offered right after the read, whatever the read
+    says) and the conversation has exactly ONE phone (with two, the deal found
+    may be the other number's owner, and a "No name" deal must not take this
+    driver's name), the card offers `✏️ Name in Bitrix: “No name” → “<display name>”?` with
     **[✏️ Rename] [Keep as is]** — once per conversation and deal, under the
     stage question and kept while it changes (the card's "aside", edited in
     place). Anyone the Move button allows may press; the press is claimed once
@@ -328,7 +330,7 @@ rejection, the rename offered and pressed, renamed meanwhile, a real contact
 name, Keep as is, the Board's pipeline), `tests/hiringStageRenamePress.test.js`
 (an empty title, a deal moved into pipeline 3 or closed after the offer, the
 same name typed by a person, the title written before the contact failed, a
-deleted deal, offered with no move and with two phones, a deleted known deal),
+deleted deal, offered with no move but never with two phones, a deleted known deal),
 `tests/hiringStageRenamesPg.test.js`
 (migration 0104),
 `tests/hiringStageQueue.test.js`, `tests/hiringStageStorePg.test.js`,

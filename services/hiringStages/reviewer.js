@@ -119,8 +119,10 @@ async function readAndPropose(thread, deps, seen) {
   const offered = new Set();
   // A placeholder title ("No name") on the deal this card is about is offered
   // a name whatever the stage read says — and only once per deal per read.
+  // Only with ONE phone in the conversation: with two, the deal found may be
+  // another person's number, and a "No name" deal must not take this name.
   const offerFor = async (deal, driverName) => {
-    if (!deal || offered.has(deal.id)) return;
+    if (!deal || offered.has(deal.id) || phones.length !== 1) return;
     offered.add(deal.id);
     await offerRename(thread, deps, { deal, displayName: certainDisplayName({ postText, safetyTexts }), driverName });
   };
