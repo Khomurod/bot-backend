@@ -34,20 +34,37 @@ function defaultDeps() {
   return {
     call: require('../bitrix24DealStages').callBitrix,
     settings: () => require('../../database/boardBitrix').getSettings(),
+    logAttempt: (attempt) => require('../activityLog/record').recordAttempt(attempt),
   };
   /* eslint-enable global-require */
 }
 
 const refuse = (why) => ({ ok: false, why });
+/** The write was sent and Bitrix did not say yes — the client has already recorded it. */
+const UNCONFIRMED = Object.freeze({ ok: false, why: 'Bitrix did not confirm the change', recorded: true });
 
 async function readDeal(deps, id) {
   const deal = await deps.call('crm.deal.get', { id: Number(id) });
   return deal && deal.ID ? deal : null;
 }
 
-async function updateDeal(deps, id, fields) {
-  const ok = await deps.call('crm.deal.update', { id: Number(id), fields, params: { REGISTER_SONET_EVENT: 'Y' } });
+/**
+ * THE WRITE, recorded by the client with who pressed and what changed
+ * (Monitoring → Logs). `audit` is the press's context plus this fix's
+ * from → to and the deal's title as it was read.
+ */
+async function updateDeal(deps, id, fields, audit) {
+  const ok = await deps.call('crm.deal.update', { id: Number(id), fields, params: { REGISTER_SONET_EVENT: 'Y' } }, { audit });
   return ok === true;
+}
+
+/** The press's context for one fix: what it changes, on which deal. */
+function auditFor(base, deal, change) {
+  return {
+    ...(base || {}),
+    targetLabel: deal?.TITLE || null,
+    change,
+  };
 }
 
 async function trucksNumbered(deps, schema, number) {
@@ -72,37 +89,40 @@ async function trucksNumbered(deps, schema, number) {
 }
 
 const HANDLERS = {
-  async set_stage(p, deps) {
+  async set_stage(p, deps, schema, audit) {
     const deal = await readDeal(deps, p.dealId);
     if (!deal) return refuse('the deal no longer exists in Bitrix');
-    if (deal.STAGE_ID === p.stageId) return { ok: true, done: `already at ${p.stageName}` };
+    if (deal.STAGE_ID === p.stageId) return { ok: true, done: `already at ${p.stageName}`, already: true };
     if (p.fromStageId && deal.STAGE_ID !== p.fromStageId) return refuse('the deal\'s stage was changed meanwhile');
-    return (await updateDeal(deps, p.dealId, { STAGE_ID: p.stageId }))
-      ? { ok: true, done: `moved to ${p.stageName}` } : refuse('Bitrix did not confirm the change');
+    const change = [{ field: 'STAGE_ID', from: deal.STAGE_ID, to: p.stageName ? `${p.stageName} (${p.stageId})` : p.stageId }];
+    return (await updateDeal(deps, p.dealId, { STAGE_ID: p.stageId }, auditFor(audit, deal, change)))
+      ? { ok: true, done: `moved to ${p.stageName}` } : UNCONFIRMED;
   },
 
-  async set_title(p, deps) {
+  async set_title(p, deps, schema, audit) {
     const deal = await readDeal(deps, p.dealId);
     if (!deal) return refuse('the deal no longer exists in Bitrix');
-    if (tidyName(deal.TITLE) === tidyName(p.title)) return { ok: true, done: 'already has that name' };
+    if (tidyName(deal.TITLE) === tidyName(p.title)) return { ok: true, done: 'already has that name', already: true };
     if (tidyName(deal.TITLE) !== tidyName(p.fromTitle)) return refuse('the deal was renamed meanwhile');
-    return (await updateDeal(deps, p.dealId, { TITLE: p.title }))
-      ? { ok: true, done: `renamed to "${p.title}"` } : refuse('Bitrix did not confirm the change');
+    const change = [{ field: 'TITLE', from: deal.TITLE, to: p.title }];
+    return (await updateDeal(deps, p.dealId, { TITLE: p.title }, auditFor(audit, deal, change)))
+      ? { ok: true, done: `renamed to "${p.title}"` } : UNCONFIRMED;
   },
 
-  async set_driver_type(p, deps, schema) {
+  async set_driver_type(p, deps, schema, audit) {
     const field = schema.dealFields?.driverType;
     const deal = await readDeal(deps, p.dealId);
     if (!deal) return refuse('the deal no longer exists in Bitrix');
     const raw = Array.isArray(deal[field]) ? deal[field][0] : deal[field];
     const now = schema.fleetByDriverType?.[String(raw ?? '').trim()] || null;
-    if (now === p.fleet) return { ok: true, done: 'already that driver type' };
+    if (now === p.fleet) return { ok: true, done: 'already that driver type', already: true };
     if ((now || null) !== (p.fromFleet || null)) return refuse('the driver type was changed meanwhile');
-    return (await updateDeal(deps, p.dealId, { [field]: p.value }))
-      ? { ok: true, done: 'driver type set' } : refuse('Bitrix did not confirm the change');
+    const change = [{ field: 'Driver type', from: now, to: p.fleet }];
+    return (await updateDeal(deps, p.dealId, { [field]: p.value }, auditFor(audit, deal, change)))
+      ? { ok: true, done: 'driver type set' } : UNCONFIRMED;
   },
 
-  async set_truck(p, deps, schema) {
+  async set_truck(p, deps, schema, audit) {
     const field = schema.dealFields?.truck;
     const deal = await readDeal(deps, p.dealId);
     if (!deal) return refuse('the deal no longer exists in Bitrix');
@@ -112,12 +132,23 @@ const HANDLERS = {
     if (trucks.length !== 1) {
       return refuse(trucks.length ? `${trucks.length} trucks in Bitrix are numbered ${p.truckNumber}` : `no truck numbered ${p.truckNumber} in Bitrix`);
     }
-    return (await updateDeal(deps, p.dealId, { [field]: trucks[0].id }))
-      ? { ok: true, done: `truck ${p.truckNumber} assigned` } : refuse('Bitrix did not confirm the change');
+    const change = [{ field: 'Assigned truck', from: now, to: `truck ${p.truckNumber} (item ${trucks[0].id})` }];
+    return (await updateDeal(deps, p.dealId, { [field]: trucks[0].id }, auditFor(audit, deal, change)))
+      ? { ok: true, done: `truck ${p.truckNumber} assigned` } : UNCONFIRMED;
   },
 };
 
-async function applyAction(action, deps = defaultDeps()) {
+const ACTION_OF = Object.freeze({
+  set_stage: 'deal.stage', set_title: 'deal.title', set_driver_type: 'deal.fields', set_truck: 'deal.fields',
+});
+
+/**
+ * @param {object} action  a fix stored with the question's advice
+ * @param {object} [deps]
+ * @param {object} [audit]  who pressed or replied and why (Monitoring → Logs):
+ *   `{actorKind, actorTelegramId, actorName, trigger, reason, evidence}`
+ */
+async function applyAction(action, deps = defaultDeps(), audit = null) {
   const handler = HANDLERS[action?.type];
   if (!handler) return refuse('this is not something the bot can do');
   const settings = await deps.settings();
@@ -125,7 +156,20 @@ async function applyAction(action, deps = defaultDeps()) {
   if (!schema?.dealFields || !schema?.truckEntityTypeId || !activeSchemaSource(settings.schemaSource)) {
     return refuse('the Bitrix layout is not proven yet (Settings → Dispatcher Board) — please change it by hand');
   }
-  return handler(action.params || {}, deps, schema);
+  const out = await handler(action.params || {}, deps, schema, audit);
+  // A refusal or an "already so" wrote nothing — but it was a person's
+  // attempt, and the timeline shows every attempt. A write is recorded by
+  // the client itself.
+  if ((!out.ok || out.already) && !out.recorded && typeof deps.logAttempt === 'function') {
+    await deps.logAttempt({
+      action: ACTION_OF[action.type] || 'deal.fields',
+      targetId: action.params?.dealId ?? null,
+      audit,
+      result: out.ok ? 'already_done' : 'refused',
+      error: out.ok ? null : out.why,
+    });
+  }
+  return out;
 }
 
 module.exports = { applyAction, HANDLERS };

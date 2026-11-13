@@ -201,6 +201,12 @@ not `facebookCrypto` — the poller holds none of this app's secrets.
 
 ### Other relationships worth knowing before you change something
 
+- **Every Bitrix write → `activity_log`** (migration 0105). The two Bitrix
+  clients write one row per write and the status sync one per attempt; nothing
+  else writes it, the only UPDATE is retention's 60-day name scrub and the only
+  DELETE its year. A row's `target_id` is a Bitrix id, not a foreign key — the
+  record may have been deleted in Bitrix. `docs/architecture/activity-log.md`.
+
 - **Home time → road bonus.** A road→home transition writes
   `driver_road_history` with the bonus RECORDED and `bonus_decision =
   'waiting_home_stay'`; the summary is posted only after the home stay, by

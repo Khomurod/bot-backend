@@ -36,7 +36,7 @@ function LastRun({ run }) {
       <Row label="Last check" value={run.finishedAt ? new Date(run.finishedAt).toLocaleString() : "running"} />
       <Row label="Result" value={run.status || "—"} tone={STATUS_TONE[run.status]} />
       {run.error && <div style={{ fontSize: 12, color: "var(--warning)", margin: "4px 0" }}>{run.error}</div>}
-      {run.status === "ok" && (
+      {(run.status === "ok" || run.compared) && (
         <>
           <Row label="Drivers on the Board" value={run.boardDrivers} />
           <Row label="Active drivers in Bitrix" value={run.activeDeals} />

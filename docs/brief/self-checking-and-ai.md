@@ -329,6 +329,18 @@ feature it belongs to.
     subject afterwards (`services/decisions/verifyPass.js`).
   - Guarded by `admin/src/pages/operations/{labels,OperationsPage}.test.jsx`.
 
+### Monitoring → Logs: who changed what in Bitrix, and why (November 2026)
+
+The owner saw changes in Bitrix and could not tell who made them. Every Bitrix
+write — a Board ↔ Bitrix fix, the status sync, hiring Move / Rename / creation,
+the home-time card move, the Facebook lead — is recorded by the Bitrix CLIENT
+after it was sent (never unseen, never blocked by the log), with the person's
+Telegram id or "automatic" and the feature, the fields from → to, one plain
+reason and the ids as evidence; refused and failed attempts are entries too.
+Super administrators only, read-only, newest first. Three failures in a row for
+one feature send the owner ONE `system_errors` notice. Names go after 60 days,
+rows after a year. `docs/architecture/activity-log.md`.
+
 ### Answering Wenze in Telegram
 
 - **A finding can now be answered from the notifications group.** Wenze asks one

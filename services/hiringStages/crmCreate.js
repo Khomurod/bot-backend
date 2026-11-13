@@ -72,6 +72,32 @@ async function block(record, reason) {
   return { status: 'blocked', reason };
 }
 
+/**
+ * Why the bot created a record, for Monitoring → Logs: automatic, from the
+ * recruiting group's conversation (its chat and post are the evidence). The
+ * name is the label and the title's `to` — both taken out after 60 days. No
+ * phone: the contact's number is never shown.
+ */
+function createAudit(record, what, name, deal = null) {
+  return {
+    actorKind: 'automatic',
+    trigger: 'hiring_stage.create',
+    reason: what === 'deal'
+      ? 'The recruiting group\'s conversation identified the candidate for certain and Bitrix had no open deal.'
+      : 'The recruiting group\'s conversation identified the candidate for certain and Bitrix had no contact for them.',
+    evidence: {
+      chatId: record.chatId, rootMessageId: record.rootMessageId, crmRecordId: record.id,
+      ...(deal ? { contactId: deal.contactId } : {}),
+    },
+    targetLabel: name || null,
+    change: deal
+      ? [{ field: 'TITLE', from: null, to: name }, { field: 'STAGE_ID', from: null, to: `${deal.stage.name} (${deal.stage.id})` },
+        { field: 'CATEGORY_ID', from: null, to: String(deal.categoryId) }]
+      : [{ field: 'NAME', from: null, to: name }],
+    correlationKey: `hiring_create:${record.id}`,
+  };
+}
+
 /** The contact to put the deal on: `{contactId, reused}`, or `{blocked}`. */
 async function resolveContact(record, identity, { origin, fields }, opts) {
   if (record.contactId) return { contactId: record.contactId, reused: record.contactReused };
@@ -96,7 +122,7 @@ async function resolveContact(record, identity, { origin, fields }, opts) {
   await records.advance(record.id, ['claimed', 'creating_contact'], 'creating_contact');
   const contactId = await bitrix.createContact({
     ...fields, first: identity.first, last: identity.last, phone: identity.phone,
-  }, opts);
+  }, { ...opts, audit: createAudit(record, 'contact', identity.displayName || identity.name) });
   return { contactId, reused: false };
 }
 
@@ -169,7 +195,7 @@ async function ensureCandidateDeal({
     }
     const dealId = await bitrix.createDeal({
       ...fields, title: written.displayName, categoryId, stageId: stage.id, contactId: contact.contactId,
-    }, opts);
+    }, { ...opts, audit: createAudit(record, 'deal', written.displayName, { stage, categoryId, contactId: contact.contactId }) });
     await records.advance(record.id, 'creating_deal', 'created', {
       dealId, dealReused: false, categoryId: String(categoryId), stageId: stage.id,
     });

@@ -126,6 +126,14 @@ permission can be granted to a lesser role by mistake, and here that would hand
 over every credential the deployment has. Every other account gets a 403 and
 the screen says so in words.
 
+### Monitoring → Logs is gated by ROLE too (November 2026)
+
+`GET /api/activity-log` — who changed what in Bitrix, and why — is
+`requireSuperAdmin`, like Settings → Secrets (the owner, 14 November 2026: only
+super administrators). The sidebar shows Logs to a session whose roles include
+`super_admin` and to nobody else; the server refuses everyone else with a 403.
+`docs/architecture/activity-log.md`.
+
 ### Non-JWT access paths (be careful changing these)
 
 | Path | Gate |

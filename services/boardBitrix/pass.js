@@ -160,6 +160,10 @@ async function runCheckPass({ deps = defaultDeps(), confirmId = null, ask = true
   const asked = ask ? await deps.askNext() : null;
   return {
     ...result.counts,
+    // The comparison ran — a re-check after "done" can trust it even when the
+    // status sync below reports an `error`.
+    compared: true,
+    ...syncFailure(sync),
     discrepancies: effectiveDiscrepancies.length,
     detectedDiscrepancies: result.counts.discrepancies,
     opened: applied.opened.length,
@@ -179,6 +183,24 @@ async function runCheckPass({ deps = defaultDeps(), confirmId = null, ask = true
   };
 }
 
+/**
+ * A pass whose status updates failed is NOT a clean run (docs/architecture/
+ * health-reporting.md: the pass decides whether its errors amount to a
+ * failure and says so in `error`, the field the run ledger reads). Until
+ * 14 November 2026 the sync's failures sat in `syncFailed` and the ledger
+ * recorded the pass as plain `ok`. No deal id or name in the sentence — the
+ * ledger's error is shown on the health screens; each attempt is in
+ * Monitoring → Logs.
+ */
+function syncFailure(sync) {
+  const failed = Number(sync?.failed || 0);
+  if (!failed) return {};
+  const tried = failed + Number(sync.applied || 0) + Number(sync.alreadyDone || 0);
+  return {
+    error: `${failed} of ${tried} Bitrix status update(s) failed or were refused this pass — see Monitoring → Logs`,
+  };
+}
+
 // ── never two at once ────────────────────────────────────────────────────────
 
 let chain = Promise.resolve();
@@ -190,4 +212,6 @@ function runExclusive(fn) {
   return next;
 }
 
-module.exports = { runCheckPass, runExclusive, boardProblem, defaultDeps };
+module.exports = {
+  runCheckPass, runExclusive, boardProblem, syncFailure, defaultDeps,
+};

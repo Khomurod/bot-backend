@@ -53,11 +53,38 @@ function stageFor(violations) {
 }
 
 /**
+ * Why the card moved, for Monitoring → Logs: automatic, Wenze's own verdict
+ * on this home stay (the violation rows and the driver's group are the
+ * evidence). The card's title is the label, taken out after 60 days.
+ */
+function cardAudit(stay, card, target, violations, context) {
+  return {
+    actorKind: 'automatic',
+    trigger: 'home_time.violation_card',
+    reason: `Wenze judged this home stay a home-time violation (${violations.join(' + ')}): `
+      + `${stay.homeDays} day(s) home${stay.roadDays != null ? ` after ${stay.roadDays} day(s) on the road` : ''}.`,
+    evidence: {
+      groupId: context.groupId ?? null,
+      violationIds: Array.isArray(context.violationIds) ? context.violationIds.join(',') : null,
+      homeFrom: stay.homeFrom,
+      rule: stay.rule || null,
+    },
+    targetLabel: card.title || null,
+    change: [
+      { field: 'STAGE_ID', from: card.stageId || null, to: target },
+      { field: 'Home from', from: null, to: stay.homeFrom },
+      { field: 'Days home', from: null, to: stay.homeDays },
+      ...(stay.roadDays != null ? [{ field: 'Days on the road', from: null, to: stay.roadDays }] : []),
+    ],
+  };
+}
+
+/**
  * Move the driver's pipeline-33 card to the stay's violation stage, with its
  * home-time fields. Never throws: the alert is what matters; the note says
  * what happened to the card.
  */
-async function moveCard(stay, driverName, allViolations, deps) {
+async function moveCard(stay, driverName, allViolations, deps, context = {}) {
   try {
     const word = searchWord(driverName);
     if (!word) return { note: 'no name to find the Bitrix card by' };
@@ -76,7 +103,9 @@ async function moveCard(stay, driverName, allViolations, deps) {
       [V.FIELDS.homeDays]: stay.homeDays,
       ...(stay.roadDays != null ? { [V.FIELDS.roadDays]: stay.roadDays } : {}),
     };
-    const ok = await deps.bitrix('crm.deal.update', { id: found.card.id, fields, params: { REGISTER_SONET_EVENT: 'Y' } });
+    const ok = await deps.bitrix('crm.deal.update', { id: found.card.id, fields, params: { REGISTER_SONET_EVENT: 'Y' } }, {
+      audit: cardAudit(stay, found.card, target, allViolations, context),
+    });
     return ok === true
       ? { dealId: found.card.id, note: `card moved to ${target}` }
       : { dealId: found.card.id, note: 'Bitrix did not confirm the card move' };
@@ -124,7 +153,9 @@ async function runOwnViolationPass({
       const sent = await postRows(inserted, { telegram, chatId, deps });
       summary.posted += sent.posted || 0;
       // eslint-disable-next-line no-await-in-loop
-      const card = await moveCard(stay, driverName, stay.violations, deps);
+      const card = await moveCard(stay, driverName, stay.violations, deps, {
+        groupId, violationIds: inserted.map((r) => r.id),
+      });
       if (card.dealId && /moved to/.test(card.note)) summary.cardsMoved += 1; else summary.cardsNotMoved += 1;
       // eslint-disable-next-line no-await-in-loop
       await deps.store.setBitrixNote(inserted.map((r) => r.id), card);

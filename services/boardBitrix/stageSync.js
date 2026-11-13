@@ -24,6 +24,8 @@ function defaultDeps() {
     finish: store.finishStageSync,
     confirmBoardStatus: store.confirmBoardStatus,
     isLiveEnabled: store.isLiveSyncEnabled,
+    attemptOf: store.stageSyncAttempt,
+    logAttempt: (attempt) => require('../activityLog/record').recordAttempt(attempt),
     now: () => Date.now(),
   };
   /* eslint-enable global-require */
@@ -106,6 +108,7 @@ function planStageUpdates(discrepancies, schema, {
       beforeStageId,
       targetStageId,
       schemaFingerprint: schema?.fingerprint || null,
+      dealTitle: d.deal?.title || null,
     });
   }
   const cap = Math.min(MAX_ALLOWED_UPDATES, Math.max(1, Number(maxUpdates) || 10));
@@ -130,6 +133,39 @@ function stageOf(deal) {
 
 function closed(deal) {
   return deal?.CLOSED === 'Y' || deal?.closed === true || deal?.STAGE_SEMANTIC_ID === 'F';
+}
+
+/**
+ * Why this write, for Monitoring → Logs: automatic, the Board's status and
+ * when it changed, the exact transition. Ids only — never the Board row's key
+ * (it names the person); the deal's title is the label (taken out after 60
+ * days). Every attempt of one transition shares `correlationKey`.
+ */
+function auditFor(item, key, attempt) {
+  return {
+    actorKind: 'automatic',
+    trigger: 'board_bitrix.sync',
+    reason: `The Dispatcher Board says ${item.boardStatus} since ${item.statusChangedAt}; `
+      + 'the live status sync moves the deal to the stage that status maps to.',
+    evidence: {
+      boardStatus: item.boardStatus,
+      boardStatusChangedAt: item.statusChangedAt,
+      actionKey: key,
+      schemaFingerprint: item.schemaFingerprint || null,
+    },
+    targetLabel: item.dealTitle || null,
+    change: [{ field: 'STAGE_ID', from: item.beforeStageId, to: item.targetStageId }],
+    correlationKey: key,
+    attempt: Number.isInteger(attempt) && attempt > 0 ? attempt : null,
+  };
+}
+
+/** One attempt that never reached Bitrix's write, in the same timeline. Never throws. */
+async function logAttempt(deps, item, audit, result, error = null) {
+  if (typeof deps.logAttempt !== 'function') return;
+  await Promise.resolve(deps.logAttempt({
+    action: 'deal.stage', targetId: item.dealId, audit, result, error,
+  })).catch(() => {});
 }
 
 async function liveStillEnabled(deps) {
@@ -169,6 +205,10 @@ async function runStageSync({
     }
 
     let claimId = null;
+    let audit = auditFor(item, key, null);
+    // 'before' until the write is sent, 'write' while it is (the client
+    // records that), 'after' for the verification read.
+    let phase = 'before';
     try {
       // The settings snapshot that started this pass is not permission forever:
       // an administrator may have pressed Off while the comparison was running.
@@ -180,6 +220,10 @@ async function runStageSync({
       // eslint-disable-next-line no-await-in-loop
       claimId = await deps.claim({ ...item, actionKey: key });
       if (!claimId) continue;
+      if (typeof deps.attemptOf === 'function') {
+        // eslint-disable-next-line no-await-in-loop
+        audit = auditFor(item, key, await Promise.resolve(deps.attemptOf(claimId)).catch(() => null));
+      }
       // Re-read after the database claim. A person or a Bitrix robot may have
       // moved the deal since the comparison; that is never overwritten.
       // eslint-disable-next-line no-await-in-loop
@@ -194,6 +238,8 @@ async function runStageSync({
       if (stageOf(before) === item.targetStageId) {
         // eslint-disable-next-line no-await-in-loop
         await deps.finish(claimId, 'already_done');
+        // eslint-disable-next-line no-await-in-loop
+        await logAttempt(deps, item, audit, 'already_done');
         summary.alreadyDone += 1;
         summary.resolvedKeys.push(item.discrepancyKey);
         continue;
@@ -207,13 +253,15 @@ async function runStageSync({
       if (!await liveStillEnabled(deps)) throw new Error('live sync was switched off before the Bitrix update');
 
       // The only mutation: STAGE_ID, with a Bitrix timeline event.
+      phase = 'write';
       // eslint-disable-next-line no-await-in-loop
       const updated = await deps.call('crm.deal.update', {
         id: item.dealId,
         fields: { STAGE_ID: item.targetStageId },
         params: { REGISTER_SONET_EVENT: 'Y' },
-      });
+      }, { audit });
       if (updated !== true) throw new Error('Bitrix did not confirm the stage update');
+      phase = 'after';
 
       // eslint-disable-next-line no-await-in-loop
       const after = await deps.call('crm.deal.get', { id: item.dealId });
@@ -225,6 +273,14 @@ async function runStageSync({
     } catch (err) {
       summary.failed += 1;
       summary.errors.push(`deal ${item.dealId}: ${String(err.message).slice(0, 160)}`);
+      // The client recorded the write itself; a guard's refusal before it, and
+      // a verification that failed after it, are recorded here.
+      if (phase !== 'write') {
+        // eslint-disable-next-line no-await-in-loop
+        // A guard said no → refused; the claim itself or the check after the
+        // write failing → failed.
+        await logAttempt(deps, item, audit, phase === 'before' && claimId ? 'refused' : 'failed', err.message);
+      }
       if (claimId) {
         // eslint-disable-next-line no-await-in-loop
         await deps.finish(claimId, 'failed', err.message).catch(() => {});
@@ -236,7 +292,7 @@ async function runStageSync({
 
 module.exports = {
   CONFIRM_MINUTES, MAX_ALLOWED_UPDATES, actionKey, writeSafeIdentity, planStageUpdates,
-  runStageSync, defaultDeps, __test: {
+  runStageSync, defaultDeps, auditFor, __test: {
     categoryOf, stageOf, closed, liveStillEnabled, timeMs,
   },
 };

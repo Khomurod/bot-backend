@@ -11,6 +11,7 @@
 
 const { handleBoardBitrixButton } = require('../../services/boardBitrix/buttons');
 const { CALLBACK_PATTERN } = require('../../lib/boardBitrix/actions');
+const { senderName } = require('../../lib/telegram/messageParts');
 
 function registerBoardBitrixButtonHandlers(bot, { handle = handleBoardBitrixButton } = {}) {
   bot.action(CALLBACK_PATTERN, async (ctx) => {
@@ -21,6 +22,7 @@ function registerBoardBitrixButtonHandlers(bot, { handle = handleBoardBitrixButt
         chatId: ctx.callbackQuery?.message?.chat?.id,
         messageId: ctx.callbackQuery?.message?.message_id,
         telegramUserId: ctx.from?.id,
+        fromName: senderName(ctx.from),
         fromIsBot: Boolean(ctx.from?.is_bot),
       });
     } catch (err) {

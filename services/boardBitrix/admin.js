@@ -103,6 +103,8 @@ function lastRunView(run) {
     syncBlocked: s.syncBlocked || null,
     schemaSource: s.schemaSource || null,
     schemaWriteSafe: s.schemaWriteSafe === true,
+    // The comparison ran even when the status sync's failures made the pass an error.
+    compared: s.compared === true,
   };
 }
 

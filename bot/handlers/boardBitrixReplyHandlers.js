@@ -14,6 +14,7 @@
  * falls through untouched.
  */
 const { handleBoardBitrixReply } = require('../../services/boardBitrix/reply');
+const { senderName } = require('../../lib/telegram/messageParts');
 
 function registerBoardBitrixReplyHandlers(bot, { handle = handleBoardBitrixReply } = {}) {
   bot.on('message', async (ctx, next) => {
@@ -28,6 +29,7 @@ function registerBoardBitrixReplyHandlers(bot, { handle = handleBoardBitrixReply
         repliedToMessageId: msg.reply_to_message.message_id,
         text: msg.text,
         telegramUserId: ctx.from?.id,
+        fromName: senderName(ctx.from),
         fromIsBot: Boolean(ctx.from?.is_bot),
       });
     } catch (err) {

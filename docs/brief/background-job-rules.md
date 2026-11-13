@@ -54,6 +54,7 @@ because resolving a finding updates its status and never deletes it.
 | `duplicate_unit_reports` | 90 d | `resolved` |
 | `service_runs` | 30 d | — |
 | `driver_group_photos` (Truck Photos' buffer: file ids only) | 30 d | — (`truck_photo_reports`, the record that a PDF was sent, is kept) |
+| `activity_log` (Monitoring → Logs) | 365 d; the NAME in an entry (`target_label`, name fields' from → to, name keys in evidence) after 60 d, ids kept | — (owner, 14 November 2026; `docs/architecture/activity-log.md`) |
 
 **Age is not resolution.** An OPEN finding and a PENDING notice are never
 deleted at any age: a finding nobody has dealt with in a year is a worse problem

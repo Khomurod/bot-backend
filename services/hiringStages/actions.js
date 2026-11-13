@@ -40,6 +40,29 @@ async function bitrixFailed(proposal, err) {
   return answer(`Bitrix did not answer — nothing changed. Try again in a minute.\n${String(err.message).slice(0, 150)}`, true);
 }
 
+/**
+ * Who pressed Move, and why — for Monitoring → Logs. The presser's Telegram
+ * id is the evidence; the deal's title is the label (taken out after 60 days).
+ */
+function moveAudit(proposal, deal, by) {
+  return {
+    actorKind: 'person_button',
+    actorTelegramId: by?.userId ?? null,
+    actorName: by?.userName || null,
+    trigger: 'hiring_stage.move',
+    reason: 'Pressed Move on a stage proposal in the recruiting group (proposed from the conversation; the deal was read again first).',
+    evidence: {
+      proposalId: proposal.id, chatId: proposal.chatId, rootMessageId: proposal.rootMessageId,
+    },
+    targetLabel: deal?.title || proposal.dealTitle || null,
+    change: [{
+      field: 'STAGE_ID',
+      from: proposal.fromStageName ? `${proposal.fromStageName} (${proposal.fromStageId})` : proposal.fromStageId,
+      to: proposal.toStageName ? `${proposal.toStageName} (${proposal.toStageId})` : proposal.toStageId,
+    }],
+  };
+}
+
 async function confirmMove(proposal, by, deps) {
   let deal;
   try {
@@ -67,7 +90,7 @@ async function confirmMove(proposal, by, deps) {
     return answer(`Not moved: the deal is now at ${now}.`, true);
   }
   try {
-    await bitrix.moveDealToStage(proposal.dealId, proposal.toStageId, deps.opts);
+    await bitrix.moveDealToStage(proposal.dealId, proposal.toStageId, { ...deps.opts, audit: moveAudit(proposal, deal, by) });
   } catch (err) {
     return bitrixFailed(proposal, err);
   }

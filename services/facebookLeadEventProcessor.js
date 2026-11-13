@@ -123,12 +123,24 @@ async function createBitrixRecord({
   if (earlier) return earlier;
   try {
     const formId = String(payload.value?.form_id || payload.value?.formId || '');
+    const fullName = fieldMap.full_name || fieldMap.first_name || null;
     const result = await createCrmRecordFromLead({
       fieldMap,
       leadData,
       connection,
       leadgenId,
       formId,
+      // Monitoring → Logs: automatic, from a Facebook lead form. Ids only in
+      // the evidence; the name is the label (taken out after 60 days); no
+      // phone, e-mail or answer is shown.
+      audit: {
+        actorKind: 'automatic',
+        trigger: 'facebook_lead.create',
+        reason: 'A new lead arrived from a Facebook lead form.',
+        evidence: { leadgenId: String(leadgenId || ''), formId: formId || null, pageId: connection?.page_id || null },
+        targetLabel: fullName,
+        change: [{ field: 'source', from: null, to: 'Facebook lead form' }],
+      },
     });
     if (!result.ok && result.reason !== 'not_configured') {
       console.error('[Bitrix24] Lead sync failed:', result.error || result.reason);

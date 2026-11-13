@@ -89,14 +89,37 @@ async function bitrixFailed(row, err, titleWritten = false) {
 }
 
 /** The contact's name, renamed only when its own name is a placeholder. @returns whether it was */
-async function renameContactIfPlaceholder(contactId, toName, opts) {
+async function renameContactIfPlaceholder(contactId, toName, opts, row, by) {
   if (!contactId) return false;
   const contact = await bitrix.getContact(contactId, opts);
   if (!isPlaceholderContact(contact)) return false;
   const split = splitName(toName);
   if (!split) return false;
-  await bitrix.renameContact(contact.id, split, opts);
+  await bitrix.renameContact(contact.id, split, { ...opts, audit: renameAudit(row, by, 'contact', contact.name, split) });
   return true;
+}
+
+/**
+ * Who pressed ✏️ Rename, and what it changed — for Monitoring → Logs. The
+ * names are the change itself; both are taken out after 60 days.
+ */
+function renameAudit(row, by, what, fromName, split = null) {
+  return {
+    actorKind: 'person_button',
+    actorTelegramId: by?.userId ?? null,
+    actorName: by?.userName || null,
+    trigger: 'hiring_stage.rename',
+    reason: what === 'deal'
+      ? 'Pressed ✏️ Rename on a deal with a placeholder title (read again first: still the placeholder).'
+      : 'The same ✏️ Rename press: the deal\'s contact still had a placeholder name.',
+    evidence: {
+      renameId: row.id, chatId: row.chatId, rootMessageId: row.rootMessageId, dealId: row.dealId,
+    },
+    targetLabel: row.toName,
+    change: what === 'deal'
+      ? [{ field: 'TITLE', from: fromName, to: row.toName }]
+      : [{ field: 'NAME', from: fromName, to: split ? `${split.first} ${split.last}` : row.toName }],
+  };
 }
 
 /** Ends the press without writing: the row goes `stale` with `error`, the aside closes with `outcome`. */
@@ -130,11 +153,11 @@ async function confirmRename(row, by, deps) {
     }
     if (!ours) {
       // Still exactly the placeholder shown: the one TITLE write, recorded at once.
-      await bitrix.renameDeal(row.dealId, row.toName, deps.opts);
+      await bitrix.renameDeal(row.dealId, row.toName, { ...deps.opts, audit: renameAudit(row, by, 'deal', deal.title) });
       titleWritten = true;
       await renames.markTitleWritten(row.id);
     }
-    contactRenamed = await renameContactIfPlaceholder(deal.contactId, row.toName, deps.opts);
+    contactRenamed = await renameContactIfPlaceholder(deal.contactId, row.toName, deps.opts, row, by);
   } catch (err) {
     return bitrixFailed(row, err, titleWritten);
   }

@@ -50,14 +50,14 @@ function defaultDeps() {
     askNext: () => askNext(),
     say: (args) => sayUnder(args),
     portalOrigin: require('../bitrix24DealStages').portalOrigin,
-    apply: (action) => require('./apply').applyAction(action),
+    apply: (action, audit) => require('./apply').applyAction(action, undefined, audit),
     readWithAi: (args) => require('./advice').readReplyWithAi(args),
   };
   /* eslint-enable global-require */
 }
 
 /**
- * @param {object} reply { chatId, chatType, messageId, repliedToMessageId, text, telegramUserId, fromIsBot }
+ * @param {object} reply { chatId, chatType, messageId, repliedToMessageId, text, telegramUserId, fromName, fromIsBot }
  * @returns {Promise<{handled: boolean, outcome?: string, reason?: string}>} never throws
  */
 async function handleBoardBitrixReply(reply, deps = defaultDeps()) {
@@ -99,7 +99,11 @@ async function handleBoardBitrixReply(reply, deps = defaultDeps()) {
       }
       if (intent === 'skip') return answer.skip(question, say, deps);
       if (intent === 'done') return answer.recheck(question, say, deps);
-      if (intent === 'do') return answer.doAction(question, read.action, say, deps);
+      if (intent === 'do') {
+        return answer.doAction(question, read.action, say, deps, {
+          kind: 'person_reply', telegramUserId, name: reply.fromName || null,
+        });
+      }
       await say(read?.answer || HINT, read?.answer ? [HINT] : []);
       return read?.answer ? 'answered' : 'unclear';
     });

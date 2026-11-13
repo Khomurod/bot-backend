@@ -27,6 +27,7 @@ const LiveLocationsPage = lazy(() => import("./pages/LiveLocationsPage"));
 const OperationsPage = lazy(() => import("./pages/OperationsPage"));
 const RetentionPage = lazy(() => import("./pages/RetentionPage"));
 const SystemHealthPage = lazy(() => import("./pages/SystemHealthPage"));
+const LogsPage = lazy(() => import("./pages/LogsPage"));
 
 const pageLoadingFallback = (
   <div className="loading">
@@ -129,6 +130,7 @@ const PAGE_COMPONENTS = {
   // Monitoring
   operations: (route) => <OperationsPage {...route} />,
   system_health: () => <SystemHealthPage />,
+  logs: () => <LogsPage />,
   // Administration
   users: () => <UsersPage />,
   settings: (route) => <SettingsPage {...route} />,
