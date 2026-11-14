@@ -27,32 +27,68 @@ async function insertEntry(e) {
     `INSERT INTO activity_log
        (occurred_at, system, action, target_type, target_id, target_label, change,
         actor_kind, actor_telegram_id, actor_admin_id, actor_name, trigger, reason,
-        evidence, result, error, attempt, correlation_key)
+        evidence, result, error, attempt, correlation_key, safety_check)
      VALUES (COALESCE($1::timestamptz, NOW()), $2, $3, $4, $5, $6, $7::jsonb,
-             $8, $9, $10, $11, $12, $13, $14::jsonb, $15, $16, $17, $18)
+             $8, $9, $10, $11, $12, $13, $14::jsonb, $15, $16, $17, $18, $19)
      RETURNING id`,
     [
       e.occurredAt || null, e.system, e.action, e.targetType || null, e.targetId ?? null, e.targetLabel || null,
       JSON.stringify(e.change || []), e.actorKind || 'unknown', e.actorTelegramId ?? null, e.actorAdminId ?? null,
       e.actorName || null, e.trigger || null, e.reason || null, JSON.stringify(e.evidence || {}),
-      e.result, e.error || null, e.attempt ?? null, e.correlationKey || null,
+      e.result, e.error || null, e.attempt ?? null, e.correlationKey || null, e.safetyCheck === true,
     ]
   );
   return res.rows[0] ? { id: Number(res.rows[0].id) } : null;
 }
 
-/** One feature's newest entries (id and result only) — for the failure streak. */
+/**
+ * One feature's newest entries Bitrix answered (or failed to) — id and result
+ * only, for the failure streak. Our own safety checks' refusals are skipped:
+ * they are in the timeline, not in the streak. `idx_activity_log_streak`.
+ */
 async function recentForTrigger(trigger, limit = 20) {
   const res = await query(
-    `SELECT id, result, error, reason FROM activity_log
-      WHERE trigger = $1
+    `SELECT id, result FROM activity_log
+      WHERE trigger = $1 AND NOT safety_check
       ORDER BY occurred_at DESC, id DESC
       LIMIT $2`,
     [String(trigger), Math.max(1, Math.min(50, Number(limit) || 20))]
   );
-  return res.rows.map((r) => ({
-    id: Number(r.id), result: r.result, error: r.error, reason: r.reason,
-  }));
+  return res.rows.map((r) => ({ id: Number(r.id), result: r.result }));
+}
+
+/**
+ * Where a streak longer than the entries read began: the first entry after
+ * the feature's newest success (or its first entry ever). Two one-row reads
+ * on partial indexes, however long the streak.
+ * @returns {Promise<number|null>}
+ */
+async function streakStartId(trigger) {
+  const good = await query(
+    // As text: a JavaScript Date would drop the microseconds, and the success
+    // itself would then sort AFTER its own time and be taken for the start.
+    `SELECT occurred_at::text AS at, id FROM activity_log
+      WHERE trigger = $1 AND result IN ('done', 'already_done')
+      ORDER BY occurred_at DESC, id DESC
+      LIMIT 1`,
+    [String(trigger)]
+  );
+  const after = good.rows[0];
+  const res = await query(
+    `SELECT id FROM activity_log
+      WHERE trigger = $1 AND NOT safety_check
+        ${after ? 'AND (occurred_at, id) > ($2::timestamptz, $3::bigint)' : ''}
+      ORDER BY occurred_at ASC, id ASC
+      LIMIT 1`,
+    after ? [String(trigger), after.at, after.id] : [String(trigger)]
+  );
+  return res.rows[0] ? Number(res.rows[0].id) : null;
+}
+
+/** One entry's outcome in words, for the owner's notice. */
+async function entryWords(id) {
+  const res = await query('SELECT result, error, reason FROM activity_log WHERE id = $1', [Number(id)]);
+  return res.rows[0] || null;
 }
 
 function mapRow(r) {
@@ -76,6 +112,7 @@ function mapRow(r) {
     error: r.error,
     attempt: r.attempt,
     correlationKey: r.correlation_key,
+    safetyCheck: r.safety_check === true,
   };
 }
 
@@ -172,6 +209,8 @@ module.exports = {
   PAGE_SIZE,
   insertEntry,
   recentForTrigger,
+  streakStartId,
+  entryWords,
   listEntries,
   scrubOldNames,
   pruneOld,

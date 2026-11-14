@@ -32,6 +32,7 @@ const REFUSED = {
   targetType: "deal", targetId: "400", targetLabel: null, link: null, change: [],
   actorKind: "automatic", actorTelegramId: null, actorName: null, trigger: "board_bitrix.sync",
   reason: "The Dispatcher Board says HOME.", result: "refused", error: "the deal stage changed after the comparison", attempt: 3,
+  safetyCheck: true,
 };
 
 beforeEach(() => {
@@ -50,6 +51,8 @@ test("each line says when, what, who, why and how it ended", async () => {
   expect(screen.getByText("the deal stage changed after the comparison")).toBeInTheDocument();
   expect(screen.getByText("Attempt 3")).toBeInTheDocument();
   expect(screen.getByText("Done", { selector: "span" })).toBeInTheDocument();
+  // A safety check's refusal says plainly that Bitrix was never asked — once, on that line only.
+  expect(screen.getAllByText(/Stopped by Wenze's own safety check — nothing was sent to Bitrix/)).toHaveLength(1);
 });
 
 test("read-only: no retry, no revert", async () => {

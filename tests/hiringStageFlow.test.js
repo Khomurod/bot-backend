@@ -103,6 +103,12 @@ stub('services/bitrix24DealStages.js', {
   dealUrl: async (id) => `https://acme.bitrix24.com/crm/deal/details/${id}/`,
 });
 stub('services/hiringStages/dealFinder.js', { findCandidateDeal: async () => found });
+// Monitoring → Logs: a press that ends before its write is an entry, kept here.
+let logged = [];
+stub('database/activityLog.js', {
+  insertEntry: async (e) => { logged.push(e); return { id: logged.length }; },
+  recentForTrigger: async () => [],
+});
 
 const { processThread } = require('../services/hiringStages/reviewer');
 const { handleStageButton } = require('../services/hiringStages/actions');
@@ -138,7 +144,7 @@ const run = (t = thread()) => processThread(t, { settings: SETTINGS, telegram, r
 const press = (action, id, chatId = CHAT, from = ANN) => handleStageButton({ action, proposalId: id, chatId, from }, { telegram });
 
 function reset() {
-  threadMessages = [POST, CLH, CLEAN]; finished = []; retried = []; rows = []; sent = []; edits = []; moves = [];
+  threadMessages = [POST, CLH, CLEAN]; finished = []; retried = []; rows = []; sent = []; edits = []; moves = []; logged = [];
   noticeKeys = new Set();
   deleted = [];
   cardStore.reset();
@@ -205,6 +211,10 @@ test('A DEAL MOVED BY HAND MEANWHILE IS NOT MOVED AGAIN', async () => {
   assert.match(out.text, /now at READY/);
   assert.deepEqual(moves, []);
   assert.equal(rows[0].status, 'stale');
+  // The press is still an entry: who tried, refused by the re-read (a safety check).
+  assert.equal(logged.length, 1);
+  assert.deepEqual([logged[0].action, logged[0].result, logged[0].safetyCheck, logged[0].trigger], ['deal.stage', 'refused', true, 'hiring_stage.move']);
+  assert.match(logged[0].error, /moved meanwhile — it is now at READY/);
 });
 
 test('Bitrix failing gives the claim back — the button still works afterwards', async () => {

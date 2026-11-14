@@ -12,9 +12,10 @@ const assert = require('node:assert/strict');
 const E = require('../lib/activityLog/entry');
 const S = require('../lib/activityLog/failureStreak');
 
-test('only crm.*.add|update|delete is a write; reads never are', () => {
+test('any *.add|update|delete is a write — not only crm.* — and reads never are', () => {
   for (const m of ['crm.deal.update', 'crm.deal.add', 'crm.contact.add', 'crm.contact.update', 'crm.lead.add',
-    'crm.item.update', 'crm.deal.delete', 'crm.timeline.comment.add']) {
+    'crm.item.update', 'crm.deal.delete', 'crm.timeline.comment.add',
+    'tasks.task.add', 'im.notify.system.add', 'user.update', 'disk.folder.delete']) {
     assert.equal(E.isBitrixWrite(m), true, m);
   }
   for (const m of ['crm.deal.get', 'crm.deal.list', 'crm.deal.fields', 'crm.status.list', 'crm.item.list',
@@ -33,6 +34,27 @@ test('the action names what changed', () => {
   assert.equal(E.actionFor('crm.contact.update', {}), 'contact.update');
   assert.equal(E.actionFor('crm.lead.add', {}), 'lead.create');
   assert.equal(E.actionFor('crm.item.update', {}), 'item.update');
+  assert.equal(E.actionFor('tasks.task.add', {}), 'tasks.task.create');
+  assert.equal(E.targetFor('user.update', { ID: 4 }).targetType, 'user');
+});
+
+test('a smart-process item\'s answer ({item: {...}}) is a done write, and an add takes its id from it', () => {
+  const audit = { actorKind: 'automatic', trigger: 't' };
+  const updated = E.bitrixWriteEntry({
+    method: 'crm.item.update', params: { entityTypeId: 1040, id: 5, fields: { title: 'X' } }, audit, result: { item: { id: 5, title: 'X' } },
+  });
+  assert.deepEqual([updated.result, updated.targetType, updated.targetId], ['done', 'item', '5']);
+  const added = E.bitrixWriteEntry({
+    method: 'crm.item.add', params: { entityTypeId: 1040, fields: { title: 'X' } }, audit, result: { item: { id: 812 } },
+  });
+  assert.deepEqual([added.result, added.targetId], ['done', '812']);
+  assert.equal(E.bitrixWriteEntry({ method: 'crm.item.delete', params: { entityTypeId: 1040, id: 5 }, audit, result: [] }).result, 'done');
+  // Still not confirmed: an item update that came back with no item, a classic update not `true`.
+  assert.equal(E.bitrixWriteEntry({ method: 'crm.item.update', params: { id: 5 }, audit, result: true }).result, 'failed');
+  assert.equal(E.bitrixWriteEntry({ method: 'crm.deal.update', params: { id: 5 }, audit, result: { item: {} } }).result, 'failed');
+  // Another namespace: an answer that is not false or empty is done.
+  assert.equal(E.bitrixWriteEntry({ method: 'tasks.task.add', params: {}, audit, result: { task: { id: 9 } } }).result, 'done');
+  assert.equal(E.bitrixWriteEntry({ method: 'user.update', params: { ID: 4 }, audit, result: false }).result, 'failed');
 });
 
 test('a done update, a new record\'s id, and an unconfirmed write', () => {
@@ -106,7 +128,20 @@ test('an attempt that never reached Bitrix keeps its own result', () => {
   });
   assert.equal(e.result, 'refused');
   assert.equal(e.targetId, '321');
+  assert.equal(e.safetyCheck, true, 'a refused attempt is a safety check of ours unless it says otherwise');
   assert.equal(E.attemptEntry({ action: 'x', result: 'bogus' }).result, 'failed');
+  assert.equal(E.attemptEntry({ action: 'x', result: 'already_done' }).safetyCheck, false);
+  assert.equal(E.bitrixWriteEntry({ method: 'crm.deal.update', params: { id: 1 }, result: true }).safetyCheck, false);
+});
+
+test('an attempt whose read threw: no answer is failed, Bitrix\'s no is refused — never a safety check', () => {
+  const timeout = Object.assign(new Error('Bitrix did not answer crm.deal.get in 15000ms'), { retryable: true, reason: 'network_error' });
+  assert.deepEqual(E.attemptFromError(timeout), { result: 'failed', error: timeout.message, safetyCheck: false });
+  const denied = Object.assign(new Error('Bitrix crm.deal.get: Access denied'), { retryable: false, reason: 'api_error' });
+  assert.equal(E.attemptFromError(denied).result, 'refused');
+  const e = E.attemptEntry({ action: 'deal.stage', audit: {}, ...E.attemptFromError(denied) });
+  assert.deepEqual([e.result, e.safetyCheck], ['refused', false]);
+  assert.equal(E.attemptFromError(new Error('database down')).result, 'failed');
 });
 
 // ── the owner's notice ──────────────────────────────────────────────────────
@@ -129,15 +164,33 @@ test('the same streak keeps its key; a quiet six hours is respected', () => {
   assert.equal(S.decideFailureNotice({ entries: entries('failed', 'failed', 'failed'), toldWithinQuietHours: true }).notify, false);
 });
 
-test('a streak whose start lies beyond the window read is not announced again', () => {
+test('a streak longer than the window read is decided on its EXACT start, never assumed told', () => {
   const full = Array.from({ length: S.WINDOW }, (_, i) => ({ id: 500 - i, result: 'failed' }));
-  assert.equal(S.decideFailureNotice({ entries: full }).notify, false);
+  const noStart = S.decideFailureNotice({ entries: full });
+  assert.equal(noStart.notify, false, 'without the start there is no key to say it under');
+  const found = S.decideFailureNotice({ entries: full, exactStartId: 410 });
+  assert.deepEqual([found.notify, found.streakStartId, found.atLeast], [true, 410, true]);
+  assert.equal(S.decideFailureNotice({ entries: full, exactStartId: 410, toldThisStreak: true }).notify, false);
   assert.equal(S.decideFailureNotice({ entries: full.slice(0, 5) }).notify, true, 'a short history that is all failures is complete');
+  assert.equal(S.decideFailureNotice({ entries: full.slice(0, 5), exactStartId: 1 }).streakStartId, 496, 'a complete streak ignores the lookup');
+});
+
+test('a streak held back by the quiet hours that outgrows the window is said once they end', () => {
+  // 10:00 streak A told; 10:20 one success; from 10:21 streak B — 20+ failures
+  // inside the six hours, every check quiet. After 16:00 the next failure:
+  const streakB = Array.from({ length: S.WINDOW }, (_, i) => ({ id: 900 - i, result: 'refused' }));
+  const during = S.decideFailureNotice({ entries: streakB, exactStartId: 850, toldWithinQuietHours: true });
+  assert.equal(during.notify, false);
+  const after = S.decideFailureNotice({ entries: streakB, exactStartId: 850, toldWithinQuietHours: false });
+  assert.deepEqual([after.notify, after.streakStartId], [true, 850], 'streak B was never told — it is now');
+  // …and once: its key now exists.
+  assert.equal(S.decideFailureNotice({ entries: streakB, exactStartId: 850, toldThisStreak: true }).notify, false);
 });
 
 test('the notice is plain words with the feature named', () => {
   const t = S.failureNoticeText({ trigger: 'board_bitrix.sync', streak: 3, latest: { result: 'refused', error: 'Access denied' } });
   assert.match(t.title, /3 changes in a row/);
+  assert.match(S.failureNoticeText({ trigger: 'x', streak: 20, atLeast: true, latest: {} }).title, /20 or more changes in a row/);
   assert.match(t.lines[0], /automatic status sync/);
   assert.match(t.lines[1], /Access denied/);
   assert.match(t.action, /Monitoring → Logs/);

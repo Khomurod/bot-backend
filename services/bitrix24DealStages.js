@@ -32,7 +32,7 @@
  * tells the person.
  *
  * EVERY WRITE IS RECORDED (Monitoring → Logs, docs/architecture/
- * activity-log.md): `call` records each `crm.*.add|update|delete` after it was
+ * activity-log.md): `call` records each `*.add|update|delete` (any namespace) after it was
  * sent, with the caller's `opts.audit` — who, why and the feature. A write
  * helper below takes the same `opts`.
  */
@@ -114,11 +114,20 @@ async function send(method, params, fetchImpl, timeoutMs) {
 }
 
 /**
- * One Bitrix call. A WRITE (`crm.*.add|update|delete`) is recorded in the
+ * An error about a write this client has ALREADY recorded: its caller must
+ * not record the same attempt again (`err.activityRecorded`).
+ */
+function recorded(err) {
+  if (err && typeof err === 'object') err.activityRecorded = true;
+  return err;
+}
+
+/**
+ * One Bitrix call. A WRITE (`*.add|update|delete`) is recorded in the
  * activity log AFTER it was sent, whatever came back (services/activityLog/
  * record.js — never throws, never blocks): pass `{ audit }` — who, why, the
  * feature (`trigger`), the ids — from every caller that writes. Reads are
- * never recorded.
+ * never recorded. A write that throws comes back marked `activityRecorded`.
  */
 async function call(method, params, {
   fetchImpl = fetch, timeoutMs = TIMEOUT_MS, audit = null, recordWrite = null,
@@ -133,7 +142,7 @@ async function call(method, params, {
     await record({
       method, params, audit, error: err,
     });
-    throw err;
+    throw recorded(err);
   }
   await record({
     method, params, audit, result,
@@ -269,7 +278,8 @@ async function findByOrigin(entity, originId, opts) {
 
 function newId(result, what) {
   const id = Number(result);
-  if (!Number.isInteger(id) || id <= 0) throw new BitrixError(`Bitrix did not return the new ${what}'s id`);
+  // The client recorded the add (as failed: no id) — say so to the caller.
+  if (!Number.isInteger(id) || id <= 0) throw recorded(new BitrixError(`Bitrix did not return the new ${what}'s id`));
   return id;
 }
 
@@ -315,7 +325,7 @@ async function moveDealToStage(dealId, stageId, opts) {
     fields: { STAGE_ID: String(stageId) },
     params: { REGISTER_SONET_EVENT: 'Y' },
   }, opts);
-  if (ok !== true) throw new BitrixError('Bitrix did not confirm the stage change');
+  if (ok !== true) throw recorded(new BitrixError('Bitrix did not confirm the stage change'));
   return true;
 }
 
@@ -329,7 +339,7 @@ async function renameDeal(dealId, title, opts) {
     fields: { TITLE: String(title) },
     params: { REGISTER_SONET_EVENT: 'Y' },
   }, opts);
-  if (ok !== true) throw new BitrixError('Bitrix did not confirm the new title');
+  if (ok !== true) throw recorded(new BitrixError('Bitrix did not confirm the new title'));
   return true;
 }
 
@@ -344,7 +354,7 @@ async function renameContact(contactId, { first, last }, opts) {
     fields: { NAME: String(first), LAST_NAME: String(last) },
     params: { REGISTER_SONET_EVENT: 'Y' },
   }, opts);
-  if (ok !== true) throw new BitrixError('Bitrix did not confirm the contact\'s new name');
+  if (ok !== true) throw recorded(new BitrixError('Bitrix did not confirm the contact\'s new name'));
   return true;
 }
 

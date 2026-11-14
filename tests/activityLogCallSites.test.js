@@ -9,7 +9,8 @@
  * from being the normal case: it reads every module under services/, server/
  * and bot/ and fails on
  *
- *   - a `crm.*.add|update|delete` call whose arguments carry no `audit`;
+ *   - a `*.add|update|delete` call (any Bitrix namespace — `crm.deal.update`,
+ *     `tasks.task.add`, `user.update`) whose arguments carry no `audit`;
  *   - a call of a client write helper (`moveDealToStage`, `renameDeal`,
  *     `renameContact`, `createContact`, `createDeal`, `createCrmRecordFromLead`)
  *     whose arguments carry no `audit`;
@@ -32,6 +33,12 @@ const DIRS = ['services', 'server', 'bot'];
 const CLIENT_STAGES = path.join('services', 'bitrix24DealStages.js');
 const CLIENT_LEADS = path.join('services', 'bitrix24Service.js');
 const HELPERS = ['moveDealToStage', 'renameDeal', 'renameContact', 'createContact', 'createDeal', 'createCrmRecordFromLead'];
+/** A write method as a literal argument: `name('crm.deal.update'`, `x.call("tasks.task.add"`. */
+const LITERAL_WRITE = /[\w$.]+\(\s*(['"])[a-z]\w*(?:\.\w+)*\.(?:add|update|delete)\1/gi;
+/** A write method built from a template — no scan can say which. */
+const TEMPLATE_WRITE = /`[^`\s]*\$\{[^`]*\.(?:add|update|delete)`/g;
+/** A raw webhook request to a write method. */
+const RAW_WRITE = /[a-z]\w*(?:\.\w+)*\.(?:add|update|delete)\.json/gi;
 
 function walk(dir, out = []) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -74,7 +81,7 @@ function scan() {
     const src = fs.readFileSync(file, 'utf8');
     const isClient = rel === CLIENT_STAGES || rel === CLIENT_LEADS;
 
-    for (const m of src.matchAll(/[\w$.]+\(\s*(['"])crm\.[\w.]+\.(?:add|update|delete)\1/g)) {
+    for (const m of src.matchAll(LITERAL_WRITE)) {
       if (inComment(src, m.index)) continue;
       const args = argsAt(src, m.index + m[0].indexOf('('));
       const where = `${rel}:${lineOf(src, m.index)}`;
@@ -83,11 +90,11 @@ function scan() {
       const ok = rel === CLIENT_STAGES ? /\bopts\b/.test(args) : /\baudit\b/.test(args);
       if (!ok) problems.push(`${where}: a Bitrix write without an audit context`);
     }
-    for (const m of src.matchAll(/`crm\.[^`]*\$\{[^`]*\.(?:add|update|delete)`/g)) {
+    for (const m of src.matchAll(TEMPLATE_WRITE)) {
       problems.push(`${rel}:${lineOf(src, m.index)}: a write method built from a template cannot be checked`);
     }
     if (!isClient) {
-      for (const m of src.matchAll(/crm\.[\w.]+\.(?:add|update|delete)\.json/g)) {
+      for (const m of src.matchAll(RAW_WRITE)) {
         problems.push(`${rel}:${lineOf(src, m.index)}: a raw request to a Bitrix write bypasses the recorder`);
       }
     }
@@ -123,10 +130,15 @@ test('both clients record what they write', () => {
   assert.doesNotMatch(leads, /record\(\{[^}]*\bfields\b/);
 });
 
-test('the scanner catches what it says it catches', () => {
+test('the scanner catches what it says it catches — in any Bitrix namespace', () => {
   const sample = "deps.call('crm.deal.update', { id: 1, fields: { A: 1 } });\n"
-    + "deps.call('crm.deal.update', { id: 1 }, { audit });\n";
-  const found = [...sample.matchAll(/[\w$.]+\(\s*(['"])crm\.[\w.]+\.(?:add|update|delete)\1/g)]
+    + "deps.call('crm.deal.update', { id: 1 }, { audit });\n"
+    + "callBitrix('tasks.task.add', { fields: {} });\n"
+    + "callBitrix(\"user.update\", { ID: 1 }, { audit });\n"
+    + "deps.call('crm.deal.get', { id: 1 });\n";
+  const found = [...sample.matchAll(LITERAL_WRITE)]
     .map((m) => /\baudit\b/.test(argsAt(sample, m.index + m[0].indexOf('('))));
-  assert.deepEqual(found, [false, true]);
+  assert.deepEqual(found, [false, true, false, true], 'four writes, two without audit; the read is not one');
+  assert.equal([...'call(`tasks.${what}.add`, p)'.matchAll(TEMPLATE_WRITE)].length, 1);
+  assert.equal([...'fetch(`${base}im.notify.system.add.json`)'.matchAll(RAW_WRITE)].length, 1);
 });

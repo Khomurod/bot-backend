@@ -85,6 +85,11 @@ export default function LogRow({ entry, featureLabel = (k) => k }) {
       </td>
       <td>
         <span className={result.className}>{result.label}</span>
+        {entry.safetyCheck && (
+          <div className="muted" style={{ fontSize: 12, marginTop: 4, maxWidth: 280 }}>
+            Stopped by Wenze&apos;s own safety check — nothing was sent to Bitrix.
+          </div>
+        )}
         {entry.error && <div className="muted" style={{ fontSize: 12, marginTop: 4, maxWidth: 280 }}>{entry.error}</div>}
       </td>
     </tr>

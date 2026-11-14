@@ -13,15 +13,23 @@
  *     context never blocks a write (tests/activityLogCallSites.test.js keeps
  *     every call site passing one);
  *   - a write that failed or was refused looks at its feature's streak and may
- *     tell the owner (services/activityLog/failureNotice.js).
+ *     tell the owner (services/activityLog/failureNotice.js) — STARTED, NOT
+ *     AWAITED: the write's caller (a person's button press, the status sync's
+ *     loop) gets its answer as soon as the entry is in, never after a
+ *     Telegram send and its rate-limit retries.
  *
- * `recordAttempt` is for an attempt that never reached Bitrix — the status
- * sync's own guards — which the owner wants in the same timeline.
+ * `recordAttempt` is for an attempt that never reached Bitrix's write — a
+ * safety check said no, it was already as asked, or the read before it got
+ * no answer — which the owner wants in the same timeline. A safety check's
+ * refusal (`safetyCheck`) is not Bitrix saying no, so it never starts the
+ * streak check.
  */
 
 const { bitrixWriteEntry, attemptEntry } = require('../../lib/activityLog/entry');
 
 const warnedNoContext = new Set();
+/** Streak checks still running — awaited by tests only (`__settledForTests`). */
+const inFlight = new Set();
 
 function defaultDeps() {
   /* eslint-disable global-require */
@@ -32,6 +40,20 @@ function defaultDeps() {
   /* eslint-enable global-require */
 }
 
+/** The streak check, started and left to run. Never throws, never awaited by a write. */
+function startStreakCheck(trigger, deps) {
+  let running;
+  try {
+    running = Promise.resolve(deps.afterFailure(trigger));
+  } catch (err) {
+    running = Promise.reject(err);
+  }
+  const done = running
+    .catch((err) => console.warn('[ACTIVITY-LOG] failure-streak check failed:', String(err?.message || err).slice(0, 160)))
+    .finally(() => inFlight.delete(done));
+  inFlight.add(done);
+}
+
 async function save(entry, deps) {
   let saved = null;
   try {
@@ -40,12 +62,9 @@ async function save(entry, deps) {
     console.warn(`[ACTIVITY-LOG] could not record ${entry.action} (${entry.result}):`, String(err?.message || err).slice(0, 160));
     return null;
   }
-  if ((entry.result === 'failed' || entry.result === 'refused') && entry.trigger && typeof deps.afterFailure === 'function') {
-    try {
-      await deps.afterFailure(entry.trigger);
-    } catch (err) {
-      console.warn('[ACTIVITY-LOG] failure-streak check failed:', String(err?.message || err).slice(0, 160));
-    }
+  const bad = entry.result === 'failed' || entry.result === 'refused';
+  if (bad && !entry.safetyCheck && entry.trigger && typeof deps.afterFailure === 'function') {
+    startStreakCheck(entry.trigger, deps);
   }
   return saved;
 }
@@ -69,10 +88,12 @@ async function recordBitrixWrite(write, deps = defaultDeps()) {
 }
 
 /**
- * An attempt that never reached Bitrix (a guard refused it, or it was already
- * done). Never throws.
+ * An attempt that never reached Bitrix's write (a safety check refused it, it
+ * was already done, or its read failed — spread `attemptFromError(err)`).
+ * Never throws.
  * @param {{action: string, targetType?: string, targetId?: *, audit: object,
- *   result: 'refused'|'failed'|'already_done'|'done', error?: string}} attempt
+ *   result: 'refused'|'failed'|'already_done'|'done', error?: string,
+ *   safetyCheck?: boolean}} attempt
  */
 async function recordAttempt(attempt, deps = defaultDeps()) {
   try {
@@ -83,4 +104,9 @@ async function recordAttempt(attempt, deps = defaultDeps()) {
   }
 }
 
-module.exports = { recordBitrixWrite, recordAttempt, __resetWarningsForTests: () => warnedNoContext.clear() };
+module.exports = {
+  recordBitrixWrite,
+  recordAttempt,
+  __resetWarningsForTests: () => warnedNoContext.clear(),
+  __settledForTests: () => Promise.all([...inFlight]),
+};

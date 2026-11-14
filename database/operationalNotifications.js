@@ -238,6 +238,26 @@ async function noticeSentWithin(noticeKeyPrefix, hours) {
 }
 
 /**
+ * About ONE subject, on `idx_operational_notifications_subject` (not a LIKE
+ * on the key, which no index serves): does the notice `noticeKey` exist at
+ * all, and was any notice about it said (or is waiting) in the last `hours` —
+ * pending counts, abandoned does not, as in `noticeSentWithin`.
+ */
+async function noticeAboutSubject({
+  category, subjectType, subjectId, noticeKey, hours,
+}) {
+  const res = await query(
+    `SELECT COALESCE(bool_or(notice_key = $4), false) AS has_key,
+            COALESCE(bool_or(state IN ('delivered', 'pending')
+              AND COALESCE(delivered_at, created_at) > NOW() - ($5 || ' hours')::interval), false) AS recent
+       FROM operational_notifications
+      WHERE category = $1 AND subject_type = $2 AND subject_id = $3`,
+    [category, subjectType, String(subjectId), String(noticeKey || ''), String(hours)]
+  );
+  return { keyExists: res.rows[0]?.has_key === true, sentWithin: res.rows[0]?.recent === true };
+}
+
+/**
  * One notice by id, claimed under a lease. Used for an immediate send.
  *
  * The lease and the attempt limit are checked HERE, not only in the batch
@@ -460,6 +480,7 @@ module.exports = {
   listRecentNoticesAbout,
   countHeldNoticesAbout,
   noticeSentWithin,
+  noticeAboutSubject,
   claimNotificationById,
   claimDueNotifications,
   reapExhaustedNotifications,

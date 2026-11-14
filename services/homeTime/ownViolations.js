@@ -29,6 +29,7 @@
 const { violationsFor } = require('../../lib/homeTime/ownViolations');
 const { matchCard, searchWord } = require('../../lib/homeTime/cardMatch');
 const V = require('../../lib/homeTime/violations');
+const { attemptFromError } = require('../../lib/activityLog/entry');
 const { postRows, postDue } = require('./violationPosting');
 
 /** Cycles read this far before the first stay judged, so its road leg has a start. */
@@ -80,22 +81,46 @@ function cardAudit(stay, card, target, violations, context) {
 }
 
 /**
+ * A card move that ended before its write is an entry too (Monitoring → Logs,
+ * decision c): no card to move (a safety check — nothing sent), or the
+ * search got no answer. The write itself the client records. Never throws;
+ * a deps map without `logAttempt` records nothing.
+ */
+async function logCardAttempt(deps, stay, driverName, violations, context, outcome, card = null) {
+  if (typeof deps.logAttempt !== 'function') return;
+  const target = stageFor(violations);
+  const audit = cardAudit(stay, card || { title: driverName || null }, target, violations, context);
+  await Promise.resolve(deps.logAttempt({
+    action: 'deal.stage', targetId: card?.id ?? null, audit, ...outcome,
+  })).catch(() => {});
+}
+
+/**
  * Move the driver's pipeline-33 card to the stay's violation stage, with its
  * home-time fields. Never throws: the alert is what matters; the note says
  * what happened to the card.
  */
 async function moveCard(stay, driverName, allViolations, deps, context = {}) {
+  const notMoved = async (note, outcome = { result: 'refused', error: note }) => {
+    await logCardAttempt(deps, stay, driverName, allViolations, context, outcome);
+    return { note };
+  };
   try {
     const word = searchWord(driverName);
-    if (!word) return { note: 'no name to find the Bitrix card by' };
-    const rows = await deps.bitrix('crm.deal.list', {
-      filter: { CATEGORY_ID: V.CATEGORY_ID, '%TITLE': word },
-      select: ['ID', 'TITLE', 'STAGE_ID'],
-      order: { ID: 'DESC' },
-    });
+    if (!word) return notMoved('no name to find the Bitrix card by');
+    let rows;
+    try {
+      rows = await deps.bitrix('crm.deal.list', {
+        filter: { CATEGORY_ID: V.CATEGORY_ID, '%TITLE': word },
+        select: ['ID', 'TITLE', 'STAGE_ID'],
+        order: { ID: 'DESC' },
+      });
+    } catch (err) {
+      return notMoved(`Bitrix card not moved: ${String(err.message).slice(0, 160)}`, attemptFromError(err));
+    }
     const found = matchCard(driverName, (Array.isArray(rows) ? rows : []).map((r) => ({ id: Number(r.ID), title: r.TITLE, stageId: r.STAGE_ID })));
-    if (found.none) return { note: 'no Bitrix card in pipeline 33 matches this name — not moved' };
-    if (found.ambiguous) return { note: `${found.ambiguous} Bitrix cards in pipeline 33 match this name — not moved` };
+    if (found.none) return notMoved('no Bitrix card in pipeline 33 matches this name — not moved');
+    if (found.ambiguous) return notMoved(`${found.ambiguous} Bitrix cards in pipeline 33 match this name — not moved`);
     const target = stageFor(allViolations);
     const fields = {
       STAGE_ID: target,
@@ -103,6 +128,7 @@ async function moveCard(stay, driverName, allViolations, deps, context = {}) {
       [V.FIELDS.homeDays]: stay.homeDays,
       ...(stay.roadDays != null ? { [V.FIELDS.roadDays]: stay.roadDays } : {}),
     };
+    // THE WRITE — recorded by the client, whatever Bitrix answers.
     const ok = await deps.bitrix('crm.deal.update', { id: found.card.id, fields, params: { REGISTER_SONET_EVENT: 'Y' } }, {
       audit: cardAudit(stay, found.card, target, allViolations, context),
     });

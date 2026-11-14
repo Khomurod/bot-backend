@@ -26,6 +26,7 @@ const { truckIdFromLink } = require('../../lib/boardBitrix/vocabulary');
 const { truckNumberFromTitle, sameTruckNumber } = require('../../lib/boardBitrix/trucks');
 const { tidyName } = require('../../lib/boardBitrix/names');
 const { activeSchemaSource } = require('../../lib/boardBitrix/schema');
+const { attemptFromError } = require('../../lib/activityLog/entry');
 
 const MAX_TRUCK_PAGES = 10;
 
@@ -54,7 +55,14 @@ async function readDeal(deps, id) {
  * from → to and the deal's title as it was read.
  */
 async function updateDeal(deps, id, fields, audit) {
-  const ok = await deps.call('crm.deal.update', { id: Number(id), fields, params: { REGISTER_SONET_EVENT: 'Y' } }, { audit });
+  let ok;
+  try {
+    ok = await deps.call('crm.deal.update', { id: Number(id), fields, params: { REGISTER_SONET_EVENT: 'Y' } }, { audit });
+  } catch (err) {
+    // The client recorded this write; `applyAction` must not record it again.
+    if (err && typeof err === 'object') err.activityRecorded = true;
+    throw err;
+  }
   return ok === true;
 }
 
@@ -149,25 +157,36 @@ const ACTION_OF = Object.freeze({
  *   `{actorKind, actorTelegramId, actorName, trigger, reason, evidence}`
  */
 async function applyAction(action, deps = defaultDeps(), audit = null) {
+  // Every attempt is an entry (decision c) — a refusal, an "already so", and
+  // a press whose read got no answer. A write is recorded by the client.
+  const log = (outcome) => (typeof deps.logAttempt === 'function'
+    ? Promise.resolve(deps.logAttempt({
+      action: ACTION_OF[action?.type] || 'deal.fields', targetId: action?.params?.dealId ?? null, audit, ...outcome,
+    })).catch(() => {})
+    : null);
   const handler = HANDLERS[action?.type];
-  if (!handler) return refuse('this is not something the bot can do');
-  const settings = await deps.settings();
-  const schema = settings?.schemaMapping;
-  if (!schema?.dealFields || !schema?.truckEntityTypeId || !activeSchemaSource(settings.schemaSource)) {
-    return refuse('the Bitrix layout is not proven yet (Settings → Dispatcher Board) — please change it by hand');
+  let out;
+  try {
+    if (!handler) {
+      out = refuse('this is not something the bot can do');
+    } else {
+      const settings = await deps.settings();
+      const schema = settings?.schemaMapping;
+      out = (!schema?.dealFields || !schema?.truckEntityTypeId || !activeSchemaSource(settings.schemaSource))
+        ? refuse('the Bitrix layout is not proven yet (Settings → Dispatcher Board) — please change it by hand')
+        : await handler(action.params || {}, deps, schema, audit);
+    }
+  } catch (err) {
+    // A read before the write got no answer (or Bitrix said no to it), or the
+    // settings could not be read: that press is an entry too, then the
+    // caller says "Bitrix did not answer". A write that threw is the client's.
+    if (!err?.activityRecorded) await log(attemptFromError(err));
+    throw err;
   }
-  const out = await handler(action.params || {}, deps, schema, audit);
   // A refusal or an "already so" wrote nothing — but it was a person's
-  // attempt, and the timeline shows every attempt. A write is recorded by
-  // the client itself.
-  if ((!out.ok || out.already) && !out.recorded && typeof deps.logAttempt === 'function') {
-    await deps.logAttempt({
-      action: ACTION_OF[action.type] || 'deal.fields',
-      targetId: action.params?.dealId ?? null,
-      audit,
-      result: out.ok ? 'already_done' : 'refused',
-      error: out.ok ? null : out.why,
-    });
+  // attempt, and the timeline shows every attempt (a safety check's refusal).
+  if ((!out.ok || out.already) && !out.recorded) {
+    await log({ result: out.ok ? 'already_done' : 'refused', error: out.ok ? null : out.why });
   }
   return out;
 }

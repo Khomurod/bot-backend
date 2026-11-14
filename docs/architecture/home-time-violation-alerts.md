@@ -46,7 +46,10 @@ driver's.
   matching: nothing is moved, and the row's `bitrix_note` says so. Every
   move is in Monitoring → Logs as `automatic`, feature
   `home_time.violation_card`, with the verdict as the reason and the violation
-  rows as evidence ([activity-log.md](activity-log.md)).
+  rows as evidence ([activity-log.md](activity-log.md)) — and so is a move
+  that did not happen: no card or two cards (`refused` by a safety check, the
+  driver's name as the label, taken out after 60 days), or the search getting
+  no answer (`failed`).
 - **One decider** — `home_time_settings.violation_source` (`wenze` by default
   since migration 0103). While it is `wenze`, the card-reading pass and the
   Bitrix robot's webhook below stand down — a card Wenze moved must never be

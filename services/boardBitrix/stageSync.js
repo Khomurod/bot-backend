@@ -10,6 +10,7 @@
 const crypto = require('node:crypto');
 const { namesAgreeStrictly } = require('../../lib/identity/boardResolution');
 const { normalizeBoardTruck } = require('../../lib/board/truck');
+const { attemptFromError } = require('../../lib/activityLog/entry');
 
 const CONFIRM_MINUTES = 20;
 const MAX_ALLOWED_UPDATES = 25;
@@ -161,11 +162,29 @@ function auditFor(item, key, attempt) {
 }
 
 /** One attempt that never reached Bitrix's write, in the same timeline. Never throws. */
-async function logAttempt(deps, item, audit, result, error = null) {
+async function logAttempt(deps, item, audit, outcome) {
   if (typeof deps.logAttempt !== 'function') return;
   await Promise.resolve(deps.logAttempt({
-    action: 'deal.stage', targetId: item.dealId, audit, result, error,
+    action: 'deal.stage', targetId: item.dealId, audit, ...outcome,
   })).catch(() => {});
+}
+
+/**
+ * A SAFETY CHECK of this loop saying no — nothing is sent to Bitrix. Marked,
+ * so it is recorded as `refused` by a safety check, and anything else thrown
+ * before the write (the re-read getting no answer, the database failing) is
+ * what it is: `failed`, or `refused` when Bitrix itself said no.
+ */
+function guardRefusal(message) {
+  return Object.assign(new Error(message), { guard: true });
+}
+
+/** How an attempt that threw before or after its write is recorded. */
+function outcomeOf(err, phase) {
+  if (phase === 'before' && err?.guard === true) return { result: 'refused', error: err.message, safetyCheck: true };
+  // After a done write: the verification read disagreed or failed.
+  if (phase === 'after') return { result: 'failed', error: err?.message, safetyCheck: false };
+  return attemptFromError(err);
 }
 
 async function liveStillEnabled(deps) {
@@ -228,29 +247,29 @@ async function runStageSync({
       // moved the deal since the comparison; that is never overwritten.
       // eslint-disable-next-line no-await-in-loop
       const before = await deps.call('crm.deal.get', { id: item.dealId });
-      if (categoryOf(before) !== Number(schema.categoryId)) throw new Error('the deal is no longer in the discovered driver pipeline');
-      if (closed(before)) throw new Error('the deal is closed');
+      if (categoryOf(before) !== Number(schema.categoryId)) throw guardRefusal('the deal is no longer in the discovered driver pipeline');
+      if (closed(before)) throw guardRefusal('the deal is closed');
       if (typeof deps.confirmBoardStatus !== 'function'
         // eslint-disable-next-line no-await-in-loop
         || !await deps.confirmBoardStatus(item)) {
-        throw new Error('the Dispatcher Board status changed after the comparison');
+        throw guardRefusal('the Dispatcher Board status changed after the comparison');
       }
       if (stageOf(before) === item.targetStageId) {
         // eslint-disable-next-line no-await-in-loop
         await deps.finish(claimId, 'already_done');
         // eslint-disable-next-line no-await-in-loop
-        await logAttempt(deps, item, audit, 'already_done');
+        await logAttempt(deps, item, audit, { result: 'already_done' });
         summary.alreadyDone += 1;
         summary.resolvedKeys.push(item.discrepancyKey);
         continue;
       }
-      if (stageOf(before) !== item.beforeStageId) throw new Error('the deal stage changed after the comparison');
+      if (stageOf(before) !== item.beforeStageId) throw guardRefusal('the deal stage changed after the comparison');
 
       // Re-read the kill switch after every other precondition and immediately
       // before the external mutation. A database flag cannot atomically cancel
       // a request already accepted by Bitrix, so this is the narrowest boundary.
       // eslint-disable-next-line no-await-in-loop
-      if (!await liveStillEnabled(deps)) throw new Error('live sync was switched off before the Bitrix update');
+      if (!await liveStillEnabled(deps)) throw guardRefusal('live sync was switched off before the Bitrix update');
 
       // The only mutation: STAGE_ID, with a Bitrix timeline event.
       phase = 'write';
@@ -273,13 +292,12 @@ async function runStageSync({
     } catch (err) {
       summary.failed += 1;
       summary.errors.push(`deal ${item.dealId}: ${String(err.message).slice(0, 160)}`);
-      // The client recorded the write itself; a guard's refusal before it, and
-      // a verification that failed after it, are recorded here.
+      // The client recorded the write itself; a safety check's refusal or a
+      // failed read before it, and a verification that failed after it, are
+      // recorded here (`outcomeOf`).
       if (phase !== 'write') {
         // eslint-disable-next-line no-await-in-loop
-        // A guard said no → refused; the claim itself or the check after the
-        // write failing → failed.
-        await logAttempt(deps, item, audit, phase === 'before' && claimId ? 'refused' : 'failed', err.message);
+        await logAttempt(deps, item, audit, outcomeOf(err, phase));
       }
       if (claimId) {
         // eslint-disable-next-line no-await-in-loop
@@ -293,6 +311,6 @@ async function runStageSync({
 module.exports = {
   CONFIRM_MINUTES, MAX_ALLOWED_UPDATES, actionKey, writeSafeIdentity, planStageUpdates,
   runStageSync, defaultDeps, auditFor, __test: {
-    categoryOf, stageOf, closed, liveStillEnabled, timeMs,
+    categoryOf, stageOf, closed, liveStillEnabled, timeMs, outcomeOf,
   },
 };

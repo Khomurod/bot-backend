@@ -33,6 +33,7 @@ const bitrix = require('../bitrix24DealStages');
 const { mayOfferRename, isPlaceholderContact, isHiringPipeline } = require('../../lib/hiringStages/placeholder');
 const { splitName } = require('../../lib/hiringStages/identity');
 const msg = require('../../lib/hiringStages/messages');
+const { attemptFromError } = require('../../lib/activityLog/entry');
 const card = require('./card');
 
 const convOf = (r, driverName = null) => ({ chatId: r.chatId, rootMessageId: r.rootMessageId, driverName });
@@ -91,7 +92,13 @@ async function bitrixFailed(row, err, titleWritten = false) {
 /** The contact's name, renamed only when its own name is a placeholder. @returns whether it was */
 async function renameContactIfPlaceholder(contactId, toName, opts, row, by) {
   if (!contactId) return false;
-  const contact = await bitrix.getContact(contactId, opts);
+  let contact;
+  try {
+    contact = await bitrix.getContact(contactId, opts);
+  } catch (err) {
+    await logRenameAttempt(row, by, { what: 'contact', id: contactId }, attemptFromError(err));
+    throw err;
+  }
   if (!isPlaceholderContact(contact)) return false;
   const split = splitName(toName);
   if (!split) return false;
@@ -122,8 +129,31 @@ function renameAudit(row, by, what, fromName, split = null) {
   };
 }
 
-/** Ends the press without writing: the row goes `stale` with `error`, the aside closes with `outcome`. */
-async function leave(row, by, deps, { outcome, error, text }) {
+/**
+ * A Rename press that ended before its write is an entry too (Monitoring →
+ * Logs, decision c: every attempt). A write the client records. Never throws.
+ * @param {{what: 'deal'|'contact', id: *, fromName?: string}} target
+ */
+async function logRenameAttempt(row, by, { what, id, fromName = null }, outcome) {
+  // eslint-disable-next-line global-require
+  const { recordAttempt } = require('../activityLog/record');
+  await recordAttempt({
+    action: what === 'deal' ? 'deal.title' : 'contact.update',
+    targetType: what,
+    targetId: id,
+    audit: renameAudit(row, by, what, fromName),
+    ...outcome,
+  });
+}
+
+/**
+ * Ends the press without writing: the row goes `stale` with `error`, the
+ * aside closes with `outcome`, and the attempt is a `refused` entry (`why`).
+ */
+async function leave(row, by, deps, {
+  outcome, error, text, why,
+}) {
+  await logRenameAttempt(row, by, { what: 'deal', id: row.dealId, fromName: row.fromTitle }, { result: 'refused', error: why || error });
   const stale = await renames.transition(row.id, 'applying', 'stale', { ...by, error });
   await close(deps.telegram, stale || row, outcome);
   return answer(text, true);
@@ -135,7 +165,16 @@ async function confirmRename(row, by, deps) {
   let titleWritten = row.titleWritten;
   try {
     deal = await bitrix.getDeal(row.dealId, deps.opts);
-    if (!deal) return leave(row, by, deps, { outcome: 'gone', error: 'deal not found', text: 'That deal no longer exists in Bitrix.' });
+  } catch (err) {
+    await logRenameAttempt(row, by, { what: 'deal', id: row.dealId, fromName: row.fromTitle }, attemptFromError(err));
+    return bitrixFailed(row, err, titleWritten);
+  }
+  try {
+    if (!deal) {
+      return leave(row, by, deps, {
+        outcome: 'gone', error: 'deal not found', why: 'the deal no longer exists in Bitrix', text: 'That deal no longer exists in Bitrix.',
+      });
+    }
     // What made the offer allowed is checked again: a deal moved into the
     // Board's pipeline 3 (or 33), or closed, since the offer is never written.
     if (deal.closed || !isHiringPipeline(deal.categoryId)) {
@@ -149,7 +188,9 @@ async function confirmRename(row, by, deps) {
     // "renamed meanwhile", like any other change.
     const ours = titleWritten && now === row.toName;
     if (!ours && now !== titleOf(row.fromTitle)) {
-      return leave(row, by, deps, { outcome: 'stale', error: 'renamed meanwhile', text: 'Renamed meanwhile — left as is.' });
+      return leave(row, by, deps, {
+        outcome: 'stale', error: 'renamed meanwhile', why: 'the deal was renamed meanwhile — left as is', text: 'Renamed meanwhile — left as is.',
+      });
     }
     if (!ours) {
       // Still exactly the placeholder shown: the one TITLE write, recorded at once.

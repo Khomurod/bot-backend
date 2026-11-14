@@ -25,6 +25,7 @@
 
 const { compareBoardWithBitrix } = require('../../lib/boardBitrix/compare');
 const { STATIC_SCHEMA } = require('../../lib/boardBitrix/vocabulary');
+const { redactError } = require('../../lib/activityLog/entry');
 const { askNext, sayUnder } = require('./ask');
 
 /**
@@ -184,20 +185,31 @@ async function runCheckPass({ deps = defaultDeps(), confirmId = null, ask = true
 }
 
 /**
- * A pass whose status updates failed is NOT a clean run (docs/architecture/
- * health-reporting.md: the pass decides whether its errors amount to a
- * failure and says so in `error`, the field the run ledger reads). Until
- * 14 November 2026 the sync's failures sat in `syncFailed` and the ledger
- * recorded the pass as plain `ok`. No deal id or name in the sentence — the
- * ledger's error is shown on the health screens; each attempt is in
- * Monitoring → Logs.
+ * When the status sync makes the pass a failure (docs/architecture/
+ * health-reporting.md: the PASS decides whether its errors amount to a
+ * failure and says so in `error`, the field the run ledger reads; one bad
+ * item among many is not a failed pass). Two shapes:
+ *
+ *   - the sync threw — nothing was synced;
+ *   - every update it attempted ended without success (none applied, none
+ *     already so). A safety check's refusal counts here: from 11 November
+ *     2026 every live attempt stopped itself with "the Dispatcher Board
+ *     status changed after the comparison" (157 on one deal) — a sync that
+ *     does nothing, pass after pass, is exactly what the ledger must show.
+ *
+ * Some failed, some went through: not a failure — the counts (`syncFailed`)
+ * are on the card, and every attempt is in Monitoring → Logs. Until 14
+ * November 2026 neither shape reached the ledger, which recorded plain `ok`.
+ * No deal id or name in the sentence — the ledger's error is shown on the
+ * health screens.
  */
 function syncFailure(sync) {
+  if (sync?.error) return { error: `the Bitrix status sync stopped before it finished: ${redactError(sync.error)}` };
   const failed = Number(sync?.failed || 0);
-  if (!failed) return {};
-  const tried = failed + Number(sync.applied || 0) + Number(sync.alreadyDone || 0);
+  const succeeded = Number(sync?.applied || 0) + Number(sync?.alreadyDone || 0);
+  if (!failed || succeeded) return {};
   return {
-    error: `${failed} of ${tried} Bitrix status update(s) failed or were refused this pass — see Monitoring → Logs`,
+    error: `all ${failed} Bitrix status update(s) tried this pass failed or were refused — see Monitoring → Logs`,
   };
 }
 

@@ -27,8 +27,14 @@ const SETTINGS = {
 
 const state = {
   messages: [], finished: [], retried: [], proposals: [], records: [], notices: [], sent: [], edits: [], deleted: [],
-  contacts: [], deals: [], calls: [], fail: {}, nextId: 500, aiAnswer: null, renames: [],
+  contacts: [], deals: [], calls: [], fail: {}, nextId: 500, aiAnswer: null, renames: [], logged: [],
 };
+
+// Monitoring → Logs: what the presses record, kept here (never a database).
+stub('database/activityLog.js', {
+  insertEntry: async (e) => { state.logged.push(e); return { id: state.logged.length }; },
+  recentForTrigger: async () => [],
+});
 
 // ── stores ──────────────────────────────────────────────────────────────────
 stub('database/hiringStages/threads.js', {
@@ -255,7 +261,7 @@ function reset() {
   cardStore.reset();
   Object.assign(state, {
     messages: [], finished: [], retried: [], proposals: [], records: [], notices: [], sent: [], edits: [], deleted: [],
-    contacts: [], deals: [], calls: [], fail: {}, nextId: 500, renames: [],
+    contacts: [], deals: [], calls: [], fail: {}, nextId: 500, renames: [], logged: [],
     aiAnswer: { move: true, stage_id: 'UC_SAFETY', driver_name: null, evidence: 'CLH sent' },
   });
 }

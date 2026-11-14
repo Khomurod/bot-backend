@@ -26,6 +26,7 @@ const { findCandidateDeal } = require('./dealFinder');
 const { planForDeal, dealColumns, stagesFor } = require('./stagePlan');
 const group = require('./groupMessages');
 const { handleRenamePress } = require('./rename');
+const { attemptFromError } = require('../../lib/activityLog/entry');
 
 function personName(from) {
   if (!from) return null;
@@ -63,19 +64,35 @@ function moveAudit(proposal, deal, by) {
   };
 }
 
+/**
+ * A Move press that ended before the write is an entry too (Monitoring →
+ * Logs, decision c: every attempt). The write itself the client records.
+ * Never throws.
+ */
+async function logMoveAttempt(proposal, deal, by, outcome) {
+  // eslint-disable-next-line global-require
+  const { recordAttempt } = require('../activityLog/record');
+  await recordAttempt({
+    action: 'deal.stage', targetId: proposal.dealId, audit: moveAudit(proposal, deal, by), ...outcome,
+  });
+}
+
 async function confirmMove(proposal, by, deps) {
   let deal;
   try {
     deal = await bitrix.getDeal(proposal.dealId, deps.opts);
   } catch (err) {
+    await logMoveAttempt(proposal, null, by, attemptFromError(err));
     return bitrixFailed(proposal, err);
   }
   if (!deal) {
+    await logMoveAttempt(proposal, null, by, { result: 'refused', error: 'the deal no longer exists in Bitrix' });
     const stale = await proposals.transition(proposal.id, 'applying', 'stale', { ...by, error: 'deal not found' });
     await group.closeProposal(deps.telegram, stale || proposal, 'gone');
     return answer('That deal no longer exists in Bitrix.', true);
   }
   if (deal.stageId === proposal.toStageId) {
+    await logMoveAttempt(proposal, deal, by, { result: 'already_done' });
     const done = await proposals.transition(proposal.id, 'applying', 'applied', by);
     await group.closeProposal(deps.telegram, done || proposal, 'already_there');
     return answer('Already at that stage — nothing to change.');
@@ -85,6 +102,7 @@ async function confirmMove(proposal, by, deps) {
     try {
       now = (await stagesFor(deal.categoryId, deps.opts)).find((s) => s.id === deal.stageId)?.name || now;
     } catch { /* the id is still a fair answer */ }
+    await logMoveAttempt(proposal, deal, by, { result: 'refused', error: `the deal was moved meanwhile — it is now at ${now}` });
     const stale = await proposals.transition(proposal.id, 'applying', 'stale', { ...by, error: `deal is at ${deal.stageId}` });
     await group.closeProposal(deps.telegram, stale || proposal, 'stale', { detail: now });
     return answer(`Not moved: the deal is now at ${now}.`, true);
@@ -92,6 +110,8 @@ async function confirmMove(proposal, by, deps) {
   try {
     await bitrix.moveDealToStage(proposal.dealId, proposal.toStageId, { ...deps.opts, audit: moveAudit(proposal, deal, by) });
   } catch (err) {
+    // Recorded by the client (`activityRecorded`); anything else is an entry here.
+    if (!err?.activityRecorded) await logMoveAttempt(proposal, deal, by, attemptFromError(err));
     return bitrixFailed(proposal, err);
   }
   const applied = await proposals.transition(proposal.id, 'applying', 'applied', by);

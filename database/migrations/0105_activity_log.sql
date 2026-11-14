@@ -28,6 +28,10 @@
 --   result / error         done | refused | failed | already_done, and Bitrix's
 --                          own words with every URL and credential removed
 --   attempt / correlation  attempts of one action share `correlation_key`
+--   safety_check           true: OUR safety check stopped the attempt and
+--                          nothing was sent to Bitrix ("the deal moved
+--                          meanwhile"). In the timeline, but not Bitrix saying
+--                          no — it never counts toward the owner's notice.
 --
 -- APPEND-ONLY. The one UPDATE is retention's: after 60 days the name is taken
 -- out (`target_label`, names in `change` / `evidence`; `names_scrubbed_at`
@@ -54,6 +58,7 @@ CREATE TABLE IF NOT EXISTS activity_log (
   error               TEXT,
   attempt             INTEGER,
   correlation_key     TEXT,
+  safety_check        BOOLEAN NOT NULL DEFAULT false,
   names_scrubbed_at   TIMESTAMPTZ
 );
 
@@ -78,6 +83,15 @@ CREATE INDEX IF NOT EXISTS idx_activity_log_occurred
   ON activity_log (occurred_at DESC, id DESC);
 CREATE INDEX IF NOT EXISTS idx_activity_log_trigger
   ON activity_log (trigger, occurred_at DESC, id DESC);
+-- The owner's failure notice: one feature's newest entries Bitrix answered
+-- (or failed to), past any run of our own safety checks; and the feature's
+-- newest success, where a long streak began — one row each, however long.
+CREATE INDEX IF NOT EXISTS idx_activity_log_streak
+  ON activity_log (trigger, occurred_at DESC, id DESC)
+  WHERE NOT safety_check;
+CREATE INDEX IF NOT EXISTS idx_activity_log_trigger_success
+  ON activity_log (trigger, occurred_at DESC, id DESC)
+  WHERE result IN ('done', 'already_done');
 -- One deal's history; a search by deal number.
 CREATE INDEX IF NOT EXISTS idx_activity_log_target
   ON activity_log (target_type, target_id);

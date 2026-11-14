@@ -52,7 +52,7 @@ configuration last.
 | | Birthdays | `#company_birthdays` (`/birthdays`, `/employees`) | Employees, their birthday cards and wishes |
 | **Monitoring** | Needs Attention | `#operations` (`/findings`, `/history`, `/checks`, `/identity`, `/learning`) | Where records disagree, what was corrected, what may be corrected automatically, driver identity, Wenze's suggestions |
 | | System Health | `#system_health` | Whether every background job is actually running — what needs a look first, each group one line below (November 2026) |
-| | Logs | `#logs` | Every change Wenze made in Bitrix — who, what, why — and every refused or failed attempt; super administrators only (November 2026, `docs/architecture/activity-log.md`) |
+| | Logs | `#logs` | Every change Wenze made in Bitrix — who, what, why — every write Bitrix refused or did not answer, and every press, reply, status-sync attempt or home-time card move stopped before writing; super administrators only (November 2026, `docs/architecture/activity-log.md`) |
 | **Administration** | Telegram Users | `#users` | Everyone the bot has seen in Telegram |
 | | Settings | `#settings/<section>` | All configuration, grouped |
 

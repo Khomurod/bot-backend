@@ -83,9 +83,10 @@ export default function LogsPage() {
       <div className="page-header">
         <h2>Logs</h2>
         <p>
-          Every change Wenze made in Bitrix — who did it, what changed and why — and every attempt that
-          was refused or failed. Newest first. Entries are kept for a year; the driver&apos;s or
-          candidate&apos;s name is removed after 60 days and only the deal number stays.
+          Every change Wenze made in Bitrix — who did it, what changed and why — and every write Bitrix
+          refused or did not answer. A button press, a reply, the status sync or a home-time card move
+          that was stopped before writing is listed too. Newest first. Entries are kept for a year; the
+          driver&apos;s or candidate&apos;s name is removed after 60 days and only the deal number stays.
         </p>
       </div>
 

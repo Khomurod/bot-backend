@@ -1,11 +1,12 @@
 'use strict';
 
 /**
- * A Board ↔ Bitrix pass whose status updates failed is not a clean run
- * (docs/architecture/health-reporting.md: the pass says so in `error`). Until
- * 14 November 2026 a pass with 157 failed attempts on one deal was recorded
- * in the run ledger as plain `ok`. And a person's "done" still trusts a pass
- * that COMPARED, even when its status sync failed.
+ * A Board ↔ Bitrix pass whose status sync did nothing is not a clean run
+ * (docs/architecture/health-reporting.md: the pass decides, and says so in
+ * `error`; one bad item among many is not a failed pass). Until 14 November
+ * 2026 a pass whose every attempt failed — 157 on one deal — was recorded in
+ * the run ledger as plain `ok`, and so was a sync that threw. And a person's
+ * "done" still trusts a pass that COMPARED, even when its status sync failed.
  */
 
 const test = require('node:test');
@@ -15,13 +16,23 @@ const { syncFailure } = require('../services/boardBitrix/pass');
 const { statusFromSummary } = require('../services/operations/runLedger');
 const answer = require('../services/boardBitrix/answer');
 
-test('failed status updates make the pass an error in the ledger, with no deal or name in it', () => {
-  const summary = { compared: true, syncApplied: 1, ...syncFailure({ failed: 2, applied: 1, alreadyDone: 0 }) };
-  const { status, error } = statusFromSummary(summary);
-  assert.equal(status, 'error');
-  assert.equal(error, '2 of 3 Bitrix status update(s) failed or were refused this pass — see Monitoring → Logs');
+test('every attempted update failing, or the sync throwing, makes the pass an error — with no deal or name in it', () => {
+  const all = statusFromSummary({ compared: true, ...syncFailure({ failed: 2, applied: 0, alreadyDone: 0 }) });
+  assert.equal(all.status, 'error');
+  assert.equal(all.error, 'all 2 Bitrix status update(s) tried this pass failed or were refused — see Monitoring → Logs');
+
+  const threw = statusFromSummary({ compared: true, ...syncFailure({ error: 'claim table unreachable at https://x.example/rest/1/abc/' }) });
+  assert.equal(threw.status, 'error');
+  assert.match(threw.error, /^the Bitrix status sync stopped before it finished: claim table unreachable/);
+  assert.doesNotMatch(threw.error, /rest\/1\/abc|x\.example/, 'no URL or credential path reaches the health screens');
+});
+
+test('some failed while others went through is NOT a failed pass — the counts say it', () => {
+  assert.deepEqual(syncFailure({ failed: 1, applied: 9, alreadyDone: 0 }), {});
+  assert.deepEqual(syncFailure({ failed: 2, applied: 0, alreadyDone: 1 }), {});
   assert.deepEqual(syncFailure({ failed: 0, applied: 4 }), {});
-  assert.equal(statusFromSummary({ compared: true, ...syncFailure({ failed: 0 }) }).status, 'ok');
+  assert.deepEqual(syncFailure({ mode: 'off' }), {});
+  assert.equal(statusFromSummary({ compared: true, syncFailed: 1, ...syncFailure({ failed: 1, applied: 9 }) }).status, 'ok');
 });
 
 test('a "done" re-check trusts a pass that compared even when its sync failed', async () => {
