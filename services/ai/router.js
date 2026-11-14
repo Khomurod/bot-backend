@@ -45,6 +45,8 @@ const { callAnthropicMessages } = require('./adapters/anthropic');
 const { buildRequest, geminiTurnsFromMessages } = require('./requestShape');
 const { runEscalated } = require('./escalation');
 const { isVisionModel, hasImageParts } = require('../../lib/ai/vision');
+const { orderProviders } = require('../../lib/ai/providerChoice');
+const { providerOrderFor } = require('./capabilityProviders');
 
 /** Every provider was unusable, cooled, or refused. The consumer degrades. */
 class AiUnavailableError extends Error {
@@ -201,6 +203,7 @@ function stripFences(text) {
  * @param {string} [args.excludeProvider]  never ask this provider on this run
  * @param {Function} [args.providerFilter]  (provider) => bool: the tier being asked
  * @param {Function} [args.chainOverride]   (provider) => model ids to ask, in order
+ * @param {string[]|null} [args.providerOrder]  the task's own providers (undefined: read them)
  * @returns {Promise<{text, parsed, provider, model, attempts}>}
  * @throws {AiUnavailableError}
  */
@@ -209,7 +212,7 @@ async function runProviders({
   contents = null, extraParts = null, generationConfig = null, systemInstruction = null,
   expects = 'text', validate = null, timeoutMs = null,
   preferProvider = null, preferModels = null, generation = null, requireAdapter = null,
-  excludeProvider = null, providerFilter = null, chainOverride = null,
+  excludeProvider = null, providerFilter = null, chainOverride = null, providerOrder = undefined,
 } = {}) {
   const roster = await getRoster();
   if (!roster.available) {
@@ -231,6 +234,15 @@ async function runProviders({
     throw new AiUnavailableError(`AI is switched off for "${capability}"`);
   }
 
+  // THE TASK'S OWN PROVIDERS (migration 0107, lib/ai/providerChoice.js): null
+  // follows the global order; a list asks only those, in that order; an empty
+  // list — or a task that needs a choice and has none — asks nobody.
+  const order = providerOrder === undefined ? await providerOrderFor(capability) : providerOrder;
+  if (Array.isArray(order) && !order.length) {
+    await recordAiCall({ capabilityKey: capability, outcome: 'skipped' });
+    throw new AiUnavailableError(`No provider is chosen for "${capability}"`);
+  }
+
   const { settings } = roster;
   const needsAdapter = requiredAdapterFor({ contents, requireAdapter });
   const withImages = hasImageParts(extraParts);
@@ -243,12 +255,16 @@ async function runProviders({
     .filter((p) => !excludeProvider || p.providerKey !== excludeProvider)
     .filter((p) => typeof providerFilter !== 'function' || providerFilter(p));
 
-  const ordered = eligibleProviders(usable, {
-    now: Date.now(),
-    freeOnly: settings.freeOnlyMode === true,
-    roundRobin: settings.routingMode === 'round_robin',
-    rotation: settings.routingMode === 'round_robin' ? nextRotation() : 0,
-  });
+  // Cooled and (in free-only mode) paid providers are left out either way; a
+  // task's own list is then asked in ITS order, never rotated.
+  const ordered = Array.isArray(order)
+    ? orderProviders(eligibleProviders(usable, { now: Date.now(), freeOnly: settings.freeOnlyMode === true }), order)
+    : eligibleProviders(usable, {
+      now: Date.now(),
+      freeOnly: settings.freeOnlyMode === true,
+      roundRobin: settings.routingMode === 'round_robin',
+      rotation: settings.routingMode === 'round_robin' ? nextRotation() : 0,
+    });
 
   const attemptErrors = [];
   const tried = new Set();
@@ -427,14 +443,16 @@ function learningHooks() {
 
 /**
  * Run one capability. A decision whose free answer is not sure enough is asked
- * again of Claude, then of another strong model (services/ai/escalation.js);
+ * again of Claude, then of another strong model (services/ai/escalation.js) —
+ * or, for a task with its own providers, of the next one on its list;
  * everything else is one pass over the roster, as it always was.
  *
  * @returns {Promise<{text, parsed, provider, model, attempts, stage?, confidence?, uncertain?}>}
  * @throws {AiUnavailableError}
  */
-function runCapability(args = {}) {
-  return runEscalated(args, runProviders, learningHooks());
+async function runCapability(args = {}) {
+  const providerOrder = args.providerOrder !== undefined ? args.providerOrder : await providerOrderFor(args.capability);
+  return runEscalated({ ...args, providerOrder }, runProviders, learningHooks());
 }
 
 module.exports = {

@@ -5,6 +5,11 @@
 `bot/handlers/hiringStageHandlers.js` or
 `admin/src/pages/settings/HiringStagesCard.jsx`.
 
+**Since 14 November 2026, part 2** (the owner): on a tagged request the bot
+may READ THE CDL PHOTO with a vision model the owner chose and write what it
+says to the candidate's contact and deal (rule 21,
+[`hiring-cdl-reading.md`](hiring-cdl-reading.md)).
+
 **Since 14 November 2026** (the owner, "the bot misses leads"): **anybody in
 the group can ASK for a lead** by replying to its post with a message that
 mentions the bot (rule 20). The post is read as it is NOW (edited, or rebuilt
@@ -57,8 +62,11 @@ to make one.
 1. **A model proposes; a person moves the deal.** `crm.deal.update`
    `STAGE_ID` is called from exactly one place (`services/hiringStages/actions.js`),
    after somebody in the group pressed **Move**. There is no automatic mode.
-   (`crm.deal.update` `TITLE` and `crm.contact.update` are called only from
-   `services/hiringStages/rename.js`, after a press on ✏️ Rename — rule 19.) Creating a
+   (`crm.deal.update` `TITLE` and `crm.contact.update` NAME / LAST_NAME are
+   called only from `services/hiringStages/rename.js`, after a press on ✏️
+   Rename — rule 19; the CDL reading writes only EMPTY fields the owner mapped,
+   never `STAGE_ID` or `TITLE`, from `services/hiringStages/cdlBitrix.js` —
+   rule 21.) Creating a
    missing deal (rule 13) is not moving one: a created deal starts at "Sent
    to Safety", and every later stage is still a proposal — also when a person
    asked for the lead with a tag (rule 20).
@@ -96,7 +104,10 @@ to make one.
 9. **Nothing identifying leaves for the model.** `lib/hiringStages/redact.js`
    takes out SSNs (labelled, dashed or bare), labelled birth dates and licence
    numbers, every phone number and every other run of seven or more digits
-   before the text is put in a prompt. No photo is sent.
+   before the text is put in a prompt. No photo is sent to the stage reading.
+   **The one exception is a person's tag** (rule 21): the post's PHOTOS — only
+   the photos, never the text — go to the providers the owner chose for
+   `hiring_cdl_reading`, to read the CDL.
 10. **One open proposal per conversation, and no repeats.** A newer stage
     supersedes the open proposal (its message is edited, its buttons go) — an
     earlier stage never does. A stage already proposed for that deal — open, moved or declined — is never
@@ -308,6 +319,20 @@ to make one.
       is stored, in its own `try`: a failure can never stop capture or a
       Safety hashtag post, and the handler always calls `next()`.
 
+21. **The CDL photo of a lead a person asked for** (owner, 14 November 2026;
+    full rules in [`hiring-cdl-reading.md`](hiring-cdl-reading.md); migrations
+    0107, 0108). Only in a requested read, only for a post with photos, only
+    by the providers the owner chose for `hiring_cdl_reading` in Settings → AI
+    (none chosen or switched off: nothing is read). Every value is checked by
+    type and dropped when it does not fit; an unsure answer writes nothing.
+    The CDL's first and last name must be the post's one typed name, or
+    nothing is written; a post naming nobody may take the CDL's name to
+    create the candidate. Values go to EMPTY mapped fields — one update per
+    record — and the rest into one timeline comment on the deal; a filled
+    field is never overwritten. No value is stored in Wenze, logged or posted:
+    the card says "🪪 CDL read (Claude): 9 items written to Bitrix, 3 in a
+    comment" or why it was not read, once per tag.
+
 ## How it flows
 
 ```
@@ -320,8 +345,9 @@ captured General message (services/safetyApprovals/captureService.js)
   → services/hiringStages/reviewer.js
        conversation (database/hiringStages/threads.js: the post, its album, every reply at any depth),
          without the messages that mention the bot
-       requested? → requested.js: the post assembled as Safety Approvals does → resume → deal by
-         phone, then name → none: noDeal.js (Skip overridden) → CREATE without waiting for a stage
+       requested? → requested.js: the post assembled as Safety Approvals does → (no typed name:
+         the CDL's, cdlStep.js) → resume → deal by phone, then name → none: noDeal.js (Skip
+         overridden) → CREATE without waiting for a stage → the CDL written to the deal (rule 21)
          → stageRead.js as below; the reaction on the tag (👍 / 🤷) when the read is over
        otherwise:
        → answered? candidate post? → a creation an earlier read left in flight is finished first
@@ -381,6 +407,7 @@ Migrations `0076_hiring_stage_proposals.sql`,
 | `hiring_stage_crm_records.display_name` (0104) | the name a creation writes (rule 16), stored at the claim; `driver_name` stays the post's, to find by |
 | `hiring_stage_renames` (0104) | a placeholder-title rename offered, and who answered it how (`decided_by_*`, `title_written`, `contact_renamed`): once per conversation and deal, one open per conversation |
 | `hiring_stage_threads.requested_at` / `requested_by_user_id` / `requested_by_name` / `request_message_id` (0106) | a person asked for the conversation with a tag: the FIRST to ask (kept), and the newest tagging message (reacted on) |
+| `hiring_cdl_field_map`, `hiring_stage_cdl_reads` (0108) | where each CDL item goes in Bitrix; how each tag's CDL read ended — counts and item names, never a value (rule 21) |
 | `safety_approval_messages.bot_request` / `recovered_from_reply` (0106) | a reply that mentions the bot (a request, never data — set once, kept); a post rebuilt from a tag's `reply_to_message` (until a real capture of it arrives) |
 
 Proposals, creation records, notices and rename offers carry a driver's name and phone, so
@@ -411,7 +438,10 @@ fresh read: `crm.deal.update` `STAGE_ID` (Move); since 13–14 November 2026
 `crm.deal.update` `TITLE` of a placeholder title (✏️ Rename, only from
 `services/hiringStages/rename.js`) and `crm.contact.update` `NAME` /
 `LAST_NAME` of that deal's contact when its own name is a placeholder (the same
-press). And, since November 2026,
+press). After a person's TAG, not a press (rule 21): ONE `crm.contact.update`
+and ONE `crm.deal.update` of empty mapped fields and ONE `crm.timeline.comment.add`
+(`hiring_stage.cdl`, field names only), after reading `crm.contact.fields` /
+`crm.deal.fields` and the records again. And, since November 2026,
 `crm.contact.add` and `crm.deal.add` — new records only, only from
 `services/hiringStages/crmCreate.js`, each stamped `ORIGINATOR_ID =
 wenze_recruiting`, `ORIGIN_ID = tg:<chat>:<post>`, a comment linking the post,
@@ -458,6 +488,7 @@ overridden, a closed deal or a rejection, already in Bitrix, not certain, a
 Bitrix failure, the reactions, the creation logged as the person),
 `tests/hiringStageBotRequestsPg.test.js` (migration 0106),
 `tests/safetyApprovalCapture.test.js` (capture survives the request path throwing),
+the CDL reading's (rule 21, listed in `hiring-cdl-reading.md`),
 `tests/hiringStageQueue.test.js`, `tests/hiringStageStorePg.test.js`,
 `tests/hiringStageCrmRecordsPg.test.js` (the claim, busy per phone, notices,
 the topic setting), `tests/safetyApprovalSettingsRoute.test.js` and

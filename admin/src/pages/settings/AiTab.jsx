@@ -2,6 +2,7 @@ import React from "react";
 
 import ProviderCard from "./ai/ProviderCard";
 import ProviderOrderCard from "./ai/ProviderOrderCard";
+import CapabilityProvidersCard from "./ai/CapabilityProvidersCard";
 import AddProviderPanel from "./ai/AddProviderPanel";
 import useAiSettings, { AiLoading, AiStatus } from "./ai/useAiSettings";
 
@@ -139,6 +140,11 @@ export default function AiTab() {
       ) : (
         <>
           <ProviderOrderCard providers={providers} settings={settings} onSaved={load} flash={flash} />
+          {/* Re-read when a provider is added, removed, switched or made paid/free. */}
+          <CapabilityProvidersCard
+            key={providers.map((p) => `${p.providerKey}:${p.enabled}:${p.isFree}:${(p.modelChain || []).join(",")}`).join("|")}
+            flash={flash}
+          />
           {providers.map((p) => (
             <ProviderCard key={p.providerKey} provider={p} onSaved={load} flash={flash} />
           ))}

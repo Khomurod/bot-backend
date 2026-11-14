@@ -124,6 +124,8 @@ function mapCapability(row) {
     label: row.label,
     aiEnabled: row.ai_enabled,
     providerOverride: row.provider_override,
+    // Undefined before migration 0107: no list of its own — the global order.
+    providerOrder: Array.isArray(row.provider_order) ? row.provider_order : null,
     sendsRawText: row.sends_raw_text,
     hasDeterministicFallback: row.has_deterministic_fallback,
     mayPropose: row.may_propose,
@@ -195,6 +197,27 @@ async function updateCapability(capabilityKey, {
   return mapCapability(res.rows[0]);
 }
 
+/**
+ * Which providers may do this task, first asked first (`order`, migration
+ * 0107), or `null` to follow the global order again. The caller has already
+ * cleaned the list (lib/ai/providerChoice.js `normaliseProviderOrder`). A task
+ * with no row yet gets one: a person's choice must not wait for the next boot's
+ * registration pass.
+ */
+async function setCapabilityProviderOrder(capabilityKey, order, { label = null, updatedBy = null } = {}) {
+  const res = await query(
+    `INSERT INTO ai_capabilities (capability_key, label, provider_order, updated_by)
+     VALUES ($1, COALESCE($2, $1), $3, $4)
+     ON CONFLICT (capability_key) DO UPDATE
+       SET provider_order = EXCLUDED.provider_order,
+           updated_by = EXCLUDED.updated_by,
+           updated_at = NOW()
+     RETURNING *`,
+    [capabilityKey, label, Array.isArray(order) ? order : null, updatedBy]
+  );
+  return mapCapability(res.rows[0]);
+}
+
 module.exports = {
   DEFAULTS,
   CACHE_TTL_MS,
@@ -206,4 +229,5 @@ module.exports = {
   listCapabilities,
   registerCapability,
   updateCapability,
+  setCapabilityProviderOrder,
 };

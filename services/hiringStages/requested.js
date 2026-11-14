@@ -32,6 +32,11 @@
  *
  * A creation here is recorded in Monitoring → Logs as the person who asked
  * (`person_reply`, crmCreate.js `createAudit`).
+ *
+ * THE CDL (owner, 14 November 2026; cdlStep.js): a post that names nobody may
+ * take the name printed on its CDL photo to create the candidate, and once
+ * the read is over the CDL's values go to the deal found or created — each
+ * exit below ends the step, with the deal or without one.
  */
 
 const crypto = require('node:crypto');
@@ -51,6 +56,7 @@ const { whenNoDeal, sayCreated, notice } = require('./noDeal');
 const { stagesFor, newDealCategory, stageNameOf } = require('./stagePlan');
 const { done } = require('./propose');
 const { readStage, rereadAfterCreate, DEAL_EXISTS } = require('./stageRead');
+const { createCdlStep } = require('./cdlStep');
 
 /** Who asked — the first person to tag — and the newest tagging message; null for a normal read. */
 function requesterOf(thread) {
@@ -112,13 +118,23 @@ async function readRequested(thread, deps, seen, base) {
 
   const phones = conversation.candidatePhones(messages, { ...who, post: post.text });
   const safetyTexts = conversation.safetyTexts(messages, who);
-  const identity = candidateIdentity({ postText: post.text, phones, safetyTexts });
+  let identity = candidateIdentity({ postText: post.text, phones, safetyTexts });
   const names = namesInPost(post.text);
   seen.driverName = identity.name || (names.length === 1 ? names[0] : null);
   await sayRequested(thread, deps, seen.driverName, requestedBy);
   if (!conversation.isCandidatePost(post)) {
     await notice(thread, deps, 'not_candidate', msg.notCandidateLine(), seen.driverName);
     return done(thread, { result: 'not_a_candidate_post' });
+  }
+
+  // A post that names nobody may take the name printed on its CDL (owner, 14 November 2026).
+  const cdl = createCdlStep(thread, deps, {
+    post, phones, requestedBy, seen,
+  });
+  const fromCdl = await cdl.nameForCreation(identity);
+  if (fromCdl) {
+    identity = fromCdl;
+    seen.driverName = fromCdl.name;
   }
 
   const categoryId = await newDealCategory();
@@ -133,6 +149,7 @@ async function readRequested(thread, deps, seen, base) {
   if (resumed) await sayCreated(thread, deps, resumed, resumed.stages);
   if (resumed?.status === 'created') {
     seen.hasDeal = true;
+    await cdl.end(resumed.deal);
     return rereadAfterCreate(thread);
   }
 
@@ -141,37 +158,46 @@ async function readRequested(thread, deps, seen, base) {
     : await findCandidateDeal({ phones, name: seen.driverName }, opts);
   if (lookup.status === 'ambiguous') {
     await notice(thread, deps, 'ambiguous', msg.ambiguousLine({ count: lookup.count }), seen.driverName);
+    await cdl.end(null);
     return done(thread, { result: 'ambiguous', people: lookup.count });
   }
   if (lookup.deal) {
     await sayInBitrix(thread, deps, lookup.deal, seen.driverName, opts);
     seen.hasDeal = true;
+    await cdl.end(lookup.deal);
     return readAfterPost(thread, deps, seen, view, lookup);
   }
 
   // No open deal: the same rules as a normal read — without waiting for a stage.
   const stages = await loadStages();
-  if (!stages.length) return done(thread, { result: 'no_stages', categoryId });
+  if (!stages.length) {
+    await cdl.end(null);
+    return done(thread, { result: 'no_stages', categoryId });
+  }
   const ctx = { driverName: seen.driverName, note: null };
   const missing = await whenNoDeal(thread, ctx, {
     identity, categoryId, stages, rejected: base.rejectedBySafety, requestedBy,
   }, deps, opts);
   if (missing.outcome) {
     if (DEAL_EXISTS.has(missing.outcome.result)) seen.hasDeal = true;
+    await cdl.end(null);
     return done(thread, missing.outcome);
   }
   if (missing.created) {
     seen.hasDeal = true;
+    await cdl.end(missing.deal);
     return rereadAfterCreate(thread);
   }
   if (missing.deal) {
     await sayInBitrix(thread, deps, missing.deal, seen.driverName, opts);
     seen.hasDeal = true;
+    await cdl.end(missing.deal);
     return readAfterPost(thread, deps, seen, view, { status: 'found', deal: missing.deal });
   }
   // Not certain, or blocked in Bitrix: why, on the card. The stage read may
   // still ask the recruiter (with the same reason) — it never tries again.
   await notice(thread, deps, `not_created:${reasonKey(ctx.note)}`, msg.notCreatedLine({ note: ctx.note }), seen.driverName);
+  await cdl.end(null);
   return readAfterPost(thread, deps, seen, { ...view, noCreate: ctx.note }, { status: 'none' });
 }
 

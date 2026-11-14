@@ -16,6 +16,14 @@
  * decision already has its own gate for a low-confidence answer, and that gate
  * is what keeps an unsure answer from changing anything.
  *
+ * A TASK WITH ITS OWN PROVIDERS (Settings → AI, migration 0107 — the CDL
+ * reading first) is escalated along THE OWNER'S LIST instead of the tiers:
+ * the first provider is asked; a sure answer stands; an unsure one is asked
+ * of the next provider on the list; the last answer standing comes back
+ * marked `uncertain` when nobody was sure. "Gemini, then Claude" is exactly
+ * the free-then-Claude rule, and "only Claude" asks Claude alone (Sonnet,
+ * then Haiku, as at the Claude tier).
+ *
  * This module never imports the router — the router hands it the function
  * that asks one tier — so the two cannot require each other.
  */
@@ -98,6 +106,35 @@ function unavailable(err) {
 }
 
 /**
+ * The owner's list, one provider at a time: a sure answer stands, an unsure
+ * one passes to the next provider; the last answer comes back marked.
+ */
+async function alongOwnOrder(asked, askTier, { assess, finish }) {
+  let last = null;
+  let failure = null;
+  for (const key of asked.providerOrder) {
+    let answer;
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      answer = await askTier({
+        ...asked,
+        providerFilter: (p) => p.providerKey === key,
+        chainOverride: (p) => (TIERS.claude(p) ? claudeEscalationChain(p.discoveredModelIds, p.modelChain) : p.modelChain || []),
+      });
+    } catch (err) {
+      if (!unavailable(err)) throw err;
+      failure = failure || err;
+      continue;
+    }
+    const assessment = assess(answer);
+    if (assessment.sure) return tagged(answer, 'chosen', assessment);
+    last = { answer, assessment };
+  }
+  if (last) return finish(tagged(last.answer, 'chosen', last.assessment));
+  throw failure;
+}
+
+/**
  * @param {object} args          runCapability's arguments. `args.learning`
  *   ({ context, ask, subjectKey? }) says what to ask the owner if the answer is
  *   still not sure at the end — see services/ai/learning/hooks.js.
@@ -111,6 +148,8 @@ async function runEscalated(args, askTier, hooks = {}) {
   if (!escalates(args.capability) || args.contents || args.requireAdapter || args.expects !== 'json') {
     return askTier(args);
   }
+  // A task whose list is empty is asked once, so the router says "no provider is chosen".
+  if (Array.isArray(args.providerOrder) && !args.providerOrder.length) return askTier(args);
   let lessons = '';
   try {
     lessons = hooks.lessonsFor ? await hooks.lessonsFor(args.capability) : '';
@@ -130,6 +169,7 @@ async function runEscalated(args, askTier, hooks = {}) {
     // sure answer: every escalating capability answers with one object.
     return assessAnswer(args.capability, Array.isArray(parsed) ? null : parsed);
   };
+  if (Array.isArray(args.providerOrder)) return alongOwnOrder(asked, askTier, { assess, finish });
 
   let free = null;
   let freeFailure = null;

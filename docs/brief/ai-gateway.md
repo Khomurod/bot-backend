@@ -105,7 +105,7 @@ stay in §4a. The provider terms watcher is
   23 October 2026).** For the capabilities that decide something
   (`lib/ai/escalation.js` `ESCALATING`: home-time intent, dates, return to
   road and screenshot import, driver profile extraction, control replies,
-  Safety Approvals, hiring stages, Teach Wenze), `services/ai/escalation.js`
+  Safety Approvals, hiring stages, the CDL reading, Teach Wenze), `services/ai/escalation.js`
   asks the **free** providers first, in the order above. An answer at least
   **85%** sure stands. Under 85%, with no confidence given, or answering
   "unclear", it goes to **Claude — the newest Sonnet, then the newest Haiku,
@@ -124,6 +124,23 @@ stay in §4a. The provider terms watcher is
   still never reaches Claude. How many calls went to Claude is the Anthropic
   row of the provider health counts on Settings → AI. Guarded by
   `tests/aiEscalation.test.js`.
+- **A task may keep to providers of its own (owner, 14 November 2026).**
+  `ai_capabilities.provider_order` (migration 0107, `lib/ai/providerChoice.js`)
+  maps a task to an ordered list; the router asks ONLY those providers, in
+  that order, never rotated. No list: the global order above, as before. A
+  task the catalogue marks `providerChoice: 'required'` — reading a
+  candidate's CDL photo (`hiring_cdl_reading`) — reads "no list" as NOBODY:
+  nothing is asked until a person chooses. A decision is escalated along the
+  task's own list instead of the tiers (an unsure answer goes to the next
+  provider on it; Claude still Sonnet then Haiku). The list never widens:
+  free-only mode, cooldowns, the per-task switch and the vision allow-list
+  still apply. Settings → AI → AI Providers → **Providers for one task**
+  (`GET /api/settings/ai/capability-providers`, `PUT
+  /api/settings/ai/capabilities/:key/providers`, unknown providers refused);
+  AI Tasks shows who reads such a task. Guarded by
+  `tests/aiCapabilityProviderOrder.test.js`, `tests/hiringCdlRoutes.test.js`
+  and `admin/src/pages/settings/ai/CapabilityProvidersCard.test.jsx`
+  ([`hiring-cdl-reading.md`](../architecture/hiring-cdl-reading.md)).
 - **Still not sure after Claude: the owner is asked, and Wenze learns
   (owner, 23 October 2026).** Safety Approvals, the hiring-stage reader and the
   home-time reader pass `learning` (what to show, what to ask); an answer that

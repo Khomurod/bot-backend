@@ -228,6 +228,16 @@ async function getDeal(dealId, opts) {
   return mapDeal(await getOrNull('crm.deal.get', dealId, opts));
 }
 
+/**
+ * One record exactly as Bitrix sends it — every field, user fields too — or
+ * null when it no longer exists. Read only; for a caller that must know which
+ * fields are already filled (services/hiringStages/cdlStep.js).
+ */
+async function getRawRecord(entity, id, opts) {
+  const row = await getOrNull(entity === 'contact' ? 'crm.contact.get' : 'crm.deal.get', id, opts);
+  return row && row.ID ? row : null;
+}
+
 /** The stages of one pipeline (category 0 is the default one), as Bitrix rows. */
 async function listStageRows(categoryId, opts) {
   const id = Number(categoryId) || 0;
@@ -375,6 +385,7 @@ module.exports = {
   listOpenDealsForContact,
   listOpenDealsByTitle,
   getDeal,
+  getRawRecord,
   listStageRows,
   moveDealToStage,
   renameDeal,

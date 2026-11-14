@@ -231,3 +231,23 @@ export async function skipAiLearningQuestion() {
   if (!res.ok) { await handleApiError(res); }
   return res.json();
 }
+
+/**
+ * The tasks that keep to providers of their own (the CDL reading first), each
+ * with its list — null: the global order — and the providers to choose from.
+ * Returns { capabilities, providers, freeOnlyMode }. Never a key.
+ */
+export async function getAiCapabilityProviders() {
+  const res = await fetch(`${API_BASE}/settings/ai/capability-providers`, { headers: getHeaders() });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}
+
+/** Save one task's providers, first asked first. `null` hands it back to the global order. */
+export async function setAiCapabilityProviders(capabilityKey, order) {
+  const res = await fetch(`${API_BASE}/settings/ai/capabilities/${encodeURIComponent(capabilityKey)}/providers`, {
+    method: 'PUT', headers: getHeaders(), body: JSON.stringify({ order }),
+  });
+  if (!res.ok) { await handleApiError(res); }
+  return res.json();
+}

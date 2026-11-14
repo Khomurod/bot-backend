@@ -18,6 +18,7 @@ const express = require('express');
 const aiSettings = require('../../../database/aiSettings');
 const operationalCheckSettings = require('../../../database/operationalCheckSettings');
 const { groupedCapabilities } = require('../../../lib/ai/capabilityCatalog');
+const { effectiveProviderOrder } = require('../../../lib/ai/providerChoice');
 const aiProviders = require('../../../database/aiProviders');
 const aiCallLog = require('../../../database/aiCallLog');
 const { invalidateRegistry } = require('../../../services/ai/registry');
@@ -297,6 +298,9 @@ function createAiSettingsRouter({ authMiddleware }) {
             fallback: cap.fallback || null,
             // A capability with no row yet is ENABLED — see capabilityGate.
             aiEnabled: stored ? stored.aiEnabled !== false : true,
+            // Its own providers (Settings → AI → Providers for one task), when it offers a choice.
+            providerChoice: cap.providerChoice || null,
+            providerOrder: cap.providerChoice ? effectiveProviderOrder(cap, stored?.providerOrder) : null,
             registered: Boolean(stored),
             automation: cap.automationCheck
               ? {

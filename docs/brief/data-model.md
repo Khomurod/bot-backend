@@ -209,7 +209,13 @@ not `facebookCrypto` — the poller holds none of this app's secrets.
   writes it, the only UPDATE is retention's 60-day name scrub and the only
   DELETE its year. Partial indexes serve the owner's failure streak
   (`idx_activity_log_streak`, `idx_activity_log_trigger_success`). A row's `target_id` is a Bitrix id, not a foreign key — the
-  record may have been deleted in Bitrix. `docs/architecture/activity-log.md`.
+  record may have been deleted in Bitrix. A write whose audit context says
+  `valuesWithheld` (the CDL reading) keeps field names only and none of
+  Bitrix's words on a refusal. `docs/architecture/activity-log.md`.
+- **A task's own AI providers** (migration 0107): `ai_capabilities.provider_order`
+  (TEXT[], NULL = the global order; an empty list = nobody) — read through
+  the capability gate's cache, saved by Settings → AI → Providers for one task
+  (`docs/brief/ai-gateway.md`). No foreign key: a deleted provider is skipped.
 
 - **Home time → road bonus.** A road→home transition writes
   `driver_road_history` with the bonus RECORDED and `bonus_decision =
@@ -248,7 +254,7 @@ not `facebookCrypto` — the poller holds none of this app's secrets.
   candidates' names and phones, kept only while a late Safety reply could
   still need them. What a model made of a reply is never stored, only the
   verified outcome (`docs/architecture/safety-approvals.md`).
-- **The hiring-stage tables ride on them** (migrations 0076, 0100, 0101, 0104, 0106):
+- **The hiring-stage tables ride on them** (migrations 0076, 0100, 0101, 0104, 0106, 0108):
   `hiring_stage_threads` (one queue row per candidate conversation),
   `hiring_stage_proposals` (what was proposed in the Bitrix topic and who
   answered; `note` = why a deal was not created automatically),
@@ -272,7 +278,14 @@ not `facebookCrypto` — the poller holds none of this app's secrets.
   stage_proposals_enabled` and `.bitrix_topic_id`. The Bitrix deal and
   contact are referenced by id only; nothing is copied from Bitrix but a
   deal's title and stage names. Closed rows are deleted after 60 days
-  (`docs/architecture/hiring-stage-proposals.md`).
+  (`docs/architecture/hiring-stage-proposals.md`). **The CDL reading
+  (migration 0108)** adds `hiring_cdl_field_map` (the owner's map from a CDL
+  item to a Bitrix contact or deal field, one item per field) and
+  `hiring_stage_cdl_reads` (how each tag's read ended: status, provider,
+  model, counts and the item NAMES written — deleted after 60 days). **No CDL
+  value is ever stored** — date of birth, licence number, address go to Bitrix
+  only; `tests/hiringCdlPg.test.js` pins the column list
+  (`docs/architecture/hiring-cdl-reading.md`).
 - **The Truck Photos tables** (migrations 0096, 0097): `truck_photo_settings` (one
   row; `enabled` cannot be TRUE without a recipient a test message reached —
   a CHECK), `driver_group_photos` (the photos and videos seen in driver groups

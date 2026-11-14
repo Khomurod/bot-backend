@@ -135,3 +135,22 @@ test("a responsibility that changes nothing has no automation switch at all", as
   await open();
   expect(screen.getAllByLabelText(/Make the change automatically/)).toHaveLength(1);
 });
+
+test("a task kept to its own providers says who reads it — or that nothing is read", async () => {
+  const cdl = (providerOrder) => [{
+    group: "Recruiting",
+    capabilities: [{
+      key: "hiring_cdl_reading", label: "Read a candidate's CDL photo", what: "Reads the CDL photo.",
+      changesState: true, stateNote: "Writes to Bitrix.", fallback: "Nothing is read.", aiEnabled: true,
+      registered: true, automation: null, providerChoice: "required", providerOrder,
+    }],
+  }];
+  api.getAiResponsibilities.mockResolvedValue({ groups: cdl([]), automationError: null });
+  const { unmount } = render(<ResponsibilitiesCard flash={flash} />);
+  expect(await screen.findByText(/No provider chosen — nothing is read/)).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: /Choose them in AI Providers/ })).toHaveAttribute("href", "#settings/ai");
+  unmount();
+  api.getAiResponsibilities.mockResolvedValue({ groups: cdl(["gemini", "anthropic"]), automationError: null });
+  render(<ResponsibilitiesCard flash={flash} />);
+  expect(await screen.findByText(/Asked only of the providers chosen for it \(gemini → anthropic\)/)).toBeInTheDocument();
+});
