@@ -12,6 +12,7 @@
  */
 const autoReactionsDb = require('../database/autoReactions');
 const { matchReactionRule, buildReactionIndexes } = require('./autoReactionConstants');
+const { canReact, setEmojiReaction } = require('./telegram/reaction');
 
 // Ten minutes. Every rule an admin saves calls invalidateAutoReactionCache()
 // (server/routes/autoReactionsRoutes.js), so the window only bounds how often
@@ -81,16 +82,8 @@ async function applyAutoReaction(telegram, message) {
 
     const chatId = message.chat?.id;
     if (chatId == null) return false;
-    const reaction = [{ type: 'emoji', emoji: rule.emoji }];
-    if (typeof telegram.setMessageReaction === 'function') {
-      await telegram.setMessageReaction(chatId, message.message_id, reaction);
-    } else if (typeof telegram.callApi === 'function') {
-      await telegram.callApi('setMessageReaction', {
-        chat_id: chatId, message_id: message.message_id, reaction,
-      });
-    } else {
-      return false;
-    }
+    if (!canReact(telegram)) return false;
+    await setEmojiReaction(telegram, chatId, message.message_id, rule.emoji);
     return true;
   } catch (err) {
     console.warn('[AUTO-REACTION] Could not react (non-fatal):', err.message);

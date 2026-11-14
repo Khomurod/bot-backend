@@ -74,19 +74,27 @@ async function block(record, reason) {
 
 /**
  * Why the bot created a record, for Monitoring → Logs: automatic, from the
- * recruiting group's conversation (its chat and post are the evidence). The
- * name is the label and the title's `to` — both taken out after 60 days. No
- * phone: the contact's number is never shown.
+ * recruiting group's conversation (its chat and post are the evidence) — or,
+ * when a person ASKED for the lead with a tag (requested.js), that person:
+ * `person_reply`, their Telegram id and name, and the tagging message. The
+ * driver's name is the label and the title's `to` — both taken out after 60
+ * days. No phone: the contact's number is never shown.
  */
-function createAudit(record, what, name, deal = null) {
+function createAudit(record, what, name, deal = null, requestedBy = null) {
+  const why = what === 'deal' ? 'Bitrix had no open deal.' : 'Bitrix had no contact for them.';
   return {
-    actorKind: 'automatic',
+    ...(requestedBy ? {
+      actorKind: 'person_reply',
+      actorTelegramId: requestedBy.userId ?? null,
+      actorName: requestedBy.name || null,
+    } : { actorKind: 'automatic' }),
     trigger: 'hiring_stage.create',
-    reason: what === 'deal'
-      ? 'The recruiting group\'s conversation identified the candidate for certain and Bitrix had no open deal.'
-      : 'The recruiting group\'s conversation identified the candidate for certain and Bitrix had no contact for them.',
+    reason: requestedBy
+      ? `A person in the recruiting group asked for this lead (a reply to its post mentioning the bot); the post named one candidate for certain and ${why}`
+      : `The recruiting group's conversation identified the candidate for certain and ${why}`,
     evidence: {
       chatId: record.chatId, rootMessageId: record.rootMessageId, crmRecordId: record.id,
+      ...(requestedBy?.requestMessageId ? { requestMessageId: requestedBy.requestMessageId } : {}),
       ...(deal ? { contactId: deal.contactId } : {}),
     },
     targetLabel: name || null,
@@ -99,7 +107,9 @@ function createAudit(record, what, name, deal = null) {
 }
 
 /** The contact to put the deal on: `{contactId, reused}`, or `{blocked}`. */
-async function resolveContact(record, identity, { origin, fields }, opts) {
+async function resolveContact(record, identity, {
+  origin, fields, requestedBy,
+}, opts) {
   if (record.contactId) return { contactId: record.contactId, reused: record.contactReused };
   const ids = new Set(await bitrix.findContactIdsByPhone([identity.phone], opts));
   if (record.status === 'creating_contact') {
@@ -122,7 +132,7 @@ async function resolveContact(record, identity, { origin, fields }, opts) {
   await records.advance(record.id, ['claimed', 'creating_contact'], 'creating_contact');
   const contactId = await bitrix.createContact({
     ...fields, first: identity.first, last: identity.last, phone: identity.phone,
-  }, { ...opts, audit: createAudit(record, 'contact', identity.displayName || identity.name) });
+  }, { ...opts, audit: createAudit(record, 'contact', identity.displayName || identity.name, null, requestedBy) });
   return { contactId, reused: false };
 }
 
@@ -146,13 +156,15 @@ async function openDealOf(record, contactId, origin, opts) {
  * @param {object} args.identity       lib/hiringStages/identity.js, `ok: true`
  * @param {string} args.categoryId     the pipeline a new deal goes in
  * @param {object[]} args.stages       that pipeline's stages (normalised)
+ * @param {object|null} [args.requestedBy]  `{userId, name, requestMessageId}` of the person who
+ *   asked with a tag — the actor Monitoring → Logs records; null: automatic
  * @returns {Promise<{status: 'created', deal: object, contactReused: boolean}
  *   | {status: 'found', deal: object} | {status: 'blocked', reason: string}
  *   | {status: 'busy'} | {status: 'closed', dealId: number}>}
  * @throws {BitrixError} Bitrix could not be asked or refused — retryable ones leave the record to resume
  */
 async function ensureCandidateDeal({
-  chatId, rootMessageId, identity, categoryId, stages,
+  chatId, rootMessageId, identity, categoryId, stages, requestedBy = null,
 }, opts = {}) {
   const stage = startStage(stages);
   if (!stage) return { status: 'blocked', reason: `the pipeline has no "${START_STAGE_NAME}" stage to start a deal in` };
@@ -178,7 +190,7 @@ async function ensureCandidateDeal({
     comments: `Created by the Wenze bot from the recruiting group${link ? `: ${link}` : ''}.`,
   };
   try {
-    const contact = await resolveContact(record, { ...identity, ...written }, { origin, fields }, opts);
+    const contact = await resolveContact(record, { ...identity, ...written }, { origin, fields, requestedBy }, opts);
     if (contact.blocked) return block(record, contact.blocked);
     const atDeal = await records.advance(record.id, IN_FLIGHT, 'creating_deal', {
       contactId: contact.contactId, contactReused: contact.reused,
@@ -195,7 +207,10 @@ async function ensureCandidateDeal({
     }
     const dealId = await bitrix.createDeal({
       ...fields, title: written.displayName, categoryId, stageId: stage.id, contactId: contact.contactId,
-    }, { ...opts, audit: createAudit(record, 'deal', written.displayName, { stage, categoryId, contactId: contact.contactId }) });
+    }, {
+      ...opts,
+      audit: createAudit(record, 'deal', written.displayName, { stage, categoryId, contactId: contact.contactId }, requestedBy),
+    });
     await records.advance(record.id, 'creating_deal', 'created', {
       dealId, dealReused: false, categoryId: String(categoryId), stageId: stage.id,
     });
@@ -217,12 +232,12 @@ async function ensureCandidateDeal({
  * A creation this conversation left IN FLIGHT — a call that got no answer — is
  * finished before anything else is read, from what was claimed (the name and
  * phone it started with): searched for first, added only if still missing.
- * @param {{chatId, rootMessageId, categoryId, loadStages: Function}} args
+ * @param {{chatId, rootMessageId, categoryId, loadStages: Function, requestedBy?: object}} args
  * @returns {Promise<object|null>} ensureCandidateDeal's answer with the claimed name, phone and
  *   the stages read, or null when nothing is in flight
  */
 async function resumeInFlight({
-  chatId, rootMessageId, categoryId, loadStages,
+  chatId, rootMessageId, categoryId, loadStages, requestedBy = null,
 }, opts = {}) {
   const record = await records.getForRoot(chatId, rootMessageId);
   if (!record || !IN_FLIGHT.includes(record.status)) return null;
@@ -234,7 +249,7 @@ async function resumeInFlight({
   };
   const stages = await loadStages();
   const made = await ensureCandidateDeal({
-    chatId, rootMessageId, identity, categoryId, stages,
+    chatId, rootMessageId, identity, categoryId, stages, requestedBy,
   }, opts);
   return {
     ...made, driverName: identity.name, phone: identity.phone, stages,

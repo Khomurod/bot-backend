@@ -161,6 +161,7 @@ organization should converge toward.
 |---|---|
 | **Retired** | The Finance Monitor (23 October 2026): money-code capture from the finance group, `lib/finance/*`, `services/finance/*`, `database/finance*`, `bot/handlers/financeCaptureHandlers.js`, the workers `finance_document_reader`, `finance_weekly_report` and `finance_reparse`, the capabilities `finance_message_reading` and `finance_document_extraction`, `/api/finance`, `/api/settings/finance*`, the Finance page and Settings → Finance. `services/documents/pdfTextExtraction.js`, `lib/telegram/fileDescriptor.js` and `tesseract.js` went with their last caller. The six `finance_*` tables remain, unread, droppable in Settings → Retired Leftovers (group `finance`). `docs/architecture/retired-finance-monitor.md` |
 | Getting one attachment's bytes out of Telegram (the token-bearing URL never logged or stored; the size refused before and during the transfer) | `services/telegram/fileDownload.js` (`downloadTelegramFile`) — moved out of `services/finance/`; its callers are Safety Approvals' worker and Truck Photos' PDF builder |
+| Setting one emoji reaction on a message — the single implementation (only emoji Telegram allows a bot: `services/autoReactionConstants.js`) | `services/telegram/reaction.js` (`setEmojiReaction`, `reactQuietly`); callers: automatic reactions, the driver-group 👍, Truck Photos' 👍, the recruiting group's answer to a tag |
 
 ### 5b. Safety Approvals Module
 
@@ -174,7 +175,7 @@ organization should converge toward.
 | A model's reading cut down to what the messages prove | `lib/safetyApprovals/reading.js` (pure: `verifyReading`, `documentsFor`) |
 | The card, the topic link, the link to the post | `lib/safetyApprovals/announcement.js` (pure) |
 | Settings, captured messages, the review queue, what was posted | `database/safetyApprovals/{settings,messages,reviews}.js`, migrations 0069 and 0077 |
-| Capture and the bot seam above it | `services/safetyApprovals/captureService.js`, `bot/handlers/safetyApprovalHandlers.js` (thin) |
+| Capture and the bot seam above it (which also hands a reply mentioning the bot to the hiring stages, in its own try) | `services/safetyApprovals/captureService.js`, `bot/handlers/safetyApprovalHandlers.js` (thin; passes `ctx.botInfo`) |
 | Reading a decision and posting it | `services/safetyApprovals/{reviewer,postLocator,decide,aiReading,aiContext,announcer}.js`; worker `services/safetyApprovals/worker.js`, key `safety_approvals`, capability `safety_approval_reading` |
 | Settings → Safety Approvals | `server/routes/settings/safetyApprovalRoutes.js`, admin `settings/SafetyApprovalsTab.jsx`, `admin/src/api/safetyApprovals.js` |
 
@@ -189,13 +190,15 @@ organization should converge toward.
 | Whether a candidate is certain enough to create a Bitrix record for | `lib/hiringStages/identity.js` (pure) |
 | The name a creation writes — the post's words in Safety's spelling and order, by rules | `lib/hiringStages/displayName.js` (pure) |
 | When a placeholder deal title ("No name") may be offered a rename — never the Board's or home time's pipeline | `lib/hiringStages/placeholder.js` (pure) |
-| The conversation queue, the proposals, the creation claim, the notices, the rename offers | `database/hiringStages/{threads,proposals,crmRecords,notices,renames}.js`, migrations 0076, 0100, 0104 |
+| When a reply that mentions the bot is a person asking for a lead (the bot's username from `ctx.botInfo`, never hard-coded), which copy of the post is current, and the reaction that answers | `lib/hiringStages/botRequest.js` (pure) |
+| The conversation queue (and who asked for it, `requestThread`), the proposals, the creation claim, the notices, the rename offers | `database/hiringStages/{threads,proposals,crmRecords,notices,renames}.js`, migrations 0076, 0100, 0104, 0106 |
 | Bitrix deals: find, stages, the stage move, the two adds, the placeholder rename (`crm.deal.update` TITLE, `crm.contact.update` NAME / LAST_NAME) | `services/bitrix24DealStages.js`, `services/hiringStages/{dealFinder,stagePlan}.js` |
 | No open deal: the conversation's own deal, closed, rejected, or create | `services/hiringStages/noDeal.js` |
 | Renaming a placeholder deal, by button only | `services/hiringStages/rename.js` (the only caller of `renameDeal` / `renameContact`) |
 | One card per driver in the Bitrix topic (re-post on a question, edit on an answer) | `services/hiringStages/card.js`, `database/hiringStages/cards.js`, migration 0101 |
 | Creating a missing contact + deal, at most once | `services/hiringStages/crmCreate.js` (the only caller of `crm.contact.add` / `crm.deal.add`) |
-| Queueing from capture; reading and proposing | `services/hiringStages/{conversationQueue,reviewer,propose,aiReading,groupMessages}.js`; worker `services/hiringStages/worker.js`, key `hiring_stage_proposals`, capability `hiring_stage_reading` |
+| Queueing from capture; reading and proposing | `services/hiringStages/{conversationQueue,reviewer,stageRead,propose,aiReading,groupMessages}.js` (`reviewer.js` the read and its retries, `stageRead.js` the stage read both reads share); worker `services/hiringStages/worker.js`, key `hiring_stage_proposals`, capability `hiring_stage_reading` |
+| A person asking for a lead with a tag: the post as it is now (refreshed, or rebuilt from `reply_to_message`), queued with a one-minute settle, 👀; the read that creates without waiting for a stage, overrides a Skip, and answers 👍 / 🤷 | `services/hiringStages/requestQueue.js` (from capture), `services/hiringStages/requested.js` (from the reviewer) |
 | The buttons | `bot/handlers/hiringStageHandlers.js` (thin) → `services/hiringStages/actions.js` |
 | The switch and history | `admin/src/pages/settings/HiringStagesCard.jsx` inside Settings → Safety Approvals |
 

@@ -244,7 +244,10 @@ repository-wide working rules. The highest-consequence items:
   creation is claimed (`hiring_stage_crm_records`) and every step recorded
   before its Bitrix call, so a retry or timeout searches before it adds. A
   created deal starts at "Sent to Safety" — a stage MOVE is still a person's
-  press. Bitrix messages go to the Bitrix topic only, never General.
+  press. Bitrix messages go to the Bitrix topic only, never General — where a
+  person's tag (a reply mentioning the bot, rule 20) is answered only with a
+  reaction, and the tag's own words are never data, evidence or model input
+  (`tests/hiringStageRequested.test.js`).
   `tests/hiringStageCrmCreate.test.js`. **Never a deal the conversation
   already has** (open or closed) **nor one for a rejected candidate**; the name
   written is Safety's spelling read by rules, never a model's; a placeholder

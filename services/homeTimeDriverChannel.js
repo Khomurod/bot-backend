@@ -22,6 +22,7 @@
  *   - the internal clarification alert itself.
  */
 const { safeSend } = require('./telegramHtml');
+const { canReact, setEmojiReaction } = require('./telegram/reaction');
 
 /**
  * May the bot message driver groups right now?
@@ -87,17 +88,9 @@ async function reactToDriverMessage(telegram, chatId, messageId, {
       + '(driver clarification messaging is disabled).');
     return null;
   }
-  if (!telegram || !chatId || !messageId) return null;
+  if (!telegram || !chatId || !messageId || !canReact(telegram)) return null;
   try {
-    const reaction = [{ type: 'emoji', emoji }];
-    if (typeof telegram.setMessageReaction === 'function') {
-      return await telegram.setMessageReaction(chatId, messageId, reaction);
-    }
-    if (typeof telegram.callApi === 'function') {
-      return await telegram.callApi('setMessageReaction', {
-        chat_id: chatId, message_id: messageId, reaction,
-      });
-    }
+    return await setEmojiReaction(telegram, chatId, messageId, emoji);
   } catch (err) {
     console.warn('[HOME-TIME-CHANNEL] Could not set reaction (non-fatal):', err.message);
   }

@@ -11,10 +11,29 @@
  */
 
 const bitrix = require('../bitrix24DealStages');
+const { getBitrixConfig } = require('../../database/bitrix');
 const { normaliseStages, stageByName, isForwardMove } = require('../../lib/hiringStages/proposal');
 
 async function stagesFor(categoryId, opts) {
   return normaliseStages(await bitrix.listStageRows(categoryId, opts));
+}
+
+/**
+ * The pipeline a NEW deal goes in — and whose stages are shown to the model
+ * when no deal is found: the deal category in Settings → Bitrix24, or the
+ * default pipeline.
+ */
+async function newDealCategory() {
+  return (await getBitrixConfig()).dealCategoryId || '0';
+}
+
+/** The name of the stage a deal is at — its id when the pipeline cannot be read. Never throws. */
+async function stageNameOf(deal, opts) {
+  try {
+    return (await stagesFor(deal.categoryId, opts)).find((s) => s.id === deal.stageId)?.name || deal.stageId;
+  } catch {
+    return deal.stageId;
+  }
 }
 
 /**
@@ -47,4 +66,6 @@ function dealColumns(deal, plan) {
   };
 }
 
-module.exports = { stagesFor, planForDeal, dealColumns };
+module.exports = {
+  stagesFor, newDealCategory, stageNameOf, planForDeal, dealColumns,
+};

@@ -22,6 +22,7 @@
 
 const { safeSend } = require('../telegramHtml');
 const { cleanTelegramError } = require('../../lib/telegram/telegramErrors');
+const { setEmojiReaction } = require('../telegram/reaction');
 
 const SEND_DEADLINE_MS = 3 * 60 * 1000;
 const THUMBS_UP = '👍';
@@ -59,12 +60,7 @@ async function sendPdf({
 /** 👍 on the trigger message. Never throws: a reaction is a courtesy, not the delivery. */
 async function reactDelivered({ telegram, chatId, messageId }) {
   try {
-    const reaction = [{ type: 'emoji', emoji: THUMBS_UP }];
-    if (typeof telegram?.setMessageReaction === 'function') {
-      await telegram.setMessageReaction(chatId, messageId, reaction);
-    } else {
-      await telegram.callApi('setMessageReaction', { chat_id: chatId, message_id: messageId, reaction });
-    }
+    await setEmojiReaction(telegram, chatId, messageId, THUMBS_UP);
     return true;
   } catch (err) {
     console.warn('[TRUCK PHOTOS] could not react to the message (non-fatal):', cleanTelegramError(err));

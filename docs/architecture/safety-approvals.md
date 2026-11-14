@@ -40,8 +40,21 @@ writes in the conversation.
 The same captured messages feed a second, separately switched feature: the
 **Bitrix stage proposals**, which read the conversation in General and write
 in a **Bitrix topic** of their own ("move <driver> to <stage>?" with a button,
-a deal created, a Bitrix error) — never in General. See
+a deal created, a Bitrix error) — never in General, where they only ever set
+a REACTION on a person's request (below). See
 [`hiring-stage-proposals.md`](hiring-stage-proposals.md).
+
+**Since 14 November 2026 capture also takes a person's REQUEST for a lead**:
+a reply to the lead's post that mentions the bot ([hiring-stage-proposals.md
+rule 20](hiring-stage-proposals.md)). After the message is stored — flagged
+`bot_request`, a request and never data — it is handed to
+`services/hiringStages/requestQueue.js` in its own `try`, so it can never stop
+capture or a Safety decision (a Safety `#Approved @bot` is still a decision
+here). A post the bot never saw (it was down) is rebuilt from the tag's
+`reply_to_message` and stored flagged `recovered_from_reply`; a stored post
+whose copy in the tag is newer is updated. The handler passes the bot's own id
+and username (`ctx.botInfo`) and its Telegram client along; it still always
+calls `next()`.
 
 ## The rules, and why each one exists
 
@@ -133,8 +146,9 @@ Every rule below closes a way to post one.
 
 ```
 bot message / edited_message
-  → bot/handlers/safetyApprovalHandlers.js      (thin; always next(); never throws)
-  → services/safetyApprovals/captureService.js  (chat gate → store → Safety DECISION? → enqueue + wake)
+  → bot/handlers/safetyApprovalHandlers.js      (thin; always next(); never throws; passes ctx.botInfo)
+  → services/safetyApprovals/captureService.js  (chat gate → store → a request to the bot? (own try)
+                                                 → the conversation → Safety DECISION? → enqueue + wake)
   → services/safetyApprovals/worker.js          (queue wake scheduler; withRunRecord('safety_approvals'))
   → services/safetyApprovals/reviewer.js        (decision? → post → Safety bundle → wait? → photos → decide → post)
       ├─ services/safetyApprovals/postLocator.js (the replied post, or the post the last messages were about)
@@ -168,12 +182,12 @@ bot message / edited_message
 
 ## Data
 
-Migration `0069_safety_approvals.sql`:
+Migration `0069_safety_approvals.sql` (and 0077, 0106):
 
 | Table | What it holds |
 |---|---|
 | `safety_approval_settings` | the single settings row (group, topic, Safety ids, switch) |
-| `safety_approval_messages` | every message in the group, verbatim, with Telegram file ids — **deleted after 60 days** by the worker |
+| `safety_approval_messages` | every message in the group, verbatim, with Telegram file ids — **deleted after 60 days** by the worker. Since 0106 `bot_request` (a reply that mentions the bot — never read as data by the stage proposals; set once, kept) and `recovered_from_reply` (rebuilt from a tag's `reply_to_message`; cleared by the first real capture) |
 | `safety_approval_reviews` | one row per Safety decision message: the queue, then the verified outcome (never the raw model answer). `post_message_id` is NULL for a decision written on its own (migration 0077) |
 | `safety_approval_announcements` | what was posted, per post and driver |
 
@@ -199,6 +213,8 @@ drivers' names and phone numbers.
 `tests/safetyApprovalReviewer.test.js`, `tests/safetyApprovalHashtag.test.js`,
 `tests/safetyApprovalTrigger.test.js`, `tests/safetyApprovalPostNames.test.js`
 (a card with a referral line is one driver; real teams; a post that says
-"team"), `tests/safetyApprovalCapture.test.js`,
+"team"), `tests/safetyApprovalCapture.test.js` (also: a request to the bot
+stored as one, and capture and a Safety decision surviving the request path
+throwing), `tests/hiringStageBotRequestsPg.test.js` (the two 0106 flags),
 `tests/safetyApprovalSettingsRoute.test.js`, `tests/safetyApprovalStorePg.test.js`
 and `admin/src/pages/settings/SafetyApprovalsTab.test.jsx`.

@@ -124,3 +124,64 @@ test('a database failure is a reason, never an exception at the bot', async () =
   const out = await capture(message({ message_id: 40, text: 'x' }));
   assert.deepEqual(out, { captured: false, reason: 'error' });
 });
+
+// ── a person asking the bot for a lead (services/hiringStages/requestQueue.js) ──
+
+const BOT = { id: 777000111, username: 'wenze_recruit_bot' };
+const TELEGRAM = { setMessageReaction: async () => true };
+const tagOf = (over = {}) => message({
+  message_id: 50,
+  from: { id: 4242, first_name: 'Ann' },
+  text: '@Wenze_Recruit_Bot',
+  entities: [{ type: 'mention', offset: 0, length: 18 }],
+  reply_to_message: { message_id: 10, from: { id: 500 } },
+  ...over,
+});
+
+test('A REPLY THAT MENTIONS THE BOT is stored as a request (never data) and handed over with the bot and its client', async () => {
+  reset();
+  const asked = [];
+  let conversations = 0;
+  const out = await captureSafetyApprovalMessage(tagOf(), {
+    botInfo: BOT,
+    telegram: TELEGRAM,
+    noteRequest: async (msg, settings, ctx) => { asked.push({ msg, settings, ctx }); return { id: 7 }; },
+    noteConversation: async () => { conversations += 1; return null; },
+    wakeStages: () => { wakes += 1; },
+  });
+  assert.deepEqual(out, { captured: true, requested: true });
+  assert.equal(stored[0].botRequest, true);
+  assert.equal(asked.length, 1);
+  assert.equal(asked[0].ctx.botInfo, BOT);
+  assert.equal(asked[0].ctx.telegram, TELEGRAM);
+  assert.equal(conversations, 0, 'a request is not part of the conversation');
+  assert.equal(wakes, 1);
+});
+
+test('without the bot\'s identity, or as a post that replies to nothing, a mention is an ordinary message', async () => {
+  reset();
+  let asked = 0;
+  const noteRequest = async () => { asked += 1; return null; };
+  await captureSafetyApprovalMessage(tagOf(), { noteRequest, noteConversation: async () => null });
+  await captureSafetyApprovalMessage(tagOf({ message_id: 51, reply_to_message: undefined }), {
+    botInfo: BOT, noteRequest, noteConversation: async () => null,
+  });
+  assert.equal(asked, 0);
+  assert.deepEqual(stored.map((r) => r.botRequest), [false, false]);
+});
+
+test('THE REQUEST PATH FAILING never stops capture or a Safety decision', async () => {
+  reset();
+  const out = await captureSafetyApprovalMessage(tagOf({
+    from: { id: 900 }, text: '#Approved @Wenze_Recruit_Bot', entities: [{ type: 'mention', offset: 10, length: 18 }],
+  }), {
+    botInfo: BOT,
+    telegram: TELEGRAM,
+    noteRequest: async () => { throw new Error('database is down'); },
+    wake: () => { wakes += 1; },
+  });
+  assert.deepEqual(out, { captured: true, queued: true });
+  assert.equal(stored.length, 1);
+  assert.equal(queued[0].safetyKey, 'message:50');
+  assert.equal(wakes, 1);
+});

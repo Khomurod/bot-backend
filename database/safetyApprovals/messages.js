@@ -37,11 +37,19 @@ function mapRow(row) {
     replyToMessageId: row.reply_to_message_id === null ? null : Number(row.reply_to_message_id),
     sentAt: row.sent_at || null,
     editedAt: row.edited_at || null,
+    // Rebuilt from the `reply_to_message` of a tag — the bot never saw it itself (migration 0106).
+    recoveredFromReply: Boolean(row.recovered_from_reply),
+    // It mentions the bot: a request, never data (migration 0106, services/hiringStages/requestQueue.js).
+    botRequest: Boolean(row.bot_request),
   };
 }
 
 /**
  * Store a shaped message (lib/safetyApprovals/messageShape.js).
+ *
+ * `recoveredFromReply` stays TRUE only while every copy came from a tag's
+ * `reply_to_message` — the first real capture clears it. `botRequest` once
+ * set stays set: a message that mentioned the bot is never read as data.
  * @returns {Promise<{id: number, created: boolean}>}
  */
 async function upsertMessage(m) {
@@ -49,15 +57,17 @@ async function upsertMessage(m) {
     `INSERT INTO safety_approval_messages (
        chat_id, message_id, thread_id, media_group_id, from_user_id, from_name,
        text, photos, documents, reply_to_message_id, sent_at, edited_at,
-       forwarded_from_user_id, forwarded_from_name
-     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9::jsonb,$10,$11,$12,$13,$14)
+       forwarded_from_user_id, forwarded_from_name, recovered_from_reply, bot_request
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9::jsonb,$10,$11,$12,$13,$14,$15,$16)
      ON CONFLICT (chat_id, message_id) DO UPDATE
         SET text = EXCLUDED.text,
             photos = EXCLUDED.photos,
             documents = EXCLUDED.documents,
             reply_to_message_id = COALESCE(EXCLUDED.reply_to_message_id,
                                            safety_approval_messages.reply_to_message_id),
-            edited_at = COALESCE(EXCLUDED.edited_at, safety_approval_messages.edited_at)
+            edited_at = COALESCE(EXCLUDED.edited_at, safety_approval_messages.edited_at),
+            recovered_from_reply = safety_approval_messages.recovered_from_reply AND EXCLUDED.recovered_from_reply,
+            bot_request = safety_approval_messages.bot_request OR EXCLUDED.bot_request
      RETURNING id, (xmax = 0) AS created`,
     [
       String(m.chatId), Number(m.messageId), m.threadId ?? null, m.mediaGroupId ?? null,
@@ -65,6 +75,7 @@ async function upsertMessage(m) {
       JSON.stringify(m.photos || []), JSON.stringify(m.documents || []),
       m.replyToMessageId ?? null, m.sentAt ?? null, m.editedAt ?? null,
       m.forwardedFromUserId ?? null, m.forwardedFromName ?? null,
+      Boolean(m.recoveredFromReply), Boolean(m.botRequest),
     ],
   );
   return { id: Number(rows[0].id), created: Boolean(rows[0].created) };

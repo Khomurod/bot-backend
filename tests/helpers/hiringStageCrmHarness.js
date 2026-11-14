@@ -28,6 +28,7 @@ const SETTINGS = {
 const state = {
   messages: [], finished: [], retried: [], proposals: [], records: [], notices: [], sent: [], edits: [], deleted: [],
   contacts: [], deals: [], calls: [], fail: {}, nextId: 500, aiAnswer: null, renames: [], logged: [],
+  audits: [], reactions: [], neighbours: [], transcripts: [],
 };
 
 // Monitoring → Logs: what the presses record, kept here (never a database).
@@ -37,6 +38,16 @@ stub('database/activityLog.js', {
 });
 
 // ── stores ──────────────────────────────────────────────────────────────────
+// The captured messages, as Safety Approvals' post assembly reads them
+// (services/safetyApprovals/postLocator.js `resolvePost`, for a read a person
+// asked for): the conversation, plus `state.neighbours` — the sender's other
+// messages around the post.
+const byId = (id) => [...state.messages, ...state.neighbours].find((x) => x.messageId === Number(id)) || null;
+stub('database/safetyApprovals/messages.js', {
+  getMessage: async (chatId, id) => byId(id),
+  getMediaGroup: async (chatId, g) => state.messages.filter((x) => g && x.mediaGroupId === g),
+  listSenderMessagesAround: async ({ fromUserId }) => state.neighbours.filter((x) => x.fromUserId === fromUserId),
+});
 stub('database/hiringStages/threads.js', {
   listThreadMessages: async () => state.messages,
   finishThread: async (t, o) => { state.finished.push(o); return true; },
@@ -205,16 +216,18 @@ stub('services/bitrix24DealStages.js', {
     record(`crm.${entity}.list`);
     return (entity === 'contact' ? state.contacts : state.deals).filter((r) => r.originId === origin).map((r) => r.id);
   },
-  createContact: async (f) => {
+  createContact: async (f, opts = {}) => {
     record('crm.contact.add');
+    state.audits.push({ method: 'crm.contact.add', ...opts.audit });
     maybeFail('crm.contact.add', { before: true });
     const id = (state.nextId += 1);
     state.contacts.push({ id, first: f.first, last: f.last, phones: [f.phone], originId: f.originId });
     maybeFail('crm.contact.add', { before: false });
     return id;
   },
-  createDeal: async (f) => {
+  createDeal: async (f, opts = {}) => {
     record('crm.deal.add');
+    state.audits.push({ method: 'crm.deal.add', ...opts.audit });
     maybeFail('crm.deal.add', { before: true });
     const id = (state.nextId += 1);
     state.deals.push({
@@ -246,6 +259,10 @@ const telegram = {
   sendMessage: async (chatId, text, extra) => { state.sent.push({ chatId, text, extra }); return { message_id: 9000 + state.sent.length }; },
   editMessageText: async (chatId, messageId, _i, text, extra) => { state.edits.push({ messageId, text, extra }); return true; },
   deleteMessage: async (chatId, messageId) => { state.deleted.push(messageId); return true; },
+  setMessageReaction: async (chatId, messageId, reaction) => {
+    state.reactions.push({ chatId: String(chatId), messageId, emoji: reaction[0].emoji });
+    return true;
+  },
 };
 const m = (messageId, over = {}) => ({
   messageId, fromUserId: '500', fromName: 'Kim R', text: null, photos: [], documents: [],
@@ -262,6 +279,7 @@ function reset() {
   Object.assign(state, {
     messages: [], finished: [], retried: [], proposals: [], records: [], notices: [], sent: [], edits: [], deleted: [],
     contacts: [], deals: [], calls: [], fail: {}, nextId: 500, renames: [], logged: [],
+    audits: [], reactions: [], neighbours: [], transcripts: [],
     aiAnswer: { move: true, stage_id: 'UC_SAFETY', driver_name: null, evidence: 'CLH sent' },
   });
 }
@@ -269,7 +287,10 @@ function reset() {
 const { processThread } = require('../../services/hiringStages/reviewer');
 const { handleStageButton } = require('../../services/hiringStages/actions');
 
-const readStage = async () => ({ parsed: state.aiAnswer, model: 'fake' });
+const readStage = async (args) => {
+  state.transcripts.push(args.transcript);
+  return { parsed: state.aiAnswer, model: 'fake' };
+};
 const run = (t = thread()) => processThread(t, { settings: SETTINGS, telegram, readStage });
 const ANN = { id: 4242, first_name: 'Ann', is_bot: false };
 const press = (action, id, from = ANN, chatId = CHAT) => handleStageButton({
@@ -278,5 +299,5 @@ const press = (action, id, from = ANN, chatId = CHAT) => handleStageButton({
 
 module.exports = {
   cardStore,
-  CHAT, SAFETY, SETTINGS, ORIGINATOR, BitrixError, state, telegram, m, conversation, thread, reset, run, press,
+  CHAT, SAFETY, SETTINGS, ORIGINATOR, BitrixError, state, telegram, m, conversation, thread, reset, run, press, readStage,
 };
