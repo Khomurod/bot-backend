@@ -31,7 +31,7 @@ function defaultDeps() {
     askNext: () => askNext(),
     say: (args) => sayUnder(args),
     portalOrigin: require('../bitrix24DealStages').portalOrigin,
-    apply: (action) => require('./apply').applyAction(action),
+    apply: (action, audit) => require('./apply').applyAction(action, undefined, audit),
   };
   /* eslint-enable global-require */
 }
@@ -39,7 +39,7 @@ function defaultDeps() {
 const reply = (text, alert = false) => ({ text, alert });
 
 /**
- * @param {{data: string, chatId, messageId, telegramUserId, fromIsBot}} press
+ * @param {{data: string, chatId, messageId, telegramUserId, fromName, fromIsBot}} press
  * @returns {Promise<{text: string, alert: boolean}>}
  */
 async function handleBoardBitrixButton(press, deps = defaultDeps()) {
@@ -62,7 +62,9 @@ async function handleBoardBitrixButton(press, deps = defaultDeps()) {
     });
     const outcome = await answer.exclusive(question.id, () => (m[2] === 's'
       ? answer.skip(question, say, deps)
-      : answer.doAction(question, Number(m[2]), say, deps)));
+      : answer.doAction(question, Number(m[2]), say, deps, {
+        kind: 'person_button', telegramUserId: press.telegramUserId, name: press.fromName || null,
+      })));
     if (outcome === 'busy') return reply('Already working on it…');
     if (outcome === 'skipped') return reply('Skipped — next question.');
     if (outcome === 'confirmed') return reply('Done.');

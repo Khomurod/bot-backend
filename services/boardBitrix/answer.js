@@ -43,7 +43,9 @@ async function skip(question, say, deps) {
 /** Bitrix read again: confirmed → thank and ask the next; else what is still different. */
 async function recheck(question, say, deps, doneLine = '✅ Confirmed — Bitrix matches the Dispatcher Board now. Thank you!') {
   const summary = await deps.recheck(question.id);
-  if (!summary || summary.error || summary.blocked) {
+  // A pass that compared but whose status sync failed carries `error` too
+  // (services/boardBitrix/pass.js `syncFailure`): the comparison still holds.
+  if (!summary || summary.blocked || (summary.error && summary.compared !== true)) {
     await say(`I could not check Bitrix just now (${String(summary?.error || summary?.blocked || 'no answer').slice(0, 160)}). `
       + 'I will check again on the next pass.');
     return 'recheck_failed';
@@ -64,7 +66,37 @@ async function recheck(question, say, deps, doneLine = '✅ Confirmed — Bitrix
   return 'still_different';
 }
 
-async function doAction(question, index, say, deps) {
+const FIX_WORDS = Object.freeze({
+  set_stage: 'move the deal to the stage the Board\'s status maps to',
+  set_title: 'rename the deal to the Board\'s name',
+  set_driver_type: 'set the deal\'s driver type',
+  set_truck: 'point the deal at the Board\'s truck',
+});
+
+/**
+ * Who asked for this fix, and why — for Monitoring → Logs. The Telegram id
+ * is the evidence; the name is a label. No driver name goes in the reason.
+ * @param {{kind: 'person_button'|'person_reply', telegramUserId, name}} actor
+ */
+function auditForFix(question, index, action, actor) {
+  const viaButton = actor?.kind === 'person_button';
+  return {
+    actorKind: viaButton ? 'person_button' : 'person_reply',
+    actorTelegramId: actor?.telegramUserId ?? null,
+    actorName: actor?.name || null,
+    trigger: viaButton ? 'board_bitrix.button' : 'board_bitrix.reply',
+    reason: `${viaButton ? 'Pressed a button' : 'Asked in a reply'} under a Board ↔ Bitrix question to `
+      + `${FIX_WORDS[action?.type] || 'apply a fix'} (the Dispatcher Board is the source of truth).`,
+    evidence: {
+      questionId: question.id, questionKind: question.kind || null, fixIndex: Number(index), fixType: action?.type || null,
+    },
+  };
+}
+
+/**
+ * @param {object} [actor]  `{kind: 'person_button'|'person_reply', telegramUserId, name}`
+ */
+async function doAction(question, index, say, deps, actor = null) {
   const advice = await deps.advice.getAdvice(question.id);
   const action = advice?.actions?.[Number(index)];
   if (!action) {
@@ -73,7 +105,7 @@ async function doAction(question, index, say, deps) {
   }
   let result;
   try {
-    result = await deps.apply(action);
+    result = await deps.apply(action, auditForFix(question, index, action, actor));
   } catch (err) {
     await say(`Bitrix did not answer — nothing was changed. Try again in a minute. (${String(err.message).slice(0, 120)})`);
     return 'bitrix_failed';
@@ -102,5 +134,5 @@ async function exclusive(questionId, work) {
 }
 
 module.exports = {
-  SKIP_HOURS, mayAnswer, skip, recheck, doAction, exclusive,
+  SKIP_HOURS, mayAnswer, skip, recheck, doAction, exclusive, auditForFix,
 };

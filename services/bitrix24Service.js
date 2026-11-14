@@ -21,9 +21,10 @@
  * (config.bitrix24FieldMap).
  *
  * Read-only and best-effort throughout: a Bitrix outage degrades the sender
- * choice back to the shared number, it never blocks the lead. (The one write
- * to an existing record — a deal's stage, after a person pressed a button —
- * lives in services/bitrix24DealStages.js.)
+ * choice back to the shared number, it never blocks the lead. (The writes to
+ * existing records live in services/bitrix24DealStages.js.) The one write
+ * here, the lead's creation, is recorded in the activity log like every other
+ * Bitrix write (docs/architecture/activity-log.md).
  */
 const config = require('../config/config');
 const { getBitrixConfig } = require('../database/bitrix');
@@ -121,6 +122,8 @@ async function createCrmRecordFromLead({
   leadgenId,
   formId = '',
   fetchImpl = fetch,
+  audit = null,
+  recordWrite = null,
 }) {
   if (!(await isBitrixConfigured())) {
     return { ok: false, reason: 'not_configured' };
@@ -154,6 +157,15 @@ async function createCrmRecordFromLead({
     catalog,
   });
 
+  // THE WRITE IS RECORDED (Monitoring → Logs) after it was sent, whatever came
+  // back — the same recorder as services/bitrix24DealStages.js `call`. Only
+  // the method and the outcome reach it: `fields` (the candidate's phone,
+  // e-mail and answers) are never passed, the caller's `audit.change` says
+  // what is shown.
+  // eslint-disable-next-line global-require
+  const record = recordWrite || require('./activityLog/record').recordBitrixWrite;
+  const auditOrEmpty = audit ? { change: [], ...audit } : null;
+  let outcome;
   try {
     const response = await fetchImpl(url, {
       method: 'POST',
@@ -164,13 +176,26 @@ async function createCrmRecordFromLead({
     const body = await response.json().catch(() => ({}));
     if (!response.ok || body.error) {
       const message = body.error_description || body.error || `HTTP ${response.status}`;
-      return { ok: false, reason: 'api_error', error: String(message) };
+      outcome = { ok: false, reason: 'api_error', error: String(message) };
+      const refused = Object.assign(new Error(String(message)), { retryable: response.status >= 500 || response.status === 429 });
+      await record({
+        method, params: {}, audit: auditOrEmpty, error: refused,
+      });
+      return outcome;
     }
 
-    return { ok: true, bitrixId: body.result, entity: bitrixConfig.entity };
+    outcome = { ok: true, bitrixId: body.result, entity: bitrixConfig.entity };
   } catch (err) {
-    return { ok: false, reason: 'network_error', error: err.message };
+    outcome = { ok: false, reason: 'network_error', error: err.message };
+    await record({
+      method, params: {}, audit: auditOrEmpty, error: Object.assign(new Error(err.message), { retryable: true }),
+    });
+    return outcome;
   }
+  await record({
+    method, params: {}, audit: auditOrEmpty, result: outcome.bitrixId,
+  });
+  return outcome;
 }
 
 /**

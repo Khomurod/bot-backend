@@ -47,6 +47,9 @@ function defaultDeps() {
   return {
     store: defaultStore,
     bitrix: callBitrix,
+    // A card move that ended before its write (no card, the search failed) is
+    // an entry in Monitoring → Logs; the write itself the client records.
+    logAttempt: (attempt) => require('../activityLog/record').recordAttempt(attempt), // eslint-disable-line global-require
     findings,
     mentions: ACCOUNTING_MENTIONS,
     now: () => Date.now(),
@@ -263,6 +266,7 @@ module.exports = {
   runViolationPass,
   handleWebhookDeal,
   processDeal,
+  defaultDeps,
   startViolationAlerts,
   stopViolationAlerts,
   __resetSchemaCacheForTests: () => { schemaOkUntil = 0; },

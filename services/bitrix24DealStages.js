@@ -30,10 +30,16 @@
  * A failure THROWS `BitrixError` (with `.retryable` for a network failure or a
  * 5xx). The callers decide: the reviewer tries again later, a button press
  * tells the person.
+ *
+ * EVERY WRITE IS RECORDED (Monitoring → Logs, docs/architecture/
+ * activity-log.md): `call` records each `*.add|update|delete` (any namespace) after it was
+ * sent, with the caller's `opts.audit` — who, why and the feature. A write
+ * helper below takes the same `opts`.
  */
 
 const { getBitrixConfig } = require('../database/bitrix');
 const { normalizeWebhookBase } = require('./bitrix24Service');
+const { isBitrixWrite } = require('../lib/activityLog/entry');
 
 const TIMEOUT_MS = 15_000;
 /** Contacts or deals looked at per search: a name matching more than this is not a match. */
@@ -84,7 +90,7 @@ async function dealUrl(dealId) {
   return dealUrlFor(await portalOrigin(), dealId);
 }
 
-async function call(method, params, { fetchImpl = fetch, timeoutMs = TIMEOUT_MS } = {}) {
+async function send(method, params, fetchImpl, timeoutMs) {
   const base = await webhookBase();
   let response;
   try {
@@ -105,6 +111,43 @@ async function call(method, params, { fetchImpl = fetch, timeoutMs = TIMEOUT_MS 
     throw new BitrixError(`Bitrix ${method}: ${words}`, { retryable: response.status >= 500 || response.status === 429 });
   }
   return body.result;
+}
+
+/**
+ * An error about a write this client has ALREADY recorded: its caller must
+ * not record the same attempt again (`err.activityRecorded`).
+ */
+function recorded(err) {
+  if (err && typeof err === 'object') err.activityRecorded = true;
+  return err;
+}
+
+/**
+ * One Bitrix call. A WRITE (`*.add|update|delete`) is recorded in the
+ * activity log AFTER it was sent, whatever came back (services/activityLog/
+ * record.js — never throws, never blocks): pass `{ audit }` — who, why, the
+ * feature (`trigger`), the ids — from every caller that writes. Reads are
+ * never recorded. A write that throws comes back marked `activityRecorded`.
+ */
+async function call(method, params, {
+  fetchImpl = fetch, timeoutMs = TIMEOUT_MS, audit = null, recordWrite = null,
+} = {}) {
+  if (!isBitrixWrite(method)) return send(method, params, fetchImpl, timeoutMs);
+  // eslint-disable-next-line global-require
+  const record = recordWrite || require('./activityLog/record').recordBitrixWrite;
+  let result;
+  try {
+    result = await send(method, params, fetchImpl, timeoutMs);
+  } catch (err) {
+    await record({
+      method, params, audit, error: err,
+    });
+    throw recorded(err);
+  }
+  await record({
+    method, params, audit, result,
+  });
+  return result;
 }
 
 const DEAL_FIELDS = ['ID', 'TITLE', 'STAGE_ID', 'CATEGORY_ID', 'CONTACT_ID', 'ASSIGNED_BY_ID', 'CLOSED', 'DATE_MODIFY'];
@@ -235,7 +278,8 @@ async function findByOrigin(entity, originId, opts) {
 
 function newId(result, what) {
   const id = Number(result);
-  if (!Number.isInteger(id) || id <= 0) throw new BitrixError(`Bitrix did not return the new ${what}'s id`);
+  // The client recorded the add (as failed: no id) — say so to the caller.
+  if (!Number.isInteger(id) || id <= 0) throw recorded(new BitrixError(`Bitrix did not return the new ${what}'s id`));
   return id;
 }
 
@@ -281,7 +325,7 @@ async function moveDealToStage(dealId, stageId, opts) {
     fields: { STAGE_ID: String(stageId) },
     params: { REGISTER_SONET_EVENT: 'Y' },
   }, opts);
-  if (ok !== true) throw new BitrixError('Bitrix did not confirm the stage change');
+  if (ok !== true) throw recorded(new BitrixError('Bitrix did not confirm the stage change'));
   return true;
 }
 
@@ -295,7 +339,7 @@ async function renameDeal(dealId, title, opts) {
     fields: { TITLE: String(title) },
     params: { REGISTER_SONET_EVENT: 'Y' },
   }, opts);
-  if (ok !== true) throw new BitrixError('Bitrix did not confirm the new title');
+  if (ok !== true) throw recorded(new BitrixError('Bitrix did not confirm the new title'));
   return true;
 }
 
@@ -310,14 +354,15 @@ async function renameContact(contactId, { first, last }, opts) {
     fields: { NAME: String(first), LAST_NAME: String(last) },
     params: { REGISTER_SONET_EVENT: 'Y' },
   }, opts);
-  if (ok !== true) throw new BitrixError('Bitrix did not confirm the contact\'s new name');
+  if (ok !== true) throw recorded(new BitrixError('Bitrix did not confirm the contact\'s new name'));
   return true;
 }
 
 module.exports = {
   BitrixError,
-  // The bounded call itself, for a reader with its own field list (the
-  // home-time violation alerts read pipeline 33's own fields). Reads only.
+  // The bounded call itself, for a caller with its own field list (the
+  // home-time violation alerts, the Board ↔ Bitrix check). A write through it
+  // is recorded like any other and must pass `{ audit }` as its third argument.
   callBitrix: call,
   TIMEOUT_MS,
   MAX_ROWS,

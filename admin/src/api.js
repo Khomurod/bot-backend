@@ -49,3 +49,4 @@ export * from './api/boardBitrix';
 export * from './api/adminUsers';
 export * from './api/autoReactions';
 export * from './api/appSecrets';
+export * from './api/activityLog';

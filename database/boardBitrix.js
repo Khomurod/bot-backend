@@ -155,6 +155,12 @@ async function claimStageSync(action, { leaseMinutes = 5 } = {}) {
   return res.rows[0] ? Number(res.rows[0].id) : null;
 }
 
+/** Which attempt a claimed action is on (1 = first) — for the activity log. */
+async function stageSyncAttempt(id) {
+  const res = await query('SELECT attempts FROM board_bitrix_stage_sync_actions WHERE id = $1', [Number(id)]);
+  return res.rows[0] ? Number(res.rows[0].attempts) : null;
+}
+
 async function finishStageSync(id, state, error = null) {
   const allowed = new Set(['applied', 'already_done', 'failed']);
   const next = allowed.has(state) ? state : 'failed';
@@ -462,6 +468,7 @@ module.exports = {
   recordSchema,
   recordPlannedStageSync,
   claimStageSync,
+  stageSyncAttempt,
   finishStageSync,
   recentStageSyncActions,
   confirmBoardStatus,

@@ -37,9 +37,21 @@ describe("AdminSidebar", () => {
       ["Driver Groups", "Live Locations", "Home Time", "Mileage Bonuses", "Retention"],
       ["Leads", "Customer Inquiries", "Recruiter KPIs"],
       ["Messages", "Birthdays"],
-      ["Needs Attention", "System Health"],
+      ["Needs Attention", "System Health", "Logs"],
       ["Telegram Users", "Settings"],
     ]);
+  });
+
+  test("Logs is shown to a super administrator only", async () => {
+    renderSidebar();
+    expect(screen.queryByRole("button", { name: "Logs" })).toBeNull();
+    expect(screen.getByRole("button", { name: "System Health" })).toBeTruthy();
+  });
+
+  test("a super administrator sees Logs under Monitoring and can open it", async () => {
+    const { onNavigateToPage } = renderSidebar({ session: { ...admin, roles: ["super_admin"] } });
+    await userEvent.click(screen.getByRole("button", { name: "Logs" }));
+    expect(onNavigateToPage).toHaveBeenCalledWith("logs");
   });
 
   test("an entry opens its page and the open page is marked current", async () => {

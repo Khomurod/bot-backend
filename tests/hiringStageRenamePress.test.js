@@ -85,6 +85,11 @@ test('a person who typed THE SAME NAME meanwhile: "renamed meanwhile", never rec
   assert.equal(calls('crm.deal.update') + calls('crm.contact.update'), 0);
   assert.equal(state.renames[0].status, 'stale');
   assert.doesNotMatch(state.edits.at(-1).text, /Renamed in Bitrix:/);
+  // Monitoring → Logs: the press is an entry — refused by a safety check, nothing sent.
+  assert.equal(state.logged.length, 1);
+  const e = state.logged[0];
+  assert.deepEqual([e.action, e.result, e.safetyCheck, e.trigger, e.actorKind], ['deal.title', 'refused', true, 'hiring_stage.rename', 'person_button']);
+  assert.match(e.error, /renamed meanwhile/);
 });
 
 test('the TITLE written, then the contact failed: said so; the next press finishes the contact, never the title twice', async () => {
@@ -96,6 +101,12 @@ test('the TITLE written, then the contact failed: said so; the next press finish
   assert.equal(state.deals[0].title, 'Leah Ann Goodwin');
   assert.equal(state.renames[0].status, 'pending');
   assert.equal(state.renames[0].titleWritten, true);
+  // The contact's read failing is an entry: Bitrix said no — not a safety check.
+  const contactEntry = state.logged.find((e) => e.action === 'contact.update');
+  assert.ok(contactEntry, 'the failed contact read is in the log');
+  assert.equal(contactEntry.result, 'refused');
+  assert.equal(contactEntry.safetyCheck, false);
+  assert.equal(contactEntry.targetType, 'contact');
 
   const second = await press('rn', 1);
   assert.match(second.text, /Done — renamed to Leah Ann Goodwin/);
@@ -112,6 +123,7 @@ test('a deal DELETED after the offer: the press says so and writes nothing', asy
   assert.match((await press('rn', 1)).text, /no longer exists/);
   assert.equal(state.renames[0].status, 'stale');
   assert.equal(calls('crm.deal.update'), 0);
+  assert.deepEqual(state.logged.map((e) => [e.action, e.result, e.error]), [['deal.title', 'refused', 'the deal no longer exists in Bitrix']]);
 });
 
 test('OFFERED WHATEVER THE READ SAYS (no stage move) — but NEVER with two phones in the conversation', async () => {

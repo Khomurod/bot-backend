@@ -180,6 +180,11 @@ app.use('/api/operations', createOperationsRouter({
   applyMiddleware: [authMiddleware, requirePermission('operations.corrections.apply')],
 }));
 
+// Monitoring → Logs: who changed what in Bitrix, and why. Super
+// administrators only, by ROLE (requireSuperAdmin inside the router).
+const { createActivityLogRouter } = require('./routes/activityLogRoutes');
+app.use('/api/activity-log', createActivityLogRouter({ authMiddleware }));
+
 const { createBotUsersRouter } = require('./routes/botUsersRoutes');
 app.use('/api/bot-users', createBotUsersRouter({ authMiddleware: legacyAuthMiddleware }));
 

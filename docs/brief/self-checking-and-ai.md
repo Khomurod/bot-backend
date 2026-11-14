@@ -329,6 +329,22 @@ feature it belongs to.
     subject afterwards (`services/decisions/verifyPass.js`).
   - Guarded by `admin/src/pages/operations/{labels,OperationsPage}.test.jsx`.
 
+### Monitoring → Logs: who changed what in Bitrix, and why (November 2026)
+
+The owner saw changes in Bitrix and could not tell who made them. Every Bitrix
+write — a Board ↔ Bitrix fix, the status sync, hiring Move / Rename / creation,
+the home-time card move, the Facebook lead — is recorded by the Bitrix CLIENT
+after it was sent (never unseen, never blocked by the log), with the person's
+Telegram id or "automatic" and the feature, the fields from → to, one plain
+reason and the ids as evidence. An attempt stopped before its write — by a
+safety check of Wenze's own, or a read that got no answer — is an entry too for
+the Board ↔ Bitrix fixes, the status sync, hiring Move / Rename and the
+home-time card move (the hiring creation's "nothing created" stays in its own
+table). Super administrators only, read-only, newest first. Three times in a
+row that Bitrix refused or did not answer, for one feature, send the owner ONE
+`system_errors` notice — a safety check's refusal never counts. Names go after
+60 days, rows after a year. `docs/architecture/activity-log.md`.
+
 ### Answering Wenze in Telegram
 
 - **A finding can now be answered from the notifications group.** Wenze asks one

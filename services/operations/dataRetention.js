@@ -56,6 +56,13 @@ const DEFAULT_WINDOWS = Object.freeze({
    * PDF looks back hours, not weeks; the PDFs themselves are never stored.
    */
   truckPhotoDays: 30,
+  /**
+   * Monitoring → Logs (owner, 14 November 2026): an entry is kept a year, and
+   * the driver's / candidate's name in it only 60 days — then only the ids
+   * remain (docs/architecture/activity-log.md).
+   */
+  activityLogDays: 365,
+  activityLogNameDays: 60,
 });
 
 function defaultDeps() {
@@ -65,6 +72,7 @@ function defaultDeps() {
     safety: require('../../database/driverSafety'),
     aiCallLog: require('../../database/aiCallLog'),
     aiSettings: require('../../database/aiSettings'),
+    activityLog: require('../../database/activityLog'),
   };
   /* eslint-enable global-require */
 }
@@ -154,6 +162,14 @@ async function runDataRetentionPass({ windows = {}, deps = defaultDeps() } = {})
     `DELETE FROM driver_group_photos WHERE sent_at < NOW() - ($1 || ' days')::interval`,
     [String(w.truckPhotoDays)]
   ));
+
+  // The activity log: names out after 60 days (the row and its ids stay),
+  // the row itself after a year. Optional-chained like the AI settings read:
+  // a dependency map without it costs these two lines, not the pass.
+  if (deps.activityLog) {
+    await attempt('activityLogNamesRemoved', () => deps.activityLog.scrubOldNames(w.activityLogNameDays));
+    await attempt('activityLog', () => deps.activityLog.pruneOld(w.activityLogDays));
+  }
 
   // EVERY PRUNE FAILED is this pass not having run, and it must say so in
   // `error` — singular, the field `statusFromSummary` reads. One table that

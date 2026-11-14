@@ -289,7 +289,17 @@ message text or a phone number.
 ## Bitrix
 
 `services/bitrix24DealStages.js` uses the same inbound webhook as the lead
-push (Settings → Bitrix24, which must be **enabled**). The
+push (Settings → Bitrix24, which must be **enabled**). Every write below is
+recorded in Monitoring → Logs by the client itself ([activity-log.md](activity-log.md)):
+Move and ✏️ Rename with the presser's Telegram id (`hiring_stage.move`,
+`hiring_stage.rename`), a creation as `automatic` with the chat and post as
+evidence (`hiring_stage.create`) — never the candidate's phone. A Move or
+Rename press that ends BEFORE its write is an entry too, with the presser:
+already at that stage (`already_done`), moved or renamed meanwhile, the deal
+gone, closed or out of the hiring pipeline (`refused` by a safety check —
+nothing sent), or the read getting no answer (`failed`). A creation that
+creates nothing (`blocked`) is not an entry: its reason names the candidate
+and a phone, and it stays in `hiring_stage_crm_records`. The
 webhook needs the `crm` scope with write access. Reads: `crm.duplicate.findbycomm`,
 `crm.contact.list`, `crm.contact.get`, `crm.deal.list`, `crm.deal.get`,
 `crm.status.list`. Writes to an existing record, each only after a press and a

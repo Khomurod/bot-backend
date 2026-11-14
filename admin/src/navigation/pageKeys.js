@@ -37,6 +37,7 @@ export const PAGE_KEYS = Object.freeze([
   // Monitoring
   'operations',
   'system_health',
+  'logs',
   // Administration
   'users',
   'settings',

@@ -10,6 +10,7 @@
 const crypto = require('node:crypto');
 const { namesAgreeStrictly } = require('../../lib/identity/boardResolution');
 const { normalizeBoardTruck } = require('../../lib/board/truck');
+const { attemptFromError } = require('../../lib/activityLog/entry');
 
 const CONFIRM_MINUTES = 20;
 const MAX_ALLOWED_UPDATES = 25;
@@ -24,6 +25,8 @@ function defaultDeps() {
     finish: store.finishStageSync,
     confirmBoardStatus: store.confirmBoardStatus,
     isLiveEnabled: store.isLiveSyncEnabled,
+    attemptOf: store.stageSyncAttempt,
+    logAttempt: (attempt) => require('../activityLog/record').recordAttempt(attempt),
     now: () => Date.now(),
   };
   /* eslint-enable global-require */
@@ -106,6 +109,7 @@ function planStageUpdates(discrepancies, schema, {
       beforeStageId,
       targetStageId,
       schemaFingerprint: schema?.fingerprint || null,
+      dealTitle: d.deal?.title || null,
     });
   }
   const cap = Math.min(MAX_ALLOWED_UPDATES, Math.max(1, Number(maxUpdates) || 10));
@@ -130,6 +134,57 @@ function stageOf(deal) {
 
 function closed(deal) {
   return deal?.CLOSED === 'Y' || deal?.closed === true || deal?.STAGE_SEMANTIC_ID === 'F';
+}
+
+/**
+ * Why this write, for Monitoring → Logs: automatic, the Board's status and
+ * when it changed, the exact transition. Ids only — never the Board row's key
+ * (it names the person); the deal's title is the label (taken out after 60
+ * days). Every attempt of one transition shares `correlationKey`.
+ */
+function auditFor(item, key, attempt) {
+  return {
+    actorKind: 'automatic',
+    trigger: 'board_bitrix.sync',
+    reason: `The Dispatcher Board says ${item.boardStatus} since ${item.statusChangedAt}; `
+      + 'the live status sync moves the deal to the stage that status maps to.',
+    evidence: {
+      boardStatus: item.boardStatus,
+      boardStatusChangedAt: item.statusChangedAt,
+      actionKey: key,
+      schemaFingerprint: item.schemaFingerprint || null,
+    },
+    targetLabel: item.dealTitle || null,
+    change: [{ field: 'STAGE_ID', from: item.beforeStageId, to: item.targetStageId }],
+    correlationKey: key,
+    attempt: Number.isInteger(attempt) && attempt > 0 ? attempt : null,
+  };
+}
+
+/** One attempt that never reached Bitrix's write, in the same timeline. Never throws. */
+async function logAttempt(deps, item, audit, outcome) {
+  if (typeof deps.logAttempt !== 'function') return;
+  await Promise.resolve(deps.logAttempt({
+    action: 'deal.stage', targetId: item.dealId, audit, ...outcome,
+  })).catch(() => {});
+}
+
+/**
+ * A SAFETY CHECK of this loop saying no — nothing is sent to Bitrix. Marked,
+ * so it is recorded as `refused` by a safety check, and anything else thrown
+ * before the write (the re-read getting no answer, the database failing) is
+ * what it is: `failed`, or `refused` when Bitrix itself said no.
+ */
+function guardRefusal(message) {
+  return Object.assign(new Error(message), { guard: true });
+}
+
+/** How an attempt that threw before or after its write is recorded. */
+function outcomeOf(err, phase) {
+  if (phase === 'before' && err?.guard === true) return { result: 'refused', error: err.message, safetyCheck: true };
+  // After a done write: the verification read disagreed or failed.
+  if (phase === 'after') return { result: 'failed', error: err?.message, safetyCheck: false };
+  return attemptFromError(err);
 }
 
 async function liveStillEnabled(deps) {
@@ -169,6 +224,10 @@ async function runStageSync({
     }
 
     let claimId = null;
+    let audit = auditFor(item, key, null);
+    // 'before' until the write is sent, 'write' while it is (the client
+    // records that), 'after' for the verification read.
+    let phase = 'before';
     try {
       // The settings snapshot that started this pass is not permission forever:
       // an administrator may have pressed Off while the comparison was running.
@@ -180,40 +239,48 @@ async function runStageSync({
       // eslint-disable-next-line no-await-in-loop
       claimId = await deps.claim({ ...item, actionKey: key });
       if (!claimId) continue;
+      if (typeof deps.attemptOf === 'function') {
+        // eslint-disable-next-line no-await-in-loop
+        audit = auditFor(item, key, await Promise.resolve(deps.attemptOf(claimId)).catch(() => null));
+      }
       // Re-read after the database claim. A person or a Bitrix robot may have
       // moved the deal since the comparison; that is never overwritten.
       // eslint-disable-next-line no-await-in-loop
       const before = await deps.call('crm.deal.get', { id: item.dealId });
-      if (categoryOf(before) !== Number(schema.categoryId)) throw new Error('the deal is no longer in the discovered driver pipeline');
-      if (closed(before)) throw new Error('the deal is closed');
+      if (categoryOf(before) !== Number(schema.categoryId)) throw guardRefusal('the deal is no longer in the discovered driver pipeline');
+      if (closed(before)) throw guardRefusal('the deal is closed');
       if (typeof deps.confirmBoardStatus !== 'function'
         // eslint-disable-next-line no-await-in-loop
         || !await deps.confirmBoardStatus(item)) {
-        throw new Error('the Dispatcher Board status changed after the comparison');
+        throw guardRefusal('the Dispatcher Board status changed after the comparison');
       }
       if (stageOf(before) === item.targetStageId) {
         // eslint-disable-next-line no-await-in-loop
         await deps.finish(claimId, 'already_done');
+        // eslint-disable-next-line no-await-in-loop
+        await logAttempt(deps, item, audit, { result: 'already_done' });
         summary.alreadyDone += 1;
         summary.resolvedKeys.push(item.discrepancyKey);
         continue;
       }
-      if (stageOf(before) !== item.beforeStageId) throw new Error('the deal stage changed after the comparison');
+      if (stageOf(before) !== item.beforeStageId) throw guardRefusal('the deal stage changed after the comparison');
 
       // Re-read the kill switch after every other precondition and immediately
       // before the external mutation. A database flag cannot atomically cancel
       // a request already accepted by Bitrix, so this is the narrowest boundary.
       // eslint-disable-next-line no-await-in-loop
-      if (!await liveStillEnabled(deps)) throw new Error('live sync was switched off before the Bitrix update');
+      if (!await liveStillEnabled(deps)) throw guardRefusal('live sync was switched off before the Bitrix update');
 
       // The only mutation: STAGE_ID, with a Bitrix timeline event.
+      phase = 'write';
       // eslint-disable-next-line no-await-in-loop
       const updated = await deps.call('crm.deal.update', {
         id: item.dealId,
         fields: { STAGE_ID: item.targetStageId },
         params: { REGISTER_SONET_EVENT: 'Y' },
-      });
+      }, { audit });
       if (updated !== true) throw new Error('Bitrix did not confirm the stage update');
+      phase = 'after';
 
       // eslint-disable-next-line no-await-in-loop
       const after = await deps.call('crm.deal.get', { id: item.dealId });
@@ -225,6 +292,13 @@ async function runStageSync({
     } catch (err) {
       summary.failed += 1;
       summary.errors.push(`deal ${item.dealId}: ${String(err.message).slice(0, 160)}`);
+      // The client recorded the write itself; a safety check's refusal or a
+      // failed read before it, and a verification that failed after it, are
+      // recorded here (`outcomeOf`).
+      if (phase !== 'write') {
+        // eslint-disable-next-line no-await-in-loop
+        await logAttempt(deps, item, audit, outcomeOf(err, phase));
+      }
       if (claimId) {
         // eslint-disable-next-line no-await-in-loop
         await deps.finish(claimId, 'failed', err.message).catch(() => {});
@@ -236,7 +310,7 @@ async function runStageSync({
 
 module.exports = {
   CONFIRM_MINUTES, MAX_ALLOWED_UPDATES, actionKey, writeSafeIdentity, planStageUpdates,
-  runStageSync, defaultDeps, __test: {
-    categoryOf, stageOf, closed, liveStillEnabled, timeMs,
+  runStageSync, defaultDeps, auditFor, __test: {
+    categoryOf, stageOf, closed, liveStillEnabled, timeMs, outcomeOf,
   },
 };

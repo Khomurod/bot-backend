@@ -40,6 +40,9 @@ const NAV_SECTIONS = [
     items: [
       { key: 'operations', icon: 'alert', label: 'Needs Attention' },
       { key: 'system_health', icon: 'activity', label: 'System Health' },
+      // Who changed what in Bitrix, and why — super administrators only (the
+      // owner, 14 November 2026); the server refuses anyone else too.
+      { key: 'logs', icon: 'list', label: 'Logs', superAdminOnly: true },
     ],
   },
   {
@@ -50,6 +53,20 @@ const NAV_SECTIONS = [
     ],
   },
 ];
+
+/** Whether this session is a super administrator (by role, as the server checks). */
+function isSuperAdmin(session) {
+  const roles = session?.roles || session?.user?.role_keys || [];
+  return Array.isArray(roles) && roles.includes('super_admin');
+}
+
+/** The sections this session sees: a `superAdminOnly` entry only for a super administrator. */
+function sectionsFor(session) {
+  const superAdmin = isSuperAdmin(session);
+  return NAV_SECTIONS
+    .map((section) => ({ ...section, items: section.items.filter((i) => !i.superAdminOnly || superAdmin) }))
+    .filter((section) => section.items.length > 0);
+}
 
 /** The sidebar label of a page key, for the top bar's title. */
 function labelForPage(key) {
@@ -85,7 +102,7 @@ export default function AdminSidebar({
   onChangePassword,
 }) {
   const isFullAdmin = session?.permissions?.includes('admin.full_access');
-  const visibleSections = isFullAdmin ? NAV_SECTIONS : [];
+  const visibleSections = isFullAdmin ? sectionsFor(session) : [];
   const [theme, setTheme] = useState(() => effectiveTheme());
   // Until a person picks a theme the page follows the operating system; keep
   // the switch's label in step when the OS changes (e.g. scheduled dark mode).
@@ -179,4 +196,4 @@ function ThemeButton({ theme, onToggle, compact = false }) {
   );
 }
 
-export { NAV_SECTIONS, labelForPage };
+export { NAV_SECTIONS, labelForPage, sectionsFor, isSuperAdmin };

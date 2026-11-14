@@ -29,6 +29,7 @@
 const { violationsFor } = require('../../lib/homeTime/ownViolations');
 const { matchCard, searchWord } = require('../../lib/homeTime/cardMatch');
 const V = require('../../lib/homeTime/violations');
+const { attemptFromError } = require('../../lib/activityLog/entry');
 const { postRows, postDue } = require('./violationPosting');
 
 /** Cycles read this far before the first stay judged, so its road leg has a start. */
@@ -53,22 +54,73 @@ function stageFor(violations) {
 }
 
 /**
+ * Why the card moved, for Monitoring → Logs: automatic, Wenze's own verdict
+ * on this home stay (the violation rows and the driver's group are the
+ * evidence). The card's title is the label, taken out after 60 days.
+ */
+function cardAudit(stay, card, target, violations, context) {
+  return {
+    actorKind: 'automatic',
+    trigger: 'home_time.violation_card',
+    reason: `Wenze judged this home stay a home-time violation (${violations.join(' + ')}): `
+      + `${stay.homeDays} day(s) home${stay.roadDays != null ? ` after ${stay.roadDays} day(s) on the road` : ''}.`,
+    evidence: {
+      groupId: context.groupId ?? null,
+      violationIds: Array.isArray(context.violationIds) ? context.violationIds.join(',') : null,
+      homeFrom: stay.homeFrom,
+      rule: stay.rule || null,
+    },
+    targetLabel: card.title || null,
+    change: [
+      { field: 'STAGE_ID', from: card.stageId || null, to: target },
+      { field: 'Home from', from: null, to: stay.homeFrom },
+      { field: 'Days home', from: null, to: stay.homeDays },
+      ...(stay.roadDays != null ? [{ field: 'Days on the road', from: null, to: stay.roadDays }] : []),
+    ],
+  };
+}
+
+/**
+ * A card move that ended before its write is an entry too (Monitoring → Logs,
+ * decision c): no card to move (a safety check — nothing sent), or the
+ * search got no answer. The write itself the client records. Never throws;
+ * a deps map without `logAttempt` records nothing.
+ */
+async function logCardAttempt(deps, stay, driverName, violations, context, outcome, card = null) {
+  if (typeof deps.logAttempt !== 'function') return;
+  const target = stageFor(violations);
+  const audit = cardAudit(stay, card || { title: driverName || null }, target, violations, context);
+  await Promise.resolve(deps.logAttempt({
+    action: 'deal.stage', targetId: card?.id ?? null, audit, ...outcome,
+  })).catch(() => {});
+}
+
+/**
  * Move the driver's pipeline-33 card to the stay's violation stage, with its
  * home-time fields. Never throws: the alert is what matters; the note says
  * what happened to the card.
  */
-async function moveCard(stay, driverName, allViolations, deps) {
+async function moveCard(stay, driverName, allViolations, deps, context = {}) {
+  const notMoved = async (note, outcome = { result: 'refused', error: note }) => {
+    await logCardAttempt(deps, stay, driverName, allViolations, context, outcome);
+    return { note };
+  };
   try {
     const word = searchWord(driverName);
-    if (!word) return { note: 'no name to find the Bitrix card by' };
-    const rows = await deps.bitrix('crm.deal.list', {
-      filter: { CATEGORY_ID: V.CATEGORY_ID, '%TITLE': word },
-      select: ['ID', 'TITLE', 'STAGE_ID'],
-      order: { ID: 'DESC' },
-    });
+    if (!word) return notMoved('no name to find the Bitrix card by');
+    let rows;
+    try {
+      rows = await deps.bitrix('crm.deal.list', {
+        filter: { CATEGORY_ID: V.CATEGORY_ID, '%TITLE': word },
+        select: ['ID', 'TITLE', 'STAGE_ID'],
+        order: { ID: 'DESC' },
+      });
+    } catch (err) {
+      return notMoved(`Bitrix card not moved: ${String(err.message).slice(0, 160)}`, attemptFromError(err));
+    }
     const found = matchCard(driverName, (Array.isArray(rows) ? rows : []).map((r) => ({ id: Number(r.ID), title: r.TITLE, stageId: r.STAGE_ID })));
-    if (found.none) return { note: 'no Bitrix card in pipeline 33 matches this name — not moved' };
-    if (found.ambiguous) return { note: `${found.ambiguous} Bitrix cards in pipeline 33 match this name — not moved` };
+    if (found.none) return notMoved('no Bitrix card in pipeline 33 matches this name — not moved');
+    if (found.ambiguous) return notMoved(`${found.ambiguous} Bitrix cards in pipeline 33 match this name — not moved`);
     const target = stageFor(allViolations);
     const fields = {
       STAGE_ID: target,
@@ -76,7 +128,10 @@ async function moveCard(stay, driverName, allViolations, deps) {
       [V.FIELDS.homeDays]: stay.homeDays,
       ...(stay.roadDays != null ? { [V.FIELDS.roadDays]: stay.roadDays } : {}),
     };
-    const ok = await deps.bitrix('crm.deal.update', { id: found.card.id, fields, params: { REGISTER_SONET_EVENT: 'Y' } });
+    // THE WRITE — recorded by the client, whatever Bitrix answers.
+    const ok = await deps.bitrix('crm.deal.update', { id: found.card.id, fields, params: { REGISTER_SONET_EVENT: 'Y' } }, {
+      audit: cardAudit(stay, found.card, target, allViolations, context),
+    });
     return ok === true
       ? { dealId: found.card.id, note: `card moved to ${target}` }
       : { dealId: found.card.id, note: 'Bitrix did not confirm the card move' };
@@ -124,7 +179,9 @@ async function runOwnViolationPass({
       const sent = await postRows(inserted, { telegram, chatId, deps });
       summary.posted += sent.posted || 0;
       // eslint-disable-next-line no-await-in-loop
-      const card = await moveCard(stay, driverName, stay.violations, deps);
+      const card = await moveCard(stay, driverName, stay.violations, deps, {
+        groupId, violationIds: inserted.map((r) => r.id),
+      });
       if (card.dealId && /moved to/.test(card.note)) summary.cardsMoved += 1; else summary.cardsNotMoved += 1;
       // eslint-disable-next-line no-await-in-loop
       await deps.store.setBitrixNote(inserted.map((r) => r.id), card);

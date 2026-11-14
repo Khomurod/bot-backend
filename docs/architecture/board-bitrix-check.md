@@ -193,6 +193,21 @@ driver's fleet plus that number.
   `MAX_STAGE_SYNC_ATTEMPTS` (5) times in all, then left as a question for a
   person (it used to be retried on every pass — 157 times for one deal). If a robot later reverses an applied stage, Wenze asks a
   person instead of looping forever.
+- **Every write and every attempt is in Monitoring → Logs**
+  ([activity-log.md](activity-log.md), 14 November 2026). A tap or a "do fix
+  N" reply is recorded with the person's Telegram id (`board_bitrix.button` /
+  `board_bitrix.reply`) — also a fix refused before the write ("changed
+  meanwhile", "the layout is not proven yet": a safety check, nothing sent)
+  and a press whose read got no answer (`failed`). The status sync records
+  each attempt as `automatic` (`board_bitrix.sync`) — a guard's refusal before
+  the write (a safety check), a re-read that got no answer (`failed`, never
+  `refused`), an already-done transition, the write itself (by the client), a
+  failed verification after it — with the attempt number. A pass whose sync
+  threw, or whose every attempted update failed or was refused, is an `error`
+  in the run ledger, no longer a plain `ok` (some failing while others went
+  through is not — health-reporting.md); it still says `compared: true`, so a
+  "done" trusts the comparison. Three times in a row that Bitrix refused or did
+  not answer tell the owner once; a safety check never counts.
 - **Nothing is decided from an incomplete read.** The pass stops before the
   queue is touched when the check or the Board feed is off (`blocked`), Bitrix
   is not connected (`blocked`), the Board's last successful read is older than

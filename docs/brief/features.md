@@ -6,7 +6,7 @@
 ### Finding a screen
 
 The admin panel has five sidebar groups — **Drivers · Recruiting ·
-Communications · Monitoring · Administration** — with one entry per page (14),
+Communications · Monitoring · Administration** — with one entry per page (15 — Logs only for super administrators),
 and no collapsed "Admin" drawer: every section needs the same permission, so a
 section named after the permission said nothing about what was in it. Settings
 is ONE entry; its 21 sections sit under five groups in the page's own list.
