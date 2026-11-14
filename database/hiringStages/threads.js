@@ -35,6 +35,12 @@ function mapThread(row) {
     lastError: row.last_error || null,
     outcome: row.outcome || null,
     updatedAt: row.updated_at,
+    // A person asked for this conversation with a tag (migration 0106): the
+    // FIRST to ask, and the NEWEST tagging message — the one the bot reacts on.
+    requestedAt: row.requested_at || null,
+    requestedByUserId: row.requested_by_user_id == null ? null : String(row.requested_by_user_id),
+    requestedByName: row.requested_by_name || null,
+    requestMessageId: row.request_message_id == null ? null : Number(row.request_message_id),
   };
 }
 
@@ -53,6 +59,41 @@ async function enqueueThread({ chatId, rootMessageId, lastMessageId, settleSecon
             updated_at = NOW()
      RETURNING *`,
     [String(chatId), Number(rootMessageId), Number(lastMessageId), Number(settleSeconds)],
+  );
+  return mapThread(rows[0]);
+}
+
+/**
+ * A person ASKED for this conversation — a reply to its post that mentions
+ * the bot (services/hiringStages/requestQueue.js). Queued like any message,
+ * with the short settle the caller gives; the first person to ask is kept
+ * (a second tag only re-queues it and moves the reaction to the new tag).
+ */
+async function requestThread({
+  chatId, rootMessageId, requestMessageId, requestedByUserId, requestedByName, settleSeconds,
+}) {
+  const { rows } = await query(
+    `INSERT INTO hiring_stage_threads (
+       chat_id, root_message_id, last_message_id, due_at,
+       requested_at, requested_by_user_id, requested_by_name, request_message_id
+     ) VALUES ($1, $2, $3, NOW() + make_interval(secs => $4), NOW(), $5, $6, $3)
+     ON CONFLICT (chat_id, root_message_id) DO UPDATE
+        SET status = 'pending',
+            last_message_id = GREATEST(hiring_stage_threads.last_message_id, EXCLUDED.last_message_id),
+            due_at = EXCLUDED.due_at,
+            attempts = 0,
+            last_error = NULL,
+            revision = hiring_stage_threads.revision + 1,
+            requested_at = COALESCE(hiring_stage_threads.requested_at, EXCLUDED.requested_at),
+            requested_by_user_id = COALESCE(hiring_stage_threads.requested_by_user_id, EXCLUDED.requested_by_user_id),
+            requested_by_name = COALESCE(hiring_stage_threads.requested_by_name, EXCLUDED.requested_by_name),
+            request_message_id = GREATEST(hiring_stage_threads.request_message_id, EXCLUDED.request_message_id),
+            updated_at = NOW()
+     RETURNING *`,
+    [
+      String(chatId), Number(rootMessageId), Number(requestMessageId), Number(settleSeconds),
+      requestedByUserId == null ? null : String(requestedByUserId), requestedByName || null,
+    ],
   );
   return mapThread(rows[0]);
 }
@@ -187,6 +228,7 @@ module.exports = {
   DEFAULT_LEASE_SECONDS,
   purgeOldThreads,
   enqueueThread,
+  requestThread,
   claimDueThreads,
   finishThread,
   retryThread,

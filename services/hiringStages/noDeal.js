@@ -7,7 +7,9 @@
  *
  * In this order, each one ending the step:
  *
- *   1. Skip pressed on an earlier request means never — not even by the bot.
+ *   1. Skip pressed on an earlier request means never — not even by the bot —
+ *      UNTIL A PERSON ASKS for the lead with a tag (owner decision 4, 13–14
+ *      November 2026: the tag overrides the Skip; requested.js).
  *   2. THE CONVERSATION'S OWN DEAL (owner, 13–14 November 2026). A deal this
  *      conversation already knows — on one of its proposals, or the one the
  *      bot created for it — is read again (read only). Still there and open:
@@ -18,8 +20,11 @@
  *   3. REJECTED (owner decision g): Safety's newest hashtag is #NotApproved,
  *      or the stage read is a failure (lost) stage — nothing is created and
  *      nobody is asked; one line on the card says so.
- *   4. Not certain who the candidate is → the reason, for the request.
- *   5. Otherwise CREATE the contact and deal (crmCreate.js).
+ *   4. Not certain who the candidate is — or a read a person asked for
+ *      already found it could not create (`noCreate`) → the reason, for the
+ *      request.
+ *   5. Otherwise CREATE the contact and deal (crmCreate.js) — recorded as the
+ *      person who asked, when one did.
  */
 
 const proposals = require('../../database/hiringStages/proposals');
@@ -27,7 +32,7 @@ const records = require('../../database/hiringStages/crmRecords');
 const msg = require('../../lib/hiringStages/messages');
 const bitrix = require('../bitrix24DealStages');
 const { ensureCandidateDeal } = require('./crmCreate');
-const { stagesFor } = require('./stagePlan');
+const { stageNameOf } = require('./stagePlan');
 const group = require('./groupMessages');
 
 /** Deals read per conversation at most — a conversation knows one or two. */
@@ -76,12 +81,8 @@ async function knownDeal(thread, asked, opts) {
 }
 
 async function sayClosed(thread, deps, deal, driverName, opts) {
-  let stageName = deal.stageId;
-  try {
-    stageName = (await stagesFor(deal.categoryId, opts)).find((s) => s.id === deal.stageId)?.name || stageName;
-  } catch { /* the id is still a fair answer */ }
   await notice(thread, deps, `deal_closed:${deal.id}`, msg.closedDealLine({
-    dealId: deal.id, dealTitle: deal.title, dealUrl: await bitrix.dealUrl(deal.id), stageName,
+    dealId: deal.id, dealTitle: deal.title, dealUrl: await bitrix.dealUrl(deal.id), stageName: await stageNameOf(deal, opts),
   }), driverName);
 }
 
@@ -92,16 +93,18 @@ async function sayClosed(thread, deps, deal, driverName, opts) {
  * @param {object} args
  * @param {object} args.identity     lib/hiringStages/identity.js
  * @param {boolean} args.rejected    Safety's #NotApproved, or a lost stage
+ * @param {object|null} [args.requestedBy]  who asked with a tag (requested.js): overrides Skip
+ * @param {string|null} [args.noCreate]     why this read already could not create — not tried again
  * @returns {Promise<{deal?: object, created?: boolean, outcome?: object}>}
  * @throws {RetryLater} another conversation is creating the same driver
  */
 async function whenNoDeal(thread, ctx, {
-  identity, categoryId, stages, rejected = false,
+  identity, categoryId, stages, rejected = false, requestedBy = null, noCreate = null,
 }, deps, opts) {
   const asked = await proposals.listForRoot(thread.chatId, thread.rootMessageId);
   const skipped = asked.find((p) => p.kind === 'create_deal' && p.status === 'declined');
-  // "Skip" means never — not even by the bot itself.
-  if (skipped) return { outcome: { result: 'already_asked', proposalId: skipped.id } };
+  // "Skip" means never — not even by the bot itself — unless a person has asked since.
+  if (skipped && !requestedBy) return { outcome: { result: 'already_asked', proposalId: skipped.id } };
 
   const own = await knownDeal(thread, asked, opts);
   if (own.deal) return { deal: own.deal };
@@ -113,12 +116,12 @@ async function whenNoDeal(thread, ctx, {
     await notice(thread, deps, 'rejected_no_deal', msg.rejectedLine(), ctx.driverName);
     return { outcome: { result: 'rejected_no_deal' } };
   }
-  if (!identity.ok) {
-    ctx.note = identity.note;
+  if (noCreate || !identity.ok) {
+    ctx.note = noCreate || identity.note;
     return {};
   }
   const made = await ensureCandidateDeal({
-    chatId: thread.chatId, rootMessageId: thread.rootMessageId, identity, categoryId, stages,
+    chatId: thread.chatId, rootMessageId: thread.rootMessageId, identity, categoryId, stages, requestedBy,
   }, opts);
   if (made.status === 'busy') throw new RetryLater('another conversation is creating this driver in Bitrix');
   if (made.status === 'closed') return { outcome: { result: 'created_deal_closed', dealId: made.dealId } };

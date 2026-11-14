@@ -7,8 +7,15 @@
  * answer is no — no row, no log line — unless Safety Approvals is switched on
  * and pointed at this chat. Safety Approvals never writes in the recruiting
  * group's conversation; it only posts decisions in the approvals topic. (The
- * Bitrix stage proposals, when switched on, reply in General — see
- * services/hiringStages/conversationQueue.js, queued from here.)
+ * Bitrix stage proposals, when switched on, read the conversation from here —
+ * services/hiringStages/conversationQueue.js — and write in their own Bitrix
+ * topic.)
+ *
+ * A REPLY THAT MENTIONS THE BOT is a person asking for that lead
+ * (services/hiringStages/requestQueue.js): stored flagged `bot_request` — a
+ * request, never data — and handed over in its own try, so it can never stop
+ * capture or a Safety decision. The bot's id and username come from the
+ * handler (ctx.botInfo); none, and nothing mentions the bot.
  *
  * Every message in the group is stored (lib/safetyApprovals/messageShape.js),
  * because Safety answers a post the bot must already have seen. A message from
@@ -27,7 +34,9 @@ const messages = require('../../database/safetyApprovals/messages');
 const reviews = require('../../database/safetyApprovals/reviews');
 const { isDecisionMessage } = require('../../lib/safetyApprovals/trigger');
 const { wakeSafetyApprovalWorker } = require('./worker');
+const { isBotRequestMessage } = require('../../lib/hiringStages/botRequest');
 const { noteConversationMessage } = require('../hiringStages/conversationQueue');
+const { noteBotRequest } = require('../hiringStages/requestQueue');
 const { wakeHiringStageWorker } = require('../hiringStages/worker');
 
 /**
@@ -74,9 +83,24 @@ async function queueReview(shaped) {
   });
 }
 
+/** A person asked the bot for a lead. Its own failure is its own. @returns whether a read was queued */
+async function noteRequest(message, settings, deps) {
+  try {
+    const thread = await (deps.noteRequest || noteBotRequest)(message, settings, {
+      botInfo: deps.botInfo, telegram: deps.telegram,
+    });
+    if (thread) (deps.wakeStages || wakeHiringStageWorker)();
+    return Boolean(thread);
+  } catch (err) {
+    console.error('[HIRING STAGES] could not take a request to the bot:', err.message);
+    return false;
+  }
+}
+
 /**
  * @param {object} message  a Telegram message (new or edited)
- * @returns {Promise<{captured: boolean, queued?: boolean, reason?: string}>}
+ * @param {object} [deps]   botInfo and telegram from the handler; the rest are test seams
+ * @returns {Promise<{captured: boolean, queued?: boolean, requested?: boolean, reason?: string}>}
  */
 async function captureSafetyApprovalMessage(message, deps = {}) {
   try {
@@ -87,6 +111,7 @@ async function captureSafetyApprovalMessage(message, deps = {}) {
     }
     const shaped = shapeCapturedMessage(message);
     if (!shaped || shaped.fromIsBot) return { captured: false, reason: 'not_a_person' };
+    shaped.botRequest = isBotRequestMessage(message, deps.botInfo);
 
     await messages.upsertMessage(shaped);
 
@@ -100,9 +125,11 @@ async function captureSafetyApprovalMessage(message, deps = {}) {
     }
 
     // The same conversation, read for a Bitrix stage (services/hiringStages/).
-    // Its own failure is its own: it never stops a Safety decision below.
+    // Its own failure is its own: it never stops a Safety decision below. A
+    // request to the bot is not part of the conversation — it asks for a read.
+    const requested = shaped.botRequest ? await noteRequest(message, settings, deps) : false;
     try {
-      if (await (deps.noteConversation || noteConversationMessage)(shaped, settings)) {
+      if (!shaped.botRequest && await (deps.noteConversation || noteConversationMessage)(shaped, settings)) {
         (deps.wakeStages || wakeHiringStageWorker)();
       }
     } catch (err) {
@@ -110,11 +137,11 @@ async function captureSafetyApprovalMessage(message, deps = {}) {
     }
 
     const fromSafety = shaped.fromUserId !== null && settings.safetyUserIds.includes(String(shaped.fromUserId));
-    if (!fromSafety) return { captured: true };
+    if (!fromSafety) return requested ? { captured: true, requested } : { captured: true };
 
     const queued = await queueReview(shaped);
     if (queued) (deps.wake || wakeSafetyApprovalWorker)();
-    return { captured: true, queued: Boolean(queued) };
+    return { captured: true, queued: Boolean(queued), ...(requested ? { requested } : {}) };
   } catch (err) {
     console.error('[SAFETY APPROVALS] capture failed:', err.message);
     return { captured: false, reason: 'error' };

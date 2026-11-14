@@ -243,6 +243,21 @@ the same treatment home time got, and for the same reason.
   writes the TITLE (re-read first; refused if renamed meanwhile, closed, or
   moved out of the hiring pipeline since the offer) and a
   placeholder contact's NAME / LAST_NAME — never a real name.
+- **Anybody can ask the bot for a lead** (owner, 14 November 2026 — the bot
+  was missing leads). Reply to the lead's post in General with a message that
+  mentions the bot: the post is read as it is NOW (people EDIT it to add a
+  missing name or phone, then tag; a post sent while the bot was down is
+  rebuilt from the reply), a minute later — and the contact and deal are
+  created **without waiting for a stage**, a post with no replies included, a
+  recruiter's earlier Skip overridden. Then the next stage is proposed as
+  usual. The tag itself carries no data — its words are never read. In General
+  the bot only reacts on the tag: 👀 accepted, then 👍 (a deal exists or a Move
+  was proposed — ✅, which the owner asked for, is not a reaction Telegram lets
+  a bot set) or 🤷 (a person is needed); the details ("Requested by …",
+  created, already in Bitrix, why it could not create) are lines on the
+  driver's card in the Bitrix topic. The creation is logged as the person who
+  asked. Only in General, only a real reply, only a person, only with the
+  feature on and a Bitrix topic saved.
 - A model picks the stage by meaning; `lib/hiringStages/proposal.js` keeps only
   a stage of that pipeline, forward of where the deal is (or a lost stage),
   quoting words somebody wrote. SSNs, birth dates, licence numbers and phones

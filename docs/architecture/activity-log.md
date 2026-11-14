@@ -131,7 +131,7 @@ who made them, what changed or why. Decided with the owner the same day:
 | `board_bitrix.sync` | the live status sync's `STAGE_ID` | `automatic`; evidence: Board status and its time, the action key, the attempt (`board_bitrix_stage_sync_actions.attempts`) |
 | `hiring_stage.move` | Move's `crm.deal.update` `STAGE_ID` | `person_button` (the presser, as `decided_by` in `hiring_stage_proposals`) |
 | `hiring_stage.rename` | ✏️ Rename's `TITLE`, and a placeholder contact's `NAME` / `LAST_NAME` | `person_button` |
-| `hiring_stage.create` | `crm.contact.add`, `crm.deal.add` | `automatic`; evidence: chat and post id, the creation record |
+| `hiring_stage.create` | `crm.contact.add`, `crm.deal.add` | `automatic`; evidence: chat and post id, the creation record. Since 14 November 2026, when a person ASKED for the lead with a reply mentioning the bot (`hiring-stage-proposals.md` rule 20): `person_reply` — the first person who asked, their Telegram id and name; evidence adds the tagging message (`requestMessageId`) |
 | `home_time.violation_card` | the pipeline-33 card's stage and home-time fields | `automatic`; evidence: driver group, violation row ids, home-from |
 | `facebook_lead.create` | `crm.lead.add` / `crm.deal.add` | `automatic`; evidence: leadgen, form and page ids |
 

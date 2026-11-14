@@ -5,6 +5,14 @@
 `bot/handlers/hiringStageHandlers.js` or
 `admin/src/pages/settings/HiringStagesCard.jsx`.
 
+**Since 14 November 2026** (the owner, "the bot misses leads"): **anybody in
+the group can ASK for a lead** by replying to its post with a message that
+mentions the bot (rule 20). The post is read as it is NOW (edited, or rebuilt
+when the bot never saw it), the contact and deal are created **without
+waiting for a verified stage move**, a post nobody answered is read, and a tag
+overrides an earlier Skip. In General the bot answers only with reactions
+(👀, then 👍 or 🤷); every detail is on the driver's card in the Bitrix topic.
+
 **Since 13–14 November 2026** (the owner, "hiring deal names"): a deal the bot
 creates is titled in **Safety's spelling and order** (rule 16); a conversation
 that already has a deal — open or closed — **never creates another** and never
@@ -52,7 +60,8 @@ to make one.
    (`crm.deal.update` `TITLE` and `crm.contact.update` are called only from
    `services/hiringStages/rename.js`, after a press on ✏️ Rename — rule 19.) Creating a
    missing deal (rule 13) is not moving one: a created deal starts at "Sent
-   to Safety", and every later stage is still a proposal.
+   to Safety", and every later stage is still a proposal — also when a person
+   asked for the lead with a tag (rule 20).
    No model decides a creation — the identity is read off the post by rules.
 2. **The deal is read again at the press.** If somebody moved it by hand since
    the proposal, it is not moved (`stale`, and the message says where it is
@@ -82,7 +91,8 @@ to make one.
 8. **Only a candidate post is read.** General also carries "the driver is
    there" and "office is closed". A conversation is read only when its post has
    a picture (the CDL) or a phone number — anything else costs no model call
-   and posts nothing.
+   and posts nothing (`lib/hiringStages/conversation.js` `isCandidatePost`).
+   A tag on such a post gets one card line saying why, and 🤷 (rule 20).
 9. **Nothing identifying leaves for the model.** `lib/hiringStages/redact.js`
    takes out SSNs (labelled, dashed or bare), labelled birth dates and licence
    numbers, every phone number and every other run of seven or more digits
@@ -91,7 +101,10 @@ to make one.
     supersedes the open proposal (its message is edited, its buttons go) — an
     earlier stage never does. A stage already proposed for that deal — open, moved or declined — is never
     proposed again. The recruiter is asked to create a deal once per
-    conversation, and **Skip** means never.
+    conversation, and **Skip** means never — until a person ASKS for the lead
+    with a tag (owner decision 4, 14 November 2026; rule 20): the bot then
+    creates it, and the card says who asked and that it overrides the Skip.
+    A Skipped "please create it" is still never asked again.
 11. **Off by default.** `safety_approval_settings.stage_proposals_enabled` is
     FALSE, and the feature also needs Safety Approvals on — it reads the
     messages Safety Approvals captures — and a saved **Bitrix topic**: the
@@ -131,7 +144,9 @@ to make one.
     pipeline, so nothing more is proposed in the read that created it: the
     conversation is read again two minutes later, and the next step is
     PROPOSED with Move / No in whatever pipeline the deal is then. A
-    recruiter's earlier **Skip** stops the bot creating it too.
+    recruiter's earlier **Skip** stops the bot creating it too — unless a
+    person has since asked for the lead with a tag (rule 20). Without a tag a
+    creation still waits for a verified stage; with one it does not.
 14. **Never two records.** `hiring_stage_crm_records` claims the creation per
     conversation (and at most one in flight per phone — a second post of the
     same driver waits) and records each step BEFORE its Bitrix call:
@@ -219,17 +234,100 @@ to make one.
     open beside a Move question — an audit of who acted on a candidate reads
     both tables.
 
+20. **Asked by a person with a tag** (owner, 13–14 November 2026: the bot
+    missed leads — a deal was created only after a model verified a stage
+    move, a post nobody answered was never queued, and a post sent while the
+    bot was down was never captured). `lib/hiringStages/botRequest.js`,
+    `services/hiringStages/{requestQueue,requested}.js`, migration 0106.
+    - **The trigger.** ANY person in the group replies to the lead's post
+      with a message that mentions the bot: a `mention` entity equal to `@` +
+      the bot's own username (any letter case — read from Telegram at start,
+      `ctx.botInfo`, never written in code) or a `text_mention` of the bot's
+      id, in `entities` or `caption_entities`. Only in General (no topic
+      thread), as a real reply (not a topic's root), from a person
+      (`from.is_bot` false — which also refuses the anonymous admin,
+      GroupAnonymousBot), as a new message (an edit that adds the mention
+      asks nothing), and with Safety Approvals on, the stage proposals on and
+      a Bitrix topic saved — otherwise nothing at all. A mention that is not a
+      reply is not a request (and stays an ordinary message).
+    - **The tagging message carries no data** (owner: "not in that format").
+      A reply that mentions the bot is stored with `bot_request` and left out
+      of every read — the transcript, the evidence, the phones, the names,
+      Safety's spelling. The ONE exception: Safety's `#NotApproved` in it
+      still stops a creation (rule 18) — a refusal can only make the bot do
+      less. A post that lacks the name or phone is EDITED, then tagged.
+    - **The post as it is NOW.** Capture already stores edits. A post the bot
+      never saw is rebuilt from the tag's `reply_to_message` (Telegram sends
+      it in full: words, photo file ids, album id, author) and stored flagged
+      `recovered_from_reply` — Telegram does not say what that message itself
+      replied to, so it is taken as a post. A stored post whose copy in the
+      tag is a newer edit, or other words with no older edit date, is updated;
+      an older copy never replaces a newer one. A tag on a bot's message, or on
+      a reply whose post the bot never saw, is answered 🤷 at once.
+    - **The queue.** The conversation is queued REQUESTED with a ONE-MINUTE
+      settle (not ten): `hiring_stage_threads.requested_at`,
+      `requested_by_user_id`, `requested_by_name` — the FIRST person to ask,
+      kept (`COALESCE`) — and `request_message_id`, the newest tag (the one
+      the bot reacts on). A second tag only re-queues it (`revision`); one
+      thread, one card, at most one creation (rules 12 and 14 unchanged).
+    - **The read** (`requested.js`) keeps every guard above and changes only:
+      (a) a post with no replies is read; (b) the post is assembled the way
+      Safety Approvals does it (`services/safetyApprovals/postLocator.js`
+      `resolvePost`: its album and, when that has no words or no picture, the
+      same sender's messages within three minutes), so a name sent right
+      after the album counts; (c) **creation does not wait for a verified
+      move**: a creation left in flight is finished first, then the deal is
+      looked for by phone, then by name; none → rules 17, 18 and 13 as
+      always (the conversation's own deal, closed, rejected, not certain — or
+      CREATE at "Sent to Safety" with the display name). Then the normal
+      stage read (`stageRead.js`) of the conversation AFTER the post proposes
+      the next stage with Move, exactly as today, and a person presses (with
+      no answer yet there is nothing to read: no model is asked); (d) a tag
+      overrides a Skip (rule 10).
+      Once a person asked, every later read of that conversation is a
+      requested read.
+    - **The answer.** In General ONLY reactions on the tagging message: 👀 as
+      soon as the request is accepted, then 👍 when the candidate has a deal —
+      found, created, the conversation's own, even a closed one — or a Move
+      was proposed, or 🤷 when it needs a person (not certain, blocked,
+      rejected, two people match, not a candidate post, a Bitrix refusal, given
+      up). A read that will run again (a retry, a creation read again in two
+      minutes) leaves 👀. **The owner asked for ✅; Telegram does not let a bot
+      react with ✅** (`services/autoReactionConstants.js`), so "done" is 👍.
+      Every detail is a line on the driver's ONE card, once each: "🙋
+      Requested by <name>" (and "— overrides the earlier Skip"), "🆕 Deal
+      created …", "📌 Already in Bitrix — <deal> at <stage>" (never for the
+      deal this conversation's own creation made), "🤷 Could not create the
+      deal: <reason>", "🤷 Not read: the post has no CDL photo and no phone",
+      the proposal. No text is ever posted in General.
+    - **Logs.** A creation a person asked for is recorded as THAT person:
+      `actor_kind` `person_reply`, their Telegram id and display name,
+      trigger `hiring_stage.create`, evidence the chat, the post, the tagging
+      message and the creation record ([activity-log.md](activity-log.md)).
+    - **Where it sits.** Inside Safety Approvals' capture, after the message
+      is stored, in its own `try`: a failure can never stop capture or a
+      Safety hashtag post, and the handler always calls `next()`.
+
 ## How it flows
 
 ```
 captured General message (services/safetyApprovals/captureService.js)
   → services/hiringStages/conversationQueue.js  (switch on? General? a reply? → follow replies to the post → enqueue)
+  or, a reply that mentions the bot (stored as `bot_request`, never data):
+  → services/hiringStages/requestQueue.js       (lib/hiringStages/botRequest.js: a request? → the post as it is
+       now: stored / refreshed / rebuilt from reply_to_message → enqueue REQUESTED, 1 minute → 👀)
   → services/hiringStages/worker.js             (queue wake scheduler; withRunRecord('hiring_stage_proposals'))
   → services/hiringStages/reviewer.js
-       conversation (database/hiringStages/threads.js: the post, its album, every reply at any depth)
-       → candidate post? → deal by phone (dealFinder.js) → the pipeline's stages (crm.status.list)
+       conversation (database/hiringStages/threads.js: the post, its album, every reply at any depth),
+         without the messages that mention the bot
+       requested? → requested.js: the post assembled as Safety Approvals does → resume → deal by
+         phone, then name → none: noDeal.js (Skip overridden) → CREATE without waiting for a stage
+         → stageRead.js as below; the reaction on the tag (👍 / 🤷) when the read is over
+       otherwise:
+       → answered? candidate post? → a creation an earlier read left in flight is finished first
+         (crmCreate.js resumeInFlight) → deal by phone (dealFinder.js)
+       → stageRead.js: the pipeline's stages (crm.status.list)
        → model (aiReading.js, capability `hiring_stage_reading`, redacted words only)
-       (first: a creation an earlier read left in flight is finished — crmCreate.js resumeInFlight)
        → verifyStageAnswer → deal by name (if none yet)
        → no deal? noDeal.js: Skip → the conversation's own deal (open: use it; closed: one line)
          → rejected: one line → not certain: ask → certain: crmCreate.js (contact + deal, display name)
@@ -241,6 +339,7 @@ captured General message (services/safetyApprovals/captureService.js)
            or "No open deal — <reason> — <recruiter>, please create it" [Deal created — search again] [Skip]
            lines once each: "Deal created …" · "N people in Bitrix match this name" · "Bitrix error …"
              · "the deal … is closed (Lost) — nothing to create" · "Rejected — no deal created"
+             · (a tag) "🙋 Requested by …" · "📌 Already in Bitrix …" · "🤷 Could not create the deal: …"
            aside: "✏️ Name in Bitrix: “No name” → “…”?" [✏️ Rename] [Keep as is]
   → button press: bot/handlers/hiringStageHandlers.js (thin) → services/hiringStages/actions.js
        (rn / rk → services/hiringStages/rename.js)
@@ -249,11 +348,12 @@ captured General message (services/safetyApprovals/captureService.js)
 - **A conversation is named by its post** — the message the reply chain leads
   back to; an album by its first item, so replies to the CDL's front and back
   are one conversation. A chain that leads to a message the bot never saw is
-  not queued.
+  not queued — unless a person tags the post itself: then it is rebuilt from
+  the tag (rule 20).
 - **A burst is read once.** Every new message re-arms a TEN-MINUTE settle delay
   (90 seconds until 11 November 2026)
   and bumps the row's `revision`; a worker finishes only the revision it
-  claimed.
+  claimed. A tag re-arms it to ONE minute (rule 20).
 - **Failures retry, then stop.** A model or Bitrix outage, or Telegram refusing
   the post, retries at 1, 5, 15, 30 and 60 minutes; after six attempts the row
   is `gave_up` until the next message in the conversation. A Bitrix answer
@@ -266,8 +366,8 @@ captured General message (services/safetyApprovals/captureService.js)
 ## Data
 
 Migrations `0076_hiring_stage_proposals.sql`,
-`0100_hiring_stage_bitrix_topic_and_crm_records.sql`, `0101_hiring_stage_cards.sql`
-and `0104_hiring_display_names_and_renames.sql`:
+`0100_hiring_stage_bitrix_topic_and_crm_records.sql`, `0101_hiring_stage_cards.sql`,
+`0104_hiring_display_names_and_renames.sql` and `0106_hiring_stage_bot_requests.sql`:
 
 | Table / column | What it holds |
 |---|---|
@@ -280,6 +380,8 @@ and `0104_hiring_display_names_and_renames.sql`:
 | `hiring_stage_cards` (migration 0101) | the one card per driver: its message now, the name (set once), the history, the question it shows — and since 0104 the `aside` (the rename offer) |
 | `hiring_stage_crm_records.display_name` (0104) | the name a creation writes (rule 16), stored at the claim; `driver_name` stays the post's, to find by |
 | `hiring_stage_renames` (0104) | a placeholder-title rename offered, and who answered it how (`decided_by_*`, `title_written`, `contact_renamed`): once per conversation and deal, one open per conversation |
+| `hiring_stage_threads.requested_at` / `requested_by_user_id` / `requested_by_name` / `request_message_id` (0106) | a person asked for the conversation with a tag: the FIRST to ask (kept), and the newest tagging message (reacted on) |
+| `safety_approval_messages.bot_request` / `recovered_from_reply` (0106) | a reply that mentions the bot (a request, never data — set once, kept); a post rebuilt from a tag's `reply_to_message` (until a real capture of it arrives) |
 
 Proposals, creation records, notices and rename offers carry a driver's name and phone, so
 closed ones are **deleted after 60 days**, like the captured messages;
@@ -293,7 +395,9 @@ push (Settings → Bitrix24, which must be **enabled**). Every write below is
 recorded in Monitoring → Logs by the client itself ([activity-log.md](activity-log.md)):
 Move and ✏️ Rename with the presser's Telegram id (`hiring_stage.move`,
 `hiring_stage.rename`), a creation as `automatic` with the chat and post as
-evidence (`hiring_stage.create`) — never the candidate's phone. A Move or
+evidence (`hiring_stage.create`) — or, when a person asked for the lead with a
+tag, as that person (`person_reply`, their Telegram id and name, the tagging
+message in the evidence) — never the candidate's phone. A Move or
 Rename press that ends BEFORE its write is an entry too, with the presser:
 already at that stage (`already_done`), moved or renamed meanwhile, the deal
 gone, closed or out of the hiring pipeline (`refused` by a safety check —
@@ -342,7 +446,18 @@ name, Keep as is, the Board's pipeline), `tests/hiringStageRenamePress.test.js`
 same name typed by a person, the title written before the contact failed, a
 deleted deal, offered with no move but never with two phones, a deleted known deal),
 `tests/hiringStageRenamesPg.test.js`
-(migration 0104),
+(migration 0104), `tests/hiringStageBotRequest.test.js` (rule 20's trigger:
+a mention in entities or a caption, any letter case, a `text_mention`, not a
+reply, a bot, the anonymous admin, another topic, the switches, an edit; the
+post's current copy; the reactions), `tests/hiringStageRequestQueue.test.js`
+(a post rebuilt from `reply_to_message`, an edited post refreshed, a tag deep
+in the conversation, 👀 / 🤷), `tests/hiringStageRequested.test.js` (end to end:
+a post with no replies created then proposed, a second tag, a rebuilt post, an
+edited post, the tag's words never used, a name after the album, a Skip
+overridden, a closed deal or a rejection, already in Bitrix, not certain, a
+Bitrix failure, the reactions, the creation logged as the person),
+`tests/hiringStageBotRequestsPg.test.js` (migration 0106),
+`tests/safetyApprovalCapture.test.js` (capture survives the request path throwing),
 `tests/hiringStageQueue.test.js`, `tests/hiringStageStorePg.test.js`,
 `tests/hiringStageCrmRecordsPg.test.js` (the claim, busy per phone, notices,
 the topic setting), `tests/safetyApprovalSettingsRoute.test.js` and
