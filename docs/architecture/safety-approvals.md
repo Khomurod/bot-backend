@@ -170,6 +170,13 @@ bot message / edited_message
   file ids the bot captured (pictures sent "as files" as documents; Telegram
   will not mix the two). Photos are downloaded only when a model must look at
   them — a decision without a hashtag.
+- **Shared with the CDL reading.** The download by file id
+  (`services/telegram/fileDownload.js`, in memory, size-capped) and the
+  picture preparation (`services/aiImagePrep.js`) are the ones the CDL reading
+  of a lead a person tagged uses ([`hiring-cdl-reading.md`](hiring-cdl-reading.md)),
+  and its post is assembled by `postLocator.js` `resolvePost` too — a change
+  to any of them changes both. Safety's own reading still never writes to
+  Bitrix.
 - **Failures retry, then stop.** An AI outage, a Telegram error or photos that
   will not download retry at 1, 5, 15, 30 and 60 minutes; after six attempts or
   a day the review is `gave_up` and shows in Settings → Safety Approvals.

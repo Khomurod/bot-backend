@@ -17,6 +17,10 @@ vi.mock("../../api", () => ({
   updateSafetyApprovals: vi.fn(),
   sendSafetyApprovalTestPost: vi.fn(),
   sendBitrixTopicTestPost: vi.fn(),
+  // 6. CDL → Bitrix fields (its own card: CdlFieldMapCard.test.jsx).
+  getHiringCdl: vi.fn(),
+  readHiringCdlBitrixFields: vi.fn(),
+  saveHiringCdlMapping: vi.fn(),
 }));
 
 const switchBox = () => screen.getByLabelText(/Post Safety's decisions/i);
@@ -33,6 +37,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   api.getSafetyApprovals.mockResolvedValue({ settings: SETTINGS, members: MEMBERS, recent: [] });
   api.updateSafetyApprovals.mockResolvedValue({});
+  api.getHiringCdl.mockResolvedValue({ items: [{ key: "license_number", label: "Licence number" }], mapping: [], recent: [] });
 });
 
 test("the switch stays off until a Safety person is saved", async () => {

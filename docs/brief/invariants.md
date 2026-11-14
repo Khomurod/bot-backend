@@ -247,8 +247,8 @@ repository-wide working rules. The highest-consequence items:
   press. Bitrix messages go to the Bitrix topic only, never General — where a
   person's tag (a reply mentioning the bot, rule 20) is answered only with a
   reaction, and the tag's own words are never data, evidence or model input
-  (`tests/hiringStageRequested.test.js`).
-  `tests/hiringStageCrmCreate.test.js`. **Never a deal the conversation
+  (`tests/hiringStageRequested.test.js`, `tests/hiringStageCrmCreate.test.js`). **A tag's CDL photo** goes only to the providers
+  the owner chose; a CDL value never overwrites Bitrix and is never kept in Wenze (`hiring-cdl-reading.md`). **Never a deal the conversation
   already has** (open or closed) **nor one for a rejected candidate**; the name
   written is Safety's spelling read by rules, never a model's; a placeholder
   title ("No name") is renamed only by a press on ✏️ Rename, after a re-read

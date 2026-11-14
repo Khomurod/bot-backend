@@ -399,6 +399,20 @@
       "purpose": "Per-sender role consensus (driver / dispatcher / ...) aggregated from chat_message_annotations for AI Insights.",
       "status": "retired",
       "service": "none - removed with AI Reports on 2026-10-30. Kept: holds past reports; drop only as a separate decision after a backup (docs/architecture/retired-ai-reports.md)."
+    },
+    "hiring_cdl_field_map": {
+      "purpose": "Where each item read off a candidate's CDL photo goes in Bitrix: one row per CDL item -> one contact or deal field (migration 0108). An item with no row goes into the deal's timeline comment.",
+      "status": "active",
+      "service": "admin (Settings -> Safety Approvals -> 6, saved whole), bot (read by services/hiringStages/cdlStep.js before each write)",
+      "sourceOfTruth": "The owner's choice. The field's type and list items are read live from Bitrix before each write, never trusted from field_type.",
+      "danger": "Holds field codes and labels only - never a CDL value. One Bitrix field takes at most one item (unique index)."
+    },
+    "hiring_stage_cdl_reads": {
+      "purpose": "How each CDL read of a tagged lead ended: one row per conversation and tagging message - status, provider and model, how many items were written or put in the comment, the item NAMES written (migration 0108).",
+      "status": "active",
+      "service": "bot (services/hiringStages/cdlStep.js writes; deleted after 60 days by the hiring worker), admin (Settings -> Safety Approvals -> 6, the latest reads)",
+      "sourceOfTruth": "A 'written' row means the conversation's CDL is never read again; any other ending belongs to its tag.",
+      "danger": "NEVER a CDL value: no date of birth, licence number, address or anything else read off the card. The values go to Bitrix only. tests/hiringCdlPg.test.js pins the column list."
     }
   }
 }

@@ -29,6 +29,8 @@ const state = {
   messages: [], finished: [], retried: [], proposals: [], records: [], notices: [], sent: [], edits: [], deleted: [],
   contacts: [], deals: [], calls: [], fail: {}, nextId: 500, aiAnswer: null, renames: [], logged: [],
   audits: [], reactions: [], neighbours: [], transcripts: [],
+  // The CDL step (services/hiringStages/cdlStep.js) — tests/hiringCdlRequested.test.js.
+  cdlReads: [], cdlMap: [], cdlDefs: { contact: {}, deal: {} }, comments: [], readCdl: null, cdlAsked: 0,
 };
 
 // Monitoring → Logs: what the presses record, kept here (never a database).
@@ -150,6 +152,25 @@ stub('database/hiringStages/notices.js', {
   release: async () => {},
 });
 stub('database/safetyApprovals/settings.js', { getSafetyApprovalSettings: async () => SETTINGS });
+stub('database/hiringStages/cdlReads.js', {
+  mayRead: async (chatId, root, tag) => !state.cdlReads.some((r) => r.rootMessageId === root
+    && (r.status === 'written' || r.requestMessageId === tag)),
+  recordRead: async (row) => {
+    if (state.cdlReads.some((r) => r.rootMessageId === row.rootMessageId && r.requestMessageId === row.requestMessageId)) return null;
+    state.cdlReads.push({ ...row });
+    return { ...row };
+  },
+  purgeOldCdlReads: async () => 0,
+});
+stub('database/hiringStages/cdlFieldMap.js', { getFieldMap: async () => state.cdlMap.map((m) => ({ ...m })) });
+// The AI step: switched off unless a test says what the model read.
+stub('services/hiringStages/cdlReading.js', {
+  CAPABILITY: 'hiring_cdl_reading',
+  readCdl: async (post, deps) => {
+    state.cdlAsked += 1;
+    return state.readCdl ? state.readCdl(post, deps) : { status: 'off' };
+  },
+});
 stub('database/bitrix.js', {
   getBitrixConfig: async () => ({ enabled: true, webhookUrl: 'https://acme.bitrix24.com/rest/1/s/', dealCategoryId: '', assignedById: '' }),
 });
@@ -251,6 +272,34 @@ stub('services/bitrix24DealStages.js', {
   },
   listStageRows: async () => STAGE_ROWS,
   moveDealToStage: async () => { throw new Error('nothing may be moved without a press'); },
+  // The CDL step's reads and writes (services/hiringStages/cdlBitrix.js).
+  getRawRecord: async (entity, id) => {
+    record(`crm.${entity}.get`);
+    maybeFail(`crm.${entity}.get`, { before: true });
+    if (entity === 'contact') {
+      const c = state.contacts.find((x) => x.id === Number(id));
+      return c ? {
+        ID: String(c.id), NAME: c.first, SECOND_NAME: '', LAST_NAME: c.last, ...(c.fields || {}),
+      } : null;
+    }
+    const d = state.deals.find((x) => x.id === Number(id));
+    return d ? { ID: String(d.id), TITLE: d.title, CATEGORY_ID: d.categoryId, ...(d.fields || {}) } : null;
+  },
+  callBitrix: async (method, params, opts = {}) => {
+    record(method);
+    if (method === 'crm.contact.fields') return state.cdlDefs.contact;
+    if (method === 'crm.deal.fields') return state.cdlDefs.deal;
+    state.audits.push({ method, ...opts.audit });
+    maybeFail(method, { before: true });
+    if (method === 'crm.timeline.comment.add') {
+      state.comments.push({ ...params.fields });
+      return (state.nextId += 1);
+    }
+    const list = method === 'crm.contact.update' ? state.contacts : state.deals;
+    const row = list.find((x) => x.id === Number(params.id));
+    row.fields = { ...(row.fields || {}), ...params.fields };
+    return true;
+  },
   dealUrl: async (id) => `https://acme.bitrix24.com/crm/deal/details/${id}/`,
 });
 
@@ -280,6 +329,7 @@ function reset() {
     messages: [], finished: [], retried: [], proposals: [], records: [], notices: [], sent: [], edits: [], deleted: [],
     contacts: [], deals: [], calls: [], fail: {}, nextId: 500, renames: [], logged: [],
     audits: [], reactions: [], neighbours: [], transcripts: [],
+    cdlReads: [], cdlMap: [], cdlDefs: { contact: {}, deal: {} }, comments: [], readCdl: null, cdlAsked: 0,
     aiAnswer: { move: true, stage_id: 'UC_SAFETY', driver_name: null, evidence: 'CLH sent' },
   });
 }

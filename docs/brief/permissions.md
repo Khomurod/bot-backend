@@ -196,6 +196,16 @@ send one PDF to the one person who asked for them
 settings routes (`/api/settings/truck-photos*`) are under `admin.full_access`
 like every settings route.
 
+**Who may make the bot read a CDL photo is anybody in the recruiting group —
+by tagging it under a lead's post** (rule 20 of
+[`hiring-stage-proposals.md`](../architecture/hiring-stage-proposals.md)); the
+writes are recorded as that person. **Who reads it and where it goes is the
+administrators'**: Settings → AI → Providers for one task
+(`/api/settings/ai/capability-providers`, `/api/settings/ai/capabilities/:key/providers`)
+and Settings → Safety Approvals → 6 (`/api/settings/hiring-cdl*`), both under
+`admin.full_access` with no new permission. Neither ever returns a CDL value —
+none is stored ([`hiring-cdl-reading.md`](../architecture/hiring-cdl-reading.md)).
+
 A correction applied this way is attributed `telegram:<id>`, a third initiator
 form beside `admin:<id>` and `system`. It counts as a person, which is what
 gets an approval-tier correction past the schema's system-is-auto-only CHECK.

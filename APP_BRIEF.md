@@ -251,6 +251,7 @@ by a number on every stage does not belong in the file everything else fits in.
 | The dispatcher ETA updates, `/update`, `/status`, `/load` and the pinned-load reading's removal (October 2026), what stayed (`/location`, Live Locations' ETA), and the tables they left | `docs/architecture/retired-dispatch-eta.md` |
 | The Finance Monitor's removal (October 2026): money-code capture, its AI reading, the attachment reader, the weekly report, the Finance page and Settings → Finance; the Telegram file download that moved for Safety Approvals; the money-code tables it left | `docs/architecture/retired-finance-monitor.md` |
 | Whose number texts a lead, WHICH message they send, and the RingCentral/TCR prerequisites | `docs/architecture/recruiter-sms-sender.md` |
+| Reading a tagged lead's CDL photo into Bitrix (the providers the owner chose, the field mapping, no value ever kept in Wenze) | `docs/architecture/hiring-cdl-reading.md` |
 | Reporting Facebook leads' Bitrix hiring stages to Meta, and its credentials page (Settings → Facebook ↔ Bitrix: enter, test, save, ON/OFF) | `docs/brief/recruiting.md`, `docs/architecture/meta-crm-settings.md` |
 | Dispatcher Board ↔ Bitrix24: 15-minute comparison; dynamically validated schema; status sync off / dry-run / guarded live; every non-automatic difference asked one at a time (Settings → Dispatcher Board) | `docs/architecture/board-bitrix-check.md` |
 | The Gross Grand Prix displays (`/dispatch`, `/dispatchteam`): the Datatruck read budget, and what a public page may show | `docs/architecture/gross-race.md` |

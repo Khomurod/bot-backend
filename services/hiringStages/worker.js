@@ -11,7 +11,7 @@
  * off — or no Bitrix topic is saved for them to write in — a drain reads the
  * settings and stops, `blocked`, without touching the queue: the waiting
  * conversations are read once the topic is saved. Once a day it first deletes
- * proposals, queue rows, creation records and notices older than sixty days —
+ * proposals, queue rows, creation records, notices and CDL reads older than sixty days —
  * the same life as the captured messages they were read from.
  */
 
@@ -24,6 +24,7 @@ const { purgeOldRecords } = require('../../database/hiringStages/crmRecords');
 const { purgeOldNotices } = require('../../database/hiringStages/notices');
 const { purgeOldCards } = require('../../database/hiringStages/cards');
 const { purgeOldRenames } = require('../../database/hiringStages/renames');
+const { purgeOldCdlReads } = require('../../database/hiringStages/cdlReads');
 const { processThread } = require('./reviewer');
 
 const SERVICE_KEY = 'hiring_stage_proposals';
@@ -54,7 +55,8 @@ async function drainHiringStages(deps = {}) {
       + (await purgeOldRecords(RETENTION_DAYS).catch(() => 0))
       + (await purgeOldNotices(RETENTION_DAYS).catch(() => 0))
       + (await purgeOldCards(RETENTION_DAYS).catch(() => 0))
-      + (await purgeOldRenames(RETENTION_DAYS).catch(() => 0));
+      + (await purgeOldRenames(RETENTION_DAYS).catch(() => 0))
+      + (await purgeOldCdlReads(RETENTION_DAYS).catch(() => 0));
     if (purged) console.log(`[HIRING STAGES] deleted ${purged} proposal/queue/record row(s) older than ${RETENTION_DAYS} days`);
   }
   if (!settings.enabled) return { blocked: 'Safety Approvals is switched off' };

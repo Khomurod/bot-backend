@@ -12,6 +12,8 @@
  *   ./settings/safetyEventRoutes.js   /safety-events*  dashcam music overlay
  *   ./settings/retiredLeftoversRoutes.js /retired-leftovers*  removed-feature cleanup
  *   ./settings/safetyApprovalRoutes.js /safety-approvals* Safety's hire decisions
+ *   ./settings/hiringCdlRoutes.js     /hiring-cdl*     where a CDL photo's values go in Bitrix
+ *   ./settings/aiCapabilityProvidersRoutes.js /ai/capability-providers, /ai/capabilities/:key/providers
  *   ./settings/truckPhotoRoutes.js    /truck-photos*   hand-over / return photo PDFs to one person
  *   ./settings/aiLessonsRoutes.js     /ai/lessons*     what Wenze learned from answers
  *   ./settings/metaCrmRoutes.js       /meta-crm*       Facebook ↔ Bitrix (Conversions API for CRM)
@@ -44,6 +46,8 @@ const { createTruckPhotoSettingsRouter } = require('./settings/truckPhotoRoutes'
 const { createMetaCrmSettingsRouter } = require('./settings/metaCrmRoutes');
 const { createBoardBitrixSettingsRouter } = require('./settings/boardBitrixRoutes');
 const { createAppSecretsRouter } = require('./settings/appSecretsRoutes');
+const { createHiringCdlSettingsRouter } = require('./settings/hiringCdlRoutes');
+const { createAiCapabilityProvidersRouter } = require('./settings/aiCapabilityProvidersRoutes');
 
 function createSettingsRouter({ authMiddleware, telegram = null }) {
   const router = express.Router();
@@ -58,6 +62,7 @@ function createSettingsRouter({ authMiddleware, telegram = null }) {
   router.use(createSafetyEventSettingsRouter(deps));
   router.use(createBitrixSettingsRouter(deps));
   router.use(createAiSettingsRouter(deps));
+  router.use(createAiCapabilityProvidersRouter(deps));
   router.use(createAiLessonsRouter(deps));
   router.use(createNotificationSettingsRouter(deps));
   router.use(createControlSettingsRouter(deps));
@@ -65,6 +70,7 @@ function createSettingsRouter({ authMiddleware, telegram = null }) {
   router.use(createRetiredLeftoversRouter(deps));
   router.use(createRecruitingHoursRouter(deps));
   router.use(createSafetyApprovalSettingsRouter(deps));
+  router.use(createHiringCdlSettingsRouter(deps));
   router.use(createTruckPhotoSettingsRouter(deps));
   router.use(createMetaCrmSettingsRouter(deps));
   router.use(createBoardBitrixSettingsRouter(deps));

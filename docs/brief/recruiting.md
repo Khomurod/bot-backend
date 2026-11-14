@@ -258,10 +258,27 @@ the same treatment home time got, and for the same reason.
   driver's card in the Bitrix topic. The creation is logged as the person who
   asked. Only in General, only a real reply, only a person, only with the
   feature on and a Bitrix topic saved.
+- **On a tag, the CDL photo is read into Bitrix** (owner, 14 November 2026).
+  When the tagged post has photos, a vision model reads what is printed on the
+  CDL — name, date of birth, address, licence number, state, class, dates,
+  endorsements, restrictions, sex, height, weight, eyes, hair — but ONLY a
+  provider the owner chose for it in Settings → AI → Providers for one task
+  ("only Claude", "Gemini, then Claude"; none chosen or the task switched off
+  in AI Tasks: nothing is read). Every value is checked by type and dropped
+  when it does not fit; an unsure answer writes nothing. The CDL's first and
+  last name must be the post's typed name (or nothing is written); a post
+  that names nobody may take the CDL's name to create the candidate. Values go
+  to the Bitrix fields the owner mapped (Settings → Safety Approvals → 6) —
+  one update per record, never over a filled field — and the rest into one
+  comment on the deal, "CDL (read by …)". No value is kept in Wenze, logged or
+  posted in Telegram: the card says "🪪 CDL read (Claude): 9 items written to
+  Bitrix, 3 in a comment" or why not. See
+  [`docs/architecture/hiring-cdl-reading.md`](../architecture/hiring-cdl-reading.md).
 - A model picks the stage by meaning; `lib/hiringStages/proposal.js` keeps only
   a stage of that pipeline, forward of where the deal is (or a lost stage),
   quoting words somebody wrote. SSNs, birth dates, licence numbers and phones
-  are removed before the text is sent; no photo is.
+  are removed before the text is sent; no photo is (the CDL reading above
+  sends the photos, and only those, on a person's tag).
 - Off by default (Settings → Safety Approvals → 5, needs Safety Approvals on
   and a saved, tested Bitrix topic). Proposals, creation records, notices and
   rename offers are deleted after 60 days. See

@@ -138,6 +138,15 @@ export default function ResponsibilitiesCard({ flash }) {
                     </span>
                   )}
                   <div className="muted" style={{ marginTop: 2, fontSize: 13 }}>{cap.what}</div>
+                  {/* A task kept to providers of its own (the CDL reading): who reads it. */}
+                  {cap.providerChoice && Array.isArray(cap.providerOrder) && (
+                    <div style={{ marginTop: 2, fontSize: 12 }}>
+                      {cap.providerOrder.length
+                        ? <span className="muted">Asked only of the providers chosen for it ({cap.providerOrder.join(" → ")}). </span>
+                        : <span style={{ color: "var(--danger)" }}>No provider chosen — nothing is read. </span>}
+                      <a href="#settings/ai">Choose them in AI Providers</a>
+                    </div>
+                  )}
                 </div>
                 <label style={{ whiteSpace: "nowrap" }}>
                   <input

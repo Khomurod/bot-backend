@@ -61,6 +61,13 @@ who made them, what changed or why. Decided with the owner the same day:
   `COMMENTS` / `IM` / `WEB` / `ADDRESS` / `ORIGIN_*` are never copied into
   `change`, evidence keeps scalars only, the error is clipped to 400
   characters. The lead creation passes the recorder NO fields at all.
+- **A value that may never be stored is withheld** (14 November 2026, the CDL
+  reading — [`hiring-cdl-reading.md`](hiring-cdl-reading.md)): a write whose
+  audit context says `valuesWithheld: true` keeps field NAMES only — the
+  caller's own mask ("set (from CDL)") or "(not shown)" in every `to` — and
+  when Bitrix refuses it, none of Bitrix's words (they may quote the value):
+  the entry's error says the words were not kept. A date of birth or a
+  licence number never reaches `activity_log`.
 - **Names live 60 days.** `target_label`, the from → to of a name field
   (`TITLE`, `NAME`, `LAST_NAME`, `SECOND_NAME`, `FULL_NAME`) and name keys in
   `evidence` are removed by the hourly retention pass after 60 days
@@ -131,6 +138,7 @@ who made them, what changed or why. Decided with the owner the same day:
 | `board_bitrix.sync` | the live status sync's `STAGE_ID` | `automatic`; evidence: Board status and its time, the action key, the attempt (`board_bitrix_stage_sync_actions.attempts`) |
 | `hiring_stage.move` | Move's `crm.deal.update` `STAGE_ID` | `person_button` (the presser, as `decided_by` in `hiring_stage_proposals`) |
 | `hiring_stage.rename` | ✏️ Rename's `TITLE`, and a placeholder contact's `NAME` / `LAST_NAME` | `person_button` |
+| `hiring_stage.cdl` | the CDL reading's ONE `crm.contact.update` and ONE `crm.deal.update` of empty mapped fields, and ONE `crm.timeline.comment.add` on the deal | `person_reply` — the first person who asked with a tag; evidence: chat, post, the tagging message, deal and contact ids; `change` = field names with "set (from CDL)" / `cdl:<item>` "in the comment (from CDL)", `valuesWithheld` |
 | `hiring_stage.create` | `crm.contact.add`, `crm.deal.add` | `automatic`; evidence: chat and post id, the creation record. Since 14 November 2026, when a person ASKED for the lead with a reply mentioning the bot (`hiring-stage-proposals.md` rule 20): `person_reply` — the first person who asked, their Telegram id and name; evidence adds the tagging message (`requestMessageId`) |
 | `home_time.violation_card` | the pipeline-33 card's stage and home-time fields | `automatic`; evidence: driver group, violation row ids, home-from |
 | `facebook_lead.create` | `crm.lead.add` / `crm.deal.add` | `automatic`; evidence: leadgen, form and page ids |
@@ -182,7 +190,7 @@ filter and the notice use it), and add the call site to the table above. Run
 ## Tests
 
 ```
-node --test tests/activityLogEntry.test.js tests/activityLogCallSites.test.js tests/activityLogBitrixWrites.test.js tests/activityLogAttempts.test.js tests/activityLogRoutes.test.js tests/boardBitrixSyncLedger.test.js
+node --test tests/activityLogEntry.test.js tests/activityLogCallSites.test.js tests/activityLogBitrixWrites.test.js tests/activityLogAttempts.test.js tests/activityLogRoutes.test.js tests/boardBitrixSyncLedger.test.js tests/hiringCdlBitrix.test.js
 TEST_DATABASE_URL=… node --test tests/activityLogPg.test.js
 npm test --prefix admin -- --run src/pages/LogsPage.test.jsx src/components/AdminSidebar.test.jsx
 ```

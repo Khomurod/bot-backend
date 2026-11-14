@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import * as api from "../../api";
 import { Banner } from "./fields";
 import HiringStagesCard from "./HiringStagesCard";
+import CdlFieldMapCard from "./recruiting/CdlFieldMapCard";
 
 /**
  * Settings → Safety Approvals.
@@ -171,6 +172,7 @@ export default function SafetyApprovalsTab() {
           </div>
           {latestReplies}
           {hiringStages}
+          <CdlFieldMapCard />
         </>
       ) : (
       <>
@@ -251,6 +253,7 @@ export default function SafetyApprovalsTab() {
       </div>
 
       {hiringStages}
+      <CdlFieldMapCard />
       {latestReplies}
       </>
       )}
