@@ -209,7 +209,7 @@ test('a Facebook lead\'s creation is recorded without the candidate\'s details',
   reset();
   const { createCrmRecordFromLead } = require('../services/bitrix24Service');
   const out = await createCrmRecordFromLead({
-    fieldMap: {}, leadData: { field_data: [] }, connection: { page_name: 'P' }, leadgenId: 'L1',
+    fieldMap: { full_name: 'Bo Diaz', phone_number: '+15550100777' }, leadData: { field_data: [] }, connection: { page_name: 'P' }, leadgenId: 'L1',
     audit: {
       actorKind: 'automatic', trigger: 'facebook_lead.create', reason: 'r', targetLabel: 'Bo Diaz',
       change: [{ field: 'source', from: null, to: 'Facebook lead form' }],
