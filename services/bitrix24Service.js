@@ -28,7 +28,8 @@
  */
 const config = require('../config/config');
 const { getBitrixConfig } = require('../database/bitrix');
-const { buildBitrixCrmFields } = require('./bitrix24LeadMapper');
+const { buildBitrixCrmFields, normalizeFieldMapKeys, splitNameFromFieldMap } = require('./bitrix24LeadMapper');
+const { crmLeadReadiness } = require('../lib/recruiting/crmLeadGate');
 const { loadCatalog } = require('./bitrix24FieldCatalog');
 
 function normalizeWebhookBase(url) {
@@ -127,6 +128,22 @@ async function createCrmRecordFromLead({
 }) {
   if (!(await isBitrixConfigured())) {
     return { ok: false, reason: 'not_configured' };
+  }
+
+  // ONLY A NAME AND A PHONE GO TO BITRIX (owner, 18 November 2026;
+  // lib/recruiting/crmLeadGate.js). Checked before anything is asked of Bitrix.
+  const normalizedLead = normalizeFieldMapKeys(fieldMap);
+  const readiness = crmLeadReadiness({
+    ...splitNameFromFieldMap(normalizedLead),
+    phone: normalizedLead.phone_number || normalizedLead.phone || '',
+  });
+  if (!readiness.ok) {
+    return {
+      ok: false,
+      reason: 'incomplete',
+      missing: readiness.missing,
+      error: `Not sent to Bitrix: the lead has no ${readiness.missing.join(' and no ')}.`,
+    };
   }
 
   const bitrixConfig = await getBitrixMapperConfig();

@@ -19,6 +19,16 @@ the same treatment home time got, and for the same reason.
   creates a Bitrix24 CRM lead (best-effort; CRM failure never blocks the
   Telegram post) → fires auto-SMS **from the assigned recruiter's number** →
   mirrors SMS replies two-way.
+- **Only a lead with a name AND a phone number becomes a Bitrix record**
+  (owner, 18 November 2026; `lib/recruiting/crmLeadGate.js`, checked in
+  `bitrix24Service.createCrmRecordFromLead` before Bitrix is asked anything):
+  at least two letters of name, and a number the SMS sender could text
+  (`lib/phone/e164.js` `toE164`). Otherwise the lead is still posted to the
+  leads Telegram group and filed in the Leads tab as `skipped`. Wenze never
+  turns a Facebook COMMENT into a lead: the Page is subscribed to `leadgen`
+  (and `messages`, which only reach Telegram), never to `feed`. Commenters
+  appearing as leads in Bitrix come from outside Wenze (most likely Bitrix's
+  own Facebook connector in the Contact Center). `tests/crmLeadGate.test.js`.
 - **A lead event is tried at most five times, then abandoned** — retries wait
   1, 5, 15 and 60 minutes, so a short outage is ridden out. The fifth failure
   marks the event `abandoned` (never claimed again) and posts ONE notice to the

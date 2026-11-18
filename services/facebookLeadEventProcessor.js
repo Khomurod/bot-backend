@@ -142,7 +142,11 @@ async function createBitrixRecord({
         change: [{ field: 'source', from: null, to: 'Facebook lead form' }],
       },
     });
-    if (!result.ok && result.reason !== 'not_configured') {
+    if (result.reason === 'incomplete') {
+      // The owner's rule: no name or no phone, no Bitrix record. The team still
+      // has the lead in Telegram. No name or number in the log line.
+      console.log(`[Bitrix24] Lead ${leadgenId} not sent to Bitrix: no ${result.missing.join(' and no ')}.`);
+    } else if (!result.ok && result.reason !== 'not_configured') {
       console.error('[Bitrix24] Lead sync failed:', result.error || result.reason);
     }
     return result;
@@ -158,6 +162,7 @@ async function recordLead({ leadgenId, fullName, fieldMap, phone, connection, pa
     let bitrixStatus = 'skipped';
     if (bitrixResult?.ok) bitrixStatus = 'created';
     else if (bitrixResult?.reason === 'not_configured') bitrixStatus = 'disabled';
+    else if (bitrixResult?.reason === 'incomplete') bitrixStatus = 'skipped';
     else if (bitrixResult) bitrixStatus = 'failed';
     const recorded = await db.createLeadIfNew({
       source: 'facebook',
