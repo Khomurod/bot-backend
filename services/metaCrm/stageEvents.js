@@ -20,6 +20,12 @@
  * table is silence, never a guess — a stage added in Bitrix later reports
  * nothing until somebody decides what it means here.
  *
+ * EVERY LEAD ALSO SAYS `Lead` ONCE (23 November 2026). Meta's CRM integration
+ * expects one raw-lead event per lead before any later stage — "if you
+ * generate 100 leads, 100 raw lead events" — and optimising for qualified
+ * leads needs it. It comes from the `leads` row itself (every Facebook lead
+ * with a leadgen id, Bitrix record or not), timed when the lead was filed.
+ *
  * WHY SEVEN DAYS. Meta refuses a server event whose `event_time` is more than
  * seven days in the past. A deal that moved before that is not reported at
  * all, rather than reported with a time it did not happen at.
@@ -33,6 +39,9 @@ const STAGE_EVENTS = Object.freeze({
   WON: 'Converted',
   LOSE: 'Lost',
 });
+
+/** The first stage: every Facebook lead, once. */
+const LEAD_EVENT = 'Lead';
 
 /** The pipeline whose stages the table above names. Other pipelines prefix their stage ids (`C33:…`). */
 const CATEGORY_ID = '0';
@@ -112,6 +121,29 @@ function planEvents({ deals, leadgenBySourceId, entity, nowMs }) {
 }
 
 /**
+ * The `Lead` events for recently filed Facebook leads (`{leadgen_id,
+ * created_at}` rows), timed when each was filed — after Meta created it, as
+ * Meta requires. A row with no usable leadgen id or time is left out; one
+ * older than Meta's window is counted as stale.
+ */
+function planLeadEvents({ leads, nowMs }) {
+  const plan = [];
+  let stale = 0;
+  for (const lead of leads || []) {
+    const leadgenId = String(lead?.leadgen_id ?? '').trim();
+    if (!isLeadgenId(leadgenId)) continue;
+    const filedMs = lead?.created_at == null ? NaN : new Date(lead.created_at).getTime();
+    if (!Number.isFinite(filedMs)) continue;
+    const eventTimeMs = Math.min(filedMs, nowMs);
+    if (!isFresh(eventTimeMs, nowMs)) { stale += 1; continue; }
+    plan.push({
+      leadgenId, eventName: LEAD_EVENT, dealId: null, stageId: null, eventTime: new Date(eventTimeMs),
+    });
+  }
+  return { plan, stale };
+}
+
+/**
  * One Conversions API event. `event_id` makes a resend after a crash (sent,
  * not yet marked sent) a duplicate Meta can discard instead of a second
  * conversion. `lead_id` goes as a number while it is exactly representable,
@@ -131,6 +163,7 @@ function buildCapiEvent({ leadgenId, eventName, eventTime }) {
 
 module.exports = {
   STAGE_EVENTS,
+  LEAD_EVENT,
   CATEGORY_ID,
   MAX_EVENT_AGE_MS,
   eventForStage,
@@ -139,5 +172,6 @@ module.exports = {
   isFresh,
   sourceRecordId,
   planEvents,
+  planLeadEvents,
   buildCapiEvent,
 };

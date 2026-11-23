@@ -22,10 +22,11 @@ const deal = (id, leadId, stage, moved = '2026-10-27T12:00:00Z') => ({
 });
 
 /** UNIQUE (leadgen_id, event_name); sent rows never pending again; five attempts. */
-function fakeStore(leadgenByBitrix) {
+function fakeStore(leadgenByBitrix, recentLeads = []) {
   const rows = [];
   return {
     rows,
+    async listRecentFacebookLeads() { return recentLeads; },
     async findLeadgenIdsByBitrixIds(ids) {
       return new Map(ids.filter((id) => leadgenByBitrix[id]).map((id) => [String(id), leadgenByBitrix[id]]));
     },
@@ -34,7 +35,7 @@ function fakeStore(leadgenByBitrix) {
       for (const p of plan) {
         if (rows.some((r) => r.leadgen_id === p.leadgenId && r.event_name === p.eventName)) continue;
         const row = {
-          id: rows.length + 1, leadgen_id: p.leadgenId, event_name: p.eventName, deal_id: String(p.dealId),
+          id: rows.length + 1, leadgen_id: p.leadgenId, event_name: p.eventName, deal_id: p.dealId == null ? null : String(p.dealId),
           stage_id: p.stageId, event_time: p.eventTime, state: 'pending', attempts: 0, last_error: null,
         };
         rows.push(row);
@@ -60,10 +61,12 @@ function fakeStore(leadgenByBitrix) {
   };
 }
 
-function setup({ deals, leads, meta = () => ({ ok: true, received: 1 }), cfg = {} } = {}) {
+function setup({
+  deals, leads, recentLeads = [], meta = () => ({ ok: true, received: 1 }), cfg = {},
+} = {}) {
   const sent = [];
   const bitrixCalls = [];
-  const store = fakeStore(leads || {});
+  const store = fakeStore(leads || {}, recentLeads);
   const deps = {
     config: () => ({ datasetId: '111222333', token: TOKEN, graphVersion: 'v25.0', ...cfg }),
     bitrixEntity: async () => cfg.entity || 'lead',
@@ -125,11 +128,49 @@ test('the dry run plans what a pass would send and records and sends nothing', a
   const preview = await previewStageSync({ deps });
   assert.equal(preview.dealsChanged, 4);
   assert.equal(preview.facebookDeals, 3);
-  assert.deepEqual(preview.wouldSend, { Qualified: 0, Converted: 1, Lost: 0 }, 'one lead, two Hired deals: one Converted');
+  assert.deepEqual(preview.wouldSend, {
+    Lead: 0, Qualified: 0, Converted: 1, Lost: 0,
+  }, 'one lead, two Hired deals: one Converted');
   assert.equal(preview.alreadyReported, 2);
   assert.deepEqual(preview.examples, [{ dealId: 1, stageId: 'WON', eventName: 'Converted' }]);
   assert.equal(store.rows.length, 0, 'nothing recorded');
   assert.equal(sent.length, 0, 'nothing sent');
+});
+
+test('every Facebook lead filed in the last seven days says Lead once, Bitrix record or not, before its later stage', async () => {
+  const recentLeads = [
+    { leadgen_id: '1668864698200916', created_at: new Date('2026-10-27T10:00:00Z') },
+    { leadgen_id: '999888777666555', created_at: new Date('2026-10-26T10:00:00Z') }, // never reached Bitrix
+    { leadgen_id: '111222333444555', created_at: new Date('2026-10-10T10:00:00Z') }, // older than Meta's window
+    { leadgen_id: 'not-a-leadgen-id', created_at: new Date('2026-10-27T10:00:00Z') },
+    { leadgen_id: '222333444555666', created_at: null },
+  ];
+  const { deps, store, sent } = setup({ leads: { 10: '1668864698200916' }, deals: [deal(1, 10, 'WON')], recentLeads });
+  const res = await runStageSyncPass({ deps });
+  assert.equal(res.recorded, 3);
+  assert.equal(res.leads, 5);
+  assert.deepEqual(sent.map((s) => [s.events[0].event_name, String(s.events[0].user_data.lead_id)]), [
+    ['Lead', '1668864698200916'], ['Lead', '999888777666555'], ['Converted', '1668864698200916'],
+  ]);
+  const lead = store.rows.find((r) => r.event_name === 'Lead' && r.leadgen_id === '999888777666555');
+  assert.deepEqual([lead.deal_id, lead.stage_id], [null, null], 'a Lead has no deal and no stage');
+  assert.equal(lead.event_time.toISOString(), '2026-10-26T10:00:00.000Z', 'timed when the lead was filed');
+
+  const again = await runStageSyncPass({ deps });
+  assert.equal(again.recorded, 0, 'once per lead, however many passes see it');
+  assert.equal(sent.length, 3);
+});
+
+test('the dry run counts the Lead events a pass would send', async () => {
+  const { deps } = setup({
+    deals: [], recentLeads: [{ leadgen_id: '1668864698200916', created_at: new Date('2026-10-27T10:00:00Z') }],
+  });
+  deps.store.findRecordedKeys = async () => new Set();
+  const preview = await previewStageSync({ deps });
+  assert.deepEqual(preview.wouldSend, {
+    Lead: 1, Qualified: 0, Converted: 0, Lost: 0,
+  });
+  assert.deepEqual(preview.examples, [], 'a Lead has no deal or stage to show as an example row');
 });
 
 test('reads only pipeline 0 deals changed in the last seven days, and writes nothing to Bitrix', async () => {

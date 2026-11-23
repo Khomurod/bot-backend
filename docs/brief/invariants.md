@@ -101,13 +101,13 @@ repository-wide working rules. The highest-consequence items:
 12. **A lead is never left un-texted, and a silent fallback is a bug.** Every
     way the assigned sender can be unavailable — nobody mapped, no assignee
     yet, an unmapped assignee, expired credentials, a rejected send, a database
-    hiccup — falls back to `RC_FROM_NUMBER` rather than dropping the driver's
-    text, and `facebookLeadSmsSender.js` returns a `fallbackNote` for every one
-    an operator could fix, which the lead's Telegram thread prints. Sender
-    resolution therefore never throws: by the time it runs, the lead is already
-    in Telegram and in the CRM, and an exception would cost the text and
-    re-run the whole event. Guarded by `tests/facebookLeadSmsSender.test.js`
-    and `tests/facebookLeadEventProcessor.test.js`.
+    hiccup — falls back to `RC_FROM_NUMBER` rather than dropping the text, and
+    `facebookLeadSmsSender.js` returns a `fallbackNote` for every fixable one,
+    printed in the lead's thread. Sender resolution never throws (the lead is
+    already in Telegram and the CRM). The ONE lead not texted: one whose own
+    form answers rule it out — closed as Lost and said in its thread
+    (`services/facebookLeadScreening`, owner, 23 Nov 2026). Guarded by
+    `tests/facebookLeadSmsSender.test.js`, `tests/facebookLeadEventProcessor.test.js`.
 13. **A rotated RingCentral refresh token must be stored before it is used,
     refreshed one-at-a-time per recruiter, and dropped from the cache when the
     login changes.** A refresh grant issues a NEW refresh token and kills the

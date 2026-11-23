@@ -10,6 +10,10 @@
  *                             happens first and nothing below can prevent it.
  *   2. Bitrix24 record        best-effort; a CRM outage must never cost a lead.
  *   3. `leads` row            best-effort bookkeeping for the admin Leads tab.
+ *   3b. screened out?         a lead who answered No to a must-have question
+ *                             (services/facebookLeadScreening) has its deal
+ *                             closed as Lost with the reason, one line in the
+ *                             group, and NO auto-SMS — the chain ends here.
  *   4. auto-SMS               from the recruiter Bitrix assigned the lead to
  *                             (services/facebookLeadSmsSender), or the shared
  *                             number when that cannot be resolved. That same
@@ -49,6 +53,12 @@ const {
   renderLeadSmsTemplate,
 } = require('./facebookLeadSmsTemplate');
 const { createCrmRecordFromLead, getBitrixMapperConfig } = require('./bitrix24Service');
+const { screenLead, handleScreenedOutLead } = require('./facebookLeadScreening');
+
+/** The lead form's id from the webhook payload, or ''. */
+function formIdOf(payload) {
+  return String(payload?.value?.form_id || payload?.value?.formId || '');
+}
 
 /**
  * The line posted to the group when the auto-SMS did NOT go out. Returns null
@@ -122,7 +132,7 @@ async function createBitrixRecord({
   const earlier = await earlierBitrixRecord(earlierLead);
   if (earlier) return earlier;
   try {
-    const formId = String(payload.value?.form_id || payload.value?.formId || '');
+    const formId = formIdOf(payload);
     const fullName = fieldMap.full_name || fieldMap.first_name || null;
     const result = await createCrmRecordFromLead({
       fieldMap,
@@ -335,6 +345,21 @@ async function processLeadEvent(eventRow, { telegram }) {
   const leadId = await recordLead({
     leadgenId, fullName, fieldMap, phone, connection, pageId, bitrixResult,
   });
+
+  // RULED OUT BY THEIR OWN ANSWERS (owner, 23 November 2026): Lost in Bitrix
+  // with the reason, one line in the group — and no text promising a call.
+  const screening = screenLead(fieldMap);
+  if (screening.screenedOut) {
+    await handleScreenedOutLead({
+      screening,
+      bitrixResult,
+      leadgenId,
+      formId: formIdOf(payload),
+      leadName: fullName,
+      announce: (text) => sendTelegramMessage(connection.telegram_group_id, text),
+    });
+    return;
+  }
 
   const { smsResult, smsBody, ruleLabel, sender } = await sendAutoSms({
     phone, fieldMap, connection, bitrixResult, leadgenId, earlierLead,

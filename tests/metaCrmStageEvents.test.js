@@ -85,3 +85,31 @@ test('isLeadgenId accepts Meta ids only', () => {
   assert.equal(S.isLeadgenId('1668864698200916'), true);
   for (const bad of ['', null, 'abc', '12', 'msg-123@gmail.com']) assert.equal(S.isLeadgenId(bad), false);
 });
+
+test('every lead says Lead once, timed when it was filed; a bad id, no time or an old lead says nothing', () => {
+  const { plan, stale } = S.planLeadEvents({
+    nowMs: NOW,
+    leads: [
+      { leadgen_id: '1668864698200916', created_at: '2026-10-27T10:00:00Z' },
+      { leadgen_id: ' 1234567890123 ', created_at: new Date('2026-10-26T10:00:00Z') },
+      { leadgen_id: '1111111111111', created_at: new Date(NOW - 8 * DAY) },
+      { leadgen_id: 'lg-1', created_at: '2026-10-27T10:00:00Z' },
+      { leadgen_id: '2222222222222', created_at: 'not a date' },
+      { leadgen_id: '3333333333333', created_at: '2026-10-28T10:00:00Z' },
+    ],
+  });
+  assert.equal(stale, 1);
+  assert.deepEqual(plan.map((p) => [p.leadgenId, p.eventName, p.dealId, p.stageId, p.eventTime.toISOString()]), [
+    ['1668864698200916', 'Lead', null, null, '2026-10-27T10:00:00.000Z'],
+    ['1234567890123', 'Lead', null, null, '2026-10-26T10:00:00.000Z'],
+    ['3333333333333', 'Lead', null, null, new Date(NOW).toISOString()],
+  ], 'a time ahead of the clock is clamped to now');
+  assert.deepEqual(S.buildCapiEvent(plan[0]), {
+    event_name: 'Lead',
+    event_time: Math.floor(Date.parse('2026-10-27T10:00:00Z') / 1000),
+    event_id: 'bitrix:1668864698200916:Lead',
+    action_source: 'system_generated',
+    user_data: { lead_id: 1668864698200916 },
+    custom_data: { event_source: 'crm', lead_event_source: 'Bitrix24' },
+  });
+});

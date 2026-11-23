@@ -47,9 +47,9 @@ environment variables. The pass that uses them is
      ids (`EXECUTING`, `UC_PBR3LM`, `UC_DISPATCH`, `UC_SAFETY`, `WON`, `LOSE`);
      a missing one is named.
    - **d. Dry run** — `previewStageSync`: deals changed in seven days, how many
-     are Facebook leads, the events a pass WOULD send per name (what the
-     ledger already holds is left out) and up to five example rows. Reads the
-     ledger; records nothing, sends nothing.
+     are Facebook leads, the events a pass WOULD send per name — Lead,
+     Qualified, Converted, Lost (what the ledger already holds is left out) —
+     and up to five example rows. Reads the ledger; records nothing, sends nothing.
 4. **Save** is disabled until a Test passed — check a passed or warned and
    nothing that ran failed — with exactly the values now in the form; any edit
    locks it again (`admin/src/pages/settings/metaCrm/testGate.js`). Saving switches the

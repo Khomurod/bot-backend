@@ -136,7 +136,7 @@ async function checkDryRun(deps, { bitrixConnected }, token) {
   if (!bitrixConnected) return check('dry_run', label, CHECK.NOT_RUN, 'Not run, because Bitrix could not be read.');
   try {
     const p = await deps.preview();
-    const sends = `${p.wouldSend.Qualified} Qualified, ${p.wouldSend.Converted} Converted, ${p.wouldSend.Lost} Lost`;
+    const sends = `${p.wouldSend.Lead || 0} Lead, ${p.wouldSend.Qualified} Qualified, ${p.wouldSend.Converted} Converted, ${p.wouldSend.Lost} Lost`;
     const partial = p.complete ? '' : ' (Bitrix returned more deals than one pass reads; the count is a lower bound)';
     return check('dry_run', label, CHECK.PASS,
       `${p.dealsChanged} deal(s) changed in the last 7 days${partial}; ${p.facebookDeals} came from Facebook leads. A pass now would send ${sends}`

@@ -6,9 +6,10 @@
  *
  * EVERY FIFTEEN MINUTES: list the hiring-pipeline deals Bitrix changed in the
  * last seven days, keep those whose stage reports something
- * (services/metaCrm/stageEvents.js) and that came from a Facebook lead, record
- * each (leadgen id, event) in `meta_crm_events`, then send what is pending —
- * one event per request, so one lead Meta refuses cannot sink the others.
+ * (services/metaCrm/stageEvents.js) and that came from a Facebook lead, add a
+ * `Lead` for every Facebook lead filed in those seven days, record each
+ * (leadgen id, event) in `meta_crm_events`, then send what is pending — one
+ * event per request, so one lead Meta refuses cannot sink the others.
  *
  * WHERE THE CREDENTIALS COME FROM: Settings → Facebook ↔ Bitrix
  * (database/metaCrmSettings.js), read on every pass, so a save or the ON/OFF
@@ -32,7 +33,7 @@
 
 const { withRunRecord } = require('../operations/runLedger');
 const {
-  planEvents, buildCapiEvent, sourceRecordId, MAX_EVENT_AGE_MS, CATEGORY_ID,
+  planEvents, planLeadEvents, buildCapiEvent, sourceRecordId, MAX_EVENT_AGE_MS, CATEGORY_ID,
 } = require('./stageEvents');
 
 const SERVICE_KEY = 'meta_crm_stage_sync';
@@ -136,8 +137,14 @@ async function planRecentEvents(deps) {
   const { plan, skipped } = planEvents({
     deals: listed.rows, leadgenBySourceId, entity, nowMs,
   });
+  // Every lead's first stage, from the `leads` rows themselves. Listed before
+  // the stage events so each lead's `Lead` is recorded no later than its next.
+  const recentLeads = await deps.store.listRecentFacebookLeads(nowMs - MAX_EVENT_AGE_MS);
+  const leadEvents = planLeadEvents({ leads: recentLeads, nowMs });
   const facebookDeals = sourceIds.filter((id) => leadgenBySourceId.has(id)).length;
-  return { listed, plan, skipped, facebookDeals };
+  return {
+    listed, plan: [...leadEvents.plan, ...plan], skipped, facebookDeals, leadsFiled: recentLeads.length,
+  };
 }
 
 /** One pass. Returns a run-ledger summary; throws only when the pass as a whole failed. */
@@ -160,6 +167,7 @@ async function runStageSyncPass({ deps = defaultDeps() } = {}) {
 
   const summary = {
     deals: listed.rows.length,
+    leads: planned.leadsFiled,
     complete: listed.complete,
     planned: plan.length,
     recorded: recorded.length,
@@ -230,7 +238,9 @@ async function previewStageSync({ deps = defaultDeps(), exampleLimit = 5 } = {})
     seen.add(key);
     return true;
   });
-  const wouldSend = { Qualified: 0, Converted: 0, Lost: 0 };
+  const wouldSend = {
+    Lead: 0, Qualified: 0, Converted: 0, Lost: 0,
+  };
   for (const p of fresh) wouldSend[p.eventName] = (wouldSend[p.eventName] || 0) + 1;
   return {
     dealsChanged: listed.rows.length,
@@ -239,7 +249,10 @@ async function previewStageSync({ deps = defaultDeps(), exampleLimit = 5 } = {})
     planned: plan.length,
     alreadyReported: plan.length - fresh.length,
     wouldSend,
-    examples: fresh.slice(0, exampleLimit).map((p) => ({ dealId: p.dealId, stageId: p.stageId, eventName: p.eventName })),
+    // A deal's move per row: a `Lead` has no deal or stage to show, so it is
+    // only counted above.
+    examples: fresh.filter((p) => p.dealId != null).slice(0, exampleLimit)
+      .map((p) => ({ dealId: p.dealId, stageId: p.stageId, eventName: p.eventName })),
   };
 }
 

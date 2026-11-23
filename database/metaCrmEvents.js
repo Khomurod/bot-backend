@@ -35,6 +35,22 @@ async function findLeadgenIdsByBitrixIds(bitrixIds) {
 }
 
 /**
+ * Facebook leads filed since `sinceMs`, oldest first, as `{leadgen_id,
+ * created_at}` — every one of them gets a `Lead` event (migration 0110).
+ * Bounded: a week of leads is a few hundred rows.
+ */
+async function listRecentFacebookLeads(sinceMs, limit = 2000) {
+  const res = await query(
+    `SELECT external_id AS leadgen_id, created_at FROM leads
+      WHERE source = 'facebook' AND external_id IS NOT NULL AND created_at >= $1
+      ORDER BY created_at ASC, id ASC
+      LIMIT $2`,
+    [new Date(sinceMs), Math.max(1, Number(limit) || 2000)]
+  );
+  return res.rows;
+}
+
+/**
  * Which of these (leadgen id, event) pairs the ledger already holds, as
  * `leadgenId|eventName` keys. READ ONLY — the settings dry run uses it to say
  * what a pass WOULD send without recording anything.
@@ -142,6 +158,7 @@ async function markFailed(id, error) {
 module.exports = {
   MAX_ATTEMPTS,
   findLeadgenIdsByBitrixIds,
+  listRecentFacebookLeads,
   findRecordedKeys,
   latestRecentlySent,
   recordEvents,

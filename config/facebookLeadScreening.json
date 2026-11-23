@@ -1,0 +1,14 @@
+{
+  "_note": "Closing a Facebook lead whose own form answers rule them out (owner, 23 November 2026; services/facebookLeadScreening/). The stage and field ids are the wenze.bitrix24.com portal's: pipeline 0 (hiring), its open stages New Lead and Contacting, Lost, and the deal's 'Lost reason' list field with its item ids (123 No CDL Class A, 125 Insufficient experience, 129 Bad record, 419 Other). Set enabled to false to stop it: every lead then goes to the recruiters and gets its auto-SMS as before.",
+  "enabled": true,
+  "pipelineId": "0",
+  "openStageIds": ["NEW", "PREPARATION"],
+  "lostStageId": "LOSE",
+  "lostReasonField": "UF_CRM_1769517906834",
+  "lostReasons": {
+    "no_cdl_a": "123",
+    "experience": "125",
+    "record": "129",
+    "contract_1099": "419"
+  }
+}
