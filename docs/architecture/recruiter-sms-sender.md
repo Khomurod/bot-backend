@@ -228,7 +228,8 @@ prove it was sent" must not become "do not send".
    unmapped assignee, expired credentials, a rejected send, a database hiccup —
    all fall back to `RC_FROM_NUMBER`; sender resolution never throws. The only
    lead not texted is one its OWN form answers rule out (Lost, said in its
-   thread — `services/facebookLeadScreening`, owner, 23 November 2026).
+   thread — `services/facebookLeadScreening`, owner, 23 November 2026); a No to
+   the driving-record question, which reads both ways, is texted and flagged.
 2. **A fallback an operator could fix is never silent.** An expired RingCentral
    login looks exactly like success from the outside, so every actionable
    fallback returns a `fallbackNote` that the lead's Telegram thread prints

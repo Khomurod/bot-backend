@@ -36,15 +36,31 @@ const answers = (over = {}) => ({
 // ── which answers rule a lead out ────────────────────────────────────────────
 
 test('all Yes is not screened out; a No to any must-have question is, with that reason', () => {
-  assert.deepEqual(rules.screenLeadAnswers(answers()), { screenedOut: false, failed: [] });
+  assert.deepEqual(rules.screenLeadAnswers(answers()), { screenedOut: false, failed: [], flagged: [] });
   const cases = [
-    [LIGHT.cdl, 'no_cdl_a'], [LIGHT.otr, 'experience'], [LIGHT.contract, 'contract_1099'], [LIGHT.record, 'record'],
+    [LIGHT.cdl, 'no_cdl_a'], [LIGHT.otr, 'experience'], [LIGHT.contract, 'contract_1099'],
   ];
   for (const [key, reason] of cases) {
     const s = rules.screenLeadAnswers(answers({ [key]: 'No' }));
     assert.equal(s.screenedOut, true, key);
     assert.deepEqual(s.failed.map((f) => f.reason), [reason], key);
   }
+});
+
+test('the driving-record question reads both ways: a No there is FLAGGED for the call, never a reason to close', () => {
+  // Deal 8183, 23 November 2026: "no" meant "no DUI, no violations — my record is clean".
+  const s = rules.screenLeadAnswers(answers({ [LIGHT.record]: 'no' }));
+  assert.equal(s.screenedOut, false);
+  assert.deepEqual(s.failed, []);
+  assert.deepEqual(s.flagged.map((f) => f.reason), ['record']);
+  const both = rules.screenLeadAnswers(answers({ [LIGHT.record]: 'No', [LIGHT.cdl]: 'No' }));
+  assert.deepEqual([both.screenedOut, both.failed.map((f) => f.reason), both.flagged.map((f) => f.reason)],
+    [true, ['no_cdl_a'], ['record']], 'a clear No still rules them out, for its own reason');
+  assert.equal(rules.primaryReason(both), 'no_cdl_a');
+  const line = rules.flaggedNotice({ leadName: 'TruVell Mcnealy', screening: s });
+  assert.match(line, /^⚠️ TruVell Mcnealy answered No to: a driving record that meets the requirements\./);
+  assert.match(line, /check it on the call/);
+  assert.match(line, /gets its auto-SMS as usual/);
 });
 
 test('the answer must be a plain No — Meta may send it in any case or with underscores; anything else is not a reason', () => {
@@ -77,9 +93,9 @@ test('questions that are not must-haves, or are ambiguous, never rule anyone out
 });
 
 test('the group notice: who, which answers, what happened in Bitrix — and that no text was sent', () => {
-  const screening = rules.screenLeadAnswers(answers({ [LIGHT.record]: 'No' }));
+  const screening = rules.screenLeadAnswers(answers({ [LIGHT.otr]: 'No' }));
   const closed = rules.screenedOutNotice({ leadName: 'Alex Driver', screening, outcome: { closed: true, dealId: 8170 } });
-  assert.match(closed, /Alex Driver is not a fit.*a driving record that meets the requirements/);
+  assert.match(closed, /Alex Driver is not a fit.*2\+ years of verifiable OTR experience/);
   assert.match(closed, /Closed as Lost in Bitrix \(deal 8170\)/);
   assert.match(closed, /No auto-SMS was sent/);
   assert.match(rules.screenedOutNotice({ screening, outcome: { already: true, dealId: 8170 } }), /already closed as Lost/);

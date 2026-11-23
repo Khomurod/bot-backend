@@ -12,12 +12,12 @@
  *   ./close.js   the Bitrix deal, found, checked and closed (I/O)
  */
 
-const { screenLeadAnswers, screenedOutNotice } = require('./rules');
+const { screenLeadAnswers, screenedOutNotice, flaggedNotice } = require('./rules');
 const { closeScreenedOutLead, isEnabled } = require('./close');
 
 /** The screening of these answers, or "not screened out" while switched off. */
 function screenLead(fieldMap) {
-  if (!isEnabled()) return { screenedOut: false, failed: [] };
+  if (!isEnabled()) return { screenedOut: false, failed: [], flagged: [] };
   return screenLeadAnswers(fieldMap);
 }
 
@@ -49,4 +49,19 @@ async function handleScreenedOutLead({
   return outcome;
 }
 
-module.exports = { screenLead, handleScreenedOutLead };
+/**
+ * A No to a soft rule (the driving-record question): one line in the group for
+ * the recruiters, nothing else — the lead goes on as usual. Never throws.
+ */
+async function announceFlagged({ screening, leadName, announce }) {
+  if (!screening?.flagged?.length) return false;
+  try {
+    await announce(flaggedNotice({ leadName, screening }));
+    return true;
+  } catch (err) {
+    console.error('[Leads] Could not post the check-on-the-call notice:', String(err?.message || err).slice(0, 200));
+    return false;
+  }
+}
+
+module.exports = { screenLead, handleScreenedOutLead, announceFlagged };
