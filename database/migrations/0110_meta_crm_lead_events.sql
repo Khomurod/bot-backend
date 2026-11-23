@@ -1,4 +1,4 @@
--- Migration 0109: meta crm lead events
+-- Migration 0110: meta crm lead events
 -- migrate:kind: schema
 --
 -- Keep it additive and idempotent (IF NOT EXISTS / ON CONFLICT). Review the

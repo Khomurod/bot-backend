@@ -163,7 +163,7 @@ the same treatment home time got, and for the same reason.
   filed in the last seven days says `Lead` once** (23 November 2026), from the
   `leads` row itself, Bitrix record or not, timed when it was filed: Meta's CRM
   integration expects one raw-lead event per lead, and the qualified-leads
-  optimisation needs it (migration 0109 lets such a row have no deal or stage).
+  optimisation needs it (migration 0110 lets such a row have no deal or stage).
   Once per lead per event (`meta_crm_events`); no name, phone or e-mail leaves;
   Bitrix is only read.
   Meta refuses events older than seven days, so a move older than that is not

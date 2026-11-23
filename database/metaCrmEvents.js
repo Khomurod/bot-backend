@@ -36,7 +36,7 @@ async function findLeadgenIdsByBitrixIds(bitrixIds) {
 
 /**
  * Facebook leads filed since `sinceMs`, oldest first, as `{leadgen_id,
- * created_at}` — every one of them gets a `Lead` event (migration 0109).
+ * created_at}` — every one of them gets a `Lead` event (migration 0110).
  * Bounded: a week of leads is a few hundred rows.
  */
 async function listRecentFacebookLeads(sinceMs, limit = 2000) {

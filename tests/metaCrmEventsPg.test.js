@@ -77,7 +77,7 @@ test('only Facebook leads are matched from a Bitrix id to a leadgen id', { skip:
   assert.equal((await store.findLeadgenIdsByBitrixIds([])).size, 0);
 });
 
-test('a Lead event has no deal and no stage (migration 0109), and is still recorded once', { skip: skipWithoutPg() }, async (t) => {
+test('a Lead event has no deal and no stage (migration 0110), and is still recorded once', { skip: skipWithoutPg() }, async (t) => {
   const { h, store } = await setup(t);
   const lead = plan({ eventName: 'Lead', dealId: null, stageId: null });
   assert.equal((await store.recordEvents([lead])).length, 1);
