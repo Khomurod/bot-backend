@@ -13,6 +13,7 @@
  */
 const { resolveDriverType, FLEET_TYPES } = require('../../../lib/drivers/fleetType');
 const { extractUnitFromGroupName } = require('../../../lib/drivers/driverGroupTitle');
+const { sameUnitNumber } = require('../../../lib/drivers/unitNumber');
 
 const SILENT_DAYS = 60;
 
@@ -217,6 +218,17 @@ function checkDuplicateUnits({ groups, profiles }) {
  * TITLE, while `/location`, the map and the duplicate scan read the PROFILE
  * COLUMN. A driver in this state can have safety alerts and live GPS pointing at
  * two different trucks simultaneously.
+ *
+ * HOW IT HAPPENS (23 November 2026): a chat's profile is seeded from its title
+ * the first time Wenze sees it and never follows a rename, and chats are often
+ * created with one number and renamed minutes later — 326 → 327 and 088 → 027
+ * put the wrong truck on two hand-over PDFs. So this is now a QUESTION with a
+ * Yes: "set the profile to the title's number" (`profile.set_unit`, which
+ * refuses if the profile changed since). The owner's rule: the profile's truck
+ * number changes only on a person's Yes — the map and `/location` follow it.
+ *
+ * "001A" in the profile and "001" read from the title (the title reader keeps
+ * digits only) are the same truck written in full: no finding.
  */
 function checkUnitTitleMismatch({ groups, profiles }) {
   const byGroup = profilesByGroup(profiles);
@@ -225,7 +237,7 @@ function checkUnitTitleMismatch({ groups, profiles }) {
     const profile = byGroup.get(group.id);
     const profileUnit = (profile?.unit_number || '').trim();
     const titleUnit = (extractUnitFromGroupName(group.group_name) || '').trim();
-    if (!profileUnit || !titleUnit || profileUnit === titleUnit) continue;
+    if (!profileUnit || !titleUnit || sameUnitNumber(profileUnit, titleUnit)) continue;
 
     findings.push({
       checkKey: 'identity.unit_title_mismatch',
@@ -233,7 +245,7 @@ function checkUnitTitleMismatch({ groups, profiles }) {
       subjectId: group.id,
       title: `${group.group_name || `Group ${group.id}`}: profile says unit ${profileUnit}, title says ${titleUnit}`,
       severity: 'warning',
-      tier: 'warning', // no action exists: a person decides, then edits the group
+      tier: 'approval', // a person's Yes sets the profile to the title's number
       confidence: 60,
       evidence: {
         groupId: group.id,
@@ -242,6 +254,9 @@ function checkUnitTitleMismatch({ groups, profiles }) {
         titleUnit,
         readsTitle: ['samsara safety routing', 'driver status lookup', 'broadcast targeting'],
         readsProfile: ['/location', 'live locations map', 'duplicate unit scan'],
+      },
+      proposedChange: {
+        table: 'driver_profiles', groupId: group.id, from: profileUnit, to: titleUnit,
       },
     });
   }

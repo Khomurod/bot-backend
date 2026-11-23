@@ -201,3 +201,16 @@ test('deleting a group takes its photos with it and leaves its reports', { skip:
   const { rows } = await h.query('SELECT group_id FROM truck_photo_reports');
   assert.deepEqual(rows, [{ group_id: null }]);
 });
+
+test('the Board for the truck number: the present lines only, the truck and who drives it', { skip: skipWithoutPg() }, async (t) => {
+  const { h } = await setup(t);
+  const board = h.loadDataLayer(['truckPhotos/boardTrucks'])['truckPhotos/boardTrucks'];
+  await h.query(
+    `INSERT INTO dispatch_board_rows (row_key, driver_name_raw, driver_name_clean, truck_raw, truck_norm, present, team_members)
+     VALUES ('a', 'FRANTZ ARTHUS', 'FRANTZ ARTHUS', '3731 V', '3731', TRUE, NULL),
+            ('b', 'EL MAHDI', 'EL MAHDI', '088 V', '088', FALSE, NULL)`,
+  );
+  const rows = await board.readPresentBoardTrucks();
+  assert.deepEqual(rows.map((r) => [r.truck_raw, r.driver_name_clean]), [['3731 V', 'FRANTZ ARTHUS']]);
+  assert.deepEqual(Object.keys(rows[0]).sort(), ['driver_name_clean', 'team_members', 'truck_norm', 'truck_raw']);
+});

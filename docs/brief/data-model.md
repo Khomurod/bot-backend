@@ -294,7 +294,10 @@ not `facebookCrypto` — the poller holds none of this app's secrets.
   `report_id` once sent, **deleted after 30 days** by the retention pass) and
   `truck_photo_reports` (one row per `outbound` / `inbound` word, UNIQUE on
   `(chat_id, trigger_message_id)` — the claim; `group_id` SET NULL;
-  `video_count`; kept). The
+  `video_count`; `version` and `edits`, a person's corrections; kept), and
+  since migration 0109 `truck_photo_report_messages` (which message is which
+  report's PDF, so a reply corrects it) and `truck_photo_report_items` (what
+  each version held, gone with the photo). The
   PDFs are never stored anywhere. Who may mark reads the person's open
   `driver_person_telegram_identities` and the profile's `telegram_user_id`
   (`docs/architecture/truck-photo-reports.md`).

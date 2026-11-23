@@ -396,10 +396,11 @@ repository-wide working rules. The highest-consequence items:
   was delivered; a failure is told to that person, never the group. The word is
   claimed `(chat_id, trigger_message_id)` before anything is done, so a
   redelivered `outbound` makes no second PDF. Only Telegram file ids are
-  stored. A model may only check a non-bare word and LEAVE OUT photos — never
-  add one — and with no model a bare word still makes a PDF while anything else
-  makes none. Off until a test message reached the recipient (a CHECK). See
-  `docs/architecture/truck-photo-reports.md`.
+  stored. A model only checks a non-bare word and SORTS photos (out only when
+  sure, never one added); with no model a bare word makes a PDF marked NOT
+  CHECKED BY AI, the owner told, and anything else makes none. A correction is
+  read only from the recipient or a listed person, and changes a driver's
+  profile only on a Yes. Off until a test message reached the recipient.
 
 ### Code-structure rules (enforced by CI)
 

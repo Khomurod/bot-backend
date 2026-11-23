@@ -24,7 +24,7 @@ const aiSettings = require('../../../database/aiSettings');
 const aiProviders = require('../../../database/aiProviders');
 const { CAPABILITIES, getCapabilityMeta } = require('../../../lib/ai/capabilityCatalog');
 const { effectiveProviderOrder, normaliseProviderOrder } = require('../../../lib/ai/providerChoice');
-const { isVisionModel } = require('../../../lib/ai/vision');
+const { providerModelCanSee } = require('../../../lib/ai/vision');
 const { invalidateCapabilityCache } = require('../../../services/ai/capabilityGate');
 const { sendFailure } = require('../../middleware/failureResponse');
 
@@ -37,7 +37,7 @@ function providerView(p) {
     enabled: p.enabled === true,
     isFree: p.isFree === true,
     hasKey: p.apiKeySet === true,
-    canSee: (p.modelChain || []).some((m) => isVisionModel(p.adapter, m)),
+    canSee: (p.modelChain || []).some((m) => providerModelCanSee(p, m)),
   };
 }
 

@@ -36,6 +36,16 @@ function fakeTelegram({ refuseDocument = () => false } = {}) {
   };
 }
 
+/** A model's sort: `kinds[i]` for photo i ('document', 'handover_form', …), the truck otherwise. */
+function sortedAs(kinds, provider = 'gemini') {
+  return (jpegs) => ({
+    verdicts: jpegs.map((_, i) => ({ kind: kinds[i] || 'truck_outside', what: null, confidence: 95 })),
+    answered: 1,
+    providers: [provider],
+    stopped: null,
+  });
+}
+
 function photo(messageId, minutesBefore, over = {}) {
   return {
     id: messageId * 10, chatId: GROUP_CHAT, messageId, mediaGroupId: null, fromUserId: '5001', fromName: 'Jerome Joyner',
@@ -52,7 +62,7 @@ const ALBUM_AND_SINGLES = [
 function harness(over = {}) {
   const telegram = fakeTelegram(over.telegram);
   const calls = {
-    finish: [], marked: [], handover: 0, filter: 0, built: [], order: [], thumbs: [], prepared: [],
+    finish: [], marked: [], handover: 0, sort: 0, built: [], order: [], thumbs: [], prepared: [], ownerTold: [],
   };
   const photos = over.photos ?? ALBUM_AND_SINGLES;
   const deps = {
@@ -65,10 +75,17 @@ function harness(over = {}) {
     finishReport: async (_id, record) => { calls.finish.push(record); calls.order.push(`finish:${record.status}`); return true; },
     lastSentOutbound: async () => over.outbound ?? null,
     readHandover: async () => { calls.handover += 1; return over.handover ?? { verdict: 'yes', provider: 'groq' }; },
-    filterPhotos: async (jpegs) => {
-      calls.filter += 1;
-      return over.filter ? over.filter(jpegs) : { excluded: new Set(), answered: 0, providers: [] };
+    // No model by default: every photo unchecked. `over.sort(jpegs)` answers instead.
+    sortPhotos: async (jpegs) => {
+      calls.sort += 1;
+      return over.sort
+        ? over.sort(jpegs)
+        : { verdicts: jpegs.map(() => null), answered: 0, providers: [], stopped: 'unavailable' };
     },
+    readBoardTrucks: async () => over.board ?? [],
+    tellOwnerUnchecked: async (args) => { calls.ownerTold.push(args); calls.order.push('owner-told'); return { notified: true }; },
+    saveWindow: async (id, window) => { calls.window = window; },
+    recordVersion: async (args) => { calls.recorded = args; },
     prepareThumbnails: async (list) => { calls.thumbs.push(...list.map((v) => v.thumbFileId)); return list.map(() => null); },
     preparePhotos: over.preparePhotos || (async (list) => {
       calls.prepared.push(...list.map((p) => p.fileId));
@@ -101,5 +118,5 @@ const groupWrites = (telegram) => telegram.log.filter((e) => e.chat === GROUP_CH
 const reactions = (telegram) => telegram.log.filter((e) => e.method === 'setMessageReaction');
 
 module.exports = {
-  GROUP_CHAT, RECIPIENT, WORD_AT, fakeTelegram, photo, ALBUM_AND_SINGLES, harness, groupWrites, reactions,
+  GROUP_CHAT, RECIPIENT, WORD_AT, fakeTelegram, photo, sortedAs, ALBUM_AND_SINGLES, harness, groupWrites, reactions,
 };

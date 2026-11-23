@@ -77,16 +77,17 @@ function noteProviderSuccess(providerKey) {
 }
 
 /**
- * provider key → the model ids it last listed, or null when the data module
- * has no listing reader (the tests' stand-ins). A failed read is "unknown" —
- * the router then filters nothing — and is retried at the roster's pace rather
- * than held for twelve hours.
+ * provider key → `{ids, visionIds}`: the model ids it last listed and those it
+ * said take pictures, or null when the data module has no listing reader (the
+ * tests' stand-ins). A failed read is "unknown" — the router then filters
+ * nothing — and is retried at the roster's pace rather than held for twelve
+ * hours.
  */
 async function getModelListing(now) {
   if (listing && now < listingExpiresAt) return listing;
-  if (typeof aiProviders.getDiscoveredModelIdsForRouter !== 'function') return null;
+  if (typeof aiProviders.getDiscoveredListingForRouter !== 'function') return null;
   try {
-    listing = await aiProviders.getDiscoveredModelIdsForRouter();
+    listing = await aiProviders.getDiscoveredListingForRouter();
     listingExpiresAt = now + LISTING_TTL_MS;
   } catch (err) {
     console.warn('[AI ROUTER] Model listing unavailable, filtering nothing:', err.message);
@@ -110,7 +111,11 @@ async function getRoster({ force = false } = {}) {
       getModelListing(now),
     ]);
     const providers = listed
-      ? rows.map((p) => ({ ...p, discoveredModelIds: listed.get(p.providerKey) || [] }))
+      ? rows.map((p) => ({
+        ...p,
+        discoveredModelIds: listed.get(p.providerKey)?.ids || [],
+        discoveredVisionIds: listed.get(p.providerKey)?.visionIds || [],
+      }))
       : rows;
     cache = {
       settings,

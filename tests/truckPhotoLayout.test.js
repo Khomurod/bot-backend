@@ -119,3 +119,41 @@ test('every reason has its own fixed sentence', () => {
   assert.match(reasonText('no_photos', { lookbackHours: 3 }), /3 hours/);
   assert.match(reasonText('part_not_delivered', { part: 2, parts: 3 }), /Part 2 of 3/);
 });
+
+test('the truck the decision names: the profile\'s fleet and owner only when the number is the profile\'s', () => {
+  const same = layout.truckOf(PROFILE, 'g', { unit: '1', matchesProfile: true, check: [] });
+  assert.equal(same.text, '1 - Owner-Operator - owner ERNST');
+  // Another number: the profile's owner belongs to the profile's truck, not this one.
+  const other = layout.truckOf(PROFILE, 'g', { unit: '327', matchesProfile: false, check: ['profile says 1'] });
+  assert.equal(other.text, '327 - Company (profile says 1 - please check)');
+  assert.equal(other.owner, null);
+  assert.equal(layout.truckOf(PROFILE, 'g').text, '1 - Owner-Operator - owner ERNST', 'no decision: the profile, as before');
+});
+
+test('photos no model looked at: big and bold on the cover, and in the caption', () => {
+  const all = texts(layout.coverLines({
+    kind: 'outbound', profile: PROFILE, groupName: 'g', triggerAt: AT, photoCount: 39, uncheckedCount: 39, checkedTotal: 39,
+  }));
+  assert.ok(all.includes('NOT CHECKED BY AI: all 39 photos.'), all.join(' | '));
+  assert.ok(all.includes('No AI model could look at them, so they are all included.'));
+  const some = layout.uncheckedLines(5, 39);
+  assert.equal(some[0], 'NOT CHECKED BY AI: 5 of 39 photos.');
+  assert.deepEqual(layout.uncheckedLines(0, 39), []);
+  const caption = layout.deliveryCaption({
+    kind: 'outbound', profile: PROFILE, groupName: 'g', triggerAt: AT, photoCount: 39, uncheckedCount: 39, checkedTotal: 39,
+  });
+  assert.match(caption, /NOT CHECKED BY AI: all 39 photos\./);
+  const checked = texts(layout.coverLines({ kind: 'outbound', profile: PROFILE, groupName: 'g', triggerAt: AT, photoCount: 3 }));
+  assert.ok(!checked.some((l) => /NOT CHECKED/.test(l)));
+});
+
+test('the hand-over form and what was left out, on the cover; the form\'s own caption', () => {
+  const lines = texts(layout.coverLines({
+    kind: 'outbound', profile: PROFILE, groupName: 'g', triggerAt: AT, photoCount: 11, excludedCount: 27,
+    leftOutText: '26 documents, 1 screenshot', formCount: 1,
+  }));
+  assert.ok(lines.includes('Photos: 11 (excluded 27 - not the truck)'));
+  assert.ok(lines.includes('Hand-over form: 1 page, at the end'));
+  assert.ok(lines.includes('Left out by AI: 26 documents, 1 screenshot'));
+  assert.match(layout.photoCaption({ number: 1, total: 1, sentAt: AT, fromName: 'Eddy', form: true }), /^Hand-over form 1 of 1 - Nov 6, 2026/);
+});

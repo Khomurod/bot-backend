@@ -44,7 +44,7 @@ const { callGeminiGenerate } = require('./adapters/gemini');
 const { callAnthropicMessages } = require('./adapters/anthropic');
 const { buildRequest, geminiTurnsFromMessages } = require('./requestShape');
 const { runEscalated } = require('./escalation');
-const { isVisionModel, hasImageParts } = require('../../lib/ai/vision');
+const { providerModelCanSee, hasImageParts } = require('../../lib/ai/vision');
 const { orderProviders } = require('../../lib/ai/providerChoice');
 const { providerOrderFor } = require('./capabilityProviders');
 
@@ -78,9 +78,13 @@ function requiredAdapterFor({ contents, requireAdapter }) {
   return null;
 }
 
-/** Only the models of `chain` that can look at a picture (lib/ai/vision.js). */
+/**
+ * Only the models of `chain` that can look at a picture (lib/ai/vision.js): a
+ * family the allow-list knows, or one the provider's own listing says takes
+ * images (`discoveredVisionIds`, services/ai/registry.js).
+ */
 function visionChain(provider, chain) {
-  return chain.filter((model) => isVisionModel(provider.adapter, model));
+  return chain.filter((model) => providerModelCanSee(provider, model));
 }
 
 async function callOne(provider, model, request, { timeoutMs, expects, generation = {} }) {

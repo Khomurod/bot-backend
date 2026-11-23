@@ -22,7 +22,9 @@
  * tested with a stubbed provider and no database. Production passes nothing.
  */
 const { getCatalogEntry, keyLooksLike } = require('../../../lib/ai/providerCatalog');
-const { isChatCapable, freeStatusOf, selectModelChain } = require('../../../lib/ai/modelSelection');
+const {
+  isChatCapable, freeStatusOf, selectModelChain, listingEntry,
+} = require('../../../lib/ai/modelSelection');
 const { classifyFailure, FAILURE } = require('../../../lib/ai/classify');
 
 const TEST_PROMPT = 'Reply with the single word: ok';
@@ -218,10 +220,7 @@ async function connectProvider({
     ...(target.adapter === 'anthropic' ? { workspaceId: target.workspaceId || '' } : {}),
   });
   await deps.aiProviders.saveDiscoveredModels(target.providerKey, {
-    models: models.map((m) => ({
-      id: m.id, contextLength: m.contextLength, chat: isChatCapable(m),
-      free: freeStatusOf(m, target.providerKey),
-    })),
+    models: models.map((m) => listingEntry(m, target.providerKey)),
   });
   await deps.modelEvents.recordModelEvent({
     providerKey: target.providerKey, event: 'selected', initiator: 'connect',

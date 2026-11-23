@@ -170,6 +170,16 @@ test('a profile unit that disagrees with the title names both readers', () => {
   assert.equal(found[0].evidence.profileUnit, '27065');
   assert.equal(found[0].evidence.titleUnit, '316');
   assert.ok(found[0].evidence.readsTitle.length && found[0].evidence.readsProfile.length);
+  // 23 November 2026: a question with a Yes that sets the profile to the title's number.
+  assert.equal(found[0].tier, 'approval');
+  assert.deepEqual(found[0].proposedChange, { table: 'driver_profiles', groupId: 41, from: '27065', to: '316' });
+});
+
+test('"001A" in the profile and "001" read from the title are one truck written in full: no question', () => {
+  const groups = [group(42, 'WENZE UNIT # 001A RALPH MICHEL'), group(43, 'WENZE UNIT # 027 X')];
+  const profiles = [profile(42, 'RALPH', 'MICHEL', { unit_number: '001A' }), profile(43, 'X', 'Y', { unit_number: '27' })];
+  const found = identity.checkUnitTitleMismatch({ groups, profiles });
+  assert.deepEqual(found.map((f) => f.subjectId), [43], '027 and 27 are two trucks; 001A and 001 are one');
 });
 
 test('an active group the bot has left is serious', () => {

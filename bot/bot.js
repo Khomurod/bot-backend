@@ -20,6 +20,7 @@ const { registerAnonymousFeedbackHandlers } = require('./anonymousFeedbackHandle
 const { registerGroupCaptureHandlers } = require('./handlers/groupCaptureHandlers');
 const { registerSafetyApprovalHandlers } = require('./handlers/safetyApprovalHandlers');
 const { registerTruckPhotoHandlers } = require('./handlers/truckPhotoHandlers');
+const { registerTruckPhotoCorrectionHandlers } = require('./handlers/truckPhotoCorrectionHandlers');
 const { registerHiringStageHandlers } = require('./handlers/hiringStageHandlers');
 const { registerControlReplyHandlers } = require('./controlReplyHandlers');
 const { registerHomeTimeViolationHandlers } = require('./handlers/homeTimeViolationHandlers');
@@ -182,6 +183,13 @@ async function startBot() {
     // privately). Answers no for every chat until Truck Photos is switched on.
     // See services/truckPhotos/.
     registerTruckPhotoHandlers(bot);
+    // A person answering a hand-over PDF in their own words: a reply in the
+    // bot's private chat to its Truck Photos message is CONSUMED here, before
+    // the anonymous-feedback prompt below can read it; a reply in a driver
+    // group that tags the bot is taken up and passed on unchanged. The Yes / No
+    // about the profile's truck number is answered here too. See
+    // services/truckPhotos/correction.js.
+    registerTruckPhotoCorrectionHandlers(bot);
 
     // AFTER the capture pipeline, so an operator's reply is still recorded as
     // group activity, and BEFORE everything else, so an answer to one of
