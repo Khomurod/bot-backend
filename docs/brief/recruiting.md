@@ -33,10 +33,9 @@ the same treatment home time got, and for the same reason.
   (owner, 23 November 2026). The strict form closed itself on a wrong answer
   and cost $416 per 1000 impressions against $36; the "light screen" form
   (1296243945998781) takes every answer instead, and the bot does the sorting:
-  a plain **No** to a valid Class A CDL, 2+ years of verifiable OTR, a driving
-  record that meets the rules, or a 1099 OTR position
-  (`services/facebookLeadScreening/rules.js` — recognised by the question's
-  words, any form; an ambiguous old question never counts) closes the
+  a plain **No** to a valid Class A CDL, 2+ years of verifiable OTR, or a 1099
+  OTR position (`services/facebookLeadScreening/rules.js` — recognised by the
+  question's words, any form; an ambiguous old question never counts) closes the
   converted deal as **Lost** with the reason in the "Lost reason" field
   (`config/facebookLeadScreening.json`: pipeline, stages, field and item ids;
   `enabled: false` stops it), leaves a note on the deal, posts one line under
@@ -45,6 +44,11 @@ the same treatment home time got, and for the same reason.
   New Lead or Contacting is closed — one a person moved on is left alone, one
   already Lost is not closed again; every attempt is in Monitoring → Logs
   (`facebook_lead.screening`). Bitrix's Lost then reaches Meta as `Lost`.
+  **The driving-record question only FLAGS** (owner, 23 November 2026): it is
+  written in negatives ("No DUI/DWI…, no more than 2 violations…"), and the
+  first lead to answer "no" (deal 8183) meant "none of those". A No there no
+  longer closes anything: the lead goes to the recruiters and gets its auto-SMS
+  as usual, with one "⚠️ check it on the call" line in the group.
   `tests/facebookLeadScreening.test.js`, `tests/facebookLeadEventProcessor.test.js`.
 - **A lead event is tried at most five times, then abandoned** — retries wait
   1, 5, 15 and 60 minutes, so a short outage is ridden out. The fifth failure

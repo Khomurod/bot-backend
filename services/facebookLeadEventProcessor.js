@@ -14,6 +14,9 @@
  *                             (services/facebookLeadScreening) has its deal
  *                             closed as Lost with the reason, one line in the
  *                             group, and NO auto-SMS — the chain ends here.
+ *                             A No to the driving-record question, which reads
+ *                             both ways, only posts a "check it on the call"
+ *                             line, and the chain goes on.
  *   4. auto-SMS               from the recruiter Bitrix assigned the lead to
  *                             (services/facebookLeadSmsSender), or the shared
  *                             number when that cannot be resolved. That same
@@ -53,7 +56,7 @@ const {
   renderLeadSmsTemplate,
 } = require('./facebookLeadSmsTemplate');
 const { createCrmRecordFromLead, getBitrixMapperConfig } = require('./bitrix24Service');
-const { screenLead, handleScreenedOutLead } = require('./facebookLeadScreening');
+const { screenLead, handleScreenedOutLead, announceFlagged } = require('./facebookLeadScreening');
 
 /** The lead form's id from the webhook payload, or ''. */
 function formIdOf(payload) {
@@ -360,6 +363,11 @@ async function processLeadEvent(eventRow, { telegram }) {
     });
     return;
   }
+  // A No to a question that reads both ways (the driving record): the lead
+  // goes on as usual, and the recruiters are asked to check it on the call.
+  await announceFlagged({
+    screening, leadName: fullName, announce: (text) => sendTelegramMessage(connection.telegram_group_id, text),
+  });
 
   const { smsResult, smsBody, ruleLabel, sender } = await sendAutoSms({
     phone, fieldMap, connection, bitrixResult, leadgenId, earlierLead,

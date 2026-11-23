@@ -77,7 +77,7 @@ function loadProcessor({
 } = {}) {
   const calls = {
     telegram: [], notices: [], bitrix: [], leads: [], senderWrites: [], sends: [],
-    textedChecks: [], resolves: [], autoSmsArgs: [], configLoads: [], screenedOut: [],
+    textedChecks: [], resolves: [], autoSmsArgs: [], configLoads: [], screenedOut: [], flagged: [],
   };
 
   require.cache[PATHS.db] = {
@@ -155,6 +155,12 @@ function loadProcessor({
         calls.screenedOut.push(args);
         await args.announce(`SCREENED OUT: ${args.screening.failed.map((f) => f.reason).join(', ')}`);
         return screenedOutOutcome;
+      },
+      announceFlagged: async (args) => {
+        if (!args.screening.flagged.length) return false;
+        calls.flagged.push(args);
+        await args.announce(`CHECK ON THE CALL: ${args.screening.flagged.map((f) => f.reason).join(', ')}`);
+        return true;
       },
     },
   };

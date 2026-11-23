@@ -340,6 +340,29 @@ test('a lead who answered No to a must-have question: filed, closed as Lost, ann
   } finally { restore(); }
 });
 
+test('a No to the driving-record question (it reads both ways): NOT closed, texted as usual, and flagged for the call', async () => {
+  // Deal 8183, 23 November 2026: "no" meant "no DUI, no violations".
+  const { processor, telegram, calls, restore } = loadProcessor({
+    fieldData: [
+      { name: 'full_name', values: ['TruVell Mcnealy'] },
+      { name: 'phone_number', values: ['+15559998888'] },
+      { name: 'do_you_have_a_valid_class_a_cdl?', values: ['yes'] },
+      {
+        name: 'does_your_driving_record_meet_all_of_these:_no_dui/dwi_in_the_last_5_years,_no_more_than_2_moving_violations_and_no_more_than_1_preventable_accident_in_the_last_3_years?',
+        values: ['no'],
+      },
+    ],
+  });
+  try {
+    await processor.processLeadEvent(EVENT, { telegram });
+    assert.equal(calls.screenedOut.length, 0, 'the deal is not closed');
+    assert.equal(calls.flagged.length, 1);
+    assert.equal(calls.flagged[0].leadName, 'TruVell Mcnealy');
+    assert.ok(calls.telegram.some((m) => /CHECK ON THE CALL: record/.test(m.text)), 'one line for the recruiters');
+    assert.equal(calls.sends.length, 1, 'the auto-SMS goes out as for any lead');
+  } finally { restore(); }
+});
+
 test('the same questions answered Yes: the ordinary chain, texted as always', async () => {
   const { processor, telegram, calls, restore } = loadProcessor({
     fieldData: [
@@ -352,6 +375,7 @@ test('the same questions answered Yes: the ordinary chain, texted as always', as
   try {
     await processor.processLeadEvent(EVENT, { telegram });
     assert.equal(calls.screenedOut.length, 0);
+    assert.equal(calls.flagged.length, 0, 'nothing to check on the call');
     assert.equal(calls.sends.length, 1);
   } finally { restore(); }
 });

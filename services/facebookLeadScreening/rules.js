@@ -21,6 +21,15 @@
  *
  * The order below is the order a reason is CHOSEN in when several apply: Bitrix
  * holds one lost reason, and no Class A CDL says the most.
+ *
+ * A SOFT RULE ONLY FLAGS (the owner, 23 November 2026). The driving-record
+ * question is written in negatives — "No DUI/DWI…, no more than 2 moving
+ * violations…" — and the first lead to answer it (deal 8183) said "no" meaning
+ * "none of those, my record is clean": the bot closed a good driver as Lost
+ * and sent him no text. So a No there no longer rules anyone out: the lead goes
+ * to the recruiters and gets its auto-SMS as any other, with one line in the
+ * group asking them to check it on the call (`flaggedNotice`). The three
+ * questions a No cannot be misread on still close the deal.
  */
 
 const RULES = Object.freeze([
@@ -38,6 +47,8 @@ const RULES = Object.freeze([
     reason: 'record',
     question: 'a driving record that meets the requirements',
     matches: (key) => key.includes('drivingrecord') && key.includes('meet'),
+    // Asked in negatives, so a No is read both ways: flagged, never closed.
+    soft: true,
   },
   {
     reason: 'contract_1099',
@@ -58,19 +69,22 @@ function ruleForKey(key) {
 
 /**
  * @param {Record<string, string>} fieldMap  the lead's answers, Meta field name → value
- * @returns {{screenedOut: boolean, failed: Array<{reason: string, question: string}>}}
- *   `failed` in RULES order, each reason once
+ * @returns {{screenedOut: boolean, failed: Array<{reason: string, question: string}>,
+ *   flagged: Array<{reason: string, question: string}>}}
+ *   `failed`: the Nos that rule the lead out; `flagged`: the Nos to a soft rule,
+ *   for a person to check. Each in RULES order, each reason once.
  */
 function screenLeadAnswers(fieldMap) {
-  const failedReasons = new Set();
+  const noReasons = new Set();
   for (const [key, value] of Object.entries(fieldMap || {})) {
     const rule = ruleForKey(key);
-    if (rule && squeeze(value) === 'no') failedReasons.add(rule.reason);
+    if (rule && squeeze(value) === 'no') noReasons.add(rule.reason);
   }
-  const failed = RULES
-    .filter((rule) => failedReasons.has(rule.reason))
+  const answered = (soft) => RULES
+    .filter((rule) => noReasons.has(rule.reason) && Boolean(rule.soft) === soft)
     .map(({ reason, question }) => ({ reason, question }));
-  return { screenedOut: failed.length > 0, failed };
+  const failed = answered(false);
+  return { screenedOut: failed.length > 0, failed, flagged: answered(true) };
 }
 
 /** The one reason Bitrix is given: the first failure in RULES order, or null. */
@@ -108,6 +122,18 @@ function screenedOutNotice({ leadName, screening, outcome }) {
   return lines.join('\n');
 }
 
+/**
+ * The line posted under a lead who answered No to a soft rule: it still goes
+ * to the recruiters, who check the answer on the call.
+ */
+function flaggedNotice({ leadName, screening }) {
+  const who = leadName || 'This lead';
+  const questions = (screening?.flagged || []).map((f) => f.question).join('; ');
+  return `⚠️ ${who} answered No to: ${questions}. That question is easy to read the other way `
+    + '("no" can mean "no DUI, no violations"), so check it on the call. The lead was not closed '
+    + 'and gets its auto-SMS as usual.';
+}
+
 module.exports = {
   RULES,
   squeeze,
@@ -116,4 +142,5 @@ module.exports = {
   failedQuestions,
   dealComment,
   screenedOutNotice,
+  flaggedNotice,
 };

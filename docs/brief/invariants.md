@@ -105,8 +105,8 @@ repository-wide working rules. The highest-consequence items:
     `facebookLeadSmsSender.js` returns a `fallbackNote` for every fixable one,
     printed in the lead's thread. Sender resolution never throws (the lead is
     already in Telegram and the CRM). The ONE lead not texted: one whose own
-    form answers rule it out — closed as Lost and said in its thread
-    (`services/facebookLeadScreening`, owner, 23 Nov 2026). Guarded by
+    clear form answers rule it out (a driving-record No only flags) — closed as
+    Lost and said in its thread (`services/facebookLeadScreening`). Guarded by
     `tests/facebookLeadSmsSender.test.js`, `tests/facebookLeadEventProcessor.test.js`.
 13. **A rotated RingCentral refresh token must be stored before it is used,
     refreshed one-at-a-time per recruiter, and dropped from the cache when the
