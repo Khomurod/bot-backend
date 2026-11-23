@@ -106,6 +106,7 @@ who made them, what changed or why. Decided with the owner the same day:
   | `board_bitrix.sync` | a guard's refusal (pipeline, closed, "the Dispatcher Board status changed", "the deal stage changed", the kill switch), the re-read getting no answer (`failed` — never `refused`), already done; after a done write, a verification that disagrees (`failed`) |
   | `hiring_stage.move` / `.rename` | already at that stage, moved / renamed meanwhile, the deal gone, closed or out of the hiring pipeline, a read that got no answer (the deal's or, for Rename, its contact's) |
   | `home_time.violation_card` | no card or two cards match the name, the search got no answer |
+  | `facebook_lead.screening` | the lead had not become a deal yet, the deal already Lost (`already_done`), a person had moved it on (safety check), the lookup got no answer |
 
   **A refusal by one of these checks is `refused` with `safety_check`** —
   nothing was sent to Bitrix, and the screen says so. A read that got no
@@ -142,6 +143,7 @@ who made them, what changed or why. Decided with the owner the same day:
 | `hiring_stage.create` | `crm.contact.add`, `crm.deal.add` | `automatic`; evidence: chat and post id, the creation record. Since 14 November 2026, when a person ASKED for the lead with a reply mentioning the bot (`hiring-stage-proposals.md` rule 20): `person_reply` — the first person who asked, their Telegram id and name; evidence adds the tagging message (`requestMessageId`) |
 | `home_time.violation_card` | the pipeline-33 card's stage and home-time fields | `automatic`; evidence: driver group, violation row ids, home-from |
 | `facebook_lead.create` | `crm.lead.add` / `crm.deal.add` | `automatic`; evidence: leadgen, form and page ids |
+| `facebook_lead.screening` | a screened-out lead's `crm.deal.update` (`STAGE_ID` → Lost, the "Lost reason" field) and ONE `crm.timeline.comment.add` | `automatic`; evidence: leadgen and form ids, the rule; the name is the label |
 
 ## The run ledger
 

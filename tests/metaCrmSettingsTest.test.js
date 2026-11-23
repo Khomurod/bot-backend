@@ -20,7 +20,9 @@ const ALL_STAGES = ['NEW', 'EXECUTING', 'UC_PBR3LM', 'UC_DISPATCH', 'UC_SAFETY',
 const values = (over = {}) => ({ datasetId: '987654', token: TOKEN, graphVersion: 'v25.0', testEventCode: '', ...over });
 const preview = {
   dealsChanged: 12, complete: true, facebookDeals: 7, planned: 5, alreadyReported: 1,
-  wouldSend: { Qualified: 3, Converted: 1, Lost: 0 },
+  wouldSend: {
+    Lead: 4, Qualified: 3, Converted: 1, Lost: 0,
+  },
   examples: [{ dealId: 5603, stageId: 'EXECUTING', eventName: 'Qualified' }],
 };
 // The Qualified event the sync already sent — check b may only ever repeat it.
@@ -58,7 +60,7 @@ test('everything in order, no test code: a, c and d pass, the test event is "not
   assert.match(c.test_event.message, /Events Manager → your CRM dataset → Test events/);
   assert.equal(c.bitrix.status, 'pass');
   assert.equal(c.dry_run.status, 'pass');
-  assert.match(c.dry_run.message, /12 deal\(s\).*7 came from Facebook.*3 Qualified, 1 Converted, 0 Lost.*Nothing was recorded or sent/);
+  assert.match(c.dry_run.message, /12 deal\(s\).*7 came from Facebook.*4 Lead, 3 Qualified, 1 Converted, 0 Lost.*Nothing was recorded or sent/);
   assert.deepEqual(c.dry_run.detail.examples, preview.examples);
   assert.equal(sent.length, 0, 'no code, no send — of any kind');
 });

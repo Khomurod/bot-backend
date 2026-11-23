@@ -29,6 +29,23 @@ the same treatment home time got, and for the same reason.
   (and `messages`, which only reach Telegram), never to `feed`. Commenters
   appearing as leads in Bitrix come from outside Wenze (most likely Bitrix's
   own Facebook connector in the Contact Center). `tests/crmLeadGate.test.js`.
+- **A lead whose OWN form answers rule them out goes to Lost, untexted**
+  (owner, 23 November 2026). The strict form closed itself on a wrong answer
+  and cost $416 per 1000 impressions against $36; the "light screen" form
+  (1296243945998781) takes every answer instead, and the bot does the sorting:
+  a plain **No** to a valid Class A CDL, 2+ years of verifiable OTR, a driving
+  record that meets the rules, or a 1099 OTR position
+  (`services/facebookLeadScreening/rules.js` — recognised by the question's
+  words, any form; an ambiguous old question never counts) closes the
+  converted deal as **Lost** with the reason in the "Lost reason" field
+  (`config/facebookLeadScreening.json`: pipeline, stages, field and item ids;
+  `enabled: false` stops it), leaves a note on the deal, posts one line under
+  the lead in the group, and sends **no auto-SMS** (it promises a call). The
+  lead is still posted, filed in Bitrix and the Leads tab first. Only a deal at
+  New Lead or Contacting is closed — one a person moved on is left alone, one
+  already Lost is not closed again; every attempt is in Monitoring → Logs
+  (`facebook_lead.screening`). Bitrix's Lost then reaches Meta as `Lost`.
+  `tests/facebookLeadScreening.test.js`, `tests/facebookLeadEventProcessor.test.js`.
 - **A lead event is tried at most five times, then abandoned** — retries wait
   1, 5, 15 and 60 minutes, so a short outage is ridden out. The fifth failure
   marks the event `abandoned` (never claimed again) and posts ONE notice to the
@@ -66,7 +83,7 @@ the same treatment home time got, and for the same reason.
   mapped, no assignee yet, unmapped assignee, broken credentials, an unusable
   stored number, a number not on the extension or not SMS-capable, a rejected
   send) falls back to the shared number `RC_FROM_NUMBER`; **a lead is never left
-  un-texted**, every fallback an operator could fix is stated in the Telegram
+  un-texted** (except one its own answers rule out, below), every fallback an operator could fix is stated in the Telegram
   thread, and the reason is stored on the mirror row (`fallback_reason`) so it
   can be queried rather than only read.
 - **The assigned recruiter chooses the WORDS too, when they have written any.**
@@ -142,8 +159,13 @@ the same treatment home time got, and for the same reason.
   27 October 2026: Interested, Documents, Talking to Dispatch and Sent to
   Safety → `Qualified`; Hired → `Converted`; Lost → `Lost`. New Lead, Contacting
   and "Lost – Qualified (call back later)" send **nothing** — and a stage added
-  in Bitrix later sends nothing until somebody maps it. Once per lead per event
-  (`meta_crm_events`); no name, phone or e-mail leaves; Bitrix is only read.
+  in Bitrix later sends nothing until somebody maps it. **And every Facebook lead
+  filed in the last seven days says `Lead` once** (23 November 2026), from the
+  `leads` row itself, Bitrix record or not, timed when it was filed: Meta's CRM
+  integration expects one raw-lead event per lead, and the qualified-leads
+  optimisation needs it (migration 0109 lets such a row have no deal or stage).
+  Once per lead per event (`meta_crm_events`); no name, phone or e-mail leaves;
+  Bitrix is only read.
   Meta refuses events older than seven days, so a move older than that is not
   reported at all. **The owner enters, tests and saves the dataset ID and
   token in Settings → Facebook ↔ Bitrix** (`meta_crm_settings`, token

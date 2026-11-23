@@ -8,7 +8,7 @@ import CredentialsCard from "./metaCrm/CredentialsCard";
  * Settings → Facebook ↔ Bitrix: the owner enters, tests and saves the Meta
  * Conversions API for CRM credentials here, instead of in the server's
  * environment. Every 15 minutes Wenze reports Facebook leads' Bitrix hiring
- * stages to Meta (Qualified / Converted / Lost) with them.
+ * stages to Meta (Lead / Qualified / Converted / Lost) with them.
  * docs/architecture/meta-crm-settings.md.
  *
  * A failed read shows the failure and a retry, never a form drawn from
@@ -50,8 +50,9 @@ export default function MetaCrmTab() {
       <p style={{ color: "var(--text-muted)", marginTop: 0 }}>
         Tells Facebook which leads become drivers, so ad delivery learns from it. Every 15 minutes Wenze reads the
         hiring-pipeline deals Bitrix changed in the last 7 days and reports each Facebook lead's stage to Meta:
-        Interested, Documents, Talking to Dispatch or Sent to Safety → <strong>Qualified</strong>, Hired →{" "}
-        <strong>Converted</strong>, Lost → <strong>Lost</strong>. Once per lead per event; no names or phone numbers leave.
+        every new lead → <strong>Lead</strong>, Interested, Documents, Talking to Dispatch or Sent to Safety →{" "}
+        <strong>Qualified</strong>, Hired → <strong>Converted</strong>, Lost → <strong>Lost</strong>. Once per lead per
+        event; no names or phone numbers leave.
       </p>
       {toggleError && <div className="alert alert-error">{toggleError}</div>}
       <StatusCard settings={settings} onToggle={toggle} toggling={toggling} />

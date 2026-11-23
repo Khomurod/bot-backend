@@ -301,3 +301,57 @@ test('a failed marker write is reported as an error, not a warning', async () =>
     assert.match(joined, /WILL text .* again/, 'the consequence is spelled out');
   } finally { console.error = realError; restore(); }
 });
+
+test('a lead who answered No to a must-have question: filed, closed as Lost, announced — and NOT texted', async () => {
+  const { processor, telegram, calls, restore } = loadProcessor({
+    fieldData: [
+      { name: 'full_name', values: ['Alex Driver'] },
+      { name: 'phone_number', values: ['+15559998888'] },
+      { name: 'do_you_have_a_valid_class_a_cdl?', values: ['No'] },
+      { name: 'do_you_have_at_least_2_years_of_verifiable_otr_experience_with_your_class_a_cdl?', values: ['Yes'] },
+    ],
+  });
+  try {
+    await processor.processLeadEvent(EVENT, { telegram });
+    assert.match(calls.telegram[0].text, /Alex Driver/, 'the lead is still posted first');
+    assert.equal(calls.bitrix.length, 1, 'and still filed in Bitrix');
+    assert.equal(calls.leads.length >= 1, true, 'and in the Leads tab');
+    assert.equal(calls.screenedOut.length, 1);
+    assert.deepEqual(
+      {
+        bitrixResult: calls.screenedOut[0].bitrixResult,
+        leadgenId: calls.screenedOut[0].leadgenId,
+        formId: calls.screenedOut[0].formId,
+        leadName: calls.screenedOut[0].leadName,
+        reasons: calls.screenedOut[0].screening.failed.map((f) => f.reason),
+      },
+      {
+        bitrixResult: { ok: true, bitrixId: 'B-1', entity: 'lead' },
+        leadgenId: 'lg-1',
+        formId: 'form-7',
+        leadName: 'Alex Driver',
+        reasons: ['no_cdl_a'],
+      },
+    );
+    assert.match(calls.telegram[1].text, /SCREENED OUT: no_cdl_a/, 'one line in the same group');
+    assert.equal(calls.sends.length, 0, 'no auto-SMS');
+    assert.equal(calls.resolves.length, 0, 'not even the assignee wait');
+    assert.equal(calls.notices.length, 0);
+  } finally { restore(); }
+});
+
+test('the same questions answered Yes: the ordinary chain, texted as always', async () => {
+  const { processor, telegram, calls, restore } = loadProcessor({
+    fieldData: [
+      { name: 'full_name', values: ['Alex Driver'] },
+      { name: 'phone_number', values: ['+15559998888'] },
+      { name: 'do_you_have_a_valid_class_a_cdl?', values: ['Yes'] },
+      { name: 'what_is_the_best_time_to_call_you?', values: ['Evening'] },
+    ],
+  });
+  try {
+    await processor.processLeadEvent(EVENT, { telegram });
+    assert.equal(calls.screenedOut.length, 0);
+    assert.equal(calls.sends.length, 1);
+  } finally { restore(); }
+});

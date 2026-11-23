@@ -27,6 +27,7 @@ const PATHS = {
   autoMessage: require.resolve('../../services/facebookLeadAutoMessageService'),
   sender: require.resolve('../../services/facebookLeadSmsSender'),
   bitrix: require.resolve('../../services/bitrix24Service'),
+  screening: require.resolve('../../services/facebookLeadScreening'),
   processor: require.resolve('../../services/facebookLeadEventProcessor'),
 };
 
@@ -66,10 +67,17 @@ function loadProcessor({
   // failure of the lookup itself.
   existingLead = null,
   existingLeadError = null,
+  // The lead's form answers as Meta sends them (`field_data`).
+  fieldData = [
+    { name: 'full_name', values: ['Alex Driver'] },
+    { name: 'phone_number', values: ['+15559998888'] },
+  ],
+  // What closing a screened-out lead's deal answers (services/facebookLeadScreening).
+  screenedOutOutcome = { closed: true, dealId: 8170 },
 } = {}) {
   const calls = {
     telegram: [], notices: [], bitrix: [], leads: [], senderWrites: [], sends: [],
-    textedChecks: [], resolves: [], autoSmsArgs: [], configLoads: [],
+    textedChecks: [], resolves: [], autoSmsArgs: [], configLoads: [], screenedOut: [],
   };
 
   require.cache[PATHS.db] = {
@@ -95,13 +103,7 @@ function loadProcessor({
   require.cache[PATHS.telegramHtml] = { exports: { safeSend: async (fn) => fn() } };
   require.cache[PATHS.graph] = {
     exports: {
-      fetchLeadById: async () => ({
-        id: 'lg-1',
-        field_data: [
-          { name: 'full_name', values: ['Alex Driver'] },
-          { name: 'phone_number', values: ['+15559998888'] },
-        ],
-      }),
+      fetchLeadById: async () => ({ id: 'lg-1', field_data: fieldData }),
     },
   };
   require.cache[PATHS.autoMessage] = {
@@ -139,6 +141,20 @@ function loadProcessor({
         calls.bitrix.push(args);
         if (bitrixThrows) throw bitrixThrows;
         return bitrix;
+      },
+    },
+  };
+  // The real rules decide; only the Bitrix close is faked (its own suite is
+  // tests/facebookLeadScreening.test.js).
+  // eslint-disable-next-line global-require
+  const { screenLeadAnswers } = require('../../services/facebookLeadScreening/rules');
+  require.cache[PATHS.screening] = {
+    exports: {
+      screenLead: (fieldMap) => screenLeadAnswers(fieldMap),
+      handleScreenedOutLead: async (args) => {
+        calls.screenedOut.push(args);
+        await args.announce(`SCREENED OUT: ${args.screening.failed.map((f) => f.reason).join(', ')}`);
+        return screenedOutOutcome;
       },
     },
   };

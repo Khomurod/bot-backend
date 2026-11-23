@@ -107,6 +107,7 @@ organization should converge toward.
 | Verified-payload queue + retry; **lead idempotency** (`facebook_webhook_events`, key `leadgen:<pageId>:<leadgen_id>`) | `services/facebookWebhookService.js` |
 | Auto-SMS templates + two-way RingCentral reply mirroring | `services/facebookLeadAutoMessageService.js`, `facebookLeadSmsTemplate.js`, `facebookLeadSmsMirrorService.js`, `ringCentralSmsService.js` |
 | One lead event: post → CRM → record → text | `services/facebookLeadEventProcessor.js` (the queue that runs it stays in `facebookWebhookService.js`) |
+| A lead its own form answers rule out: which answers (pure), the deal closed as Lost | `services/facebookLeadScreening/` (`rules.js`, `close.js`), ids in `config/facebookLeadScreening.json` |
 | **Whose number texts a lead** (Bitrix assignee → recruiter → send) | `services/facebookLeadSmsSender.js`, `services/bitrix24Service.js` (`waitForCrmAssignee`), `database/ringcentral/recruiters.js` (`bitrix_user_id`, `recruiterCanSendSms`) |
 | Per-recruiter RingCentral credentials → an access token | `services/ringCentralOAuthService.js` (the only place a JWT or a refresh token becomes a bearer token) |
 | Recruiter self-onboarding ("sign in with RingCentral") | `services/ringCentralConnectService.js`, `server/routes/ringcentralConnect/{index,pages}.js`, `database/ringcentral/connectSessions.js` |

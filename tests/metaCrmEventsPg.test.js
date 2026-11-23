@@ -76,3 +76,29 @@ test('only Facebook leads are matched from a Bitrix id to a leadgen id', { skip:
   assert.deepEqual([...map.entries()], [['1839', '1668864698200916']]);
   assert.equal((await store.findLeadgenIdsByBitrixIds([])).size, 0);
 });
+
+test('a Lead event has no deal and no stage (migration 0109), and is still recorded once', { skip: skipWithoutPg() }, async (t) => {
+  const { h, store } = await setup(t);
+  const lead = plan({ eventName: 'Lead', dealId: null, stageId: null });
+  assert.equal((await store.recordEvents([lead])).length, 1);
+  assert.equal((await store.recordEvents([lead])).length, 0, 'once per lead');
+  const [due] = await store.listDue();
+  assert.deepEqual([due.event_name, due.deal_id, due.stage_id], ['Lead', null, null]);
+  const { rows } = await h.query("SELECT is_nullable FROM information_schema.columns WHERE table_name = 'meta_crm_events' AND column_name IN ('deal_id', 'stage_id')");
+  assert.deepEqual(rows.map((r) => r.is_nullable), ['YES', 'YES']);
+});
+
+test('the leads filed in the last seven days, Facebook only, oldest first', { skip: skipWithoutPg() }, async (t) => {
+  const { h, store } = await setup(t);
+  await h.query(
+    `INSERT INTO leads (source, external_id, created_at) VALUES
+       ('facebook', '1668864698200916', NOW() - INTERVAL '1 hour'),
+       ('facebook', '1234567890123', NOW() - INTERVAL '2 days'),
+       ('facebook', '1111111111111', NOW() - INTERVAL '9 days'),
+       ('indeed', 'gmail-abc', NOW() - INTERVAL '1 hour'),
+       ('facebook', NULL, NOW() - INTERVAL '1 hour')`
+  );
+  const rows = await store.listRecentFacebookLeads(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  assert.deepEqual(rows.map((r) => r.leadgen_id), ['1234567890123', '1668864698200916']);
+  assert.ok(rows[0].created_at instanceof Date);
+});
