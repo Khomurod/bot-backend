@@ -5,8 +5,9 @@
  * like every settings route (server/api.js mounts /api/settings behind it).
  *
  * Where an administrator names the ONE person the hand-over PDFs go to, proves
- * the bot can reach them, sets how far back a plain `outbound` looks, and
- * switches the feature on.
+ * the bot can reach them, sets how far back a plain `outbound` looks, names the
+ * people who may also correct a PDF (migration 0109), and switches the feature
+ * on.
  *
  * A BOT CANNOT START A CONVERSATION. Telegram refuses to message a person who
  * has never opened the bot and pressed Start (403 "bot can't initiate
@@ -85,6 +86,8 @@ function shapeReport(r) {
     parts: r.parts,
     reason: r.reason,
     aiAssisted: r.aiAssisted,
+    version: r.version,
+    correctedByName: r.correctedByName,
     createdAt: r.createdAt,
     sentAt: r.sentAt,
   };
@@ -112,6 +115,7 @@ function createTruckPhotoSettingsRouter({ authMiddleware, telegram }) {
       if (body.enabled !== undefined) patch.enabled = body.enabled === true;
       if (body.recipientTelegramId !== undefined) patch.recipientTelegramId = body.recipientTelegramId;
       if (body.lookbackHours !== undefined) patch.lookbackHours = body.lookbackHours;
+      if (body.editorTelegramIds !== undefined) patch.editorTelegramIds = body.editorTelegramIds;
       const saved = await settingsStore.updateTruckPhotoSettings(patch, req.admin?.id ?? null);
       return res.json(saved);
     } catch (err) {

@@ -27,7 +27,7 @@ function registerTruckPhotoHandlers(bot) {
   bot.on('message', async (ctx, next) => {
     try {
       await captureTruckPhoto(ctx.message);
-      noticeTruckPhotoTrigger(ctx.message, { telegram: ctx.telegram }).catch((err) => {
+      noticeTruckPhotoTrigger(ctx.message, { telegram: ctx.telegram, botInfo: ctx.botInfo }).catch((err) => {
         console.error('[TRUCK PHOTOS] trigger failed:', err?.message || String(err));
       });
     } catch (err) {

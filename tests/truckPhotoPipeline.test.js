@@ -73,6 +73,27 @@ test('no model at all, bare word: every photo goes in, "NOT CHECKED BY AI" on th
   assert.deepEqual(calls.ownerTold.map((t) => [t.reportId, t.unchecked, t.total, t.stopped]), [[1, 5, 5, 'unavailable']]);
 });
 
+test('what the PDF held and which message it became are remembered, so a reply to it can correct it', async () => {
+  const { calls, deps, job } = harness({ sort: sortedAs([null, 'document', 'handover_form', null, 'screenshot']) });
+  await produceReport(job, deps);
+  assert.ok(calls.window.from instanceof Date && calls.window.until instanceof Date, 'the time the photos came from');
+  assert.equal(calls.recorded.version, 1);
+  assert.deepEqual(calls.recorded.items.map((i) => [i.photoId, i.place, i.position, i.kind]), [
+    [100, 'truck', 1, 'truck_outside'], [150, 'truck', 2, 'truck_outside'], [120, 'form', 1, 'handover_form'],
+    [110, 'left_out', null, 'document'], [160, 'left_out', null, 'screenshot'],
+  ]);
+  assert.equal(calls.recorded.messages.length, 1);
+  assert.equal(calls.recorded.messages[0].chatId, RECIPIENT);
+  assert.equal(calls.recorded.messages[0].part, 1);
+});
+
+test('a failure message is remembered too: a reply to it can still make the PDF', async () => {
+  const { calls, deps, job } = harness({ photos: [] });
+  await produceReport(job, deps);
+  assert.equal(calls.recorded.messages[0].part, 0);
+  assert.equal(calls.recorded.items.length, 0);
+});
+
 test('photos a model looked at: nothing on the cover about checking, and the owner is not told', async () => {
   const { calls, deps, job } = harness({ sort: sortedAs([]) });
   await produceReport(job, deps);

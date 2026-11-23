@@ -16,6 +16,10 @@ import { Banner } from "./fields";
  * a bot cannot message somebody who has never pressed Start, and the PDFs
  * would go nowhere (the server refuses it too).
  *
+ * CORRECTIONS (the owner, 23 November 2026): the recipient, and the people
+ * listed in card 3, may answer a PDF in their own words and Wenze rebuilds it
+ * at once (services/truckPhotos/correction.js).
+ *
  * A failed read shows the failure and a retry, never a form drawn from
  * defaults.
  */
@@ -24,6 +28,7 @@ export default function TruckPhotosTab() {
   const [recent, setRecent] = useState([]);
   const [recipient, setRecipient] = useState("");
   const [lookback, setLookback] = useState("3");
+  const [editors, setEditors] = useState("");
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -38,6 +43,7 @@ export default function TruckPhotosTab() {
       setRecent(Array.isArray(data.recent) ? data.recent : []);
       setRecipient(data.settings.recipientTelegramId || "");
       setLookback(String(data.settings.lookbackHours || 3));
+      setEditors((data.settings.editorTelegramIds || []).join(", "));
     } catch (err) {
       setSettings(null);
       setLoadError(err);
@@ -53,6 +59,7 @@ export default function TruckPhotosTab() {
   const save = (patch, done) => run(async () => {
     const saved = await api.updateTruckPhotos(patch);
     setSettings(saved);
+    if (patch.editorTelegramIds !== undefined) setEditors((saved.editorTelegramIds || []).join(", "));
     setMessage({ type: "success", text: done });
   });
 
@@ -74,6 +81,9 @@ export default function TruckPhotosTab() {
   const recipientUnsaved = typed !== (settings.recipientTelegramId || "");
   const reached = Boolean(settings.recipientTelegramId && settings.recipientVerifiedAt);
   const lookbackValid = /^\d{1,2}$/.test(lookback.trim()) && Number(lookback) >= 1 && Number(lookback) <= 24;
+  const editorIds = editors.split(/[\s,;]+/).filter(Boolean);
+  const editorsValid = editorIds.every((id) => /^\d{1,19}$/.test(id));
+  const editorsUnsaved = editorIds.join(",") !== (settings.editorTelegramIds || []).join(",");
 
   return (
     <div>
@@ -132,7 +142,30 @@ export default function TruckPhotosTab() {
       </div>
 
       <div className="card" style={{ marginTop: 16 }}>
-        <h3 style={{ marginTop: 0 }}>3. Switch it on</h3>
+        <h3 style={{ marginTop: 0 }}>3. Who may correct a PDF</h3>
+        <p style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 0 }}>
+          The recipient can answer any PDF in their own words, as a reply: &quot;truck number is 027&quot;,
+          &quot;remove photos 11 to 38&quot;, &quot;keep only the truck&quot;, &quot;this is inbound&quot;. Wenze reads it
+          with AI and sends the corrected PDF at once. Only a new truck number asks Yes / No first, about the
+          driver&apos;s profile. The people below may do the same, by replying in the driver&apos;s group to the
+          &quot;outbound&quot; / &quot;inbound&quot; message and tagging the bot.
+        </p>
+        <div className="form-group">
+          <label htmlFor="tp-editors">Their Telegram user IDs</label>
+          <input id="tp-editors" className="form-input" placeholder="e.g. 123456789, 987654321"
+            value={editors} disabled={busy} onChange={(e) => setEditors(e.target.value.replace(/[^\d,;\s]/g, ""))} />
+          <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
+            Numbers only, separated by commas. Leave it empty for the recipient alone.
+          </div>
+        </div>
+        <button className="btn btn-primary" disabled={busy || !editorsValid || !editorsUnsaved}
+          onClick={() => save({ editorTelegramIds: editorIds }, "Saved.")}>
+          Save the list
+        </button>
+      </div>
+
+      <div className="card" style={{ marginTop: 16 }}>
+        <h3 style={{ marginTop: 0 }}>4. Switch it on</h3>
         <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <input type="checkbox" checked={settings.enabled} disabled={busy || (!reached && !settings.enabled)}
             onChange={(e) => save({ enabled: e.target.checked }, e.target.checked ? "Truck Photos is on." : "Switched off.")} />
@@ -156,7 +189,7 @@ export default function TruckPhotosTab() {
                   <td>{new Date(r.createdAt).toLocaleString()}</td>
                   <td>{r.groupName || "—"}{r.triggeredByName ? ` (${r.triggeredByName})` : ""}</td>
                   <td>{r.kind}</td>
-                  <td>{STATUS[r.status] || r.status}{r.reason ? ` — ${r.reason}` : ""}{r.aiAssisted ? " (AI checked)" : ""}</td>
+                  <td>{STATUS[r.status] || r.status}{r.reason ? ` — ${r.reason}` : ""}{r.aiAssisted ? " (AI checked)" : ""}{r.version > 1 ? ` · corrected (version ${r.version}${r.correctedByName ? `, by ${r.correctedByName}` : ""})` : ""}</td>
                   <td>{r.photoCount}{r.excludedCount ? ` (${r.excludedCount} left out)` : ""}{r.videoCount ? ` + ${r.videoCount} video${r.videoCount === 1 ? "" : "s"}` : ""}{r.parts > 1 ? `, ${r.parts} PDFs` : ""}</td>
                 </tr>
               ))}
@@ -175,4 +208,5 @@ const STATUS = {
   no_photos: "No photos",
   not_a_handover: "Not about the truck — nothing sent",
   unclear: "Could not tell — nothing sent",
+  cancelled: "Cancelled — not a hand-over",
 };

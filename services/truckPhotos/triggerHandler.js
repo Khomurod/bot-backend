@@ -37,6 +37,7 @@
  */
 
 const { readTrigger } = require('../../lib/truckPhotos/trigger');
+const { mentionsBot } = require('../../lib/telegram/botMention');
 const { mayMark } = require('../../lib/truckPhotos/whoMayMark');
 const { senderName } = require('../../lib/telegram/messageParts');
 const { isGroupChat } = require('./capture');
@@ -90,10 +91,14 @@ function schedule(job, delayMs) {
  * @returns {Promise<{handled: boolean, reason?: string, reportId?: number, done?: Promise}>}
  *   `done` settles when the report has run — for tests; the bot does not wait for it
  */
-async function noticeTruckPhotoTrigger(message, { telegram } = {}, deps = defaultDeps()) {
+async function noticeTruckPhotoTrigger(message, { telegram, botInfo = null } = {}, deps = defaultDeps()) {
   try {
     const trigger = readTrigger(message?.text ?? message?.caption);
     if (!trigger) return { handled: false, reason: 'no_trigger' };
+    // A message that tags the bot is a REQUEST to it — "@bot this is inbound,
+    // not outbound" corrects a PDF (services/truckPhotos/correction.js) — never
+    // a new hand-over.
+    if (botInfo && mentionsBot(message, botInfo)) return { handled: false, reason: 'a_request_to_the_bot' };
     if (!isGroupChat(message.chat)) return { handled: false, reason: 'not_a_group' };
     if (!message.from || message.from.is_bot) return { handled: false, reason: 'not_a_person' };
 
@@ -142,6 +147,15 @@ async function noticeTruckPhotoTrigger(message, { telegram } = {}, deps = defaul
   }
 }
 
+/**
+ * Run a correction of a PDF (services/truckPhotos/correction.js) in the same
+ * queue as the reports: one at a time, never two rebuilds of one report at
+ * once. Resolves with its result; never rejects.
+ */
+function queueTruckPhotoJob(job) {
+  return schedule(job, 0);
+}
+
 /** The reports queued or running in this process (not a pending claim a stopped one left). */
 function activeReportIds() {
   return [...active];
@@ -154,5 +168,6 @@ function __resetForTests() {
 }
 
 module.exports = {
+  queueTruckPhotoJob,
   SETTLE_MS, LATE_AFTER_SECONDS, noticeTruckPhotoTrigger, activeReportIds, __resetForTests,
 };

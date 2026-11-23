@@ -40,14 +40,13 @@
  */
 
 const { selectPhotos, windowStart, windowEnd } = require('../../lib/truckPhotos/selectPhotos');
-const { planPages } = require('../../lib/truckPhotos/pagePlan');
-const { decideTruckNumber, boardTrucksNaming } = require('../../lib/truckPhotos/truckNumber');
-const { extractUnitFromGroupName } = require('../../lib/drivers/driverGroupTitle');
+const { planPages, versionItems } = require('../../lib/truckPhotos/pagePlan');
 const { videoEntry, chicagoTime } = require('../../lib/truckPhotos/pdfLayout');
 const { reasonText, failureMessage } = require('../../lib/truckPhotos/failureText');
 const { senderName, replyTarget } = require('../../lib/telegram/messageParts');
 const { hasMedia } = require('./capture');
 const { MAX_PDF_BYTES, sendReportParts } = require('./sendParts');
+const { truckForCover } = require('./truckForCover');
 
 /**
  * Downloads and model calls stop here (what was not reached is counted, or
@@ -72,6 +71,7 @@ function defaultDeps() {
   const ai = require('./aiCheck');
   const pdf = require('./pdf');
   const deliver = require('./deliver');
+  const corrections = require('../../database/truckPhotos/corrections');
   return {
     getSettings: require('../../database/truckPhotos/settings').getTruckPhotoSettings,
     getPhotoByMessage: photos.getPhotoByMessage,
@@ -83,6 +83,8 @@ function defaultDeps() {
     sortPhotos: ai.sortPhotos,
     readBoardTrucks: require('../../database/truckPhotos/boardTrucks').readPresentBoardTrucks,
     tellOwnerUnchecked: require('./uncheckedNotice').tellOwnerUnchecked,
+    saveWindow: corrections.saveWindow,
+    recordVersion: corrections.recordVersion,
     preparePhotos: pdf.preparePhotos,
     prepareThumbnails: pdf.prepareThumbnails,
     buildPdf: pdf.buildPdf,
@@ -134,7 +136,7 @@ async function produceReport(job, deps = defaultDeps()) {
   const fail = async (code, status, extra = {}) => {
     const reason = reasonText(code, { kind, lookbackHours: settings.lookbackHours, ...extra.ctx });
     await deps.finishReport(reportId, { status, reason, ...extra.counts, ...aiFields() });
-    await deps.tellRecipient({
+    const told = await deps.tellRecipient({
       telegram,
       recipient,
       text: failureMessage({
@@ -142,6 +144,8 @@ async function produceReport(job, deps = defaultDeps()) {
         ctx: { lookbackHours: settings.lookbackHours, ...extra.ctx },
       }),
     });
+    // The message is remembered, so a reply to it can still correct this report.
+    await remember(deps, { reportId, messages: Number.isInteger(told) ? [{ chatId: recipient, messageId: told, part: 0 }] : [] });
     // A report that FAILED (not one that had nothing to send) is an error to
     // the run ledger, so a send or download that keeps failing is visible.
     return status === 'failed' ? { status, reason: code, error: reason } : { status, reason: code };
@@ -159,6 +163,11 @@ async function produceReport(job, deps = defaultDeps()) {
   const window = { trigger: { messageId: message.message_id, sentAt: triggerAt }, anchor, lookbackHours: settings.lookbackHours };
   const candidates = await deps.listPhotosSince(chatId, windowStart(window), undefined, windowEnd(window));
   const selection = selectPhotos({ photos: candidates, ...window });
+  // The time the photos came from, so this report can be rebuilt later.
+  if (typeof deps.saveWindow === 'function') {
+    await deps.saveWindow(reportId, { from: selection.from, until: selection.until })
+      .catch((err) => console.warn('[TRUCK PHOTOS] could not record the photos\' time:', err?.message || String(err)));
+  }
   if (!selection.photos.length) {
     return fail(selection.alreadySent ? 'already_sent' : 'no_photos', 'no_photos');
   }
@@ -216,7 +225,7 @@ async function produceReport(job, deps = defaultDeps()) {
 
   // 5. The PDFs. The videos page is in part 1; the hand-over form closes the last part.
   const outbound = kind === 'inbound' ? await deps.lastSentOutbound(group.id, triggerAt) : null;
-  const truckDecision = await decideTruck({ profile, group }, deps);
+  const truckDecision = await truckForCover({ profile, groupName: group.group_name }, deps);
   const counts = {
     photoCount: plan.truck.length + plan.forms.length, excludedCount, parts: plan.parts.length, videoCount: videos.length,
   };
@@ -240,6 +249,13 @@ async function produceReport(job, deps = defaultDeps()) {
   // A record that cannot be written now must not turn a delivered PDF into a
   // "failed" one, so it is not left to the catch-all below.
   await deps.reactDelivered({ telegram, chatId, messageId: message.message_id });
+  // What this version held and which messages it became, so a reply to the
+  // PDF can correct it (services/truckPhotos/correction.js).
+  await remember(deps, {
+    reportId,
+    items: versionItems(plan, videos),
+    messages: out.messages.filter((m) => m.messageId).map((m) => ({ chatId: recipient, messageId: m.messageId, part: m.part })),
+  });
   if (plan.unchecked) {
     await deps.tellOwnerUnchecked({
       reportId, kind, chatTitle: group.group_name, unchecked: plan.unchecked, total: ready.length,
@@ -272,23 +288,16 @@ async function produceReport(job, deps = defaultDeps()) {
   return summary;
 }
 
-/**
- * The truck number for the cover: the chat title's, checked against the
- * profile and the Dispatcher Board (lib/truckPhotos/truckNumber.js). A board
- * that cannot be read is checked against nothing — never a failed report.
- */
-async function decideTruck({ profile, group }, deps) {
-  let boardTrucks = [];
+/** Remember a version's items and messages. A record that cannot be written costs a later correction, never this report. */
+async function remember(deps, { reportId, items = [], messages = [] }) {
+  if (typeof deps.recordVersion !== 'function' || (!items.length && !messages.length)) return;
   try {
-    boardTrucks = boardTrucksNaming(await deps.readBoardTrucks(), profile);
+    await deps.recordVersion({
+      reportId, version: 1, items, messages,
+    });
   } catch (err) {
-    console.warn('[TRUCK PHOTOS] could not read the Dispatcher Board for the truck number:', err?.message || String(err));
+    console.warn('[TRUCK PHOTOS] could not remember the PDF for corrections:', err?.message || String(err));
   }
-  return decideTruckNumber({
-    profileUnit: profile?.unit_number ?? null,
-    titleUnit: extractUnitFromGroupName(group?.group_name || ''),
-    boardTrucks,
-  });
 }
 
 /** A failure after some parts went out: those photos are still marked as sent. */

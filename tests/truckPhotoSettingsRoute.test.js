@@ -29,11 +29,11 @@ stub('database/pool.js', {
   query: async (text, values) => {
     if (/^\s*SELECT \* FROM truck_photo_settings/.test(text)) return { rows: [row] };
     if (/INSERT INTO truck_photo_settings/.test(text)) {
-      const [enabled, recipient, verifiedAt, lookback, adminId] = values;
+      const [enabled, recipient, verifiedAt, lookback, adminId, editors] = values;
       if (enabled && !(recipient && verifiedAt)) throw Object.assign(new Error('check constraint'), { code: '23514' });
       row = {
         ...row, enabled, recipient_telegram_id: recipient, recipient_verified_at: verifiedAt,
-        lookback_hours: lookback, updated_by: adminId,
+        lookback_hours: lookback, updated_by: adminId, editor_telegram_ids: editors,
       };
       return { rows: [row] };
     }
@@ -160,6 +160,21 @@ test('the recipient is a person\'s id, digits only; the look-back is 1 to 24 hou
     }
     const ok = await call('PUT', '/truck-photos', { lookbackHours: 6 });
     assert.equal(ok.body.lookbackHours, 6);
+  });
+});
+
+test('who may correct a PDF: user ids, each once, never a group; empty is the recipient alone', async () => {
+  reset();
+  await withServer(async (call) => {
+    const saved = await call('PUT', '/truck-photos', { editorTelegramIds: ['4444', ' 5555 ', '4444'] });
+    assert.equal(saved.status, 200);
+    assert.deepEqual(saved.body.editorTelegramIds, ['4444', '5555']);
+    const bad = await call('PUT', '/truck-photos', { editorTelegramIds: ['-1001234567890'] });
+    assert.equal(bad.status, 400);
+    assert.match(bad.body.error, /digits only/);
+    const tooMany = await call('PUT', '/truck-photos', { editorTelegramIds: Array.from({ length: 21 }, (_, i) => String(1000 + i)) });
+    assert.equal(tooMany.status, 400);
+    assert.deepEqual((await call('PUT', '/truck-photos', { editorTelegramIds: [] })).body.editorTelegramIds, []);
   });
 });
 
