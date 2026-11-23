@@ -15,10 +15,17 @@
  *                     recorded and nothing is sent; "could not tell" — or no
  *                     model — is no PDF and the recipient is told, never a guess
  *   3. the photos     downloaded one at a time (pdf.preparePhotos)
- *   4. the filter     a model may leave out a photo that is clearly not the
- *                     truck (aiCheck.filterPhotos) — only leave out; with no
- *                     model every photo stays
- *   5. the PDFs       parts of `max_photos_per_pdf` (60), each with a cover; an
+ *   4. the sort       a model sorts each photo — the truck, Wenze's own
+ *                     hand-over form, or not the truck (aiCheck.sortPhotos,
+ *                     lib/truckPhotos/photoKinds.js); only a SURE "not the
+ *                     truck" leaves a photo out. Photos no model looked at stay
+ *                     in, the cover says "NOT CHECKED BY AI", and the owner is
+ *                     told (uncheckedNotice.js)
+ *   5. the PDFs       truck photos in parts of `max_photos_per_pdf` (60), each
+ *                     with a cover, and the hand-over form at the end of the
+ *                     last part (lib/truckPhotos/pagePlan.js); the truck number
+ *                     is the chat title's, checked against the profile and the
+ *                     Dispatcher Board (lib/truckPhotos/truckNumber.js); an
  *                     inbound cover names the last outbound
  *   6. delivery       to the recipient; then 👍 on the word; then the photos
  *                     are marked as sent and the report finished
@@ -33,13 +40,14 @@
  */
 
 const { selectPhotos, windowStart, windowEnd } = require('../../lib/truckPhotos/selectPhotos');
-const { chunk } = require('../../lib/truckPhotos/chunk');
-const {
-  coverLines, photoCaption, fileName, deliveryCaption, truckOf, videoEntry, chicagoTime,
-} = require('../../lib/truckPhotos/pdfLayout');
+const { planPages } = require('../../lib/truckPhotos/pagePlan');
+const { decideTruckNumber, boardTrucksNaming } = require('../../lib/truckPhotos/truckNumber');
+const { extractUnitFromGroupName } = require('../../lib/drivers/driverGroupTitle');
+const { videoEntry, chicagoTime } = require('../../lib/truckPhotos/pdfLayout');
 const { reasonText, failureMessage } = require('../../lib/truckPhotos/failureText');
 const { senderName, replyTarget } = require('../../lib/telegram/messageParts');
 const { hasMedia } = require('./capture');
+const { MAX_PDF_BYTES, sendReportParts } = require('./sendParts');
 
 /**
  * Downloads and model calls stop here (what was not reached is counted, or
@@ -48,8 +56,6 @@ const { hasMedia } = require('./capture');
  * process has queued (triggerHandler.activeReportIds).
  */
 const PIPELINE_DEADLINE_MS = 12 * 60 * 1000;
-/** Telegram takes a document of up to 50 MB from a bot. */
-const MAX_PDF_BYTES = 49 * 1024 * 1024;
 /**
  * Four PDFs' worth. Every photo is held in memory (re-encoded) until its PDF is
  * sent, so a reply to a days-old photo cannot pull hundreds in; the ones
@@ -74,7 +80,9 @@ function defaultDeps() {
     finishReport: reports.finishReport,
     lastSentOutbound: reports.lastSentOutbound,
     readHandover: ai.readHandover,
-    filterPhotos: ai.filterPhotos,
+    sortPhotos: ai.sortPhotos,
+    readBoardTrucks: require('../../database/truckPhotos/boardTrucks').readPresentBoardTrucks,
+    tellOwnerUnchecked: require('./uncheckedNotice').tellOwnerUnchecked,
     preparePhotos: pdf.preparePhotos,
     prepareThumbnails: pdf.prepareThumbnails,
     buildPdf: pdf.buildPdf,
@@ -186,14 +194,15 @@ async function produceReport(job, deps = defaultDeps()) {
     : { ready: [], unreadable: 0 };
   if (!ready.length && !videos.length) return fail('download_failed', 'failed');
 
-  // 4. A model may only LEAVE OUT a photo that is clearly not the truck. Videos are not judged.
-  const filter = ready.length
-    ? await deps.filterPhotos(ready.map((r) => r.jpeg), { deadlineAt })
-    : { excluded: new Set(), answered: 0, providers: [] };
-  if (filter.answered) { ai.assisted = true; filter.providers.forEach((p) => ai.providers.add(p)); }
-  const kept = ready.filter((_, i) => !filter.excluded.has(i));
-  const excludedCount = ready.length - kept.length;
-  if (!kept.length && !videos.length) {
+  // 4. A model sorts the photos and may only LEAVE OUT one it is sure is not
+  // the truck. Videos are not judged.
+  const sorted = ready.length
+    ? await deps.sortPhotos(ready.map((r) => r.jpeg), { deadlineAt })
+    : { verdicts: [], answered: 0, providers: [], stopped: null };
+  if (sorted.answered) { ai.assisted = true; sorted.providers.forEach((p) => ai.providers.add(p)); }
+  const plan = planPages({ ready, verdicts: sorted.verdicts, maxPerPdf: settings.maxPhotosPerPdf });
+  const excludedCount = plan.leftOut.length;
+  if (!plan.truck.length && !plan.forms.length && !videos.length) {
     return fail('all_excluded', 'no_photos', { ctx: { photoCount: ready.length }, counts: { excludedCount } });
   }
   const thumbs = videos.length ? await deps.prepareThumbnails(videos, { telegram, deadlineAt }) : [];
@@ -205,72 +214,48 @@ async function produceReport(job, deps = defaultDeps()) {
     thumb: thumbs[i] || null,
   }));
 
-  // 5. The PDFs. The videos page is in part 1; a hand-over of videos alone is one PDF.
+  // 5. The PDFs. The videos page is in part 1; the hand-over form closes the last part.
   const outbound = kind === 'inbound' ? await deps.lastSentOutbound(group.id, triggerAt) : null;
-  const parts = kept.length ? chunk(kept, settings.maxPhotosPerPdf) : [[]];
-  const unit = truckOf(profile, group.group_name).unit;
+  const truckDecision = await decideTruck({ profile, group }, deps);
   const counts = {
-    photoCount: kept.length, excludedCount, parts: parts.length, videoCount: videos.length,
+    photoCount: plan.truck.length + plan.forms.length, excludedCount, parts: plan.parts.length, videoCount: videos.length,
   };
-  const delivered = [];
-  for (let p = 0; p < parts.length; p += 1) {
-    const first = delivered.length + 1;
-    const pageOf = (item, i) => ({
-      jpeg: item.jpeg,
-      width: item.width,
-      height: item.height,
-      caption: photoCaption({
-        number: first + i, total: kept.length, sentAt: item.photo.sentAt, fromName: item.photo.fromName,
-      }),
-    });
-    const shared = {
-      kind, profile, groupName: group.group_name, triggerAt, photoCount: kept.length, excludedCount,
-      part: p + 1, parts: parts.length, outbound, videoCount: videos.length, anchorNote,
-    };
-    // eslint-disable-next-line no-await-in-loop
-    const buffer = await deps.buildPdf({
-      title: `${kind} ${unit || ''}`.trim(),
-      coverLines: coverLines({
-        ...shared, markedBy, unreadableCount: unreadable, omittedCount: omitted,
-        firstNumber: first, lastNumber: first + parts[p].length - 1, videosHere: p === 0,
-      }),
-      pages: parts[p].map(pageOf),
-      videos: p === 0 ? videoPages : [],
-    });
-    if (buffer.length > MAX_PDF_BYTES) {
-      return finishPartial(fail('too_large', 'failed', { counts }), delivered, reportId, deps);
-    }
-    try {
-      // eslint-disable-next-line no-await-in-loop
-      await deps.sendPdf({
-        telegram,
-        recipient,
-        buffer,
-        fileName: fileName({ kind, unit, at: triggerAt, part: p + 1, parts: parts.length }),
-        caption: deliveryCaption(shared),
-      });
-    } catch (err) {
-      console.warn('[TRUCK PHOTOS] a PDF was not delivered:', err?.response?.error_code || err?.name || 'error');
-      const code = p === 0 ? 'not_delivered' : 'part_not_delivered';
-      return finishPartial(
-        fail(code, 'failed', { counts, ctx: { part: p + 1, parts: parts.length } }), delivered, reportId, deps,
-      );
-    }
-    delivered.push(...parts[p]);
-    if (p === 0) delivered.push(...videos.map((video) => ({ photo: video })));
+  const out = await sendReportParts({
+    plan,
+    videos,
+    videoPages,
+    cover: {
+      kind, profile, groupName: group.group_name, triggerAt, markedBy, truckDecision, outbound, anchorNote,
+      unreadableCount: unreadable, omittedCount: omitted, checkedTotal: ready.length,
+    },
+    to: { telegram, recipient },
+  }, deps);
+  if (out.failure) {
+    const ctx = out.failure.code === 'too_large' ? undefined : { part: out.failure.part, parts: out.failure.parts };
+    return finishPartial(fail(out.failure.code, 'failed', { counts, ctx }), out.delivered, reportId, deps);
   }
+  const { delivered } = out;
 
   // 6. Delivered: the 👍 first — it is what the group sees — then the records.
   // A record that cannot be written now must not turn a delivered PDF into a
   // "failed" one, so it is not left to the catch-all below.
   await deps.reactDelivered({ telegram, chatId, messageId: message.message_id });
-  const summary = { status: 'sent', photos: kept.length, excluded: excludedCount, parts: parts.length };
+  if (plan.unchecked) {
+    await deps.tellOwnerUnchecked({
+      reportId, kind, chatTitle: group.group_name, unchecked: plan.unchecked, total: ready.length,
+      stopped: sorted.stopped, groupId: group.id,
+    });
+  }
+  const summary = {
+    status: 'sent', photos: plan.truck.length + plan.forms.length, excluded: excludedCount, parts: plan.parts.length,
+  };
   try {
     await deps.markPhotosInReport(delivered.map((item) => item.photo.id), reportId);
     await deps.finishReport(reportId, {
       status: 'sent',
       reason: [
         unreadable ? `${unreadable} photo(s) could not be downloaded from Telegram.` : null,
+        plan.unchecked ? `${plan.unchecked} photo(s) were not checked by AI and went in unchecked.` : null,
         omitted ? `${omitted} earlier photo(s) were left out (at most ${MAX_PHOTOS_PER_REPORT}).` : null,
         anchorNote
           ? `The ${anchorNote.kind} replied to was sent ${chicagoTime(anchorNote.sentAt)}, before Wenze saw it; photos sent with it may be missing.`
@@ -285,6 +270,25 @@ async function produceReport(job, deps = defaultDeps()) {
     return { ...summary, error: 'delivered, but the record could not be written' };
   }
   return summary;
+}
+
+/**
+ * The truck number for the cover: the chat title's, checked against the
+ * profile and the Dispatcher Board (lib/truckPhotos/truckNumber.js). A board
+ * that cannot be read is checked against nothing — never a failed report.
+ */
+async function decideTruck({ profile, group }, deps) {
+  let boardTrucks = [];
+  try {
+    boardTrucks = boardTrucksNaming(await deps.readBoardTrucks(), profile);
+  } catch (err) {
+    console.warn('[TRUCK PHOTOS] could not read the Dispatcher Board for the truck number:', err?.message || String(err));
+  }
+  return decideTruckNumber({
+    profileUnit: profile?.unit_number ?? null,
+    titleUnit: extractUnitFromGroupName(group?.group_name || ''),
+    boardTrucks,
+  });
 }
 
 /** A failure after some parts went out: those photos are still marked as sent. */

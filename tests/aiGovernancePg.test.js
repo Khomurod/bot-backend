@@ -401,7 +401,8 @@ test('THE ROUTER READS MODEL IDS, never the listing — ids only, enabled provid
   const { aiProviders } = load(harness);
   await aiProviders.upsertProvider('groq', { label: 'Groq', enabled: true, apiKey: 'gsk_test_1234' });
   await aiProviders.saveDiscoveredModels('groq', {
-    models: [{ id: 'llama-3.1-8b-instant', chat: true }, { chat: true }, { id: 'openai/gpt-oss-20b' }],
+    models: [{ id: 'llama-3.1-8b-instant', chat: true }, { chat: true }, { id: 'openai/gpt-oss-20b' },
+      { id: 'google/gemma-4-31b-it:free', chat: true, vision: true }],
   });
   await harness.query(`UPDATE ai_providers SET enabled = FALSE WHERE provider_key <> 'groq'`);
 
@@ -411,10 +412,12 @@ test('THE ROUTER READS MODEL IDS, never the listing — ids only, enabled provid
   assert.equal(forRouter.apiKey, 'gsk_test_1234');
   assert.equal('discoveredModelIds' in forRouter, false, 'the roster row no longer carries the listing');
 
-  const ids = await aiProviders.getDiscoveredModelIdsForRouter();
-  assert.deepEqual([...ids.keys()], ['groq']);
-  assert.deepEqual(ids.get('groq'), ['llama-3.1-8b-instant', 'openai/gpt-oss-20b'],
+  const listing = await aiProviders.getDiscoveredListingForRouter();
+  assert.deepEqual([...listing.keys()], ['groq']);
+  assert.deepEqual(listing.get('groq').ids, ['llama-3.1-8b-instant', 'openai/gpt-oss-20b', 'google/gemma-4-31b-it:free'],
     'an entry with no id is not a model');
+  assert.deepEqual(listing.get('groq').visionIds, ['google/gemma-4-31b-it:free'],
+    'only what the provider said takes pictures');
 });
 
 test('/api/health reads a provider\'s listing SIZE, never the listing', { skip: skipWithoutPg() }, async (t) => {

@@ -396,13 +396,13 @@ group's own driver writes `outbound` (hand-over) or `inbound` (return) — as a
 reply or on its own. Wenze puts the photos (the reply's album and neighbours,
 or the last 3 hours) into an English PDF and sends it privately to **one
 person** set in Settings → Truck Photos, then puts a 👍 on the word. Nothing is
-ever written in the group; a failure is told to that person. A model may only
-check a message that says more than the word and leave out photos that are not
-the truck. Videos are listed in the PDF with a link to their message in
-Telegram, never downloaded; a reply to a photo sent before Wenze was watching
-says on the cover that photos sent with it may be missing. Off by default; the
-PDF is never stored. See
-[`truck-photo-reports.md`](../architecture/truck-photo-reports.md).
+ever written in the group; a failure is told to that person. A model checks a
+message that says more than the word and sorts the photos: the truck in,
+Wenze's hand-over form at the end, every other paper and screenshot left out;
+photos no model saw go in marked NOT CHECKED BY AI and the owner is told. The
+truck number is the chat title's; a profile or Board that differs is named.
+Videos are links, never downloaded. Off by default; the PDF is never stored.
+See [`truck-photo-reports.md`](../architecture/truck-photo-reports.md).
 
 ### Recruiting and leads
 

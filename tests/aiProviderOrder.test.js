@@ -151,6 +151,20 @@ test('a free model that can see is asked about a picture, with only its vision m
   assert.deepEqual(calls.map((c) => c.model), ['meta-llama/llama-4-scout-17b-16e-instruct']);
 });
 
+test('a model no name rule knows is asked about a picture when its provider\'s own listing says it takes one', async () => {
+  // 23 November 2026: OpenRouter's free Gemma 4 reads photos; no name rule knew it.
+  const { router, calls } = loadRouter({
+    providers: [groq({
+      providerKey: 'openrouter',
+      modelChain: ['nvidia/nemotron-3-ultra-550b-a55b:free', 'google/gemma-4-31b-it:free'],
+      discoveredVisionIds: ['google/gemma-4-31b-it:free'],
+    })],
+    respond: ok,
+  });
+  await router.runCapability({ capability: 'x', userText: 'read', extraParts: [{ inline_data: { data: 'AA==' } }] });
+  assert.deepEqual(calls.map((c) => c.model), ['google/gemma-4-31b-it:free'], 'the text-only model is not asked');
+});
+
 // ── the models are the operator's ──────────────────────────────────────────
 
 const listing = (ids, providerKey = 'anthropic') => ids.map((id) => normaliseModel({ id }, 'anthropic', providerKey));

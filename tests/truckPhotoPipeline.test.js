@@ -21,7 +21,7 @@ const assert = require('node:assert/strict');
 const { produceReport, runTruckPhotoReport } = require('../services/truckPhotos/pipeline');
 
 const {
-  GROUP_CHAT, RECIPIENT, WORD_AT, photo, ALBUM_AND_SINGLES, harness, groupWrites, reactions,
+  GROUP_CHAT, RECIPIENT, WORD_AT, photo, sortedAs, ALBUM_AND_SINGLES, harness, groupWrites, reactions,
 } = require('./helpers/truckPhotoPipelineHarness');
 
 test('a bare word: one PDF of the album and the singles to the recipient, then 👍, then the records', async () => {
@@ -35,7 +35,8 @@ test('a bare word: one PDF of the album and the singles to the recipient, then �
   assert.ok(Buffer.isBuffer(docs[0].payload.document.source), 'from a buffer — nothing on disk');
   assert.equal(calls.built[0].pages.length, 5);
   assert.deepEqual(reactions(telegram).map((r) => [r.chat, r.messageId, r.reaction[0].emoji]), [[GROUP_CHAT, 100, '👍']]);
-  assert.deepEqual(calls.order, ['build', 'send', 'react', 'mark', 'finish:sent'], '👍 only after the delivery');
+  assert.deepEqual(calls.order, ['build', 'send', 'react', 'owner-told', 'mark', 'finish:sent'],
+    '👍 only after the delivery; no model looked at the photos, so the owner is told');
   assert.deepEqual(calls.marked, [100, 110, 120, 150, 160]);
   assert.equal(calls.handover, 0, 'a bare word asks no model whether it is a hand-over');
   assert.equal(calls.finish[0].aiAssisted, false, 'no model answered, and that is recorded');
@@ -57,13 +58,71 @@ test('the PDF is not delivered: no 👍, the recipient is told, the group hears 
   assert.deepEqual(groupWrites(telegram), []);
 });
 
-test('no model at all, bare word: every photo goes in, unfiltered', async () => {
-  const { calls, deps, job } = harness({ filter: () => ({ excluded: new Set(), answered: 0, providers: [] }) });
+test('no model at all, bare word: every photo goes in, "NOT CHECKED BY AI" on the cover and the caption, and the owner is told', async () => {
+  const { telegram, calls, deps, job } = harness();
   await produceReport(job, deps);
   assert.equal(calls.built[0].pages.length, 5);
   assert.equal(calls.finish.at(-1).status, 'sent');
   assert.equal(calls.finish.at(-1).aiAssisted, false);
   assert.equal(calls.finish.at(-1).excludedCount, 0);
+  assert.match(calls.finish.at(-1).reason, /5 photo\(s\) were not checked by AI/);
+  const cover = calls.built[0].coverLines;
+  assert.ok(cover.some((l) => l.text === 'NOT CHECKED BY AI: all 5 photos.' && l.bold), cover.map((l) => l.text).join(' | '));
+  const [doc] = telegram.log.filter((e) => e.method === 'sendDocument');
+  assert.match(doc.payload.caption, /NOT CHECKED BY AI: all 5 photos\./);
+  assert.deepEqual(calls.ownerTold.map((t) => [t.reportId, t.unchecked, t.total, t.stopped]), [[1, 5, 5, 'unavailable']]);
+});
+
+test('photos a model looked at: nothing on the cover about checking, and the owner is not told', async () => {
+  const { calls, deps, job } = harness({ sort: sortedAs([]) });
+  await produceReport(job, deps);
+  assert.ok(!calls.built[0].coverLines.some((l) => /NOT CHECKED/.test(l.text)));
+  assert.deepEqual(calls.ownerTold, []);
+});
+
+test('the owner\'s rule: the truck in order, Wenze\'s hand-over form at the end, every other paper left out and counted', async () => {
+  // 10, 11, 12 (album), 15, 16: 11 is the binder's insurance paper, 12 the form, 16 a screenshot.
+  const { telegram, calls, deps, job } = harness({ sort: sortedAs([null, 'document', 'handover_form', null, 'screenshot']) });
+  await produceReport(job, deps);
+  const pages = calls.built[0].pages;
+  assert.deepEqual(pages.map((p) => p.jpeg.toString()), ['jpeg-10', 'jpeg-15', 'jpeg-12'], 'the form closes the PDF');
+  assert.match(pages[0].caption, /^Photo 1 of 2 - /);
+  assert.match(pages[2].caption, /^Hand-over form 1 of 1 - /);
+  const cover = calls.built[0].coverLines.map((l) => l.text);
+  assert.ok(cover.includes('Photos: 2 (excluded 2 - not the truck)'), cover.join(' | '));
+  assert.ok(cover.includes('Hand-over form: 1 page, at the end'));
+  assert.ok(cover.includes('Left out by AI: 1 document, 1 screenshot'));
+  assert.deepEqual(calls.marked, [100, 150, 120], 'the form went out, so it is marked as sent too');
+  assert.equal(calls.finish.at(-1).photoCount, 3);
+  assert.equal(calls.finish.at(-1).excludedCount, 2);
+  assert.match(telegram.log.find((e) => e.method === 'sendDocument').payload.caption, /2 photos \(excluded 2\) \+ hand-over form/);
+});
+
+test('the truck number is the chat title\'s; the profile and the Board that disagree are named, "please check"', async () => {
+  const { telegram, calls, deps, job } = harness({
+    job: {
+      group: { id: 3, group_name: 'WENZE UNIT # 327 MARCO POLO (COMPANY DRIVERS)' },
+      profile: {
+        first_name: 'Marco', last_name: 'Polo', unit_number: '326', driver_type: 'company_driver',
+        truck_fleet: 'owner_operator', truck_owner: 'ERNST',
+      },
+    },
+    board: [{ truck_norm: '3731', truck_raw: '3731 V', driver_name_clean: 'MARCO POLO', team_members: null }],
+  });
+  await produceReport(job, deps);
+  const [doc] = telegram.log.filter((e) => e.method === 'sendDocument');
+  assert.equal(doc.payload.document.filename, 'outbound_327_2026-11-06.pdf');
+  const cover = calls.built[0].coverLines.map((l) => l.text);
+  assert.ok(cover.includes('Truck: 327 - Company (profile says 326, Board says 3731 V - please check)'), cover.join(' | '));
+  assert.match(doc.payload.caption, /Truck 327 - Company \(profile says 326/);
+});
+
+test('a Board that cannot be read: the report still goes out, checked against the profile alone', async () => {
+  const { calls, deps, job } = harness({ job: { group: { id: 3, group_name: 'WENZE UNIT # 027 X' } } });
+  deps.readBoardTrucks = async () => { throw new Error('connection reset'); };
+  const out = await produceReport(job, deps);
+  assert.equal(out.status, 'sent');
+  assert.ok(calls.built[0].coverLines.some((l) => l.text.startsWith('Truck: 027 - ') && /profile says 1 - please check/.test(l.text)));
 });
 
 test('no model at all, a word with more around it: no PDF, and the recipient is told Wenze did not guess', async () => {
@@ -103,9 +162,7 @@ test('a model that cannot tell: no PDF, "could not tell"; a model sure it is a l
 });
 
 test('a model may only LEAVE OUT photos — and what it leaves out is counted', async () => {
-  const { calls, deps, job } = harness({
-    filter: (jpegs) => ({ excluded: new Set([1, 3]), answered: 1, providers: ['gemini'] }),
-  });
+  const { calls, deps, job } = harness({ sort: sortedAs([null, 'document', null, 'person']) });
   await produceReport(job, deps);
   const pages = calls.built[0].pages.map((p) => p.jpeg.toString());
   assert.deepEqual(pages, ['jpeg-10', 'jpeg-12', 'jpeg-16']);
@@ -118,9 +175,7 @@ test('a model may only LEAVE OUT photos — and what it leaves out is counted', 
 });
 
 test('every photo left out: no PDF, the recipient is told why', async () => {
-  const { telegram, calls, deps, job } = harness({
-    filter: (jpegs) => ({ excluded: new Set(jpegs.map((_, i) => i)), answered: 1, providers: ['gemini'] }),
-  });
+  const { telegram, calls, deps, job } = harness({ sort: sortedAs(['document', 'document', 'screenshot', 'other', 'person']) });
   const out = await produceReport(job, deps);
   assert.equal(out.status, 'no_photos');
   assert.match(telegram.log.find((e) => e.method === 'sendMessage').text, /None of the 5 photos looked like the truck/);

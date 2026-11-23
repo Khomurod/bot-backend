@@ -53,7 +53,7 @@ test('videos alone still make a PDF; the model is not asked about them', async (
   const { telegram, calls, deps, job } = harness({ photos: [video(11, 20), video(12, 10)] });
   const out = await produceReport(job, deps);
   assert.equal(out.status, 'sent');
-  assert.equal(calls.filter, 0);
+  assert.equal(calls.sort, 0);
   assert.deepEqual(calls.prepared, []);
   assert.equal(calls.built.length, 1);
   assert.equal(calls.built[0].pages.length, 0);

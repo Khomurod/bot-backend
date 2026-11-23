@@ -59,6 +59,14 @@ const CASES = {
     finding: { title: 't', evidence: { groupId: 4401, groupName: CHAT } },
     shows: [CHAT],
   },
+  'identity.unit_title_mismatch': {
+    finding: {
+      title: 't',
+      evidence: { groupId: 4401, groupName: 'WENZE UNIT # 027 FRANTZ ARTHUS', profileUnit: '088', titleUnit: '027' },
+      proposedChange: { groupId: 4401, from: '088', to: '027' },
+    },
+    shows: ['WENZE UNIT # 027 FRANTZ ARTHUS', 'from 088 to 027', 'unit 027', 'unit 088'],
+  },
   'identity.stale_unit_assignment': {
     finding: { title: 't', evidence: { groupId: 4401, groupName: CHAT, personId: 3301, profileUnit: '322', recordedUnit: '320' } },
     shows: [CHAT, 'unit 322', '320'],
