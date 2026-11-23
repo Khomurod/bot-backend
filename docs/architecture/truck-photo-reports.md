@@ -202,6 +202,60 @@ Capability **`truck_photo_handover`** (Settings → AI → AI Tasks; verdict in
   recipient, or touch a driver's record. `truck_photo_reports.ai_assisted` is
   written explicitly on every row (FALSE at the claim), with `ai_provider`.
 
+## Correcting a PDF (the owner, 23 November 2026)
+
+The recipient answers a PDF in their own words, as a **reply** to it — "truck
+number is 027", "remove photos 11 to 38", "keep only the truck", "this is
+inbound", "use the photos from 3 PM to 6 PM", "put the documents back", "not a
+hand-over" — and Wenze **rebuilds it and sends it again at once**
+(`services/truckPhotos/correction.js`, `rebuild.js`).
+
+- **Who.** The recipient, and the people listed in Settings → Truck Photos
+  (`truck_photo_settings.editor_telegram_ids`, user ids, at most 20;
+  `lib/truckPhotos/whoMayMark.js` `mayCorrect`). Anybody else is told so in
+  private and ignored in a group.
+- **Where.** In the bot's private chat: a reply to one of its Truck Photos
+  messages — a PDF, a failure message, or its own question back
+  (`truck_photo_report_messages`, part 0 for a message that is not a PDF). It
+  is CONSUMED there, so the anonymous-feedback prompt in the same chat never
+  sees it (`bot/handlers/truckPhotoCorrectionHandlers.js`, registered right
+  after the photo observer). In a **driver group**: a reply to the
+  `outbound` / `inbound` word that tags the bot, from a listed person —
+  answered with reactions only (👀, then 👍 or 🤷); words go privately to the
+  person, the PDF to the recipient under its last PDF. **Nothing is ever
+  written in the group.**
+- **What a model may do: READ, from a closed list** (capability
+  `truck_photo_correction`, `services/truckPhotos/correctionRead.js`): the
+  truck number, outbound ↔ inbound, remove photos, put left-out photos back,
+  put back a kind, look again, a time window (Chicago, at most a day), only /
+  not from a sender, cancel (alone). It is shown the PDF's photos by LABEL —
+  P11 is "Photo 11", F1 a form page, L1… the photos left out, V1… the videos —
+  and the person's words fenced as untrusted text. Every value is checked in
+  `lib/truckPhotos/correctionActions.js`; a label that does not exist, a value
+  that does not fit or an action outside the list is **not understood** and
+  the person is asked back (that question is remembered, so a reply to it is a
+  correction too). Nothing is ever partly done. No model: nothing changes, and
+  the person is told.
+- **The rebuild.** From the time a person named, else what the last version
+  held (`truck_photo_report_items`), else the time the photos were first
+  chosen from (`photos_from` / `photos_until`); never a photo another report
+  already sent. The last sort is reused unless the person said "look again";
+  a person's removal or putting back outranks the model. The cover and the
+  caption say "CORRECTED - version 2, asked by …" and what changed, in
+  Wenze's words, never the person's; a corrected truck number reads "027 -
+  Company (set by Kim Rowe)". The next version is written only over the one it
+  came from (`version`), and the report's photos become exactly the ones it
+  holds — those taken out are freed for the next word.
+- **Cancel** ("not a hand-over"): status `cancelled`, photos freed, the 👍 on
+  the word taken back.
+- **The one Yes / No** (`services/truckPhotos/profileQuestion.js`): a
+  corrected truck number that the driver's PROFILE does not say asks, privately,
+  whether the profile should say it too — the map and `/location` read it. Yes
+  applies `profile.set_unit` as that person through the correction registry
+  (audited, revertible, refused when the profile changed since); No changes
+  nothing; a button under an older correction or from somebody not listed
+  changes nothing.
+
 ## Setting it up (Settings → Truck Photos)
 
 1. The person who will receive the PDFs opens the bot in Telegram and presses
@@ -229,9 +283,11 @@ Migrations `0096_truck_photo_reports.sql` and `0097_truck_photo_videos.sql`
 
 | Table | What it holds |
 |---|---|
-| `truck_photo_settings` | the single settings row; `enabled` cannot be TRUE without a recipient and `recipient_verified_at` (CHECK) |
+| `truck_photo_settings` | the single settings row; `enabled` cannot be TRUE without a recipient and `recipient_verified_at` (CHECK); `editor_telegram_ids`, who besides the recipient may correct a PDF |
 | `driver_group_photos` | the buffer of photos and videos: file ids, sender, album, time, a video's length and preview, `report_id` once sent — **deleted after 30 days** |
-| `truck_photo_reports` | one row per word: the claim, then `sent` / `failed` / `no_photos` / `not_a_handover` / `unclear`, counts, the reason, `ai_assisted`. Kept |
+| `truck_photo_reports` | one row per word: the claim, then `sent` / `failed` / `no_photos` / `not_a_handover` / `unclear` / `cancelled`, counts, the reason, `ai_assisted`; `version`, `edits` (the corrections — never message text), `corrected_by_name`, and the time the photos were first chosen from. Kept |
+| `truck_photo_report_messages` | which message in a chat is which report's PDF (part ≥ 1) or Wenze's question about one (part 0), so a reply finds it (migration 0109) |
+| `truck_photo_report_items` | what each version held — every photo's place (truck, form, left out, video), its number in the PDF and its sort — gone with the photo after 30 days (migration 0109) |
 
 Run ledger key `truck_photo_reports` (`configurable`, not critical): each report
 and the hourly pass; `blocked` while switched off.
@@ -240,7 +296,10 @@ and the hourly pass; `blocked` while switched off.
 
 `tests/truckPhotoTrigger.test.js`, `truckPhotoWhoMayMark`, `truckPhotoSelect`,
 `truckPhotoChunk`, `truckPhotoLayout`, `truckPhotoKindsAndNumber`,
-`truckPhotoUncheckedNotice`, `aiVisionListing`, `truckPhotoCapture`,
+`truckPhotoUncheckedNotice`, `aiVisionListing`, `truckPhotoCorrectionActions`,
+`truckPhotoCorrectionRead`, `truckPhotoRebuild`, `truckPhotoCorrection`,
+`truckPhotoProfileQuestion`, `truckPhotoCorrectionHandlers`,
+`truckPhotoCorrectionsPg`, `truckPhotoCapture`,
 `truckPhotoTriggerHandler`, `truckPhotoAiCheck`, `truckPhotoPipeline`,
 `truckPhotoPipelineVideos`, `truckPhotoVideoLinks`, `truckPhotoPdf` and
 `truckPhotoPdfVideos` (real pdf-lib and sharp), `truckPhotoSweep`,

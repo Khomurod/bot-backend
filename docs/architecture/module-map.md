@@ -215,7 +215,8 @@ organization should converge toward.
 | Who sent a message, a photo's largest size, a picture sent as a file, the real reply target | `lib/telegram/messageParts.js` (pure; shared with Safety Approvals) |
 | Settings, the photo buffer (file ids only), the reports, the driver's accounts | `database/truckPhotos/{settings,photos,reports,driverContext}.js`, migration 0096 |
 | Remembering photos; noticing the word, the claim and the queue | `services/truckPhotos/{capture,triggerHandler}.js`, `bot/handlers/truckPhotoHandlers.js` (thin observer) |
-| Making the PDF and sending it | `services/truckPhotos/{pipeline,aiCheck,pdf,deliver}.js`; capability `truck_photo_handover`; key `truck_photo_reports` |
+| Making the PDF and sending it | `services/truckPhotos/{pipeline,aiCheck,pdf,sendParts,deliver,truckForCover,uncheckedNotice}.js`; capability `truck_photo_handover`; key `truck_photo_reports` |
+| Correcting a PDF from a person's reply | `services/truckPhotos/{correction,correctionRead,rebuild,profileQuestion}.js`, `lib/truckPhotos/{correctionActions,correctionText}.js`, `database/truckPhotos/corrections.js`, `bot/handlers/truckPhotoCorrectionHandlers.js`; capability `truck_photo_correction`; migration 0109 |
 | The hourly pass (a claim left behind by a restart) | `services/truckPhotos/sweep.js`, on the scheduler's retention tick |
 | Settings → Truck Photos | `server/routes/settings/truckPhotoRoutes.js`, admin `settings/TruckPhotosTab.jsx`, `admin/src/api/truckPhotos.js` |
 

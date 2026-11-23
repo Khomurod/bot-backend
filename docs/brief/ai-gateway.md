@@ -170,6 +170,14 @@ stay in §4a. The provider terms watcher is
   with the owner told, and anything else makes none. It may be given providers
   of its own (Settings → AI → Providers for one task); none chosen follows the
   global order (`docs/architecture/truck-photo-reports.md`).
+- **Correcting a truck hand-over PDF (`truck_photo_correction`, 23 November
+  2026) only READS.** The recipient's (or a listed person's) reply to a PDF is
+  read into actions from a closed list — truck number, outbound ↔ inbound,
+  remove / put back photos by the label the person saw, look again, a time
+  window, senders, cancel — each checked in
+  `lib/truckPhotos/correctionActions.js`; anything not understood is asked back,
+  never partly applied. The PDF is rebuilt at once; a driver's profile changes
+  only on a person's Yes (`docs/architecture/truck-photo-reports.md`).
 - **A model the provider's own listing says takes images can see** (23 November
   2026). OpenRouter lists each model's input; the models refresh keeps
   `vision: true` and `lib/ai/vision.js` believes it beside the name rules, so

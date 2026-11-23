@@ -41,7 +41,7 @@ function pageOf(item, { number, total, form = false }) {
  * @param {object} args.cover         what every cover and caption says:
  *   {kind, profile, groupName, triggerAt, markedBy, truckDecision, outbound,
  *    anchorNote, unreadableCount, omittedCount, checkedTotal}
- * @param {{telegram, recipient}} args.to
+ * @param {{telegram, recipient, replyTo?: number|null}} args.to  `replyTo`: the message the first part answers
  * @param {{buildPdf, sendPdf}} deps
  * @returns {Promise<{delivered: Array, messages: Array<{part: number, messageId: number|null}>,
  *   failure: null|{code: string, part: number, parts: number}}>}
@@ -98,6 +98,7 @@ async function sendReportParts({
           kind: cover.kind, unit, at: cover.triggerAt, part: p + 1, parts: parts.length,
         }),
         caption: deliveryCaption(shared),
+        replyTo: p === 0 ? (to.replyTo ?? null) : null,
       });
     } catch (err) {
       console.warn('[TRUCK PHOTOS] a PDF was not delivered:', err?.response?.error_code || err?.name || 'error');

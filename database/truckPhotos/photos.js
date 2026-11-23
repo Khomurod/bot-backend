@@ -116,9 +116,11 @@ async function markPhotosInReport(photoIds, reportId) {
 
 module.exports = {
   MAX_ROWS,
+  COLUMNS,
   upsertPhoto,
   getPhotoByMessage,
   listPhotosSince,
   markPhotosInReport,
+  mapPhotoRow: mapRow,
   __mapRowForTests: mapRow,
 };

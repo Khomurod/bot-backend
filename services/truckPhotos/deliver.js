@@ -38,7 +38,7 @@ const THUMBS_UP = '👍';
  * @param {string} args.caption    plain text
  */
 async function sendPdf({
-  telegram, recipient, buffer, fileName, caption, deadlineMs = SEND_DEADLINE_MS,
+  telegram, recipient, buffer, fileName, caption, deadlineMs = SEND_DEADLINE_MS, replyTo = null,
 }) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), deadlineMs);
@@ -50,6 +50,9 @@ async function sendPdf({
         chat_id: recipient,
         document: { source: buffer, filename: fileName },
         caption,
+        // A corrected PDF answers the message that asked for it; if that is
+        // gone, it is still sent.
+        ...(Number.isInteger(replyTo) ? { reply_parameters: { message_id: replyTo, allow_sending_without_reply: true } } : {}),
       }, { signal: controller.signal });
     }, { maxAttempts: 3 });
   } finally {
@@ -68,18 +71,40 @@ async function reactDelivered({ telegram, chatId, messageId }) {
   }
 }
 
-/** A private message to the recipient. Never throws; false when it did not go out. */
-async function tellRecipient({ telegram, recipient, text }) {
+/**
+ * A private message to the recipient (or to a person correcting a PDF). Never
+ * throws: the message's id when it went out — so a reply to it can be read —
+ * true when Telegram gave none, false when it did not go out.
+ */
+async function tellRecipient({
+  telegram, recipient, text, replyTo = null, replyMarkup = null,
+}) {
   if (!telegram || !recipient || !text) return false;
+  const extra = {
+    ...(Number.isInteger(replyTo) ? { reply_parameters: { message_id: replyTo, allow_sending_without_reply: true } } : {}),
+    ...(replyMarkup ? { reply_markup: replyMarkup } : {}),
+  };
   try {
-    await safeSend(() => telegram.sendMessage(recipient, text), { maxAttempts: 3 });
-    return true;
+    const sent = await safeSend(() => telegram.sendMessage(recipient, text, extra), { maxAttempts: 3 });
+    return Number.isInteger(sent?.message_id) ? sent.message_id : true;
   } catch (err) {
     console.warn('[TRUCK PHOTOS] could not tell the recipient:', cleanTelegramError(err));
     return false;
   }
 }
 
+/** Take the bot's reaction off a message (a cancelled hand-over). Never throws. */
+async function clearReaction({ telegram, chatId, messageId }) {
+  try {
+    if (typeof telegram?.setMessageReaction === 'function') await telegram.setMessageReaction(chatId, messageId, []);
+    else await telegram.callApi('setMessageReaction', { chat_id: chatId, message_id: messageId, reaction: [] });
+    return true;
+  } catch (err) {
+    console.warn('[TRUCK PHOTOS] could not take the reaction back (non-fatal):', cleanTelegramError(err));
+    return false;
+  }
+}
+
 module.exports = {
-  SEND_DEADLINE_MS, THUMBS_UP, sendPdf, reactDelivered, tellRecipient,
+  SEND_DEADLINE_MS, THUMBS_UP, sendPdf, reactDelivered, tellRecipient, clearReaction,
 };

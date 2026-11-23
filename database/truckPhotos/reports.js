@@ -19,7 +19,7 @@
 
 const { query } = require('../pool');
 
-const STATUSES = Object.freeze(['pending', 'sent', 'failed', 'no_photos', 'not_a_handover', 'unclear']);
+const STATUSES = Object.freeze(['pending', 'sent', 'failed', 'no_photos', 'not_a_handover', 'unclear', 'cancelled']);
 
 function mapReport(row) {
   return {
@@ -41,6 +41,8 @@ function mapReport(row) {
     aiProvider: row.ai_provider || null,
     createdAt: row.created_at || null,
     sentAt: row.sent_at || null,
+    version: Number(row.version) || 1,
+    correctedByName: row.corrected_by_name || null,
   };
 }
 

@@ -59,6 +59,19 @@ test('the fleet manager\'s word is claimed and its report runs after the settle 
   });
 });
 
+test('a message that tags the bot is a request to it (a correction), never a new hand-over', async () => {
+  __resetForTests();
+  const { deps, calls } = harness();
+  const botInfo = { id: 999, username: 'wenzefeedback_bot' };
+  const tagged = word({
+    text: '@wenzefeedback_bot this was the inbound', entities: [{ type: 'mention', offset: 0, length: 18 }],
+    reply_to_message: { message_id: 90 },
+  });
+  const out = await noticeTruckPhotoTrigger(tagged, { telegram: {}, botInfo }, deps);
+  assert.deepEqual(out, { handled: false, reason: 'a_request_to_the_bot' });
+  assert.equal(calls.claims.length, 0);
+});
+
 test('a redelivered update finds the word claimed: no second report, no second PDF', async () => {
   __resetForTests();
   const { deps, calls } = harness();

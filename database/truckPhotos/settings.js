@@ -26,6 +26,8 @@ const CACHE_TTL_MS = 10 * 60 * 1000;
 const UNDEFINED_TABLE = '42P01';
 const DEFAULT_LOOKBACK_HOURS = 3;
 const DEFAULT_MAX_PHOTOS = 60;
+/** More than this many correctors is not a short list of trusted people. */
+const MAX_EDITORS = 20;
 
 let cache = null;
 let cacheExpiresAt = 0;
@@ -69,6 +71,25 @@ function normaliseRecipient(value) {
   return text.replace(/^0+/, '');
 }
 
+/**
+ * The people besides the recipient who may correct a PDF (migration 0109): a
+ * list or a comma / space separated text of Telegram USER ids. Each once, the
+ * recipient's own id dropped (they may already).
+ */
+function normaliseEditors(value) {
+  if (value === null || value === undefined || value === '') return [];
+  const items = Array.isArray(value) ? value : String(value).split(/[\s,;]+/);
+  const out = [];
+  for (const item of items) {
+    const id = normaliseRecipient(item === null || item === undefined ? null : String(item));
+    if (id && !out.includes(id)) out.push(id);
+  }
+  if (out.length > MAX_EDITORS) {
+    throw new TruckPhotoSettingsError(`At most ${MAX_EDITORS} people may correct the PDFs.`);
+  }
+  return out;
+}
+
 function normaliseLookback(value) {
   const n = Number(value);
   if (!Number.isInteger(n) || n < 1 || n > 24) {
@@ -85,6 +106,7 @@ function shape(row) {
     recipientVerifiedAt: row?.recipient_verified_at || null,
     lookbackHours: Number(row?.lookback_hours) || DEFAULT_LOOKBACK_HOURS,
     maxPhotosPerPdf: Number(row?.max_photos_per_pdf) || DEFAULT_MAX_PHOTOS,
+    editorTelegramIds: Array.isArray(row?.editor_telegram_ids) ? row.editor_telegram_ids.map(String) : [],
     updatedAt: row?.updated_at || null,
   };
 }
@@ -105,7 +127,8 @@ async function getTruckPhotoSettings() {
 /**
  * Save. Omitted fields keep their stored value.
  *
- * @param {{enabled?: boolean, recipientTelegramId?: string|number|null, lookbackHours?: number}} patch
+ * @param {{enabled?: boolean, recipientTelegramId?: string|number|null, lookbackHours?: number,
+ *   editorTelegramIds?: Array<string|number>|string}} patch
  * @param {number|null} adminId
  */
 async function updateTruckPhotoSettings(patch = {}, adminId = null) {
@@ -124,20 +147,23 @@ async function updateTruckPhotoSettings(patch = {}, adminId = null) {
     );
   }
   const lookback = patch.lookbackHours === undefined ? current.lookbackHours : normaliseLookback(patch.lookbackHours);
+  const editors = (patch.editorTelegramIds === undefined ? current.editorTelegramIds : normaliseEditors(patch.editorTelegramIds))
+    .filter((id) => id !== recipient);
 
   const { rows } = await query(
     `INSERT INTO truck_photo_settings (id, enabled, recipient_telegram_id, recipient_verified_at,
-                                       lookback_hours, updated_at, updated_by)
-     VALUES (1, $1, $2::bigint, $3, $4, NOW(), $5)
+                                       lookback_hours, editor_telegram_ids, updated_at, updated_by)
+     VALUES (1, $1, $2::bigint, $3, $4, $6::bigint[], NOW(), $5)
      ON CONFLICT (id) DO UPDATE
         SET enabled = EXCLUDED.enabled,
             recipient_telegram_id = EXCLUDED.recipient_telegram_id,
             recipient_verified_at = EXCLUDED.recipient_verified_at,
             lookback_hours = EXCLUDED.lookback_hours,
+            editor_telegram_ids = EXCLUDED.editor_telegram_ids,
             updated_at = NOW(),
             updated_by = EXCLUDED.updated_by
      RETURNING *`,
-    [enabled, recipient, verifiedAt, lookback, adminId],
+    [enabled, recipient, verifiedAt, lookback, adminId, editors],
   );
   invalidateCache();
   return shape(rows[0] || null);
@@ -169,6 +195,8 @@ module.exports = {
   updateTruckPhotoSettings,
   markRecipientVerified,
   normaliseRecipient,
+  normaliseEditors,
+  MAX_EDITORS,
   invalidateCache,
   CACHE_TTL_MS,
   DEFAULT_LOOKBACK_HOURS,

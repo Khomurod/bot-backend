@@ -84,6 +84,8 @@ function harness(over = {}) {
     },
     readBoardTrucks: async () => over.board ?? [],
     tellOwnerUnchecked: async (args) => { calls.ownerTold.push(args); calls.order.push('owner-told'); return { notified: true }; },
+    saveWindow: async (id, window) => { calls.window = window; },
+    recordVersion: async (args) => { calls.recorded = args; },
     prepareThumbnails: async (list) => { calls.thumbs.push(...list.map((v) => v.thumbFileId)); return list.map(() => null); },
     preparePhotos: over.preparePhotos || (async (list) => {
       calls.prepared.push(...list.map((p) => p.fileId));

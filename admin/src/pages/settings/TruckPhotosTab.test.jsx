@@ -95,6 +95,23 @@ test("the latest hand-overs say what happened, and a refused save shows the serv
   expect(await screen.findByText(/whole number of hours from 1 to 24/)).toBeTruthy();
 });
 
+test("who may correct a PDF: user ids, saved as a list; a corrected hand-over says so", async () => {
+  api.getTruckPhotos.mockResolvedValue({
+    settings: { ...SETTINGS, editorTelegramIds: ["4444"] },
+    recent: [{
+      id: 2, kind: "outbound", status: "sent", groupName: "Avery Davis 562", photoCount: 11, excludedCount: 27, parts: 1,
+      reason: null, aiAssisted: true, createdAt: "2026-11-23T15:00:00Z", version: 2, correctedByName: "Tom Robinson",
+    }],
+  });
+  render(<TruckPhotosTab />);
+  const input = await screen.findByLabelText(/Their Telegram user IDs/i);
+  expect(input).toHaveValue("4444");
+  expect(screen.getByText(/corrected \(version 2, by Tom Robinson\)/)).toBeTruthy();
+  fireEvent.change(input, { target: { value: "4444, 5555 -100" } });
+  fireEvent.click(screen.getByRole("button", { name: /Save the list/i }));
+  await waitFor(() => expect(api.updateTruckPhotos).toHaveBeenCalledWith({ editorTelegramIds: ["4444", "5555", "100"] }));
+});
+
 test("a failed read shows the failure, not a form drawn from defaults", async () => {
   api.getTruckPhotos.mockRejectedValue(new Error("the database could not be reached"));
   render(<TruckPhotosTab />);

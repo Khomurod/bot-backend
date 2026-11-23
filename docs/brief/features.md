@@ -401,7 +401,7 @@ message that says more than the word and sorts the photos: the truck in,
 Wenze's hand-over form at the end, every other paper and screenshot left out;
 photos no model saw go in marked NOT CHECKED BY AI and the owner is told. The
 truck number is the chat title's; a profile or Board that differs is named.
-Videos are links, never downloaded. Off by default; the PDF is never stored.
+A reply to a PDF corrects it (AI reads it, rebuilt at once). Off by default.
 See [`truck-photo-reports.md`](../architecture/truck-photo-reports.md).
 
 ### Recruiting and leads
