@@ -79,8 +79,11 @@ const send = (url, method, body) => fetch(url, { method, headers: { 'Content-Typ
 test('GET: the tasks with a choice, their list, and the providers — whether each can read a picture, never a key', async () => {
   await withServer(async (base) => {
     const body = await (await fetch(`${base}/ai/capability-providers`)).json();
-    assert.deepEqual(body.capabilities.map((c) => [c.key, c.providerChoice, c.needsVision, c.order]),
-      [['hiring_cdl_reading', 'required', true, ['gemini']]]);
+    assert.deepEqual(body.capabilities.map((c) => [c.key, c.providerChoice, c.needsVision, c.order]), [
+      // Truck photos may be given providers of their own; none chosen follows the global order.
+      ['truck_photo_handover', 'optional', true, null],
+      ['hiring_cdl_reading', 'required', true, ['gemini']],
+    ]);
     assert.deepEqual(body.providers.map((p) => [p.providerKey, p.canSee, p.hasKey]),
       [['gemini', true, true], ['cerebras', false, true], ['anthropic', true, false]]);
     assert.equal(body.freeOnlyMode, true);

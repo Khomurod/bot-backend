@@ -162,12 +162,19 @@ stay in §4a. The provider terms watcher is
 - **Truck Photos (`truck_photo_handover`, November 2026) is one pass in the
   operator's order, not escalated to Claude.** It may only check whether a
   message that says more than `outbound` / `inbound` is about the truck (a yes
-  needs confidence ≥ 70; anything less is "could not tell", no PDF) and leave
-  out photos that are clearly not the truck (≥ 80; unsure keeps the photo).
-  Photos go eight at a time through `services/aiImagePrep.js` at 768 px, to a
-  model that can see. With no model a bare word still makes a PDF of every
-  photo and anything else makes none
-  (`docs/architecture/truck-photo-reports.md`).
+  needs confidence ≥ 70; anything less is "could not tell", no PDF) and sort
+  the photos — the truck, Wenze's hand-over form (pages at the end), or not the
+  truck (left out at ≥ 80; unsure keeps the photo). Photos go eight at a time
+  through `services/aiImagePrep.js` at 768 px, to a model that can see. With no
+  model a bare word still makes a PDF of every photo, marked NOT CHECKED BY AI
+  with the owner told, and anything else makes none. It may be given providers
+  of its own (Settings → AI → Providers for one task); none chosen follows the
+  global order (`docs/architecture/truck-photo-reports.md`).
+- **A model the provider's own listing says takes images can see** (23 November
+  2026). OpenRouter lists each model's input; the models refresh keeps
+  `vision: true` and `lib/ai/vision.js` believes it beside the name rules, so
+  OpenRouter's free Gemma 4 and Nemotron omni read photos. A name nobody knows
+  and no listing vouches for is still never shown a picture.
 - **Claude's system prompt is marked for prompt caching** (`cache_control`
   `ephemeral`), so the stable instructions of a capability are reused cheaply.
 - **Adding a known provider is: pick it, paste the key, Connect.**

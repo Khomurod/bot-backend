@@ -65,6 +65,13 @@ function payloadFor(finding) {
       }
       : null;
   }
+  if (finding.checkKey === 'identity.unit_title_mismatch') {
+    // The title's number, and the profile's as the question showed it — the
+    // action refuses when the profile no longer says that.
+    return change.groupId && change.to
+      ? { groupId: change.groupId, unitNumber: change.to, from: change.from ?? null }
+      : null;
+  }
   if (finding.checkKey === 'identity.unit_handover') {
     return change.personId && change.unitNumber && change.groupId
       ? {

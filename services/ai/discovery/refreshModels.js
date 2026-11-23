@@ -18,7 +18,7 @@
  * ("Groq retired Model A; Wenze switched to Model B") is built from those rows
  * by the maintenance job, not here.
  */
-const { reconcileChain, isChatCapable, freeStatusOf } = require('../../../lib/ai/modelSelection');
+const { reconcileChain, listingEntry } = require('../../../lib/ai/modelSelection');
 const { getCatalogEntry } = require('../../../lib/ai/providerCatalog');
 
 /**
@@ -81,9 +81,7 @@ async function refreshProviderModels(providerKey, { initiator = 'refresh', updat
   });
 
   await deps.aiProviders.saveDiscoveredModels(providerKey, {
-    models: models.map((m) => ({
-      id: m.id, contextLength: m.contextLength, chat: isChatCapable(m), free: freeStatusOf(m, providerKey),
-    })),
+    models: models.map((m) => listingEntry(m, providerKey)),
   });
 
   const changed = !r.unverified

@@ -11,14 +11,18 @@
  *     tell" — no PDF, and the recipient is told. No model at all is the same:
  *     a message that says more than the word is NEVER guessed about.
  *
- * (b) WHICH PHOTOS ARE CLEARLY NOT THE TRUCK? A bill of lading, a receipt, a
- *     screenshot, a selfie. Photos go eight at a time, through
- *     services/aiImagePrep.js (rotated, shrunk, metadata stripped — a copy;
- *     the PDF uses its own), and the router gives them only to a model that
- *     can see a picture. THE MODEL MAY ONLY EXCLUDE: an index it names that is
- *     not in the batch is ignored, it cannot add a photo, and a photo it is not
- *     sure about (or says nothing about) stays in. A batch no model could
- *     answer keeps every photo in it.
+ * (b) WHAT DOES EACH PHOTO SHOW? The truck (outside, cab, dashboard, tyres,
+ *     damage, a part), Wenze's own hand-over form, or something that is not
+ *     the truck — a document, a screenshot, a person, anything else
+ *     (lib/truckPhotos/photoKinds.js, the owner's rule of 23 November 2026).
+ *     Photos go eight at a time, through services/aiImagePrep.js (rotated,
+ *     shrunk, metadata stripped — a copy; the PDF uses its own), and the
+ *     router gives them only to a model that can see a picture. The model
+ *     only SORTS: what a sort may do is decided in photoKinds — a photo is
+ *     left out only on a sure answer, an index that is not in the batch is
+ *     ignored, and a photo it is unsure about, says nothing about, or never
+ *     saw stays in. A photo no model answered for has no verdict (null), so
+ *     the PDF can say plainly that it was NOT checked.
  *
  * Nothing a model says is written anywhere but the report's own record
  * (`ai_assisted`, `ai_provider`) — never a driver's record, never the PDF.
@@ -29,13 +33,14 @@
 const { AiUnavailableError, runCapability } = require('../ai/router');
 const { prepareImageForAi } = require('../aiImagePrep');
 const { sanitizeForPrompt } = require('../../lib/ai/untrustedText');
+const { confidenceOf, kindOf } = require('../../lib/truckPhotos/photoKinds');
 
 const CAPABILITY = 'truck_photo_handover';
 /** A yes or a no must be at least this sure; anything less is "could not tell". */
 const CONFIDENT = 70;
-/** A photo is left out only when the model is at least this sure it is not the truck. */
-const EXCLUDE_CONFIDENCE = 80;
 const BATCH_SIZE = 8;
+/** The model's few words about a photo, kept for the record — never more. */
+const WHAT_MAX_CHARS = 40;
 /** Telling a truck from a document needs far less than the PDF's 1600 px. */
 const AI_IMAGE_DIMENSION = 768;
 const FENCE = 'group_message';
@@ -54,24 +59,29 @@ const TEXT_SYSTEM = [
 ].join('\n');
 
 const PHOTO_SYSTEM = [
-  'You check photos sent in a trucking company\'s driver chat when a truck is handed over or returned.',
-  'Most of them show the truck or trailer: outside, the cab inside, tires, damage, lights, the',
-  'dashboard, the odometer, a VIN or unit number. For each photo, say whether it shows the truck',
-  '(or the trailer, or a part of either).',
-  'Answer truck=false ONLY when the photo is clearly something else: a document or paper (bill of',
-  'lading, receipt, invoice, licence, a form), a screenshot of a phone or computer screen, a selfie',
-  'or a photo of a person, or something unrelated to the vehicle.',
-  'A dark, blurry or close-up photo of the truck is truck=true. When unsure, truck=true.',
+  'You sort photos sent in a US trucking company\'s driver chat when a truck is handed over to a',
+  'driver or returned. For each photo choose ONE type:',
+  '  truck_outside  the truck or trailer from outside: sides, front, back, lights, mirrors, the unit number',
+  '  cab_inside     the cab inside: seats, bunk, floor, steering wheel, the view out of the windshield',
+  '  dashboard      the dashboard, gauges, the odometer or mileage screen, warning lights',
+  '  tires_wheels   tires, wheels, rims',
+  '  damage         a close-up of damage on the truck or trailer',
+  '  truck_part     any other part of the truck or trailer (engine, VIN plate, fifth wheel, the keys)',
+  '  handover_form  the company\'s OWN hand-over form, filled in by hand: titled "Truck Equipment &',
+  '                 Check-In Form", with the WENZE logo, the driver\'s name, the unit number, an',
+  '                 equipment checklist and signatures',
+  '  document       ANY other paper or form: permits, registration or cab cards, insurance, IFTA or',
+  '                 tax papers, manuals, inspection reports, a blank form, a bill of lading, a receipt,',
+  '                 an invoice, a service order, a licence, a binder or its cover',
+  '  screenshot     a screenshot of a phone or computer screen (an app, a map, a delivery order)',
+  '  person         a selfie or a photo of a person',
+  '  other          anything else that is not the truck',
+  'A dark, blurry or close-up photo of the truck is still the truck. When unsure whether a photo shows',
+  'the truck, choose a truck type.',
   '',
   'Answer with JSON only:',
-  '{"photos":[{"index":0,"truck":true,"what":"one or two words","confidence":0-100}]}',
+  '{"photos":[{"index":0,"type":"truck_outside","what":"two or three words","confidence":0-100}]}',
 ].join('\n');
-
-function confidenceOf(value) {
-  const n = Number(String(value ?? '').replace('%', ''));
-  if (!Number.isFinite(n)) return null;
-  return n > 0 && n <= 1 ? n * 100 : n;
-}
 
 /** Shape only; what the answer may DO is decided below. */
 function validateHandover(_text, parsed) {
@@ -123,41 +133,52 @@ async function readHandover({ text, kind }, deps = {}) {
   }
 }
 
-/** The indices of one batch's answer that the model is sure are NOT the truck. */
-function exclusionsFrom(parsed, batchLength) {
-  const out = new Set();
+/**
+ * One batch's answer, as verdicts by batch label: `{kind, what, confidence}`.
+ * A label outside the batch, or a kind that is not one of ours, is no verdict.
+ */
+function verdictsFrom(parsed, batchLength) {
+  const out = new Map();
   for (const item of Array.isArray(parsed?.photos) ? parsed.photos : []) {
     const index = Number(item?.index);
-    if (!Number.isInteger(index) || index < 0 || index >= batchLength) continue;
-    const notTruck = item?.truck === false || String(item?.truck).toLowerCase() === 'false';
-    if (notTruck && (confidenceOf(item?.confidence) ?? 0) >= EXCLUDE_CONFIDENCE) out.add(index);
+    if (!Number.isInteger(index) || index < 0 || index >= batchLength || out.has(index)) continue;
+    const kind = kindOf(item?.type);
+    if (!kind) continue;
+    out.set(index, {
+      kind,
+      what: String(item?.what ?? '').replace(/\s+/g, ' ').trim().slice(0, WHAT_MAX_CHARS) || null,
+      confidence: confidenceOf(item?.confidence),
+    });
   }
   return out;
 }
 
 /**
- * (b) Which photos are clearly not the truck?
+ * (b) What does each photo show?
  *
  * @param {Buffer[]} jpegs  the photos, in PDF order
- * @param {{deadlineAt?: number}} [options]  past it, no more batches are asked: the rest stay in
- * @returns {Promise<{excluded: Set<number>, answered: number, providers: string[]}>}
- *   `excluded` holds indices into `jpegs`; `answered` counts the batches a model answered
+ * @param {{deadlineAt?: number}} [options]  past it, no more batches are asked: the rest stay unchecked
+ * @returns {Promise<{verdicts: Array<{kind, what, confidence}|null>, answered: number,
+ *   providers: string[], stopped: 'unavailable'|'deadline'|null}>}
+ *   `verdicts[i]` is null for a photo no model answered for; `answered` counts
+ *   the batches a model answered; `stopped` says why photos were left unchecked
  */
-async function filterPhotos(jpegs, { deadlineAt = Infinity } = {}, deps = {}) {
+async function sortPhotos(jpegs, { deadlineAt = Infinity } = {}, deps = {}) {
   const run = deps.runCapability || runCapability;
   const prepare = deps.prepareImage || prepareImageForAi;
-  const excluded = new Set();
+  const verdicts = jpegs.map(() => null);
   const providers = new Set();
   let answered = 0;
+  let stopped = null;
   for (let offset = 0; offset < jpegs.length; offset += BATCH_SIZE) {
-    if (Date.now() > deadlineAt) break;
+    if (Date.now() > deadlineAt) { stopped = 'deadline'; break; }
     const batch = jpegs.slice(offset, offset + BATCH_SIZE);
     const parts = [];
     const shown = []; // batch index → the label the model saw
     for (let i = 0; i < batch.length; i += 1) {
       // eslint-disable-next-line no-await-in-loop
       const small = await prepare(batch[i], { maxDimension: AI_IMAGE_DIMENSION, mimeType: 'image/jpeg' });
-      if (!small) continue; // not shown, so it cannot be excluded: it stays in
+      if (!small) continue; // not shown, so not checked: it stays in
       shown.push(i);
       parts.push({ text: `Photo ${shown.length - 1}:` });
       parts.push({ inline_data: { mime_type: small.mimeType, data: small.buffer.toString('base64') } });
@@ -176,27 +197,31 @@ async function filterPhotos(jpegs, { deadlineAt = Infinity } = {}, deps = {}) {
       });
     } catch (err) {
       if (!isUnavailable(err)) console.warn('[TRUCK PHOTOS] the photo check failed:', err?.message || String(err));
-      // No model now is no model for the next batch either: every photo stays.
+      // No model now is no model for the next batch either: the rest stay unchecked.
+      stopped = 'unavailable';
       break;
     }
     answered += 1;
     if (answer?.provider) providers.add(answer.provider);
     if (answer?.uncertain) continue;
-    for (const label of exclusionsFrom(answer?.parsed, shown.length)) excluded.add(offset + shown[label]);
+    for (const [label, verdict] of verdictsFrom(answer?.parsed, shown.length)) {
+      verdicts[offset + shown[label]] = verdict;
+    }
   }
-  return { excluded, answered, providers: [...providers] };
+  return {
+    verdicts, answered, providers: [...providers], stopped,
+  };
 }
 
 module.exports = {
   CAPABILITY,
   CONFIDENT,
-  EXCLUDE_CONFIDENCE,
   BATCH_SIZE,
   TEXT_SYSTEM,
   PHOTO_SYSTEM,
   readHandover,
-  filterPhotos,
-  exclusionsFrom,
+  sortPhotos,
+  verdictsFrom,
   validateHandover,
   validatePhotos,
 };

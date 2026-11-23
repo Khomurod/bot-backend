@@ -174,7 +174,10 @@ function stubAi({ providers, listing, failFirstModel = false }) {
   require.cache[PROVIDERS] = {
     exports: {
       async getProvidersForRouter() { reads.providers += 1; return providers.map((p) => ({ ...p })); },
-      async getDiscoveredModelIdsForRouter() { reads.listing += 1; return new Map(listing); },
+      async getDiscoveredListingForRouter() {
+        reads.listing += 1;
+        return new Map(listing.map(([key, ids]) => [key, { ids, visionIds: [] }]));
+      },
       async recordSuccess() {},
       async recordFailure(key) { reads.cooled.push(key); },
     },

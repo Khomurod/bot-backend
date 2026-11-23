@@ -75,13 +75,32 @@ test message has reached them.
    (four PDFs) per word — each is held in memory until its PDF is sent — the
    latest kept, and the cover says how many earlier ones were left out.
 7. **The cover** (English, `lib/truckPhotos/pdfLayout.js`): OUTBOUND or
-   INBOUND; the driver; the truck as Wenze knows it — number, fleet and owner
+   INBOUND; the driver; the truck — number, fleet and owner
    (`lib/drivers/truckIdentity.js`: by the truck an owner-operator, by the
    driver a company driver); the chat; when it was marked (America/Chicago);
-   who marked it; photos N (excluded M). An **inbound** cover says
+   who marked it; photos N (excluded M); "Hand-over form: 1 page, at the end";
+   "Left out by AI: 25 documents, 1 screenshot". An **inbound** cover says
    "Outbound on <date>, <n> photos" — the group's last *delivered* outbound — or
    "No outbound on record". Every string is made printable by the PDF's built-in
    font (Cyrillic in Latin letters, emoji dropped).
+
+   **THE TRUCK NUMBER IS THE CHAT TITLE'S** (the owner, 23 November 2026, after
+   two PDFs named 088 for 027 and 326 for 327 — `lib/truckPhotos/truckNumber.js`).
+   A profile is seeded from the title the first time Wenze sees the chat and
+   never follows a rename, and both chats had been renamed minutes after they
+   were made. So the cover takes the title's number (the profile's when it is
+   the same number with a letter after it, `001A` for `001`; the profile's when
+   the title has none; the Dispatcher Board's when neither has one and the
+   Board names this driver on exactly one truck), and names every source that
+   says something else: "Truck: 327 - Company (profile says 326, Board says
+   3731 V - please check)". The Board is matched by the driver's NAME (the
+   board match's strict rule), never by number; a Board that cannot be read is
+   checked against nothing. The profile's fleet and owner describe the
+   profile's truck, so another number gets the driver type's fleet and no
+   owner. The PDF never changes the profile: that is the
+   `identity.unit_title_mismatch` question in Needs Attention, which now has a
+   Yes (`profile.set_unit` — the profile's number changes only on a person's
+   Yes, because the map and `/location` read it).
 8. **Failures go to the recipient, privately, in fixed words**
    (`lib/truckPhotos/failureText.js`): no photos, only photos already sent,
    every photo left out, "could not tell", no model to ask, nothing could be
@@ -125,7 +144,7 @@ chat and the time instead.
   number, length, time and sender, and the link as a real link annotation.
 - The cover says "Videos: N", the caption and an inbound's "Outbound on" count
   photos and videos, and `truck_photo_reports.video_count` keeps the number.
-- **The model never sees a video**; the photo filter is unchanged.
+- **The model never sees a video**; only photos are sorted.
 - **Videos alone make a PDF** (a cover and the videos page). Photos that could
   not be downloaded do not cost the videos their PDF.
 - At most 60 videos per word.
@@ -141,16 +160,44 @@ Capability **`truck_photo_handover`** (Settings → AI → AI Tasks; verdict in
   (confidence ≥ 70) makes a PDF; a sure no is recorded as `not_a_handover` and
   nothing is sent; anything else is `unclear` — no PDF, and the recipient is
   told "could not tell".
-- **(b) Which photos are clearly not the truck** — a bill of lading, a receipt,
-  a screenshot, a selfie. Eight at a time, each through
-  `services/aiImagePrep.js` (a smaller copy; the PDF uses its own), as image
-  parts the router gives only to a model that can see. **It may only exclude:**
-  an index outside the batch is ignored, a photo is left out only at
-  confidence ≥ 80, a photo it is unsure about or says nothing about stays in.
+- **(b) What each photo shows** (`services/truckPhotos/aiCheck.js`
+  `sortPhotos`). THE OWNER'S RULE (23 November 2026, after an OUTBOUND PDF of 39
+  photos held 11 of the truck, 26 of the papers in the truck's binder and a
+  pizza order — `lib/truckPhotos/photoKinds.js`, `pagePlan.js`):
+  - **the truck** goes in — outside, cab, dashboard, tyres, damage, any part;
+  - **Wenze's own hand-over form** ("Truck Equipment & Check-In Form", filled
+    in and signed) goes in on its **own pages at the end**, captioned
+    "Hand-over form 1 of 1";
+  - **every other paper is left out, always** — permits, registration,
+    insurance, IFTA, manuals, inspection reports, a blank form, a receipt —
+    and so are screenshots, people and anything else not about the truck.
+
+  Eight at a time, each through `services/aiImagePrep.js` (a smaller copy; the
+  PDF uses its own), as image parts the router gives only to a model that can
+  see. **The model only sorts; the rules decide:** an index outside the batch
+  or a type that is not one of ours is no verdict, a photo is left out only at
+  confidence ≥ 80, a form goes to the end at ≥ 70, and a photo it is unsure
+  about, says nothing about, or never saw stays with the truck photos.
+- **"NOT CHECKED BY AI"** (the owner, 23 November 2026: "send it with a mark and
+  tell me right away"). From 18 to 23 November every photo went in unchecked —
+  the Claude key was rejected, Gemini's credit was spent, and no free model in
+  the chain was known to see pictures — and nobody was told. Now photos no
+  model looked at still go in, the cover says in bold "NOT CHECKED BY AI: all
+  39 photos." (or "5 of 39") and so does the caption, the report's reason says
+  so, and the owner gets ONE notice for that report
+  (`services/truckPhotos/uncheckedNotice.js`, category `system_errors`, words
+  only — never a provider's raw error).
+- **Which models can see** (`lib/ai/vision.js`): a family the name rules know,
+  OR a model the provider's own listing says takes images — OpenRouter lists
+  each model's input, and the models refresh keeps `vision: true`
+  (`lib/ai/modelSelection.js` `listingEntry`), so OpenRouter's free Gemma 4 and
+  Nemotron omni now read the photos. The task may be given providers of its own
+  in Settings → AI → Providers for one task (`providerChoice: 'optional'`: none
+  chosen follows the global order).
 - **No model** (none configured, the capability switched off, every provider
-  failing): a **bare word** still makes a PDF of **every** photo, unfiltered; a
-  word with more around it makes **no PDF** and the recipient is told Wenze did
-  not guess.
+  failing): a **bare word** still makes a PDF of **every** photo, marked NOT
+  CHECKED BY AI, and the owner is told; a word with more around it makes **no
+  PDF** and the recipient is told Wenze did not guess.
 - It **cannot** add a photo, write a word in the PDF or the group, choose the
   recipient, or touch a driver's record. `truck_photo_reports.ai_assisted` is
   written explicitly on every row (FALSE at the claim), with `ai_provider`.
@@ -192,7 +239,8 @@ and the hourly pass; `blocked` while switched off.
 ## Tests
 
 `tests/truckPhotoTrigger.test.js`, `truckPhotoWhoMayMark`, `truckPhotoSelect`,
-`truckPhotoChunk`, `truckPhotoLayout`, `truckPhotoCapture`,
+`truckPhotoChunk`, `truckPhotoLayout`, `truckPhotoKindsAndNumber`,
+`truckPhotoUncheckedNotice`, `aiVisionListing`, `truckPhotoCapture`,
 `truckPhotoTriggerHandler`, `truckPhotoAiCheck`, `truckPhotoPipeline`,
 `truckPhotoPipelineVideos`, `truckPhotoVideoLinks`, `truckPhotoPdf` and
 `truckPhotoPdfVideos` (real pdf-lib and sharp), `truckPhotoSweep`,

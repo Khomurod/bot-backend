@@ -27,7 +27,7 @@ const { getRoster } = require('../ai/registry');
 const { isCapabilityEnabled } = require('../ai/capabilityGate');
 const { providerOrderFor } = require('../ai/capabilityProviders');
 const { prepareImagePartForAi } = require('../aiImagePrep');
-const { isVisionModel } = require('../../lib/ai/vision');
+const { providerModelCanSee } = require('../../lib/ai/vision');
 const { ANSWER_SHAPE, readCdlAnswer } = require('../../lib/hiringStages/cdlFields');
 
 const CAPABILITY = 'hiring_cdl_reading';
@@ -85,7 +85,7 @@ async function cdlReadiness() {
   const freeOnly = roster?.settings?.freeOnlyMode === true;
   const askable = (roster?.providers || []).filter((p) => order.includes(p.providerKey)
     && p.enabled === true && Boolean(p.apiKey) && (!freeOnly || p.isFree === true)
-    && (p.modelChain || []).some((m) => isVisionModel(p.adapter, m)));
+    && (p.modelChain || []).some((m) => providerModelCanSee(p, m)));
   return askable.length ? 'ready' : 'no_provider';
 }
 

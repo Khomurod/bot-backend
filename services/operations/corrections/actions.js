@@ -325,8 +325,9 @@ const ACTIONS = new Map([
   [syncUnitFleet.key, syncUnitFleet],
   [setTruckFromBoard.key, setTruckFromBoard],
   [setDriverType.key, setDriverType],
-  // No check of their own: reached only through a change the owner confirmed
-  // in their own words (lib/control/changeCatalogue.js).
+  // Reached through a change the owner confirmed in their own words
+  // (lib/control/changeCatalogue.js); `profile.set_unit` also answers
+  // `identity.unit_title_mismatch` on a person's Yes.
   [setUnit.key, setUnit],
   [setTruck.key, setTruck],
   [handOverUnit.key, handOverUnit],
@@ -349,6 +350,8 @@ const CHECK_TO_ACTION = new Map([
   ['identity.stale_unit_assignment', syncUnit.key],
   ['identity.unit_fleet_behind_profile', syncUnitFleet.key],
   ['identity.truck_from_board', setTruckFromBoard.key],
+  // Approval only: the profile's truck number changes on a person's Yes.
+  ['identity.unit_title_mismatch', setUnit.key],
   ['fleet.driver_type_differs_datatruck', setDriverType.key],
   ['identity.unit_handover', handOverUnit.key],
   ['home_time.clock_reset_on_group_change', carryRoadClock.key],

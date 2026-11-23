@@ -174,7 +174,7 @@ async function getProvidersForRouter() {
   // listing a provider last returned, about 43 KB for OpenRouter's 469 models —
   // and this runs whenever the router's cache expires. The router needs only
   // the ids out of it, and those change only when a refresh writes them, so
-  // they are read separately (`getDiscoveredModelIdsForRouter`) and cached far
+  // they are read separately (`getDiscoveredListingForRouter`) and cached far
   // longer by services/ai/registry.js.
   const res = await query(
     `SELECT provider_key, adapter, enabled, priority, is_free, base_url, model_chain, catalog_key,
@@ -201,25 +201,33 @@ async function getProvidersForRouter() {
 }
 
 /**
- * The model ids each enabled provider last listed, keyed by provider — ids
- * only, extracted in SQL so the listing itself never leaves the database.
+ * What each enabled provider last listed, keyed by provider — model ids, and
+ * the ids it said take pictures (`vision: true`, lib/ai/modelSelection.js
+ * `listingEntry`) — extracted in SQL so the listing itself never leaves the
+ * database.
  *
- * What the provider itself last said exists. The router uses it to drop a
- * caller's preferred model that is no longer listed; empty means unknown.
+ * What the provider itself last said exists. The router uses the ids to drop a
+ * caller's preferred model that is no longer listed (empty means unknown), and
+ * the vision ids to let a picture go to a model no name rule knows
+ * (lib/ai/vision.js).
+ *
+ * @returns {Promise<Map<string, {ids: string[], visionIds: string[]}>>}
  */
-async function getDiscoveredModelIdsForRouter() {
+async function getDiscoveredListingForRouter() {
+  const listed = `jsonb_array_elements(CASE WHEN jsonb_typeof(discovered_models) = 'array'
+                                            THEN discovered_models ELSE '[]'::jsonb END)`;
   const res = await query(
     `SELECT provider_key,
-            ARRAY(
-              SELECT m->>'id'
-                FROM jsonb_array_elements(
-                       CASE WHEN jsonb_typeof(discovered_models) = 'array'
-                            THEN discovered_models ELSE '[]'::jsonb END) AS m
-               WHERE COALESCE(m->>'id', '') <> ''
-            ) AS ids
+            ARRAY(SELECT m->>'id' FROM ${listed} AS m
+                   WHERE COALESCE(m->>'id', '') <> '') AS ids,
+            ARRAY(SELECT m->>'id' FROM ${listed} AS m
+                   WHERE COALESCE(m->>'id', '') <> '' AND m->>'vision' = 'true') AS vision_ids
        FROM ai_providers WHERE enabled = TRUE`
   );
-  return new Map(res.rows.map((row) => [row.provider_key, Array.isArray(row.ids) ? row.ids : []]));
+  return new Map(res.rows.map((row) => [row.provider_key, {
+    ids: Array.isArray(row.ids) ? row.ids : [],
+    visionIds: Array.isArray(row.vision_ids) ? row.vision_ids : [],
+  }]));
 }
 
 /**
@@ -456,7 +464,7 @@ module.exports = {
   listProvidersForAdmin,
   summariseProvidersForHealth,
   getProvidersForRouter,
-  getDiscoveredModelIdsForRouter,
+  getDiscoveredListingForRouter,
   getProviderSecretsByKey,
   upsertProvider,
   setProviderOrder,
