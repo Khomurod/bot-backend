@@ -46,7 +46,10 @@ listed separately at the end because it needs far less care.
    `lib/ai/escalation.js`, a free model's answer under 85% confidence — or one
    that says "unclear", or gives no confidence — is asked again of Claude
    (Sonnet, then Haiku), then of another paid model if Claude is unreachable.
-   An answer still unsure comes back marked `uncertain`. The readings that
+   An answer still unsure comes back marked `uncertain`. A decision on
+   `PAID_ONLY` — Safety's hire decision, since a free model read "if CLH is
+   clean we can hire" as APPROVED on 27 November 2026 — skips the free models
+   altogether. The readings that
    decide on their own — `control_reply_reading`, `safety_approval_reading`,
    `hiring_stage_reading`, `hiring_cdl_reading`, `recruiting_knowledge_reading` —
    treat that exactly like rule 2's third answer. A task with providers of its

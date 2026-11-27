@@ -16,6 +16,9 @@
  *
  * IN GENERAL, the bot asks Safety which driver a decision is about when it
  * could not tell — once, as a reply to Safety's message.
+ *
+ * A POST SAFETY WITHDREW is re-captioned in place (recaptionDecision): the
+ * only edit the bot ever makes, and never a new message.
  */
 
 const MAX_ALBUM = 10;
@@ -63,6 +66,43 @@ async function postDecision(telegram, {
   return (Array.isArray(sent) ? sent : []).map((m) => m.message_id);
 }
 
+/** Telegram's answer to an edit that changes nothing: the post already says it. */
+const NOT_MODIFIED = /message is not modified/i;
+/** Telegram's answer when the message has no caption: it was posted as text. */
+const NO_CAPTION = /no caption|message can't be edited|there is no media/i;
+
+/**
+ * Re-caption the bot's own post in the approvals topic (a decision Safety
+ * withdrew). The caption is on the post's first message; a post without
+ * pictures is a text message. Edits only — nothing new is sent.
+ *
+ * @throws when Telegram refused
+ */
+async function recaptionDecision(telegram, {
+  chatId, messageId, caption, asText = null,
+}) {
+  const extra = { parse_mode: 'HTML' };
+  const editText = () => telegram.editMessageText(chatId, messageId, undefined, caption, {
+    ...extra, link_preview_options: { is_disabled: true },
+  });
+  try {
+    if (asText === true) await editText();
+    else await telegram.editMessageCaption(chatId, messageId, undefined, caption, extra);
+  } catch (err) {
+    if (NOT_MODIFIED.test(String(err?.message || ''))) return;
+    // Not known whether it was a caption or a text: try the other once.
+    if (asText === null && NO_CAPTION.test(String(err?.message || ''))) {
+      try {
+        await editText();
+      } catch (again) {
+        if (!NOT_MODIFIED.test(String(again?.message || ''))) throw again;
+      }
+      return;
+    }
+    throw err;
+  }
+}
+
 const ASK = Object.freeze({
   which_driver: '❓ <b>Which driver is this about?</b>\nI could not tell from the conversation. '
     + 'Please reply to the driver\'s post with <b>#Approved</b> or <b>#NotApproved</b>.',
@@ -96,6 +136,7 @@ async function askSafety(telegram, {
 
 module.exports = {
   postDecision,
+  recaptionDecision,
   askSafety,
   mediaFor,
   ASK,

@@ -326,3 +326,41 @@ test('with chat messages, the lessons come after the caller\'s own system messag
   }, 'LESSONS');
   assert.deepEqual(out.messages.map((m) => m.content), ['rules A', 'rules B', 'LESSONS', 'hi']);
 });
+
+// ── Safety's hire decision: never a free model (owner, 27 November 2026) ──
+const safety = { capability: 'safety_approval_reading', systemText: 'Read it. Answer with JSON only.', userText: 'x', expects: 'json' };
+
+test('SAFETY\'S DECISION skips the free models: Claude first, and its answer stands', async () => {
+  const { router, calls } = loadRouter({
+    providers: [groq(), claude()],
+    respond: byAdapter({
+      openai_chat: { candidates: [], decisions: [{ name: 'A B', decision: 'approved' }], confidence: 99 },
+      anthropic: { candidates: [], decisions: [{ name: 'A B', decision: 'unclear' }], confidence: 90 },
+    }),
+  });
+  const out = await router.runCapability(safety);
+  assert.equal(out.stage, 'claude');
+  assert.ok(calls.every((c) => c.adapter === 'anthropic'), 'the free model, sure as it would be, is never asked');
+});
+
+test('SAFETY\'S DECISION with Claude down: another paid model; none: an outage, never a free model', async () => {
+  const down = Object.assign(new Error('401 invalid key'), { status: 401 });
+  const strong = loadRouter({
+    providers: [groq(), claude(), paid()],
+    respond: (args) => {
+      if (args.adapter === 'anthropic') throw down;
+      return json({ candidates: [], decisions: [], confidence: 90 });
+    },
+  });
+  const viaStrong = await strong.router.runCapability(safety);
+  assert.equal(viaStrong.stage, 'strong');
+  assert.ok(strong.calls.every((c) => c.model !== 'llama'));
+
+  const freeOnly = loadRouter({ providers: [groq(), claude()], respond: (args) => { if (args.adapter === 'anthropic') throw down; return json({ decisions: [], confidence: 99 }); } });
+  await assert.rejects(freeOnly.router.runCapability(safety), (err) => err.aiUnavailable === true);
+  assert.ok(freeOnly.calls.every((c) => c.adapter === 'anthropic'), 'the caller waits and tries again instead');
+
+  const asText = loadRouter({ providers: [groq(), claude()], respond: () => ({ text: 'ok', model: null, payload: {}, usage: null }) });
+  await asText.router.runCapability({ ...safety, expects: 'text' });
+  assert.ok(asText.calls.every((c) => c.adapter === 'anthropic'), 'asked any other way, still never free');
+});

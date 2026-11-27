@@ -191,3 +191,37 @@ test('0077: a decision with no post yet, the messages before it, and who a forwa
     const fwd = await messages.getMessage(CHAT, 30);
     assert.deepEqual([fwd.forwardedFromUserId, fwd.forwardedFromName], ['777', 'Amelia Carter']);
   });
+
+test('0112: the bot\'s own post is found by any of its messages, and a withdrawal is the driver\'s latest decision',
+  { skip: skipWithoutPg() }, async (t) => {
+    const { h, reviews } = await setup(t);
+    const base = { chatId: CHAT, postMessageId: 10, driverKey: 'renata ilves', driverName: 'Renata Ilves', reviewId: null };
+    const approved = await reviews.reserveAnnouncement({ ...base, decision: 'approved' });
+    assert.equal(await reviews.findAnnouncementByTopicMessage(CHAT, 701), null, 'not sent yet: not the bot\'s post');
+    await reviews.completeAnnouncement(approved.id, [700, 701]);
+
+    const found = await reviews.findAnnouncementByTopicMessage(CHAT, 701);
+    assert.equal(found.id, approved.id);
+    assert.deepEqual(found.topicMessageIds, [700, 701]);
+    assert.equal(found.postMessageId, 10);
+    assert.equal(await reviews.findAnnouncementByTopicMessage('-100999', 701), null, 'another chat');
+    assert.equal(await reviews.findAnnouncementByTopicMessage(CHAT, 10), null, 'the driver\'s post is not the bot\'s');
+
+    const withdrawn = await reviews.reserveAnnouncement({ ...base, decision: 'withdrawn' });
+    assert.ok(withdrawn, 'the widened check takes it');
+    await reviews.completeAnnouncement(withdrawn.id, [700]);
+    assert.equal((await reviews.latestAnnouncement(CHAT, 10, 'renata ilves')).decision, 'withdrawn');
+    assert.equal((await reviews.findAnnouncementByTopicMessage(CHAT, 700)).decision, 'withdrawn', 'the newest row for that message');
+    assert.equal(await reviews.reserveAnnouncement({ ...base, decision: 'withdrawn' }), null, 'once');
+    assert.ok(await reviews.reserveAnnouncement({ ...base, decision: 'approved' }), 'the real decision posts again');
+    const kept = await h.pool.query('SELECT COUNT(*)::int AS n FROM safety_approval_announcements');
+    assert.equal(kept.rows[0].n, 3, 'nothing deleted');
+
+    await assert.rejects(
+      () => h.pool.query("INSERT INTO safety_approval_announcements (chat_id, post_message_id, driver_key, driver_name, decision) VALUES ('c', 1, 'k', 'n', 'maybe')"),
+      /violates check constraint/,
+    );
+    await h.pool.query(
+      "INSERT INTO safety_approval_reviews (chat_id, safety_key, status) VALUES ($1, 'message:30', 'withdrawn')", [CHAT],
+    );
+  });

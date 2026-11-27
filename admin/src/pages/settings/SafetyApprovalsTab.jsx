@@ -264,7 +264,8 @@ export default function SafetyApprovalsTab() {
 const STATUS = {
   pending: "Waiting to be read",
   published: "Posted",
-  unclear: "Not clear — nothing posted; Safety was asked in General",
+  unclear: "Not a decision — nothing posted (Safety was asked in General when the driver was unclear)",
+  withdrawn: "Withdrawn by Safety — the bot's post was marked WITHDRAWN",
   no_post: "Not read (switched off, or an old post the bot never saw)",
   gave_up: "Could not post",
 };

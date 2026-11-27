@@ -61,6 +61,11 @@ stub('database/safetyApprovals/reviews.js', {
     state.announcements.find((a) => a.id === id).topicMessageIds = ids;
   },
   releaseAnnouncement: async (id) => { state.announcements = state.announcements.filter((a) => a.id !== id); },
+  // The bot's own posts in the topic (a reply to one is Safety answering the bot).
+  findAnnouncementByTopicMessage: async (chatId, messageId) => state.announcements
+    .filter((a) => a.chatId === chatId && (a.topicMessageIds || []).includes(Number(messageId))).at(-1) || null,
+  latestAnnouncement: async (chatId, postMessageId, driverKey) => state.announcements
+    .filter((a) => a.chatId === chatId && a.postMessageId === postMessageId && a.driverKey === driverKey).at(-1) || null,
 });
 
 const { processReview } = require('../../services/safetyApprovals/reviewer');
@@ -105,6 +110,14 @@ function fakeTelegram() {
     sendDocument: async (chatId, doc, extra) => { calls.push({ kind: 'doc', chatId, doc, extra }); return { message_id: (next += 1) }; },
     sendPhoto: async (chatId, photo, extra) => { calls.push({ kind: 'photo', chatId, photo, extra }); return { message_id: (next += 1) }; },
     sendMessage: async (chatId, text, extra) => { calls.push({ kind: 'text', chatId, text, extra }); return { message_id: (next += 1) }; },
+    editMessageCaption: async (chatId, messageId, _inline, caption, extra) => {
+      calls.push({ kind: 'edit_caption', chatId, messageId, caption, extra });
+      return true;
+    },
+    editMessageText: async (chatId, messageId, _inline, text, extra) => {
+      calls.push({ kind: 'edit_text', chatId, messageId, text, extra });
+      return true;
+    },
   };
 }
 

@@ -33,8 +33,15 @@ stub('database/safetyApprovals/messages.js', {
   },
   getMediaGroup: async (chatId, mg) => stored.filter((r) => r.mediaGroupId === mg),
 });
+/** The bot's own posts in the approvals topic, by message id. */
+let botPosts = new Set();
+let lookups = 0;
 stub('database/safetyApprovals/reviews.js', {
   enqueueReview: async (r) => { queued.push(r); return { id: queued.length, ...r }; },
+  findAnnouncementByTopicMessage: async (chatId, id) => {
+    lookups += 1;
+    return botPosts.has(Number(id)) ? { id: 1, chatId, topicMessageIds: [Number(id)] } : null;
+  },
 });
 stub('services/safetyApprovals/worker.js', { wakeSafetyApprovalWorker: () => {} });
 
@@ -46,7 +53,7 @@ let wakes = 0;
 const capture = (message) => captureSafetyApprovalMessage(message, { wake: () => { wakes += 1; } });
 
 function reset() {
-  stored = []; queued = []; marked = []; wakes = 0; failUpsert = false;
+  stored = []; queued = []; marked = []; wakes = 0; failUpsert = false; botPosts = new Set(); lookups = 0;
   __resetForTests();
 }
 
@@ -116,6 +123,19 @@ test('NO TOKENS FOR CHATTER: "on it", "CLH sent", a recruiter, and bots queue no
   await capture(message({ message_id: 33, from: { id: 777, is_bot: true }, text: '#Approved', reply_to_message: { message_id: 10 } }));
   assert.equal(queued.length, 0);
   assert.equal(stored.length, 3, 'a bot\'s message is not stored');
+  assert.equal(lookups, 2, 'only Safety\'s two replies were looked up, once each');
+});
+
+test('ANY Safety answer to the BOT\'S OWN POST is queued — "not yet" carries no decision word', async () => {
+  reset();
+  botPosts = new Set([681]);
+  const out = await capture(message({ message_id: 40, from: { id: 900 }, text: 'not yet', reply_to_message: { message_id: 681 } }));
+  assert.equal(out.queued, true);
+  assert.equal(queued[0].postMessageId, 681);
+  assert.equal(queued[0].safetyKey, 'message:40');
+  const chatter = await capture(message({ message_id: 41, from: { id: 500 }, text: 'not yet', reply_to_message: { message_id: 681 } }));
+  assert.deepEqual(chatter, { captured: true }, 'a recruiter answering the bot is not Safety');
+  assert.equal(queued.length, 1);
 });
 
 test('a database failure is a reason, never an exception at the bot', async () => {
