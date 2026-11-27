@@ -69,23 +69,31 @@ async function getOpenHomeStay(groupId) {
  * Rows with no person fall back to the group alone, so nothing changes for a
  * driver the layer has not met.
  */
-async function listOpenHomeStays(groupId) {
-  // A stay on this chat that names a DIFFERENT person is the previous
-  // occupant's — the chat was handed on — and the new driver's return must
-  // not close it. The chat-only branch therefore covers unstamped rows (and
-  // every row when the chat has no person at all), never another driver's.
-  const res = await query(
-    `WITH current_person AS (
+/**
+ * The rows that are THIS group's driver's, as a CTE and a predicate on `h`
+ * (`$1` = the group). A stay on this chat that names a DIFFERENT person is the
+ * previous occupant's — the chat was handed on — and the new driver's return
+ * must not close it. The chat-only branch therefore covers unstamped rows (and
+ * every row when the chat has no person at all), never another driver's.
+ * Shared with database/homeTime/briefVisits.js, which must find the same
+ * driver's stays the same way.
+ */
+const CURRENT_PERSON_CTE = `current_person AS (
        SELECT person_id FROM driver_person_groups WHERE group_id = $1 AND ended_at IS NULL LIMIT 1
-     )
-     SELECT h.* FROM driver_road_history h
-      WHERE h.return_to_road_at IS NULL
-        AND (
+     )`;
+const THIS_DRIVERS_ROW = `(
           (h.group_id = $1 AND (h.person_id IS NULL
                                 OR h.person_id = (SELECT person_id FROM current_person)
                                 OR NOT EXISTS (SELECT 1 FROM current_person)))
           OR h.person_id = (SELECT person_id FROM current_person)
-        )
+        )`;
+
+async function listOpenHomeStays(groupId) {
+  const res = await query(
+    `WITH ${CURRENT_PERSON_CTE}
+     SELECT h.* FROM driver_road_history h
+      WHERE h.return_to_road_at IS NULL
+        AND ${THIS_DRIVERS_ROW}
       ORDER BY h.home_arrived_at DESC, h.id DESC`,
     [groupId]
   );
@@ -137,6 +145,9 @@ async function listCyclesForEfficiency({ sinceIso = null } = {}) {
      LEFT JOIN driver_profiles dp ON dp.group_id = h.group_id
      LEFT JOIN home_time_requests req ON req.id = h.linked_request_id
      WHERE ($1::timestamptz IS NULL OR h.home_arrived_at >= $1)
+       -- A brief visit folded into its road trip is not a cycle: the trip it
+       -- interrupted is recorded whole by the next real arrival.
+       AND h.folded_at IS NULL
      ORDER BY h.home_arrived_at DESC`,
     [sinceIso]
   );
@@ -189,7 +200,10 @@ async function claimRoadBonusPost(id) {
  * Legs whose home stay has ended and whose bonus is still waiting on it — the
  * ones the poller can now decide.
  */
-async function listRoadBonusesAwaitingDecision({ limit = 100 } = {}) {
+async function listRoadBonusesAwaitingDecision({ limit = 100, settleHours = 0 } = {}) {
+  // `settleHours`: a stay that closed this recently may still be reopened by a
+  // brief road segment (lib/homeTime/briefVisits.js), and its home days with
+  // it — so it is not decided until the driver has been gone that long.
   const res = await query(
     `SELECT h.*, g.group_name
        FROM driver_road_history h
@@ -197,9 +211,11 @@ async function listRoadBonusesAwaitingDecision({ limit = 100 } = {}) {
       WHERE h.bonus_decision = 'waiting_home_stay'
         AND h.bonus_posted_at IS NULL
         AND h.return_to_road_at IS NOT NULL
+        AND h.return_to_road_at <= NOW() - make_interval(secs => $2::double precision * 3600)
+        AND h.folded_at IS NULL
       ORDER BY h.id ASC
       LIMIT $1`,
-    [limit]
+    [limit, Math.max(0, Number(settleHours) || 0)]
   );
   return res.rows;
 }
@@ -244,7 +260,10 @@ async function unclaimRoadBonusPost(id) {
  * new chat rather than split across two.
  */
 async function listRoadHistory({ limit = 100, bonusOnly = false } = {}) {
-  const where = bonusOnly ? 'WHERE bonus_usd > 0' : '';
+  // A brief visit folded into its road trip is kept in the table, marked, and
+  // left out of the history a manager reads: the trip it interrupted is shown
+  // once, whole, by the next real arrival.
+  const where = bonusOnly ? 'WHERE h.folded_at IS NULL AND h.bonus_usd > 0' : 'WHERE h.folded_at IS NULL';
   const res = await query(
     `SELECT h.*, g.group_name, dp.driver_type,
             (SELECT pg.group_id FROM driver_person_groups pg
@@ -302,6 +321,8 @@ async function deleteRoadHistory(id) {
 }
 
 module.exports = {
+  CURRENT_PERSON_CTE,
+  THIS_DRIVERS_ROW,
   insertRoadHistory,
   getOpenHomeStay,
   listOpenHomeStays,

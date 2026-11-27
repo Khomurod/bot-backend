@@ -41,11 +41,14 @@ test('EARLY: home after fewer than 28 days on the road; OVERSTAY: more than 4 da
 
 test('A FLAP of a few hours is no home stay, and does not cut the road leg', () => {
   const now = T('2026-11-30T00:00:00Z');
+  // The flap sits where it decides the verdict: 29 days from Oct 14, but 17
+  // from the flap. The test used to put it where both readings were over 28,
+  // so it passed whether or not the flap was ignored.
   const out = violationsFor([
-    cycle('2026-10-01T00:00:00Z', '2026-10-05T00:00:00Z', '2026-10-05T03:00:00Z'), // a flap
-    cycle('2026-10-05T03:00:00Z', '2026-11-12T00:00:00Z', '2026-11-14T00:00:00Z'),
+    cycle('2026-10-14T00:00:00Z', '2026-10-26T00:00:00Z', '2026-10-26T03:00:00Z'), // a flap
+    cycle('2026-10-26T03:00:00Z', '2026-11-12T00:00:00Z', '2026-11-14T00:00:00Z'),
   ], { now, since: T('2026-10-01T00:00:00Z') });
-  assert.deepEqual(out, [], '42 days on the road counted from Oct 1 — not 38 from the flap, and the flap judged as nothing');
+  assert.deepEqual(out, [], '29 days on the road counted from Oct 14 — not 16 from the flap, and the flap judged as nothing');
 });
 
 test('owner-operators, stays before Wenze started, and approved requests are not judged', () => {

@@ -53,6 +53,17 @@ function runRoadBonusChecks(snapshot) {
         bonusUsd: bonus,
         roadStartedAt: leg.road_started_at || null,
         homeArrivedAt: leg.home_arrived_at || null,
+        returnToRoadAt: leg.return_to_road_at || null,
+        // How each moment was seen — the Board, the chat, a person — so a
+        // person can answer without opening the record.
+        leftBy: leg.left_by || null,
+        leftEvidence: leg.left_evidence || null,
+        openedBy: leg.opened_by || null,
+        openedEvidence: leg.opened_evidence || null,
+        closedBy: leg.closed_by || null,
+        closedEvidence: leg.closed_evidence || null,
+        briefVisits: Number(leg.brief_visits) || 0,
+        briefVisitDays: Array.isArray(leg.brief_visit_days) ? leg.brief_visit_days.slice(0, 10) : [],
         reason: leg.bonus_decision_reason || null,
         note: 'Approving posts the bonus summary to the road-bonus group. '
           + 'Dismissing pays nothing.',

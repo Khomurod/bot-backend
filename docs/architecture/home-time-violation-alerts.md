@@ -20,9 +20,16 @@ driver's.
   (`database/homeTime/violationCycles.js`).
 - **The verdict** — `lib/homeTime/ownViolations.js` (pure): came home early
   (the road leg < the allowed road days) and overstayed (the stay > the allowed
-  home days, judged while it is still open). A stay shorter than **12 hours**
-  is a Board flap, not a stay, and the road leg runs on through it; a road leg
-  whose start is unknown says nothing about "early"; whole days. Not judged:
+  home days, judged while it is still open). The record is read as VISITS
+  (the 12-hour rule, `docs/architecture/home-time-evidence.md`): a stay
+  shorter than **12 hours** — or one Wenze already folded — is a Board flap,
+  not a stay, and the road leg runs on through it, also when the flap is the
+  first row read (it used to cut the leg there, and two drivers were posted
+  as "early after 0 days" in November); fewer than 12 hours on the road
+  between two stays joins them into ONE visit, its home days counted from the
+  first arrival and only that arrival judged for "early"; a road leg whose
+  start is unknown says nothing about "early"; complete 24-hour days, exactly
+  as the road bonus counts them. Not judged:
   owner-operators and lease drivers, a stay linked to an **approved** home-time
   request (agreed), and any stay that began before `own_violations_since` —
   set by the first pass after switching on, so there is **no backlog**.
@@ -200,6 +207,8 @@ robots.
 
 ## Tests
 
+`tests/homeTimeOwnViolationsVisits.test.js` (visits: a brief road segment
+joins two stays, a leading flap, a folded stay, the bonus's day count),
 `tests/homeTimeOwnViolations.test.js` (the verdict, flaps, owner-operators,
 no backlog, agreed, own rules, the card match, the pass: posted once, card
 moved or not), `tests/homeTimeOwnViolationsPg.test.js` (migration 0103),

@@ -82,10 +82,13 @@ function loadService({
   // and every later test silently sends nothing.
   const noticesPath = path.resolve(__dirname, '../../services/homeTime/managerNotices.js');
   const peoplePath = path.resolve(__dirname, '../../database/driverPeople.js');
+  // The transition's stay-closing and brief-visit helpers, for the same reason.
+  const stayClosePath = path.resolve(__dirname, '../../services/homeTime/stayClose.js');
+  const briefPath = path.resolve(__dirname, '../../services/homeTime/briefVisits.js');
 
   for (const p of [servicePath, dbPath, htPath, htmlPath, bufferPath, geminiPath, intentPath,
     statusPath, configPath, htExpiryPath, approvalPath, flowPath, composerPath, channelPath,
-    internalAlertPath, approverTagPath, outboxPath, noticesPath, peoplePath]) {
+    internalAlertPath, approverTagPath, outboxPath, noticesPath, peoplePath, stayClosePath, briefPath]) {
     delete require.cache[p];
   }
 

@@ -21,7 +21,7 @@ const ht = require('../../database/homeTime');
 const people = require('../../database/driverPeople');
 const { safeSend } = require('../telegramHtml');
 const { HOME_TIME_MANAGER_MENTIONS } = require('../homeTimeRequestConstants');
-const { buildNotice, eventKeyFor } = require('../../lib/homeTime/managerNotice');
+const { buildNotice, eventKeyFor, staySubject } = require('../../lib/homeTime/managerNotice');
 const chatMigration = require('../telegramChatMigration');
 const { notify: sendNotice } = require('../notifications/send');
 
@@ -141,13 +141,16 @@ async function noticeHomeTimeRequested(telegram, {
  * the notice and the home-time cycle are the same fact with the same identity.
  */
 async function noticeDriverIsHome(telegram, {
-  roadHistoryId, groupId, personId = null, driverName, unitNumber,
-  homeSince, plannedReturn = null, daysOnRoad = null, settings, detectedBy = null,
+  roadHistoryId, againAt = null, groupId, personId = null, driverName, unitNumber,
+  homeSince, plannedReturn = null, daysOnRoad = null, briefNote = null, settings, detectedBy = null,
 }) {
   return recordAndSend(telegram, {
     eventType: 'arrived_home',
-    eventKey: eventKeyFor('arrived_home', roadHistoryId),
-    payload: { driverName, unitNumber, homeSince, plannedReturn, daysOnRoad },
+    // `againAt`: the stay was reopened (lib/homeTime/managerNotice.js staySubject).
+    eventKey: eventKeyFor('arrived_home', staySubject(roadHistoryId, againAt)),
+    payload: {
+      driverName, unitNumber, homeSince, plannedReturn, daysOnRoad, briefNote,
+    },
     settings, groupId, personId, roadHistoryId,
     evidence: { homeSince: homeSince || null, daysOnRoad: daysOnRoad ?? null, detectedBy },
   });
@@ -162,10 +165,10 @@ async function noticeDriverIsHome(telegram, {
  * than one per background check that re-derives it.
  */
 async function noticeDriverBackOnRoad(telegram, {
-  roadHistoryId, eventKeySuffix = null, groupId, personId = null, driverName, unitNumber,
-  endedAt, homeDays = null, evidenceSummary = null, settings, detectedBy = null,
+  roadHistoryId, eventKeySuffix = null, againAt = null, groupId, personId = null, driverName, unitNumber,
+  endedAt, homeDays = null, evidenceSummary = null, briefNote = null, settings, detectedBy = null,
 }) {
-  const subject = roadHistoryId || eventKeySuffix;
+  const subject = staySubject(roadHistoryId || null, againAt) || eventKeySuffix;
   if (!subject) {
     console.warn('[HOME-TIME-NOTICE] back_on_road with no cycle and no fallback key — not recorded.');
     return { recorded: false, delivered: false, notice: null, reason: 'no_event_key' };
@@ -173,7 +176,9 @@ async function noticeDriverBackOnRoad(telegram, {
   return recordAndSend(telegram, {
     eventType: 'back_on_road',
     eventKey: eventKeyFor('back_on_road', subject),
-    payload: { driverName, unitNumber, endedAt, homeDays, evidence: evidenceSummary },
+    payload: {
+      driverName, unitNumber, endedAt, homeDays, evidence: evidenceSummary, briefNote,
+    },
     settings, groupId, personId, roadHistoryId,
     evidence: { endedAt: endedAt || null, homeDays: homeDays ?? null, detectedBy, summary: evidenceSummary || null },
   });

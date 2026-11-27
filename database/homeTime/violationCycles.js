@@ -13,6 +13,7 @@ const { query } = require('../pool');
 async function listCyclesByGroup(sinceIso) {
   const res = await query(
     `SELECT h.group_id, h.road_started_at, h.home_arrived_at, h.return_to_road_at,
+            (h.folded_at IS NOT NULL) AS folded,
             COALESCE(NULLIF(TRIM(CONCAT(dp.first_name, ' ', dp.last_name)), ''), h.driver_name, g.group_name) AS driver_name,
             dp.driver_type, req.status AS linked_request_status
        FROM driver_road_history h
@@ -31,6 +32,8 @@ async function listCyclesByGroup(sinceIso) {
       roadStartedAt: r.road_started_at,
       homeArrivedAt: r.home_arrived_at,
       returnToRoadAt: r.return_to_road_at,
+      // A brief visit already folded into its road trip (lib/homeTime/briefVisits.js).
+      folded: r.folded === true,
       driverName: r.driver_name,
       driverType: r.driver_type,
       linkedRequestStatus: r.linked_request_status,

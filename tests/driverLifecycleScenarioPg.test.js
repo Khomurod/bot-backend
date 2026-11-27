@@ -18,7 +18,8 @@ const { POOL_PATH, purgeDataLayer } = require('./helpers/purgeDataLayer');
 const ALL_MIGRATIONS = allMigrationsSql();
 const SERVICE_PATHS = [
   '../services/identity/personResolver', '../services/identity/personBackfillService',
-  '../services/homeTimeService', '../services/roadBonusNotifierService', '../services/roadBonusPoster',
+  '../services/homeTimeService', '../services/homeTime/stayClose', '../services/homeTime/briefVisits',
+  '../services/roadBonusNotifierService', '../services/roadBonusPoster',
   '../services/driverGroupDirectoryService',
   '../services/operations/consistencyService', '../services/operations/corrections/actions',
   '../services/operations/corrections/identityActions', '../services/operations/corrections/homeTimeActions',

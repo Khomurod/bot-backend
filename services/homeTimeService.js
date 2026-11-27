@@ -23,11 +23,11 @@
 const { DateTime } = require('luxon');
 const db = require('../database/db');
 const ht = require('../database/homeTime');
-const {
-  parseDriverStatus, computeRoadBonus, wholeDaysBetween,
-} = require('./homeTimeConstants');
+const { parseDriverStatus, computeRoadBonus } = require('./homeTimeConstants');
 const { inferDriverType } = require('../lib/drivers/driverProfileParse');
 const { noticeDriverIsHome, noticeDriverBackOnRoad } = require('./homeTime/managerNotices');
+const { closeHomeStayOnReturn, closeLingeringHomeStays } = require('./homeTime/stayClose');
+const { reopenIfBriefRoad, foldNoticeLine, isoOf } = require('./homeTime/briefVisits');
 
 /**
  * Telling managers must never break the thing it is reporting on. A notice runs
@@ -101,6 +101,170 @@ async function handleDriverGroupStatus(telegram, group, message) {
     console.error('[HOME-TIME] handleDriverGroupStatus error:', err.message);
     return null;
   }
+}
+
+/** When the state last actually changed: `state_changed_at`, or `state_since` before that column. */
+function lastChangeOf(current) {
+  const since = Date.parse(current?.state_since);
+  const changed = Date.parse(current?.state_changed_at);
+  if (Number.isFinite(changed) && (!Number.isFinite(since) || changed > since)) return current.state_changed_at;
+  return current?.state_since;
+}
+
+/**
+ * road → home. Records the finished trip and its bonus, or — when the driver
+ * left a home stay only hours ago — reopens that stay instead.
+ *
+ * @returns {Promise<string>} where the home clock starts
+ */
+async function recordArrival(telegram, group, current, {
+  settings, eventAt, announce, detectedBy, evidenceSummary,
+}) {
+  const reopened = await reopenIfBriefRoad(group, current, eventAt);
+  if (reopened) {
+    // ONE STAY, NOT TWO. No trip is recorded and no bonus computed: the hours
+    // on the road were not a trip. The managers, told a few hours ago that the
+    // driver left, are told they are home again — under a key of its own, so
+    // the first arrival's notice does not swallow it.
+    if (announce) {
+      await tellManagers('arrived_home_again', async () => {
+        const { driverName, unitNumber } = await resolveDriverLabel(group);
+        return noticeDriverIsHome(telegram, {
+          roadHistoryId: reopened.id,
+          againAt: eventAt,
+          groupId: group.id,
+          driverName,
+          unitNumber,
+          homeSince: reopened.home_arrived_at,
+          briefNote: reopened.reopened_note || null,
+          settings,
+          detectedBy,
+        });
+      });
+    }
+    return isoOf(reopened.home_arrived_at) || eventAt;
+  }
+
+  // Road trip just finished — close it and compute the bonus.
+  const { driverName, unitNumber, driverType } = await resolveDriverLabel(group);
+  const { daysOnRoad, exceededWeeks, bonusUsd } = computeRoadBonus(
+    current.state_since,
+    eventAt,
+    {
+      roadAllowanceWeeks: settings.road_allowance_weeks,
+      bonusPerWeek: Number(settings.bonus_per_week),
+      driverType,
+    }
+  );
+  // Anything still open for this driver — on this chat or a previous one —
+  // is closed FIRST, at the moment the road state began: a road→home insert
+  // can only follow a road state, so that moment IS the observed return
+  // (class-B evidence, seen from this side). After a folded brief visit
+  // that is the fold, not the trip's start, which may be weeks earlier.
+  // It is also what lets the one-open-stay-per-group index hold.
+  await closeLingeringHomeStays(group, {
+    returnToRoadIso: lastChangeOf(current),
+    // NOT this transition's source. What closes these stays is the fact
+    // that a road period was observed AFTER them — the evidence is the
+    // road start itself, seen from the far side, and saying otherwise
+    // would credit the wrong observer.
+    closedBy: 'evidence',
+    closedEvidence: 'a later road period was observed, so this stay had ended',
+  });
+  const historyRow = await ht.insertRoadHistory({
+    groupId: group.id,
+    driverName,
+    unitNumber,
+    roadStartedAt: current.state_since,
+    homeArrivedAt: eventAt,
+    daysOnRoad,
+    exceededWeeks,
+    bonusUsd,
+    // WHO SAID THE DRIVER CAME HOME, and what they said. A manager reading
+    // "home 14 - 18 Sep" needs to be able to ask whether a person wrote it
+    // or a spreadsheet did; a correction nobody can trace is a correction
+    // nobody can argue with.
+    openedBy: detectedBy || null,
+    openedEvidence: evidenceSummary || null,
+    // Born already-claimed on a silent path. The notifier polls for
+    // `bonus_usd > 0 AND bonus_posted_at IS NULL`, so claiming afterwards
+    // leaves a window: insert succeeds, claim fails, and an import of last
+    // quarter fires stale bonuses into a live group an hour later. One
+    // statement has no such window.
+    bonusPostedAt: announce ? null : new Date().toISOString(),
+    // NOT POSTED NOW. The bonus is decided after the home stay — home
+    // longer than the allowance forfeits it, and a trip over six weeks is
+    // held for a person (owner's rule, 2026-10-06) — so the road-bonus
+    // poller decides and posts it once the driver is back on the road.
+    // A silent import's leg is born claimed above and never decided.
+    bonusDecision: bonusUsd > 0 && announce ? 'waiting_home_stay' : null,
+  });
+  console.log(`[HOME-TIME] ${driverName} (${driverType}) home after ${daysOnRoad}d (${exceededWeeks} extra wk, $${bonusUsd} recorded)`);
+  // The managers are told the driver IS HOME — a different event from the
+  // earlier "wants to go home", and keyed on the cycle this arrival opened
+  // so a re-derived arrival never tags them twice. `announce: false` is the
+  // silent screenshot-import path, which must not fire live notices for a
+  // stay that ended weeks ago.
+  if (announce) {
+    await tellManagers('arrived_home', async () => {
+      const known = await ht.getApprovedHomeTimeRequestForGroup(group.id).catch(() => null);
+      return noticeDriverIsHome(telegram, {
+        roadHistoryId: historyRow?.id || null,
+        groupId: group.id,
+        driverName,
+        unitNumber,
+        homeSince: eventAt,
+        plannedReturn: known?.return_to_road_date || null,
+        daysOnRoad,
+        settings,
+        detectedBy,
+      });
+    });
+  }
+  return eventAt;
+}
+
+/**
+ * home → road. Closes the open stay — or folds it into the road trip it
+ * interrupted when it lasted under 12 hours — and tells the managers.
+ *
+ * @returns {Promise<string>} where the road clock starts
+ */
+async function recordReturn(telegram, group, {
+  eventAt, announce, detectedBy, evidenceSummary, settings,
+}) {
+  const closed = await closeHomeStayOnReturn(group, {
+    returnToRoadIso: eventAt,
+    foldBrief: true,
+    closedBy: detectedBy || null,
+    closedEvidence: evidenceSummary || null,
+  });
+  const folded = Boolean(closed?.folded_at && closed.road_started_at);
+  if (announce) {
+    await tellManagers('back_on_road', async () => {
+      const { driverName, unitNumber } = await resolveDriverLabel(group);
+      return noticeDriverBackOnRoad(telegram, {
+        // Keyed on the cycle that just closed. When no cycle was open (the
+        // state was first observed as 'home', so there is nothing to close)
+        // the key falls back to this group and this moment, which is still
+        // one key per event rather than one per background check. A stay
+        // that was reopened closes a second time, under a key of its own.
+        roadHistoryId: closed?.id || null,
+        eventKeySuffix: closed?.id ? null : `${group.id}:${eventAt}`,
+        againAt: closed?.reopened_at || null,
+        groupId: group.id,
+        driverName,
+        unitNumber,
+        endedAt: eventAt,
+        homeDays: closed?.home_days ?? null,
+        briefNote: folded ? foldNoticeLine(closed) : null,
+        evidenceSummary,
+        settings,
+        detectedBy,
+      });
+    });
+  }
+  return folded ? (isoOf(closed.road_started_at) || eventAt) : eventAt;
 }
 
 /**
@@ -180,82 +344,20 @@ async function applyStateTransition(
 
     const previousState = current.state;
     // ── A real transition ──
+    //
+    // `stateSince` is where the new state's clock starts: this event, except
+    // for a brief visit (lib/homeTime/briefVisits.js). A stay under 12 hours
+    // is folded into the road trip it interrupted, so the road clock goes on
+    // from the trip's start; a road segment under 12 hours reopens the stay
+    // before it, so the home clock goes on from the first arrival. The moment
+    // of the change itself is kept apart (`state_changed_at`): the Board
+    // watch's anti-flapping rules are about the change, not the clock.
+    let stateSince = eventAt;
+    const transitionOpts = {
+      settings, eventAt, announce, detectedBy, evidenceSummary,
+    };
     if (current.state === 'road' && newState === 'home') {
-      // Road trip just finished — close it and compute the bonus.
-      const { driverName, unitNumber, driverType } = await resolveDriverLabel(group);
-      const { daysOnRoad, exceededWeeks, bonusUsd } = computeRoadBonus(
-        current.state_since,
-        eventAt,
-        {
-          roadAllowanceWeeks: settings.road_allowance_weeks,
-          bonusPerWeek: Number(settings.bonus_per_week),
-          driverType,
-        }
-      );
-      // Anything still open for this driver — on this chat or a previous one —
-      // is closed FIRST, with the road start we are about to record as its
-      // return: a road→home insert can only follow a road state, so that
-      // moment IS the observed return (class-B evidence, seen from this side).
-      // It is also what lets the one-open-stay-per-group index hold.
-      await closeLingeringHomeStays(group, {
-        returnToRoadIso: current.state_since,
-        // NOT this transition's source. What closes these stays is the fact
-        // that a road period was observed AFTER them — the evidence is the
-        // road start itself, seen from the far side, and saying otherwise
-        // would credit the wrong observer.
-        closedBy: 'evidence',
-        closedEvidence: 'a later road period was observed, so this stay had ended',
-      });
-      const historyRow = await ht.insertRoadHistory({
-        groupId: group.id,
-        driverName,
-        unitNumber,
-        roadStartedAt: current.state_since,
-        homeArrivedAt: eventAt,
-        daysOnRoad,
-        exceededWeeks,
-        bonusUsd,
-        // WHO SAID THE DRIVER CAME HOME, and what they said. A manager reading
-        // "home 14 - 18 Sep" needs to be able to ask whether a person wrote it
-        // or a spreadsheet did; a correction nobody can trace is a correction
-        // nobody can argue with.
-        openedBy: detectedBy || null,
-        openedEvidence: evidenceSummary || null,
-        // Born already-claimed on a silent path. The notifier polls for
-        // `bonus_usd > 0 AND bonus_posted_at IS NULL`, so claiming afterwards
-        // leaves a window: insert succeeds, claim fails, and an import of last
-        // quarter fires stale bonuses into a live group an hour later. One
-        // statement has no such window.
-        bonusPostedAt: announce ? null : new Date().toISOString(),
-        // NOT POSTED NOW. The bonus is decided after the home stay — home
-        // longer than the allowance forfeits it, and a trip over six weeks is
-        // held for a person (owner's rule, 2026-10-06) — so the road-bonus
-        // poller decides and posts it once the driver is back on the road.
-        // A silent import's leg is born claimed above and never decided.
-        bonusDecision: bonusUsd > 0 && announce ? 'waiting_home_stay' : null,
-      });
-      console.log(`[HOME-TIME] ${driverName} (${driverType}) home after ${daysOnRoad}d (${exceededWeeks} extra wk, $${bonusUsd} recorded)`);
-      // The managers are told the driver IS HOME — a different event from the
-      // earlier "wants to go home", and keyed on the cycle this arrival opened
-      // so a re-derived arrival never tags them twice. `announce: false` is the
-      // silent screenshot-import path, which must not fire live notices for a
-      // stay that ended weeks ago.
-      if (announce) {
-        await tellManagers('arrived_home', async () => {
-          const known = await ht.getApprovedHomeTimeRequestForGroup(group.id).catch(() => null);
-          return noticeDriverIsHome(telegram, {
-            roadHistoryId: historyRow?.id || null,
-            groupId: group.id,
-            driverName,
-            unitNumber,
-            homeSince: eventAt,
-            plannedReturn: known?.return_to_road_date || null,
-            daysOnRoad,
-            settings,
-            detectedBy,
-          });
-        });
-      }
+      stateSince = await recordArrival(telegram, group, current, transitionOpts);
     }
     // home → road: the clock simply starts, AND the open home stay is closed
     // HERE rather than by the caller.
@@ -268,32 +370,7 @@ async function applyStateTransition(
     // every caller must remember is a rule that some caller will forget, so the
     // function that moves the state now owns both halves of the transition.
     if (previousState === 'home' && newState === 'road') {
-      const closed = await closeHomeStayOnReturn(group, {
-        returnToRoadIso: eventAt,
-        closedBy: detectedBy || null,
-        closedEvidence: evidenceSummary || null,
-      });
-      if (announce) {
-        await tellManagers('back_on_road', async () => {
-          const { driverName, unitNumber } = await resolveDriverLabel(group);
-          return noticeDriverBackOnRoad(telegram, {
-          // Keyed on the cycle that just closed. When no cycle was open (the
-          // state was first observed as 'home', so there is nothing to close)
-          // the key falls back to this group and this moment, which is still
-          // one key per event rather than one per background check.
-            roadHistoryId: closed?.id || null,
-            eventKeySuffix: closed?.id ? null : `${group.id}:${eventAt}`,
-            groupId: group.id,
-            driverName,
-            unitNumber,
-            endedAt: eventAt,
-            homeDays: closed?.home_days ?? null,
-            evidenceSummary,
-            settings,
-            detectedBy,
-          });
-        });
-      }
+      stateSince = await recordReturn(telegram, group, transitionOpts);
     }
 
     // Every transition starts a fresh leg → reset the extra-week watermark so
@@ -302,7 +379,8 @@ async function applyStateTransition(
       groupId: group.id,
       telegramGroupId: group.telegram_group_id,
       state: newState,
-      stateSince: eventAt,
+      stateSince,
+      stateChangedAt: eventAt,
       lastStatusText: text.slice(0, 500),
       lastStatusAt: eventAt,
       roadBonusWeeksNotified: 0,
@@ -313,84 +391,10 @@ async function applyStateTransition(
       : (previousState === 'home' && newState === 'road' ? 'home_to_road' : null);
     return {
       changed: true, transition, newState, previousState, eventAt,
+      ...(stateSince !== eventAt ? { stateSince } : {}),
     };
   } catch (err) {
     console.error('[HOME-TIME] applyStateTransition error:', err.message);
-    return null;
-  }
-}
-
-/**
- * Close the open home stay when a driver goes back on the road (home→road). Stamps
- * the actual return-to-road time and whole home days onto the still-open completed
- * road leg, links the decided home-time request that authorized it (for the
- * approved-exception classification), and retires any open clarification flow for
- * the group. Best-effort — the state machine already ran; never throws.
- *
- * @param {object} group    groups row
- * @param {object} opts
- * @param {string} opts.returnToRoadIso  the home→road transition time (ISO)
- * @returns {object|null} the closed road-history row, or null
- */
-async function closeOneStay(group, open, returnToRoadIso, provenance = {}) {
-  const homeDays = wholeDaysBetween(open.home_arrived_at, returnToRoadIso);
-  let linkedRequestId = open.linked_request_id || null;
-  if (!linkedRequestId) {
-    const homeArrivedDate = DateTime.fromJSDate(new Date(open.home_arrived_at)).toISODate();
-    // The request is looked up on the chat the stay BEGAN on — that is where it
-    // was asked and decided, even when the return is observed on a new chat.
-    const decided = await ht.findDecidedRequestNearDate(open.group_id || group.id, homeArrivedDate).catch(() => null);
-    if (decided) linkedRequestId = decided.id;
-  }
-  return ht.closeHomeStay(open.id, {
-    returnToRoadAt: returnToRoadIso, homeDays, linkedRequestId,
-    closedBy: provenance.closedBy || null,
-    closedEvidence: provenance.closedEvidence || null,
-  });
-}
-
-/** Every open stay of this driver, on any of their chats, closed at one observed moment. Best effort. */
-async function closeLingeringHomeStays(group, { returnToRoadIso, ...provenance } = {}) {
-  try {
-    const open = await ht.listOpenHomeStays(group.id);
-    let closed = 0;
-    for (const stay of open) {
-      if (!stay.home_arrived_at) continue;
-      if (await closeOneStay(group, stay, returnToRoadIso, provenance)) closed += 1;
-    }
-    return closed;
-  } catch (err) {
-    console.error('[HOME-TIME] closeLingeringHomeStays error:', err.message);
-    return 0;
-  }
-}
-
-async function closeHomeStayOnReturn(group, { returnToRoadIso, ...provenance } = {}) {
-  try {
-    if (!group || !returnToRoadIso) return null;
-    // Newest open stay of this DRIVER — the person's, not only the chat's, so a
-    // return observed on a new truck's chat closes the stay begun on the old one.
-    const [open] = await ht.listOpenHomeStays(group.id);
-    let closed = null;
-    if (open && open.home_arrived_at) {
-      closed = await closeOneStay(group, open, returnToRoadIso, provenance);
-    }
-    // The home window is over → retire any clarification still waiting on dates and
-    // stop its reminders (spec §11: stop when the driver returns to the road) —
-    // on this chat, and on the chat the stay BEGAN on when that was another one:
-    // the question was asked there, and it is as finished as one asked here.
-    const chats = new Set([group.id]);
-    if (open?.group_id != null) chats.add(open.group_id);
-    for (const chatId of chats) {
-      await ht.expireOpenClarificationsForGroup(chatId, {
-        reason: 'Driver returned to the road; clarification no longer needed.',
-      }).catch(() => {});
-    }
-    // The CLOSED row, so the caller can report the measured days at home. Falls
-    // back to the pre-close row when the close itself found nothing to update.
-    return closed || open || null;
-  } catch (err) {
-    console.error('[HOME-TIME] closeHomeStayOnReturn error:', err.message);
     return null;
   }
 }
