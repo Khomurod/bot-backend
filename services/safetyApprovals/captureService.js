@@ -51,19 +51,32 @@ const markedGroups = new Set();
 /**
  * Queue a Safety message that is a DECISION — a #Approved / #NotApproved
  * hashtag, or the words "approved" / "not approved" — whether or not it is a
- * reply (lib/safetyApprovals/trigger.js). "On it", "CLH sent" and a bare PDF
+ * reply (lib/safetyApprovals/trigger.js), and any answer to the bot's own
+ * post in the approvals topic. "On it", "CLH sent" and a bare PDF
  * are stored and never queued: they cost nothing. An album is queued once the
  * item carrying the words has arrived, and each later item re-arms the settle
  * delay so the album is read whole.
  */
+/**
+ * Worth reading: a decision — or ANY answer to the bot's own post in the
+ * approvals topic ("not yet" carries no decision word, and withdraws the
+ * post: services/safetyApprovals/botPostReply.js). The second is looked up
+ * only for a Safety reply that is not a decision, so it costs one read then.
+ */
+async function worthReading(chatId, words, target) {
+  if (isDecisionMessage(words)) return true;
+  if (target == null) return false;
+  return Boolean(await reviews.findAnnouncementByTopicMessage(chatId, target));
+}
+
 async function queueReview(shaped) {
   const { chatId } = shaped;
   if (shaped.mediaGroupId) {
     const album = await messages.getMediaGroup(chatId, shaped.mediaGroupId);
     const words = [...album.map((row) => row.text), shaped.text].filter(Boolean).join('\n');
-    if (!isDecisionMessage(words)) return null;
     // Not every item of a reply album is marked as the reply.
     const target = shaped.replyToMessageId ?? album.find((row) => row.replyToMessageId)?.replyToMessageId ?? null;
+    if (!await worthReading(chatId, words, target)) return null;
     return reviews.enqueueReview({
       chatId,
       safetyKey: `album:${shaped.mediaGroupId}`,
@@ -72,7 +85,7 @@ async function queueReview(shaped) {
       settleSeconds: SETTLE_SECONDS,
     });
   }
-  if (!isDecisionMessage(shaped.text)) return null;
+  if (!await worthReading(chatId, shaped.text, shaped.replyToMessageId)) return null;
   return reviews.enqueueReview({
     chatId,
     safetyKey: `message:${shaped.messageId}`,

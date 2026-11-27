@@ -18,8 +18,10 @@ him", "good to go", "can't take him, 3 accidents").
 `#Approved` or `#NotApproved`, as a reply to the driver's post. A hashtag
 decides with **no model at all**; the driver is read off the post. The words
 alone ("approved", "not approved") still count — a forgotten hashtag never
-loses a decision — and are read by a model, as before. Any other Safety
-message ("on it", "CLH sent", a PDF) is not a decision and costs nothing.
+loses a decision — and are read by a model: **Claude, never a free model**
+(below). Words with a **condition** ("PSP is clean, if CLH is clean we can
+hire") are not a decision: nothing is posted and nothing is asked. Any other
+Safety message ("on it", "CLH sent", a PDF) is not a decision and costs nothing.
 
 Each decision is posted, separately, in the group's "approved / not approved"
 topic as **the driver's post, the way the recruiter sent it**: the post's photos
@@ -35,7 +37,8 @@ When the bot **cannot tell which driver** a decision is about, it does not
 guess and does not drop it: it **asks Safety in General**, once, as a reply to
 their message ("Which driver is this about? Reply to the driver's post with
 #Approved or #NotApproved"). That is the only thing Safety Approvals ever
-writes in the conversation.
+writes in the conversation. The only EDIT it makes is to its own post, when
+Safety withdraws it (rule 8a).
 
 The same captured messages feed a second, separately switched feature: the
 **Bitrix stage proposals**, which read the conversation in General and write
@@ -76,6 +79,13 @@ Every rule below closes a way to post one.
    a decision and is not answered. In a forum group Telegram marks every topic
    message as a "reply" to the topic's root; that is not a reply
    (`lib/safetyApprovals/messageShape.js`).
+3a. **A condition is not a decision, and is not answered** (owner, 27 November
+   2026). Without a hashtag, Safety's words with "if", "unless", "once",
+   "until", "provided", "pending", "as long as", "если"… are left alone: no
+   model, no post, no question — the owner chose silence over asking. On 27
+   November "PSP is clean, if clh is clean we can hire" was read as APPROVED
+   by a free model and posted. A hashtag is the team's explicit mark and still
+   decides beside an "if" ("#Approved let me know if he needs the address").
 4. **Which post: the reply, or the conversation just before.** A reply names
    its post. A decision written on its own is matched to the posts the last
    six General messages before it belong to (`services/safetyApprovals/
@@ -106,6 +116,11 @@ Every rule below closes a way to post one.
    for them. A decision is read 5 seconds after its last piece arrives (an
    album comes item by item; each item and each edit re-arms the delay).
 6. **Without a hashtag, a model reads the language; the messages decide the facts.**
+   The model is **Claude, never a free one** (`PAID_ONLY` in
+   `lib/ai/escalation.js`, owner, 27 November 2026): Claude first, another
+   paid model if Claude cannot be reached, and with none the review waits and
+   retries (rule "Failures retry"). A free model had read a condition as
+   APPROVED, said it was sure, and was never checked.
    `lib/safetyApprovals/reading.js` keeps a candidate only if every part of the
    name appears in the post, Safety's words or Safety's file names — or, in a
    post with no name in writing at all, the ONE candidate the model read off a
@@ -136,6 +151,24 @@ Every rule below closes a way to post one.
    the post cannot post it again. A send Telegram refused gives the
    reservation back. This is at-most-once on purpose: a duplicate APPROVED
    is worse than a missing one, which shows in Settings.
+8a. **Safety may withdraw the bot's post by answering it** (owner, 27 November
+   2026; `lib/safetyApprovals/withdrawal.js`, `services/safetyApprovals/
+   botPostReply.js`). A Safety reply to the bot's own post in the topic is
+   queued whatever its words (capture looks it up in
+   `safety_approval_announcements.topic_message_ids`):
+   - "not yet", "I did not approve him", "not approved", "wrong", "mistake",
+     "cancel"… → the post is **re-captioned** "↩️ WITHDRAWN, NOT DECIDED YET"
+     with Safety's words — an edit, nothing sent — and a `withdrawn` row
+     becomes the driver's latest decision (migration 0112; nothing deleted),
+     so the real decision, when it comes, is posted. Only the post that still
+     stands for that driver is withdrawn; a refused edit gives the withdrawal
+     back and is retried;
+   - a hashtag → a decision on the driver's ORIGINAL post, exactly as if it
+     answered that post (a `#NotApproved` under a wrong APPROVED posts NOT
+     APPROVED);
+   - anything else ("👍", "thanks") → nothing: no model, no question. Before
+     this, "I did not approve him yet" was answered "I could not find the
+     driver's post this answers".
 9. **The recruiting group is not a driver group.** Every group the bot joins
     is registered as `driver`; this one is moved to `recruitment` on save and on
     the first captured message, so home-time, retention and driver broadcasts
@@ -180,23 +213,24 @@ bot message / edited_message
 - **Failures retry, then stop.** An AI outage, a Telegram error or photos that
   will not download retry at 1, 5, 15, 30 and 60 minutes; after six attempts or
   a day the review is `gave_up` and shows in Settings → Safety Approvals.
-  Photos can only go to a vision model (Gemini); if none has answered for three
-  attempts, the reply is read from the words alone — still verified — and the
-  decision is posted **without the CDL file** rather than not at all.
+  Photos go only to a model that can see them (Claude can); if none has
+  answered for three attempts, the reply is read from the words alone — still
+  verified — and the decision is posted **without the CDL file** rather than
+  not at all. A free model is never asked instead (rule 6).
 - **A reply edited mid-read is read again.** The queue row's `revision` goes up
   on every enqueue; a worker finishes only the revision it claimed, and a stale
   finish gives the lease back.
 
 ## Data
 
-Migration `0069_safety_approvals.sql` (and 0077, 0106):
+Migration `0069_safety_approvals.sql` (and 0077, 0106, 0112):
 
 | Table | What it holds |
 |---|---|
 | `safety_approval_settings` | the single settings row (group, topic, Safety ids, switch) |
 | `safety_approval_messages` | every message in the group, verbatim, with Telegram file ids — **deleted after 60 days** by the worker. Since 0106 `bot_request` (a reply that mentions the bot — never read as data by the stage proposals; set once, kept) and `recovered_from_reply` (rebuilt from a tag's `reply_to_message`; cleared by the first real capture) |
-| `safety_approval_reviews` | one row per Safety decision message: the queue, then the verified outcome (never the raw model answer). `post_message_id` is NULL for a decision written on its own (migration 0077) |
-| `safety_approval_announcements` | what was posted, per post and driver |
+| `safety_approval_reviews` | one row per Safety decision message: the queue, then the verified outcome (never the raw model answer). `post_message_id` is NULL for a decision written on its own (migration 0077); status `withdrawn` for the reply that withdrew a post (0112) |
+| `safety_approval_announcements` | what was posted, per post and driver, and where (`topic_message_ids`); a `withdrawn` row when Safety withdrew it (0112) |
 
 No file bytes are stored, and nothing logs message text — these rows are
 drivers' names and phone numbers.
@@ -216,6 +250,9 @@ drivers' names and phone numbers.
 
 ## Tests
 
+`tests/safetyApprovalBotPost.test.js` (a condition posts and asks nothing;
+Safety withdrawing the bot's post; a hashtag under it; anything else left
+alone), `tests/aiEscalation.test.js` (never a free model),
 `tests/safetyApprovalReading.test.js`, `tests/safetyApprovalAnnouncement.test.js`,
 `tests/safetyApprovalReviewer.test.js`, `tests/safetyApprovalHashtag.test.js`,
 `tests/safetyApprovalTrigger.test.js`, `tests/safetyApprovalPostNames.test.js`

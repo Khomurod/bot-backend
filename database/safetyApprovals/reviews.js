@@ -241,6 +241,48 @@ async function releaseAnnouncement(id) {
   await query('DELETE FROM safety_approval_announcements WHERE id = $1 AND sent_at IS NULL', [id]);
 }
 
+function mapAnnouncement(row) {
+  if (!row) return null;
+  return {
+    id: Number(row.id),
+    chatId: String(row.chat_id),
+    postMessageId: Number(row.post_message_id),
+    driverKey: row.driver_key,
+    driverName: row.driver_name,
+    decision: row.decision,
+    topicMessageIds: (row.topic_message_ids || []).map(Number),
+  };
+}
+
+/**
+ * The bot's own post in the approvals topic that this message is, if any —
+ * the decision it carried and the driver's post it answered. A reply to it is
+ * Safety answering the bot (lib/safetyApprovals/withdrawal.js).
+ */
+async function findAnnouncementByTopicMessage(chatId, messageId) {
+  if (messageId == null || !Number.isFinite(Number(messageId))) return null;
+  const { rows } = await query(
+    `SELECT * FROM safety_approval_announcements
+      WHERE chat_id = $1 AND $2::bigint = ANY(topic_message_ids) AND sent_at IS NOT NULL
+      ORDER BY id DESC
+      LIMIT 1`,
+    [String(chatId), Number(messageId)],
+  );
+  return mapAnnouncement(rows[0]);
+}
+
+/** The driver's latest decision on a post, as posted (or reserved). */
+async function latestAnnouncement(chatId, postMessageId, driverKey) {
+  const { rows } = await query(
+    `SELECT * FROM safety_approval_announcements
+      WHERE chat_id = $1 AND post_message_id = $2 AND driver_key = $3
+      ORDER BY created_at DESC, id DESC
+      LIMIT 1`,
+    [String(chatId), Number(postMessageId), driverKey],
+  );
+  return mapAnnouncement(rows[0]);
+}
+
 module.exports = {
   enqueueReview,
   getReviewByKey,
@@ -252,5 +294,7 @@ module.exports = {
   reserveAnnouncement,
   completeAnnouncement,
   releaseAnnouncement,
+  findAnnouncementByTopicMessage,
+  latestAnnouncement,
   DEFAULT_LEASE_SECONDS,
 };

@@ -11,6 +11,9 @@
  *             best reading there is, and an unsure one comes back marked so.
  *   3. STRONG any other paid provider, only when Claude could not answer.
  *
+ * A decision on lib/ai/escalation.js PAID_ONLY skips step 1: Safety's hire
+ * decision is read by Claude (or another paid model), never by a free one.
+ *
  * If nobody past step 1 answers, the free answer comes back marked
  * `uncertain`. It is never silently promoted to "sure": every consumer of a
  * decision already has its own gate for a low-confidence answer, and that gate
@@ -29,7 +32,7 @@
  */
 
 const {
-  escalates, assessAnswer, claudeEscalationChain,
+  escalates, paidOnly, assessAnswer, claudeEscalationChain,
   CONFIDENCE_INSTRUCTION, needsConfidenceInstruction,
 } = require('../../lib/ai/escalation');
 
@@ -146,7 +149,13 @@ async function runEscalated(args, askTier, hooks = {}) {
   // Not a decision, a Gemini-native request, or a caller that pinned an
   // adapter: one pass over the roster, exactly as before.
   if (!escalates(args.capability) || args.contents || args.requireAdapter || args.expects !== 'json') {
-    return askTier(args);
+    // Still never a free model for a PAID_ONLY decision, asked any other way.
+    if (!paidOnly(args.capability) || Array.isArray(args.providerOrder)) return askTier(args);
+    const own = args.providerFilter;
+    return askTier({
+      ...args,
+      providerFilter: (p) => !TIERS.free(p) && (typeof own !== 'function' || own(p)),
+    });
   }
   // A task whose list is empty is asked once, so the router says "no provider is chosen".
   if (Array.isArray(args.providerOrder) && !args.providerOrder.length) return askTier(args);
@@ -171,17 +180,24 @@ async function runEscalated(args, askTier, hooks = {}) {
   };
   if (Array.isArray(args.providerOrder)) return alongOwnOrder(asked, askTier, { assess, finish });
 
+  // A decision kept from the free models (lib/ai/escalation.js PAID_ONLY)
+  // starts at Claude; with no paid model reachable it fails like an outage,
+  // and its caller waits and tries again rather than ask a free one.
+  const skipFree = paidOnly(args.capability);
   let free = null;
   let freeFailure = null;
-  try {
-    free = await askTier({ ...asked, providerFilter: TIERS.free });
-  } catch (err) {
-    if (!unavailable(err)) throw err;
-    freeFailure = err;
+  if (!skipFree) {
+    try {
+      free = await askTier({ ...asked, providerFilter: TIERS.free });
+    } catch (err) {
+      if (!unavailable(err)) throw err;
+      freeFailure = err;
+    }
   }
   const freeAssessment = free ? assess(free) : null;
   if (free && freeAssessment.sure) return tagged(free, 'free', freeAssessment);
 
+  let lastFailure = null;
   for (const [stage, filter, chainOverride] of [
     ['claude', TIERS.claude, (p) => claudeEscalationChain(p.discoveredModelIds, p.modelChain)],
     ['strong', TIERS.strong, null],
@@ -191,11 +207,12 @@ async function runEscalated(args, askTier, hooks = {}) {
       return finish(tagged(better, stage, assess(better)));
     } catch (err) {
       if (!unavailable(err)) throw err;
+      lastFailure = err;
     }
   }
 
   if (free) return finish(tagged(free, 'free', freeAssessment));
-  throw freeFailure;
+  throw freeFailure || lastFailure;
 }
 
 module.exports = {

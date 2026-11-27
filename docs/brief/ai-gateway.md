@@ -121,7 +121,10 @@ stay in §4a. The provider terms watcher is
   free models outrank the order above**, Claude-first included; everything
   else — text written for people, batch jobs like driver status and chat
   labels — is one pass in the operator's order, unchanged. "Free tiers only"
-  still never reaches Claude. How many calls went to Claude is the Anthropic
+  still never reaches Claude. **Safety's hire decision is never asked of a free
+  model** (`PAID_ONLY`, the owner, 27 November 2026): it starts at Claude, then
+  another paid model, and with none reachable it waits and is tried again — so
+  under "Free tiers only" a Safety decision without a hashtag is not read. How many calls went to Claude is the Anthropic
   row of the provider health counts on Settings → AI. Guarded by
   `tests/aiEscalation.test.js`.
 - **A task may keep to providers of its own (owner, 14 November 2026).**

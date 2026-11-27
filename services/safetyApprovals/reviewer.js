@@ -8,7 +8,9 @@
  *   2. the message is a decision at all: a #Approved / #NotApproved hashtag,
  *      or the words "approved" / "not approved" (lib/safetyApprovals/
  *      trigger.js). Capture only queues those, and an edit that took the words
- *      out is not read;
+ *      out is not read. Words with a CONDITION ("if CLH is clean we can
+ *      hire") are not a decision: nothing is posted and nothing is asked. An
+ *      answer to the bot's OWN post may withdraw it (botPostReply.js);
  *   3. the post is known: the message it replies to, or — for a decision
  *      written on its own — the post the last few messages were about
  *      (services/safetyApprovals/postLocator.js). Not known → Safety is ASKED
@@ -30,13 +32,14 @@
 const messages = require('../../database/safetyApprovals/messages');
 const reviews = require('../../database/safetyApprovals/reviews');
 const { assembleSafety } = require('../../lib/safetyApprovals/bundle');
-const { readTrigger } = require('../../lib/safetyApprovals/trigger');
+const { readTrigger, isConditional } = require('../../lib/safetyApprovals/trigger');
 const { personName } = require('../../lib/safetyApprovals/postDetails');
 const { buildCaption, postLink } = require('../../lib/safetyApprovals/announcement');
 const { readSafetyReply, AiUnavailableError } = require('./aiReading');
 const { resolvePost, locatePost } = require('./postLocator');
 const { decide } = require('./decide');
 const { postDecision, askSafety } = require('./announcer');
+const { answerBotPost } = require('./botPostReply');
 
 const MAX_ATTEMPTS = 6;
 const TEXT_ONLY_AFTER_ATTEMPTS = 3;
@@ -186,6 +189,18 @@ async function processReview(review, deps) {
     const triggerRows = await loadTrigger(review);
     const triggerText = triggerRows.map((r) => r.text).filter(Boolean).join('\n');
     const trigger = readTrigger(triggerText);
+    const triggerRow = triggerRows.find((r) => r.text) || triggerRows[0];
+
+    // AN ANSWER TO THE BOT'S OWN POST in the approvals topic. Words: "not yet"
+    // withdraws it, anything else is left alone (services/safetyApprovals/
+    // botPostReply.js). A hashtag: a decision on the driver's original post.
+    const botPost = triggerRows.length && review.postMessageId
+      ? await reviews.findAnnouncementByTopicMessage(chatId, review.postMessageId) : null;
+    // AWAITED, so a refused edit reaches the retry below rather than escaping it.
+    if (botPost && !trigger.hashtag) {
+      return await answerBotPost(review, deps, { announcement: botPost, triggerText, triggerRow });
+    }
+
     if (!triggerRows.length || (!trigger.hashtag && !trigger.keyword)) {
       await reviews.finishReview(review, { status: 'unclear', outcome: { reason: 'not_a_decision' } });
       return 'unclear';
@@ -195,11 +210,23 @@ async function processReview(review, deps) {
       await reviews.finishReview(review, { status: 'unclear', outcome: { reason: 'question' } });
       return 'unclear';
     }
-    const triggerRow = triggerRows.find((r) => r.text) || triggerRows[0];
+    if (!trigger.hashtag && isConditional(triggerText)) {
+      // "If CLH is clean we can hire" is not a decision yet. Nothing is posted,
+      // and — the owner's choice, 27 November 2026 — nothing is asked.
+      await reviews.finishReview(review, { status: 'unclear', outcome: { reason: 'conditional' } });
+      return 'unclear';
+    }
 
     let post;
     let located = null;
-    if (review.postMessageId) {
+    if (botPost) {
+      // The driver's post the bot's post was about; gone (60 days) → nothing to say.
+      post = await resolvePost(chatId, botPost.postMessageId, safetyIds);
+      if (!post) {
+        await reviews.finishReview(review, { status: 'unclear', outcome: { reason: 'post_not_seen' } });
+        return 'unclear';
+      }
+    } else if (review.postMessageId) {
       post = await resolvePost(chatId, review.postMessageId, safetyIds);
       if (!post) return ask(review, deps, triggerRow, 'post_not_seen');
     } else {

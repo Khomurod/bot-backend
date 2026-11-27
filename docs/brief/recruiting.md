@@ -217,8 +217,17 @@ the same treatment home time got, and for the same reason.
   driver's post (the team's convention since 20 October 2026). A hashtag
   decides with **no model**; the driver is read off the post. The words alone
   ("approved", "not approved", "can / can't hire") still count and are read by a model, verified by
-  `lib/safetyApprovals/reading.js`. Other Safety messages ("on it", "CLH sent")
-  cost nothing. Only people ticked as Safety decide.
+  `lib/safetyApprovals/reading.js` — **Claude, never a free model** (owner, 27
+  November 2026, after a free model read a condition as APPROVED). Other Safety
+  messages ("on it", "CLH sent") cost nothing. Only people ticked as Safety decide.
+- **A condition is no decision.** Words with "if", "once", "unless", "pending"…
+  ("PSP is clean, if CLH is clean we can hire") post nothing and ask nothing —
+  the owner chose silence. A hashtag still decides.
+- **Safety can withdraw the bot's post** by answering it ("not yet", "I did not
+  approve him", "wrong", "mistake"): the post is re-captioned WITHDRAWN with
+  their words — an edit, nothing sent — and the real decision, when it comes,
+  is posted. A hashtag under the bot's post decides for the driver's post;
+  anything else under it is left alone.
 - **Nothing is lost, nothing is guessed.** A decision not written as a reply is
   matched to the posts the last six messages were about (a model may only pick
   one by label). A team hashtag naming nobody, or a decision the bot cannot
