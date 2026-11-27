@@ -8,6 +8,7 @@
  *   ./homeTime/settings.js     the two single-row settings tables
  *   ./homeTime/driverState.js  one row per group: home or on the road, since when
  *   ./homeTime/roadHistory.js  completed road legs + the atomic bonus claim
+ *   ./homeTime/briefVisits.js  the 12-hour rule's fold and reopen
  *   ./homeTime/requests.js     the request state machine (pending → decided)
  *   ./homeTime/integrity.js    the boot-time guard for "one open stay per group"
  *   ./homeTime/notices.js      the manager-notice outbox (told once, durably)
@@ -20,6 +21,7 @@
 const settings = require('./homeTime/settings');
 const driverState = require('./homeTime/driverState');
 const roadHistory = require('./homeTime/roadHistory');
+const briefVisits = require('./homeTime/briefVisits');
 const requests = require('./homeTime/requests');
 const integrity = require('./homeTime/integrity');
 const notices = require('./homeTime/notices');
@@ -76,6 +78,11 @@ module.exports = {
   getRoadHistoryById: roadHistory.getRoadHistoryById,
   updateRoadHistory: roadHistory.updateRoadHistory,
   deleteRoadHistory: roadHistory.deleteRoadHistory,
+
+  // Brief visits: a stay or a road segment under 12 hours (lib/homeTime/briefVisits.js)
+  foldHomeStay: briefVisits.foldHomeStay,
+  getLastClosedHomeStay: briefVisits.getLastClosedHomeStay,
+  reopenHomeStay: briefVisits.reopenHomeStay,
 
   // Integrity guard (boot)
   ensureOpenStayIndex: integrity.ensureOpenStayIndex,

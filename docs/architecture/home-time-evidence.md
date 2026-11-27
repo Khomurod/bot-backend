@@ -155,13 +155,65 @@ of two systems is right is precisely what nobody here knows).
 the whole fleet went home becomes a slow problem somebody notices rather than a
 fast one nobody can undo.
 
+## A visit under 12 hours is not going home (owner, 27 November 2026)
+
+The settle, dwell and hold above stop Wenze reacting to a Board that is minutes
+behind. They do not stop a Board that really did say HOME for forty minutes:
+in the 30 days to 27 November, 15 of 53 company-driver home stays lasted under
+12 hours and 8 under two. Each one ended the road trip it interrupted, so the
+trip's extra weeks were split, the bonus was decided on a home stay of 0 days,
+and accounting was told the next trip "came home early after 0 days on the
+road" (two such alerts went out in November and moved the cards to EARLY).
+
+The rule is `lib/homeTime/briefVisits.js`, applied where the record is written
+(`services/homeTime/briefVisits.js`, called from `applyStateTransition`):
+
+* **A home stay under 12 hours is folded** into the trip it interrupted. The
+  row is kept and marked (`folded_at`, `folded_reason` with the figures it
+  held), its bonus is zeroed, and the driver's road clock (`state_since`) goes
+  back to the trip's start — so the next real arrival records the WHOLE trip
+  and its whole bonus. A folded row is left out of the history, the efficiency
+  report, the bonus queue and accounting's verdicts. The managers' "back on the
+  road" notice says "Short stop (40 min), under 12 hours: not counted as home
+  time" instead of "0 days at home".
+* **Home again under 12 hours after leaving reopens the stay** before it
+  (`reopened_at`, `reopened_note`): no trip is recorded, and the stay's home
+  days are counted from the FIRST arrival when it finally closes. The managers
+  are told both the return home and the final departure, each under a key of
+  its own (`staySubject` in `lib/homeTime/managerNotice.js`) — the first
+  round's keys would otherwise swallow them.
+* **Neither happens once the stay's bonus is posted or decided** (both writes
+  are guarded in SQL). The bonus is decided only `SETTLE_HOURS` (16) after the
+  return — the 12 hours plus the four the Board watch may take to notice in
+  economy mode — so a stay that may still be reopened is never judged half-way.
+* **`driver_home_status.state_changed_at`** is when the state last changed.
+  After a fold `state_since` is weeks earlier, and the Board watch's dwell and
+  "the board predates the state" rules are about the change, so it reads
+  `GREATEST(state_since, state_changed_at)`: a Board still saying HOME from
+  before the driver said "Ready" must not reopen a stay the clock skipped.
+* **Every write and reader is best effort to the old behaviour**: a fold or
+  reopen that cannot be made (an error, a row someone moved first) records the
+  transition the ordinary way, as before this rule.
+* **One way to count days** — complete 24-hour periods (`wholeDays`): the
+  bonus's "home more than 4 days", accounting's "overstayed", the notices and
+  the return-watch correction all use it. It used to be counted twice — once
+  in calendar days in the process's time zone — and the two disagreed by a day
+  across a clock change.
+
+The return-watch correction (`returnToRoadActions.js`) closes a stay without
+folding: it acts only on a truck that has really left. Accounting's reading
+(`lib/homeTime/ownViolations.js`) applies the same two rules again, so a record
+written before this, or by that path, is judged the same way.
+
 ## The cycle history says where each side came from
 
 `driver_road_history` carries `opened_by` / `opened_evidence` and `closed_by` /
 `closed_evidence`. A manager reading "home 14–18 Sep" can ask whether a person
 said so or a spreadsheet did; a correction nobody can trace is a correction
 nobody can argue with. Sources: `driver_message`, `dispatcher_board`,
-`ai_intent`, `admin`, `import`, `evidence`.
+`admin_correction` (the Home Time page), `screenshot_import`, `evidence` (closed
+because a later road period was observed). The admin flip and the import used
+to record `driver_message` for a change no driver wrote.
 
 Rows written before this existed are left blank rather than backfilled with a
 guess — inventing provenance is the one thing these columns exist to prevent.
@@ -173,12 +225,16 @@ Guarantees, all covered by tests:
 * a repeated READY or a second load does not close the cycle twice
 * a truck or group change does not lose the state: everything is keyed on the
   permanent person through the open `driver_person_groups` association
-* the bonus is unchanged by any of it — `bonus_usd` is computed at insert
+* the bonus is unchanged by any of it — `bonus_usd` is computed at insert —
+  except a folded brief visit, whose bonus moves to the trip that continues
 
 ## Tests
 
 * `tests/homeTimeBoardPresence.test.js` — the pure rule (mostly cases that do
   nothing) and the pass
+* `tests/homeTimeBriefVisits.test.js`, `tests/homeTimeBriefVisitsPg.test.js` —
+  the 12-hour rule: days, fold, reopen, their guards, the notices' keys, the
+  settle, and the long-trip question read from the record
 * `tests/homeTimeCycleEvidencePg.test.js` — provenance, one-close-only, the
   `closed` status, and `status_changed_at` ignoring an ETA edit
 * `tests/homeTimeApproval.test.js`, `tests/homeTimeExpiry.test.js` — closing is

@@ -162,6 +162,7 @@ async function applyRows(rows) {
           eventAt: sinceIso,
           statusText: 'Imported from screenshot',
           announce: false,
+          detectedBy: 'screenshot_import',
           // A corrected screenshot often carries the SAME state and a DIFFERENT
           // date ("still on the road, but left on the 3rd"). Without this the
           // same-state branch touches only the last-status fields and the road

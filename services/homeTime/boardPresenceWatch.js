@@ -73,6 +73,12 @@ async function loadDriverStates(db) {
             pg.person_id,
             s.state,
             s.state_since,
+            -- When the state last CHANGED. After a brief visit was folded
+            -- (lib/homeTime/briefVisits.js) the road clock runs from the trip's
+            -- start, but the settle, dwell and "the board predates this state"
+            -- rules are about the change: a Board still saying HOME from before
+            -- the driver said "Ready" must not reopen a stay the clock skipped.
+            GREATEST(s.state_since, COALESCE(s.state_changed_at, s.state_since)) AS state_changed_at,
             s.last_status_at
        FROM driver_home_status s
        JOIN groups g ON g.id = s.group_id
@@ -165,7 +171,7 @@ async function runBoardPresencePass({ deps = defaultDeps(), now = Date.now(), te
       statusChangedAt: entry.statusChangedAt,
       lastSeenAt: entry.lastSeenAt,
       wenzeState: state.state,
-      wenzeStateSince: state.state_since,
+      wenzeStateSince: state.state_changed_at || state.state_since,
       ...driverVoice(state),
     });
 

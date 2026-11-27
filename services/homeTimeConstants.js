@@ -14,6 +14,7 @@
  * network or database.
  */
 const { DateTime } = require('luxon');
+const { wholeDays } = require('../lib/homeTime/briefVisits');
 
 const DEFAULT_ROAD_ALLOWANCE_WEEKS = 4;
 const DEFAULT_HOME_ALLOWANCE_DAYS = 4;
@@ -50,12 +51,17 @@ function toDateTime(value) {
   return DateTime.fromISO(String(value));
 }
 
-/** Whole days between two ISO/Date timestamps (floored, never negative). */
+/**
+ * Whole days between two ISO/Date timestamps: complete 24-hour periods, never
+ * negative, 0 when either is unreadable. Home Time's one way of counting days
+ * (lib/homeTime/briefVisits.js `wholeDays`), so the bonus and accounting's
+ * verdict on the same stay can never disagree by a day.
+ */
 function wholeDaysBetween(startIso, endIso) {
   const start = toDateTime(startIso);
   const end = toDateTime(endIso);
   if (!start.isValid || !end.isValid) return 0;
-  return Math.max(0, Math.floor(end.diff(start, 'days').days));
+  return wholeDays(start.toMillis(), end.toMillis()) ?? 0;
 }
 
 function normalizeHomeTimeDriverType(driverType) {

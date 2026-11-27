@@ -129,9 +129,13 @@ function world({ state = 'home', stateSince = '2026-08-25T00:00:00.000Z', settin
     },
   };
 
+  // The modules the transition delegates to capture `ht` at load time too, so
+  // they are re-required against this world's stub along with the service.
   for (const p of [
     '../services/homeTimeService',
     '../services/homeTimeImportService',
+    '../services/homeTime/stayClose',
+    '../services/homeTime/briefVisits',
   ]) delete require.cache[require.resolve(p)];
 
   return { cycles, posted, expired, ht, status: () => status };

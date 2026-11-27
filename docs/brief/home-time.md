@@ -63,10 +63,12 @@ The extra-week bonus is **recorded** when the driver gets home and **decided**
 only when they go back on the road (`lib/homeTime/roadBonusDecision.js`,
 applied by `roadBonusNotifierService` every 10 minutes):
 
-1. **Still home** → `bonus_decision = 'waiting_home_stay'`; nothing is posted.
+1. **Still home, or back on the road under `SETTLE_HOURS` (16)** →
+   `bonus_decision = 'waiting_home_stay'`; nothing is posted (a driver back
+   home within 12 hours never left: the stay is reopened, see below).
 2. **Home longer than `home_allowance_days` (4)** → `forfeited`: no bonus at
-   all, and one 🚫 note in the Road Bonus group says why. Whole days, the same
-   count `home_days` and the efficiency report use.
+   all, and one 🚫 note in the Road Bonus group says why. Complete 24-hour
+   days, the same count accounting's "overstayed" uses.
 3. **Trip longer than six weeks** → `needs_review`: nothing is posted until a
    person approves `home_time.road_bonus_review` (Needs Attention, or Yes in
    Telegram). Approving applies `home_time.release_road_bonus`; dismissing pays
@@ -87,6 +89,18 @@ during the home stay.
 "one-time" backfill that, because the baseline runs on every boot, marked every
 unposted leg as posted on every restart. Removed with migration 0064 — a leg
 now waits days for its decision, and a deploy would have lost it.
+
+### A visit under 12 hours is not going home (owner, 27 November 2026)
+
+`lib/homeTime/briefVisits.js`, applied in `applyStateTransition` and again by
+accounting's verdicts: a home stay under 12 hours is **folded** into its trip
+(row kept with `folded_at`, bonus zeroed, road clock back at the trip's start,
+so the next arrival records the whole trip); home again under 12 hours after
+leaving **reopens** the stay (`reopened_at`, days from the first arrival).
+Neither once the bonus is posted or decided. `state_changed_at` is the moment
+of the change, which the Board watch reads. Days are complete 24-hour periods
+everywhere (`wholeDays`). The long-trip question shows the whole trip and the
+short stops not counted. See `docs/architecture/home-time-evidence.md`.
 
 ### The home-time cycle invariant
 
@@ -464,7 +478,8 @@ Bitrix pipeline 33's, moved by an external script; that script was switched
 off and abandoned, so **Wenze now decides from this section's own record**
 (`driver_road_history` — the Dispatcher Board, where only HOME is home, and
 the drivers' messages; `lib/homeTime/ownViolations.js`): a stay shorter than
-12 hours is a flap, not a stay, and does not cut a road leg; owner-operators
+12 hours is a flap, not a stay, and does not cut a road leg, and under 12 hours
+on the road between two stays makes them one visit; owner-operators
 and stays linked to an approved request are not judged; a driver's own rule
 ("3 weeks / 3 days", Home Time → Settings & Alerts, anyone with access)
 replaces the policy while it is valid; only stays that began after Wenze

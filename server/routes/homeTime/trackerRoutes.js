@@ -211,6 +211,9 @@ function createHomeTimeTrackerRoutes({ authMiddleware }) {
           eventAt: since,
           statusText: 'Corrected by an administrator',
           announce: false,
+          // Who said so, on the cycle it opens or closes. Without it the
+          // record read "driver_message" for a correction no driver wrote.
+          detectedBy: 'admin_correction',
         });
         // Fall through ONLY when tracking is switched off entirely — with the
         // feature off there are no cycles to keep consistent, so an admin edit

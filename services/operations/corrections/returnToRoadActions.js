@@ -19,19 +19,15 @@
  */
 const { DateTime } = require('luxon');
 const { StaleCorrectionError, assertUnchangedSince } = require('./evidence');
-const { eventKeyFor, buildBackOnRoadNotice } = require('../../../lib/homeTime/managerNotice');
+const { eventKeyFor, staySubject, buildBackOnRoadNotice } = require('../../../lib/homeTime/managerNotice');
 const { HOME_TIME_MANAGER_MENTIONS } = require('../../homeTimeRequestConstants');
+// Home Time's one way of counting days, the same the bonus and accounting use.
+const { wholeDays } = require('../../../lib/homeTime/briefVisits');
 
 /** A verdict older than this is not evidence about now. */
 const MAX_VERDICT_AGE_MINUTES = 90;
 const REQUEST_LINK_WINDOW_DAYS = 3;
 
-function wholeDays(fromIso, toIso) {
-  const a = DateTime.fromJSDate(new Date(fromIso));
-  const b = DateTime.fromJSDate(new Date(toIso));
-  if (!a.isValid || !b.isValid) return null;
-  return Math.max(0, Math.floor(b.diff(a, 'days').days));
-}
 
 function minutesSince(iso, nowMs = Date.now()) {
   const t = Date.parse(iso);
@@ -99,7 +95,7 @@ const markReturnedToRoad = {
     // Close the open cycle, if there is one. A driver first observed at home has
     // no cycle to close, and that is not a reason to refuse the state change.
     const cycleRes = await client.query(
-      `SELECT id, home_arrived_at, return_to_road_at, home_days, linked_request_id
+      `SELECT id, home_arrived_at, return_to_road_at, home_days, linked_request_id, reopened_at
          FROM driver_road_history
         WHERE group_id = $1 AND return_to_road_at IS NULL
         ORDER BY home_arrived_at DESC
@@ -130,7 +126,7 @@ const markReturnedToRoad = {
     // leg starts here, exactly as the message-driven transition does.
     await client.query(
       `UPDATE driver_home_status
-          SET state = 'road', state_since = $2, road_bonus_weeks_notified = 0,
+          SET state = 'road', state_since = $2, state_changed_at = $2, road_bonus_weeks_notified = 0,
               last_status_at = $2
         WHERE group_id = $1 AND state = 'home'`,
       [groupId, eventAt]
@@ -140,7 +136,7 @@ const markReturnedToRoad = {
     await client.query('DELETE FROM home_time_return_watch WHERE group_id = $1', [groupId]);
 
     await enqueueBackOnRoadNotice(client, {
-      groupId, cycleId: closed?.id || null, personId: watch.person_id,
+      groupId, cycleId: closed?.id || null, againAt: cycle?.reopened_at || null, personId: watch.person_id,
       eventAt, homeDays: closed?.home_days ?? null,
       evidenceSummary: evidenceSummary || describeWatch(watch),
     });
@@ -242,7 +238,7 @@ function describeWatch(watch) {
  * it commits with the state change or not at all.
  */
 async function enqueueBackOnRoadNotice(client, {
-  groupId, cycleId, personId, eventAt, homeDays, evidenceSummary,
+  groupId, cycleId, againAt = null, personId, eventAt, homeDays, evidenceSummary,
 }) {
   const settings = await client.query(
     'SELECT completed_notify_group_id FROM home_time_settings WHERE id = 1'
@@ -268,7 +264,9 @@ async function enqueueBackOnRoadNotice(client, {
     evidence: evidenceSummary,
     mentions: HOME_TIME_MANAGER_MENTIONS,
   });
-  const subject = cycleId || `${groupId}:${eventAt}`;
+  // A stay reopened after a brief road segment is left a second time: its
+  // own key, or the first departure's notice would swallow this one.
+  const subject = staySubject(cycleId || null, againAt) || `${groupId}:${eventAt}`;
   const res = await client.query(
     `INSERT INTO home_time_manager_notices
        (event_key, event_type, person_id, group_id, road_history_id, chat_id, body, evidence_json)

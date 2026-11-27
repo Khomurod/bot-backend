@@ -164,9 +164,17 @@ const CASES = {
       evidence: {
         roadHistoryId: 9002, groupId: 4401, driverName: 'LATRAVIA MCLEAN', unitNumber: '777', daysOnRoad: 52,
         bonusUsd: 300, roadStartedAt: '2026-08-01T00:00:00Z', homeArrivedAt: '2026-09-22T00:00:00Z',
+        // The whole trip, so it is answered in one tap (owner, 27 November 2026).
+        returnToRoadAt: '2026-09-25T06:00:00Z', homeDays: 3,
+        leftBy: 'driver_message', leftEvidence: null,
+        openedBy: 'dispatcher_board', openedEvidence: 'dispatcher board: HOME, held 25 min',
+        closedBy: 'admin_correction', closedEvidence: null,
+        briefVisits: 2, briefVisitDays: ['2026-08-20', '2026-09-02'],
       },
     },
-    shows: ['LATRAVIA MCLEAN', 'Unit 777', '$300', '52 days', '2026-08-01', '2026-09-22'],
+    shows: ['LATRAVIA MCLEAN', 'Unit 777', '$300', '52 days', '2026-08-01', '2026-09-22',
+      'a status in the chat', 'HOME, held 25 min', '2026-09-25', 'corrected by hand', 'Home 3 days',
+      'not counted as going home: 2', '2026-08-20, 2026-09-02'],
   },
   'identity.non_driver_typed_as_driver': {
     finding: { title: 't', evidence: { groupId: 4401, groupName: 'Wenze Facebook Leads' } },

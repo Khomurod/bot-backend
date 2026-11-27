@@ -12,7 +12,12 @@ function loadService({ profile, currentStatus, settings, telegramOverrides = {} 
   const roadBonusPath = path.resolve(__dirname, '../services/roadBonusNotifierService.js');
   const configPath = path.resolve(__dirname, '../config/config.js');
 
-  for (const p of [servicePath, dbPath, htPath, htmlPath, roadBonusPath, configPath]) delete require.cache[p];
+  // stayClose / briefVisits capture `ht` at load time, like the service itself.
+  const stayClosePath = path.resolve(__dirname, '../services/homeTime/stayClose.js');
+  const briefPath = path.resolve(__dirname, '../services/homeTime/briefVisits.js');
+  for (const p of [servicePath, dbPath, htPath, htmlPath, roadBonusPath, configPath, stayClosePath, briefPath]) {
+    delete require.cache[p];
+  }
 
   const inserts = [];
   const sends = [];

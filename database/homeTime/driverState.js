@@ -25,25 +25,31 @@ async function getDriverHomeStatus(groupId) {
  */
 async function upsertDriverHomeStatus({
   groupId, telegramGroupId, state, stateSince, lastStatusText, lastStatusAt,
-  roadBonusWeeksNotified = 0,
+  roadBonusWeeksNotified = 0, stateChangedAt = null,
 }) {
+  // `stateChangedAt`: when the state actually changed. Only a brief visit's
+  // fold or reopen passes one that differs from `stateSince` (the road clock
+  // goes on from the trip's start); every other write records the two alike.
   const res = await query(
     `INSERT INTO driver_home_status
-       (group_id, telegram_group_id, state, state_since, last_status_text, last_status_at, road_bonus_weeks_notified, updated_at, person_id)
+       (group_id, telegram_group_id, state, state_since, last_status_text, last_status_at, road_bonus_weeks_notified, updated_at, person_id, state_changed_at)
      VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(),
-             (SELECT person_id FROM driver_person_groups WHERE group_id = $1 AND ended_at IS NULL LIMIT 1))
+             (SELECT person_id FROM driver_person_groups WHERE group_id = $1 AND ended_at IS NULL LIMIT 1),
+             COALESCE($8::timestamptz, $4::timestamptz))
      ON CONFLICT (group_id) DO UPDATE SET
        telegram_group_id = EXCLUDED.telegram_group_id,
        person_id = COALESCE(EXCLUDED.person_id, driver_home_status.person_id),
        state = EXCLUDED.state,
        state_since = EXCLUDED.state_since,
+       state_changed_at = EXCLUDED.state_changed_at,
        last_status_text = EXCLUDED.last_status_text,
        last_status_at = EXCLUDED.last_status_at,
        road_bonus_weeks_notified = EXCLUDED.road_bonus_weeks_notified,
        updated_at = NOW()
      RETURNING *`,
     [groupId, telegramGroupId != null ? String(telegramGroupId) : null, state, stateSince,
-      lastStatusText || null, lastStatusAt, Math.max(0, Number(roadBonusWeeksNotified) || 0)]
+      lastStatusText || null, lastStatusAt, Math.max(0, Number(roadBonusWeeksNotified) || 0),
+      stateChangedAt || null]
   );
   return res.rows[0];
 }

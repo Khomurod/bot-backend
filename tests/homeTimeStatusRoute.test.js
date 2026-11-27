@@ -34,6 +34,9 @@ function loadApp({ existing, captured, cycles = [], settings = { enabled: true }
   // module added by a later split.
   purgeModulePackage(routePath, routeDir, [htPath, dbPath]);
   delete require.cache[servicePath];
+  // The transition's own helpers capture `ht` at load time as well.
+  delete require.cache[path.resolve(__dirname, '../services/homeTime/stayClose.js')];
+  delete require.cache[path.resolve(__dirname, '../services/homeTime/briefVisits.js')];
 
   require.cache[dbPath] = { exports: { async getDriverProfileByGroupId() { return null; } } };
   require.cache[groupsPath] = {

@@ -118,12 +118,36 @@ async function loadSnapshot(db = defaultDb) {
   // ROAD BONUSES HELD FOR A PERSON. Null on failure, for the same reason as
   // above: `checks/roadBonus.js` throws on it, so an outage never resolves a
   // held bonus off Needs Attention.
+  //
+  // WITH THE WHOLE TRIP, so the question can be answered in one tap: when the
+  // driver left and how that was seen (the stay before it), when they came
+  // home and went back out and who said so, and the short stops under 12
+  // hours that were NOT counted as going home (lib/homeTime/briefVisits.js).
   const roadBonusReviews = await db.query(
-    `SELECT id, group_id, driver_name, unit_number, days_on_road, exceeded_weeks,
-            home_days, bonus_usd, road_started_at, home_arrived_at, bonus_decision_reason
-       FROM driver_road_history
-      WHERE bonus_decision = 'needs_review' AND bonus_posted_at IS NULL
-      ORDER BY id
+    `SELECT h.id, h.group_id, h.driver_name, h.unit_number, h.days_on_road, h.exceeded_weeks,
+            h.home_days, h.bonus_usd, h.road_started_at, h.home_arrived_at, h.return_to_road_at,
+            h.opened_by, h.opened_evidence, h.closed_by, h.closed_evidence, h.bonus_decision_reason,
+            prev.closed_by AS left_by, prev.closed_evidence AS left_evidence,
+            brief.n AS brief_visits, brief.days AS brief_visit_days
+       FROM driver_road_history h
+       LEFT JOIN LATERAL (
+         SELECT p.closed_by, p.closed_evidence FROM driver_road_history p
+          WHERE p.id <> h.id AND p.folded_at IS NULL
+            AND (p.group_id = h.group_id OR p.person_id = h.person_id)
+            AND p.return_to_road_at = h.road_started_at
+          ORDER BY p.home_arrived_at DESC LIMIT 1
+       ) prev ON TRUE
+       LEFT JOIN LATERAL (
+         SELECT COUNT(*)::int AS n,
+                ARRAY_AGG(to_char(f.home_arrived_at AT TIME ZONE 'America/Chicago', 'YYYY-MM-DD')
+                          ORDER BY f.home_arrived_at) AS days
+           FROM driver_road_history f
+          WHERE f.folded_at IS NOT NULL
+            AND (f.group_id = h.group_id OR f.person_id = h.person_id)
+            AND f.home_arrived_at > h.road_started_at AND f.home_arrived_at < h.home_arrived_at
+       ) brief ON TRUE
+      WHERE h.bonus_decision = 'needs_review' AND h.bonus_posted_at IS NULL
+      ORDER BY h.id
       LIMIT 500`
   ).then((r) => r.rows).catch((err) => {
     console.warn('[SNAPSHOT] could not read held road bonuses:', err.message);

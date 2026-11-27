@@ -2,8 +2,10 @@
  * Road Bonus Notifier service.
  *
  * DECIDED AFTER THE HOME STAY (owner's rule, 2026-10-06). A leg's bonus is
- * recorded when the driver gets home and decided only when they go back on the
- * road: home longer than the allowance → no bonus; a trip longer than six weeks
+ * recorded when the driver gets home and decided only once they have been back
+ * on the road for SETTLE_HOURS (a return the driver undoes within 12 hours
+ * reopens the stay, lib/homeTime/briefVisits.js): home longer than the
+ * allowance → no bonus; a trip longer than six weeks
  * → held for a person (Needs Attention / Telegram) before anything is posted;
  * otherwise released. `lib/homeTime/roadBonusDecision.js` is the rule; this
  * pass applies it to every leg whose home stay has ended, then posts what was
@@ -40,7 +42,7 @@ const {
   homeTimePolicyApplies, DEFAULT_ROAD_ALLOWANCE_WEEKS, DAYS_PER_WEEK,
 } = require('./homeTimeConstants');
 const { inferDriverType } = require('../lib/drivers/driverProfileParse');
-const { decideRoadBonus, DECISIONS } = require('../lib/homeTime/roadBonusDecision');
+const { decideRoadBonus, DECISIONS, SETTLE_HOURS } = require('../lib/homeTime/roadBonusDecision');
 const { withRunRecord, noteHeartbeat } = require('./operations/runLedger');
 
 // Safety-net sweep cadence. The primary post happens at the transition; this
@@ -181,11 +183,12 @@ async function runRoadBonusCheck(telegram) {
   }
   const allowanceWeeks = Number(settings.road_allowance_weeks);
 
-  // FIRST, DECIDE every leg whose home stay has now ended. Guarded on the state
-  // read, so a second pass, or a person approving a held leg in the meantime,
-  // is never overwritten.
+  // FIRST, DECIDE every leg whose home stay has now ended — SETTLE_HOURS ago,
+  // so a driver back home within hours (whose stay is reopened) is never
+  // decided on half a stay. Guarded on the state read, so a second pass, or a
+  // person approving a held leg in the meantime, is never overwritten.
   const decided = { released: 0, needsReview: 0, forfeited: 0 };
-  const waiting = await ht.listRoadBonusesAwaitingDecision();
+  const waiting = await ht.listRoadBonusesAwaitingDecision({ settleHours: SETTLE_HOURS });
   for (const leg of waiting) {
     const verdict = decideRoadBonus(leg, { homeAllowanceDays: settings.home_allowance_days });
     if (!verdict || verdict.decision === DECISIONS.WAITING) continue;
