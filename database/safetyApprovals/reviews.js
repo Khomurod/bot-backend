@@ -38,6 +38,8 @@ function mapReview(row) {
     dueAt: row.due_at,
     lastError: row.last_error || null,
     outcome: row.outcome || null,
+    // The bot's one question about this message (migration 0113).
+    questionMessageId: row.question_message_id == null ? null : Number(row.question_message_id),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -241,6 +243,22 @@ async function releaseAnnouncement(id) {
   await query('DELETE FROM safety_approval_announcements WHERE id = $1 AND sent_at IS NULL', [id]);
 }
 
+/** The bot asked Safety about this message: remember where, so it is asked once and can be taken back. */
+async function recordQuestion(reviewId, messageId) {
+  await query(
+    'UPDATE safety_approval_reviews SET question_message_id = $2, updated_at = NOW() WHERE id = $1',
+    [reviewId, messageId == null ? null : Number(messageId)],
+  );
+}
+
+/** The question was taken back (deleted in Telegram): forget it. */
+async function clearQuestion(reviewId) {
+  await query(
+    'UPDATE safety_approval_reviews SET question_message_id = NULL, updated_at = NOW() WHERE id = $1',
+    [reviewId],
+  );
+}
+
 function mapAnnouncement(row) {
   if (!row) return null;
   return {
@@ -271,6 +289,18 @@ async function findAnnouncementByTopicMessage(chatId, messageId) {
   return mapAnnouncement(rows[0]);
 }
 
+/** Every driver's latest decision on one post — what the bot has already said about it. */
+async function listPostDecisions(chatId, postMessageId) {
+  const { rows } = await query(
+    `SELECT DISTINCT ON (driver_key) *
+       FROM safety_approval_announcements
+      WHERE chat_id = $1 AND post_message_id = $2
+      ORDER BY driver_key, created_at DESC, id DESC`,
+    [String(chatId), Number(postMessageId)],
+  );
+  return rows.map(mapAnnouncement);
+}
+
 /** The driver's latest decision on a post, as posted (or reserved). */
 async function latestAnnouncement(chatId, postMessageId, driverKey) {
   const { rows } = await query(
@@ -296,5 +326,8 @@ module.exports = {
   releaseAnnouncement,
   findAnnouncementByTopicMessage,
   latestAnnouncement,
+  listPostDecisions,
+  recordQuestion,
+  clearQuestion,
   DEFAULT_LEASE_SECONDS,
 };

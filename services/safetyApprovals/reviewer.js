@@ -19,7 +19,10 @@
  *      layout), so a hashtag goes out seconds after it is written;
  *   4. the decision (services/safetyApprovals/decide.js): a hashtag decides
  *      with no model; the words alone are read by a model and verified. Who
- *      it is about cannot be settled → Safety is asked;
+ *      it is about cannot be settled → CLAUDE reads the whole conversation
+ *      (judge.js); still not settled → Safety is asked — not at once, once,
+ *      and the question is taken back if the message turns out clear
+ *      (questions.js);
  *   5. a decision already posted for that driver on that post is not posted
  *      again; a changed one is. The right to post is RESERVED before the
  *      send, so a failure after Telegram accepted it cannot post it twice.
@@ -33,13 +36,13 @@ const messages = require('../../database/safetyApprovals/messages');
 const reviews = require('../../database/safetyApprovals/reviews');
 const { assembleSafety } = require('../../lib/safetyApprovals/bundle');
 const { readTrigger, isConditional } = require('../../lib/safetyApprovals/trigger');
-const { personName } = require('../../lib/safetyApprovals/postDetails');
-const { buildCaption, postLink } = require('../../lib/safetyApprovals/announcement');
 const { readSafetyReply, AiUnavailableError } = require('./aiReading');
 const { resolvePost, locatePost } = require('./postLocator');
 const { decide } = require('./decide');
-const { postDecision, askSafety } = require('./announcer');
 const { answerBotPost } = require('./botPostReply');
+const { announceDecisions } = require('./publish');
+const { askOnce, takeBackQuestion } = require('./questions');
+const { judgeDecision } = require('./judge');
 
 const MAX_ATTEMPTS = 6;
 const TEXT_ONLY_AFTER_ATTEMPTS = 3;
@@ -106,67 +109,15 @@ async function failOrRetry(review, err, now) {
   return 'retry';
 }
 
-/** Safety is asked in General, and the review closes as unclear: it never decides on its own. */
-async function ask(review, deps, triggerRow, reason, extra = {}) {
-  const asked = await askSafety(deps.telegram, {
-    chatId: review.chatId, threadId: triggerRow.threadId, replyTo: triggerRow.messageId, reason,
-  });
-  await reviews.finishReview(review, { status: 'unclear', outcome: { ...extra, reason, asked } });
+/** Close the review with nothing posted and nothing asked; a question asked before is taken back. */
+async function quiet(review, deps, outcome) {
+  await reviews.finishReview(review, { status: 'unclear', outcome });
+  await takeBackQuestion(review, deps);
   return 'unclear';
 }
 
-/** Post every decision not posted yet. @returns names posted and names already there */
-async function announce(review, deps, { post, result, triggerRow }) {
-  const { chatId } = review;
-  const posted = [];
-  const unchanged = [];
-  const link = postLink(chatId, post.anchorId);
-  for (const decision of result.decisions) {
-    // eslint-disable-next-line no-await-in-loop
-    const reservation = await reviews.reserveAnnouncement({
-      chatId,
-      postMessageId: post.anchorId,
-      driverKey: decision.key,
-      driverName: decision.name,
-      decision: decision.decision,
-      reviewId: review.id,
-    });
-    if (!reservation) {
-      unchanged.push(decision.name);
-      continue;
-    }
-    const caption = buildCaption({
-      decision: decision.decision,
-      postText: post.text,
-      name: decision.name,
-      nameInStatus: result.candidates.length > 1,
-      nameFromCdl: decision.nameFromCdl,
-      decidedBy: personName(triggerRow.fromName),
-      reason: decision.reason,
-      recruiterName: personName(post.recruiterName),
-      link,
-    });
-    let topicMessageIds;
-    try {
-      // eslint-disable-next-line no-await-in-loop
-      topicMessageIds = await postDecision(deps.telegram, {
-        chatId, topicId: deps.settings.topicId, caption, images: post.images,
-      });
-    } catch (err) {
-      // Not posted: the retry may post it.
-      // eslint-disable-next-line no-await-in-loop
-      await reviews.releaseAnnouncement(reservation.id).catch(() => {});
-      throw err;
-    }
-    // Posted. Failing to note where must not make a retry post it again —
-    // the reservation already says it went out.
-    // eslint-disable-next-line no-await-in-loop
-    await reviews.completeAnnouncement(reservation.id, topicMessageIds)
-      .catch((err) => log(`review ${review.id}: posted, but not recorded where (${errorText(err)})`));
-    posted.push(decision.name);
-  }
-  return { posted, unchanged };
-}
+/** Where the rules stop and Claude may still settle it (judge.js). */
+const JUDGEABLE = Object.freeze(new Set(['which_of_team', 'conflict', 'unclear']));
 
 /**
  * @param {object} review   a claimed row from database/safetyApprovals/reviews.js
@@ -201,20 +152,21 @@ async function processReview(review, deps) {
       return await answerBotPost(review, deps, { announcement: botPost, triggerText, triggerRow });
     }
 
+    // Awaited where returned, so a failure reaches the retry below.
+    const askLater = (reason, extra = {}) => askOnce(review, deps, {
+      triggerRows, triggerRow, reason, extra, now,
+    });
     if (!triggerRows.length || (!trigger.hashtag && !trigger.keyword)) {
-      await reviews.finishReview(review, { status: 'unclear', outcome: { reason: 'not_a_decision' } });
-      return 'unclear';
+      return await quiet(review, deps, { reason: 'not_a_decision' });
     }
     if (!trigger.hashtag && trigger.question) {
       // "Is he approved?" asks; it does not decide, and is not answered with a question.
-      await reviews.finishReview(review, { status: 'unclear', outcome: { reason: 'question' } });
-      return 'unclear';
+      return await quiet(review, deps, { reason: 'question' });
     }
     if (!trigger.hashtag && isConditional(triggerText)) {
       // "If CLH is clean we can hire" is not a decision yet. Nothing is posted,
       // and — the owner's choice, 27 November 2026 — nothing is asked.
-      await reviews.finishReview(review, { status: 'unclear', outcome: { reason: 'conditional' } });
-      return 'unclear';
+      return await quiet(review, deps, { reason: 'conditional' });
     }
 
     let post;
@@ -222,18 +174,15 @@ async function processReview(review, deps) {
     if (botPost) {
       // The driver's post the bot's post was about; gone (60 days) → nothing to say.
       post = await resolvePost(chatId, botPost.postMessageId, safetyIds);
-      if (!post) {
-        await reviews.finishReview(review, { status: 'unclear', outcome: { reason: 'post_not_seen' } });
-        return 'unclear';
-      }
+      if (!post) return await quiet(review, deps, { reason: 'post_not_seen' });
     } else if (review.postMessageId) {
       post = await resolvePost(chatId, review.postMessageId, safetyIds);
-      if (!post) return ask(review, deps, triggerRow, 'post_not_seen');
+      if (!post) return await askLater('post_not_seen');
     } else {
       located = await locatePost({
         chatId, trigger: { messageId: triggerRow.messageId, text: triggerText }, safetyIds,
       }, deps);
-      if (located.ask) return ask(review, deps, triggerRow, located.ask);
+      if (located.ask) return await askLater(located.ask);
       post = located.post;
     }
 
@@ -242,7 +191,7 @@ async function processReview(review, deps) {
       ...triggerRows,
     ]);
 
-    const result = await decide({
+    let result = await decide({
       post,
       safety,
       trigger,
@@ -258,17 +207,33 @@ async function processReview(review, deps) {
       textOnlyFallback: review.attempts >= TEXT_ONLY_AFTER_ATTEMPTS,
     });
     const via = located ? { located: located.via } : {};
-    if (result.ask) return ask(review, deps, triggerRow, result.ask, { ...summarise(result), ...via });
-    if (result.unclear) {
-      await reviews.finishReview(review, { status: 'unclear', outcome: { ...summarise(result), reason: result.unclear } });
-      return 'unclear';
+    if (result.ask && JUDGEABLE.has(result.ask) && result.candidates?.length) {
+      // THE RULES STOPPED: Claude reads the whole conversation (owner, 28
+      // November 2026). Not sure, or not reachable → Safety is asked, below.
+      const judged = await (deps.judge || judgeDecision)({
+        chatId, post, candidates: result.candidates, triggerRows, triggerText, trigger, safetyIds,
+      }, deps);
+      if (judged) {
+        result = {
+          mode: 'judge',
+          decisions: judged.decisions,
+          candidates: judged.candidates,
+          reading: { provider: judged.provider, model: judged.model, dropped: judged.dropped },
+          rulesAsked: result.ask,
+        };
+      }
     }
+    if (result.ask) return await askLater(result.ask, { ...summarise(result), ...via });
+    if (result.unclear) return await quiet(review, deps, { ...summarise(result), reason: result.unclear });
 
-    const { posted, unchanged } = await announce(review, deps, { post, result, triggerRow });
+    const { posted, unchanged } = await announceDecisions(review, deps, { post, result, triggerRow });
     await reviews.finishReview(review, {
       status: 'published',
-      outcome: { ...summarise(result), ...via, posted, unchanged },
+      outcome: {
+        ...summarise(result), ...via, posted, unchanged, ...(result.rulesAsked ? { rulesAsked: result.rulesAsked } : {}),
+      },
     });
+    await takeBackQuestion(review, deps);
     log(`review ${review.id}: posted ${posted.length}, already posted ${unchanged.length} (${result.mode})`);
     return 'published';
   } catch (err) {

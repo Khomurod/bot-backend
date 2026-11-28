@@ -225,3 +225,39 @@ test('0112: the bot\'s own post is found by any of its messages, and a withdrawa
       "INSERT INTO safety_approval_reviews (chat_id, safety_key, status) VALUES ($1, 'message:30', 'withdrawn')", [CHAT],
     );
   });
+
+test('0113: the one question is remembered and forgotten; the conversation under a post; each driver\'s latest decision',
+  { skip: skipWithoutPg() }, async (t) => {
+    const { reviews, messages } = await setup(t);
+    const queued = await reviews.enqueueReview({
+      chatId: CHAT, safetyKey: 'message:30', safetyUserId: '900', postMessageId: 10, settleSeconds: 0,
+    });
+    assert.equal(queued.questionMessageId, null);
+    await reviews.recordQuestion(queued.id, 777);
+    const requeued = await reviews.enqueueReview({
+      chatId: CHAT, safetyKey: 'message:30', safetyUserId: '900', postMessageId: 10, settleSeconds: 0,
+    });
+    assert.equal(requeued.questionMessageId, 777, 'an edit keeps the question: it is never asked twice');
+    await reviews.clearQuestion(queued.id);
+    assert.equal((await reviews.getReviewByKey(CHAT, 'message:30')).questionMessageId, null);
+
+    // The post (10, 11), a reply to it, a reply to that reply, the rest of that album; and chatter that is not in it.
+    await messages.upsertMessage(shaped(10, { mediaGroupId: 'p', text: 'two drivers' }));
+    await messages.upsertMessage(shaped(11, { mediaGroupId: 'p' }));
+    await messages.upsertMessage(shaped(20, { fromUserId: 900, replyToMessageId: 11, text: 'need accident report' }));
+    await messages.upsertMessage(shaped(21, { replyToMessageId: 20, text: 'here it is' }));
+    await messages.upsertMessage(shaped(22, { fromUserId: 900, mediaGroupId: 's', replyToMessageId: 21 }));
+    await messages.upsertMessage(shaped(23, { fromUserId: 900, mediaGroupId: 's', text: 'but we can hire him' }));
+    await messages.upsertMessage(shaped(24, { text: 'office closes at 5' }));
+    const thread = await messages.listConversation({ chatId: CHAT, rootMessageIds: [10, 11] });
+    assert.deepEqual(thread.map((m) => m.messageId), [10, 11, 20, 21, 22, 23]);
+
+    const base = { chatId: CHAT, postMessageId: 10, reviewId: null };
+    const a = await reviews.reserveAnnouncement({ ...base, driverKey: 'nowak peter', driverName: 'Nowak Peter', decision: 'approved' });
+    await reviews.completeAnnouncement(a.id, [600]);
+    const b = await reviews.reserveAnnouncement({ ...base, driverKey: 'nowak peter', driverName: 'Nowak Peter', decision: 'not_approved' });
+    await reviews.completeAnnouncement(b.id, [601]);
+    await reviews.reserveAnnouncement({ ...base, driverKey: 'kowalski john', driverName: 'Kowalski John', decision: 'approved' });
+    const decided = await reviews.listPostDecisions(CHAT, 10);
+    assert.deepEqual(decided.map((d) => [d.driverKey, d.decision]).sort(), [['kowalski john', 'approved'], ['nowak peter', 'not_approved']]);
+  });

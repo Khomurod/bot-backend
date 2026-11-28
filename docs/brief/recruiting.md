@@ -223,15 +223,21 @@ the same treatment home time got, and for the same reason.
 - **A condition is no decision.** Words with "if", "once", "unless", "pending"…
   ("PSP is clean, if CLH is clean we can hire") post nothing and ask nothing —
   the owner chose silence. A hashtag still decides.
-- **Safety can withdraw the bot's post** by answering it ("not yet", "I did not
-  approve him", "wrong", "mistake"): the post is re-captioned WITHDRAWN with
-  their words — an edit, nothing sent — and the real decision, when it comes,
-  is posted. A hashtag under the bot's post decides for the driver's post;
-  anything else under it is left alone.
+- **Safety can answer the bot's post in plain words**: "not yet", "hold on
+  with him" → the post is re-captioned WITHDRAWN (an edit, nothing sent) and
+  the real decision, when it comes, is posted; "no, he has 3 accidents" →
+  NOT APPROVED is posted. Claude reads it (the clear phrases need no model);
+  a hashtag under the bot's post decides for the driver's post; "ok" / 👍 is
+  left alone.
 - **Nothing is lost, nothing is guessed.** A decision not written as a reply is
   matched to the posts the last six messages were about (a model may only pick
-  one by label). A team hashtag naming nobody, or a decision the bot cannot
-  place, makes the bot **ask Safety in General** under their message.
+  one by label). In a team post the driver's name may stand before or after
+  the hashtag. **Where the rules stop** (a team hashtag naming nobody, "but we
+  can hire him"), **Claude reads the whole conversation** and decides, picking
+  only drivers of the post and quoting Safety; the post says "🤖 Read by AI.
+  Not right? Reply to this post." Only if Claude is unsure does the bot **ask
+  Safety in General** — after three quiet minutes, once per message, and the
+  question is deleted when the message turns out clear.
 - **Who the post is about is read by rules** (`lib/safetyApprovals/postDetails.js`).
   Lines ABOUT the driver are never a driver: a possessive ("Matthew's
   referral"), a labelled field ("Referral: Ann Lee"), or words like referral,

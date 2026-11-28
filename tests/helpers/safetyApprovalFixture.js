@@ -18,7 +18,7 @@ function stub(rel, exports) {
 }
 
 const state = {
-  rows: [], announcements: [], failComplete: false, finished: [], retried: [],
+  rows: [], announcements: [], failComplete: false, finished: [], retried: [], questions: new Map(),
 };
 
 const CHAT = '-1001234567890';
@@ -40,6 +40,20 @@ stub('database/safetyApprovals/messages.js', {
       && safetyUserIds.includes(r.fromUserId));
     const groups = new Set(direct.map((r) => r.mediaGroupId).filter(Boolean));
     return state.rows.filter((r) => direct.includes(r) || (r.mediaGroupId && groups.has(r.mediaGroupId)));
+  },
+  // The reply chain under a post, and the albums in it (services/safetyApprovals/judge.js).
+  listConversation: async ({ chatId, rootMessageIds }) => {
+    const ids = new Set(rootMessageIds.map(Number));
+    let grew = true;
+    while (grew) {
+      grew = false;
+      for (const r of state.rows) {
+        if (r.chatId === chatId && !ids.has(r.messageId) && ids.has(r.replyToMessageId)) { ids.add(r.messageId); grew = true; }
+      }
+    }
+    const groups = new Set(state.rows.filter((r) => ids.has(r.messageId) && r.mediaGroupId).map((r) => r.mediaGroupId));
+    return state.rows.filter((r) => r.chatId === chatId && (ids.has(r.messageId) || groups.has(r.mediaGroupId)))
+      .sort((a, b) => a.messageId - b.messageId);
   },
   listRecentGeneral: async ({ chatId, beforeMessageId, limit }) => state.rows
     .filter((r) => r.chatId === chatId && r.threadId === null && r.messageId < beforeMessageId)
@@ -66,6 +80,14 @@ stub('database/safetyApprovals/reviews.js', {
     .filter((a) => a.chatId === chatId && (a.topicMessageIds || []).includes(Number(messageId))).at(-1) || null,
   latestAnnouncement: async (chatId, postMessageId, driverKey) => state.announcements
     .filter((a) => a.chatId === chatId && a.postMessageId === postMessageId && a.driverKey === driverKey).at(-1) || null,
+  listPostDecisions: async (chatId, postMessageId) => {
+    const latest = new Map();
+    for (const a of state.announcements) if (a.chatId === chatId && a.postMessageId === postMessageId) latest.set(a.driverKey, a);
+    return [...latest.values()];
+  },
+  // The bot's one question per Safety message (migration 0113).
+  recordQuestion: async (reviewId, messageId) => { state.questions.set(reviewId, messageId); },
+  clearQuestion: async (reviewId) => { state.questions.delete(reviewId); },
 });
 
 const { processReview } = require('../../services/safetyApprovals/reviewer');
@@ -118,6 +140,7 @@ function fakeTelegram() {
       calls.push({ kind: 'edit_text', chatId, messageId, text, extra });
       return true;
     },
+    deleteMessage: async (chatId, messageId) => { calls.push({ kind: 'delete', chatId, messageId }); return true; },
   };
 }
 
@@ -140,6 +163,8 @@ function deps(extra = {}) {
     now: () => NOW,
     readReply: noModel,
     pickPost: noModel,
+    // Claude reading the whole conversation: settles nothing unless a test says so.
+    judge: async () => null,
     ...extra,
   };
 }
@@ -154,6 +179,7 @@ function reset(seed) {
   state.failComplete = false;
   state.finished.length = 0;
   state.retried.length = 0;
+  state.questions.clear();
 }
 
 module.exports = {
