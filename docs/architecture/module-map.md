@@ -171,12 +171,13 @@ organization should converge toward.
 | A Telegram message as stored; why a forum-topic message is not a reply | `lib/safetyApprovals/messageShape.js` (pure) |
 | Which messages are the post, and which are Safety's answer | `lib/safetyApprovals/bundle.js` (pure) |
 | Is a Safety message a decision; the #Approved / #NotApproved hashtags; a condition ("if CLH is clean") is not one | `lib/safetyApprovals/trigger.js` (pure) |
-| Safety answering the bot's own post: "not yet" withdraws it | `lib/safetyApprovals/withdrawal.js` (pure), `services/safetyApprovals/botPostReply.js`, migration 0112 |
+| Safety answering the bot's own post: "not yet" withdraws it; plain words read by Claude | `lib/safetyApprovals/{withdrawal,botPostReading}.js` (pure), `services/safetyApprovals/botPostReply.js`, migration 0112 |
+| Where the rules stop: Claude decides from the whole conversation; the one, late, taken-back question | `lib/safetyApprovals/judge.js` (pure), `services/safetyApprovals/{judge,questions,publish}.js`, migration 0113 |
 | A post's names, job line and phone, read without a model | `lib/safetyApprovals/postDetails.js` (pure) |
 | Who a hashtag decides about (a team must be named) | `lib/safetyApprovals/hashtagDecision.js` (pure) |
 | A model's reading cut down to what the messages prove | `lib/safetyApprovals/reading.js` (pure: `verifyReading`, `documentsFor`) |
 | The card, the topic link, the link to the post | `lib/safetyApprovals/announcement.js` (pure) |
-| Settings, captured messages, the review queue, what was posted (and withdrawn) | `database/safetyApprovals/{settings,messages,reviews}.js`, migrations 0069, 0077 and 0112 |
+| Settings, captured messages, the review queue, what was posted (and withdrawn) | `database/safetyApprovals/{settings,messages,reviews}.js`, migrations 0069, 0077, 0112 and 0113 |
 | Capture and the bot seam above it (which also hands a reply mentioning the bot to the hiring stages, in its own try) | `services/safetyApprovals/captureService.js`, `bot/handlers/safetyApprovalHandlers.js` (thin; passes `ctx.botInfo`) |
 | Reading a decision and posting it | `services/safetyApprovals/{reviewer,postLocator,decide,aiReading,aiContext,announcer}.js`; worker `services/safetyApprovals/worker.js`, key `safety_approvals`, capability `safety_approval_reading` |
 | Settings → Safety Approvals | `server/routes/settings/safetyApprovalRoutes.js`, admin `settings/SafetyApprovalsTab.jsx`, `admin/src/api/safetyApprovals.js` |

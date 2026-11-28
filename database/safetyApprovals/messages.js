@@ -164,6 +164,37 @@ async function listRecentGeneral({ chatId, beforeMessageId, limit = 6 }) {
   return rows.map(mapRow);
 }
 
+/**
+ * The conversation about one post: its messages, every reply to them and to
+ * those replies (a few steps deep), and the other items of any album among
+ * them — oldest first. What a person reading the group would look at to know
+ * which driver "him" is (services/safetyApprovals/judge.js).
+ */
+async function listConversation({ chatId, rootMessageIds, limit = 40 }) {
+  if (!rootMessageIds?.length) return [];
+  const { rows } = await query(
+    `WITH RECURSIVE thread AS (
+       SELECT message_id, media_group_id, 0 AS depth
+         FROM safety_approval_messages
+        WHERE chat_id = $1 AND message_id = ANY($2::bigint[])
+       UNION
+       SELECT m.message_id, m.media_group_id, t.depth + 1
+         FROM safety_approval_messages m
+         JOIN thread t ON m.reply_to_message_id = t.message_id
+        WHERE m.chat_id = $1 AND t.depth < 6
+     )
+     SELECT * FROM safety_approval_messages
+      WHERE chat_id = $1
+        AND (message_id IN (SELECT message_id FROM thread)
+             OR (media_group_id IS NOT NULL
+                 AND media_group_id IN (SELECT media_group_id FROM thread WHERE media_group_id IS NOT NULL)))
+      ORDER BY message_id
+      LIMIT $3`,
+    [String(chatId), rootMessageIds.map(Number), Number(limit)],
+  );
+  return rows.map(mapRow);
+}
+
 /** Recruiting chatter is not kept forever. Returns how many rows went. */
 async function purgeOldMessages(days = 60) {
   try {
@@ -186,6 +217,7 @@ module.exports = {
   listSenderMessagesAround,
   listSafetyReplies,
   listRecentGeneral,
+  listConversation,
   purgeOldMessages,
   // database/hiringStages/threads.js reads the same rows.
   mapMessageRow: mapRow,

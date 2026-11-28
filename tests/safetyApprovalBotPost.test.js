@@ -77,16 +77,21 @@ test('SAFETY WITHDRAWS the bot\'s post: re-captioned in place, nothing sent — 
   assert.match(captionOf(real.telegram.calls[0]), /✅ <b>APPROVED<\/b> by Aubrey Davis/, 'the real decision is posted, not swallowed');
 });
 
-test('anything else under the bot\'s post is left alone: no question, no model, no edit', async () => {
+test('an acknowledgement under the bot\'s post is left alone with no model; a comment, by Claude\'s reading', async () => {
   const botPost = await approvedPost();
-  for (const [id, text] of [[40, '👍'], [41, 'thanks, approved']]) {
+  const noClaude = { runCapability: async () => { throw new Error('a model must not be asked'); } };
+  for (const [id, text] of [[40, '👍'], [41, 'ok'], [42, 'Thanks!']]) {
     state.rows.push(say(id, text, { replyToMessageId: botPost, threadId: 45 }));
-    const d = deps(noDownload);
+    const d = deps({ ...noDownload, ...noClaude });
     // eslint-disable-next-line no-await-in-loop
     assert.equal(await processReview(review({ id, safetyKey: `message:${id}`, postMessageId: botPost }), d), 'unclear');
     assert.equal(d.telegram.calls.length, 0, `"${text}" is not answered`);
     assert.equal(state.finished.at(-1).outcome.reason, 'reply_to_bot_post');
   }
+  state.rows.push(say(43, 'he starts Monday in Chicago', { replyToMessageId: botPost, threadId: 45 }));
+  const d = deps({ ...noDownload, runCapability: async () => ({ parsed: { action: 'none', evidence: '', confidence: 95 } }) });
+  assert.equal(await processReview(review({ id: 43, safetyKey: 'message:43', postMessageId: botPost }), d), 'unclear');
+  assert.equal(d.telegram.calls.length, 0, 'a comment changes nothing and is not answered');
   assert.equal(state.announcements.length, 1);
 });
 
@@ -106,4 +111,44 @@ test('an edit Telegram refuses is retried, and the withdrawal is given back mean
   d.telegram.editMessageCaption = async () => { throw new Error('Bad Request: too many requests'); };
   assert.equal(await processReview(review({ id: 6, safetyKey: 'message:60', postMessageId: botPost }), d), 'retry');
   assert.equal(state.announcements.at(-1).decision, 'approved', 'no withdrawal recorded until the post says so');
+});
+
+// ── Plain language under the bot's post, read by Claude (owner, 28 November 2026) ──
+const claude = (parsed) => ({ runCapability: async () => ({ parsed: { confidence: 95, ...parsed }, provider: 'anthropic', model: 'claude' }) });
+
+test('PLAIN WORDS: "no, he has 3 accidents" under an APPROVED post posts NOT APPROVED, "Read by AI"', async () => {
+  const botPost = await approvedPost();
+  state.rows.push(say(70, 'no, he has 3 accidents', { replyToMessageId: botPost, threadId: 45 }));
+  const d = deps({ ...noDownload, ...claude({ action: 'not_approved', evidence: 'he has 3 accidents' }) });
+  assert.equal(await processReview(review({ id: 7, safetyKey: 'message:70', postMessageId: botPost }), d), 'published');
+  const caption = captionOf(d.telegram.calls[0]);
+  assert.match(caption, /❌ <b>NOT APPROVED<\/b> by Aubrey Davis\n📝 Reason: no, he has 3 accidents/);
+  assert.match(caption, /🤖 <i>Read by AI/);
+  assert.equal(state.announcements.at(-1).decision, 'not_approved');
+});
+
+test('PLAIN WORDS: "hold on with him" is a withdrawal when Claude reads it so', async () => {
+  const botPost = await approvedPost();
+  state.rows.push(say(71, 'hold on with him for now', { replyToMessageId: botPost, threadId: 45 }));
+  const d = deps({ ...noDownload, ...claude({ action: 'withdraw', evidence: 'hold on with him' }) });
+  assert.equal(await processReview(review({ id: 8, safetyKey: 'message:71', postMessageId: botPost }), d), 'withdrawn');
+  assert.equal(d.telegram.calls[0].kind, 'edit_caption');
+  assert.equal(state.finished.at(-1).outcome.via, 'claude');
+});
+
+test('PLAIN WORDS ARE CHECKED: words Safety did not write, or an approval with a condition, change nothing', async () => {
+  const botPost = await approvedPost();
+  state.rows.push(say(72, 'he is fine I think', { replyToMessageId: botPost, threadId: 45 }));
+  const made = deps({ ...noDownload, ...claude({ action: 'not_approved', evidence: 'he failed the drug test' }) });
+  assert.equal(await processReview(review({ id: 9, safetyKey: 'message:72', postMessageId: botPost }), made), 'unclear');
+  assert.equal(made.telegram.calls.length, 0);
+
+  // Withdrawn first; then "we can hire him once the drug test is back" read as approved: a condition.
+  state.rows.push(say(73, 'not yet', { replyToMessageId: botPost, threadId: 45 }));
+  await processReview(review({ id: 10, safetyKey: 'message:73', postMessageId: botPost }), deps(noDownload));
+  state.rows.push(say(74, 'we can hire him once the drug test is back', { replyToMessageId: botPost, threadId: 45 }));
+  const cond = deps({ ...noDownload, ...claude({ action: 'approved', evidence: 'we can hire him' }) });
+  assert.equal(await processReview(review({ id: 11, safetyKey: 'message:74', postMessageId: botPost }), cond), 'unclear');
+  assert.equal(cond.telegram.calls.length, 0, 'a condition never approves');
+  assert.equal(state.announcements.at(-1).decision, 'withdrawn');
 });

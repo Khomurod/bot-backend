@@ -33,12 +33,16 @@ chose this on 20 October 2026, and asked for it "this very second": a hashtag
 goes out about five seconds after it is written — no model, no download, the
 photos re-sent by their Telegram file ids.
 
-When the bot **cannot tell which driver** a decision is about, it does not
-guess and does not drop it: it **asks Safety in General**, once, as a reply to
-their message ("Which driver is this about? Reply to the driver's post with
-#Approved or #NotApproved"). That is the only thing Safety Approvals ever
-writes in the conversation. The only EDIT it makes is to its own post, when
-Safety withdraws it (rule 8a).
+When **the rules cannot tell** which driver a decision is about, or what it
+decides, **Claude reads the whole conversation** about the post and settles
+it (rule 6a, owner, 28 November 2026); such a post says "🤖 Read by AI. Not
+right? Reply to this post." Only when Claude is not sure either does the bot
+**ask Safety in General**, as a reply to their message ("Which driver is this
+about? Reply to the driver's post with #Approved or #NotApproved") — not at
+once, only once per message, and the question is deleted if the message turns
+out clear (rule 6b). That is the only thing Safety Approvals ever writes in the
+conversation. The only EDIT it makes is to its own post, when Safety withdraws
+it (rule 8a).
 
 The same captured messages feed a second, separately switched feature: the
 **Bitrix stage proposals**, which read the conversation in General and write
@@ -95,8 +99,12 @@ Every rule below closes a way to post one.
    feature was on is asked about too.
 4a. **A hashtag decides — for the driver(s) it names.** In a one-driver post it
    is that driver. In a team post it must name one ("#Approved Darnell"), or
-   say "both"; a team hashtag naming nobody, or both hashtags for one driver,
-   is asked about (`lib/safetyApprovals/hashtagDecision.js`). The name is read
+   say "both" — **before or after the hashtag**: with one hashtag in the
+   message, the one driver the whole message names is it ("but we can hire him
+   ANTHONY MARTEZ JOHNSON #Approved", 27 November 2026, was asked about
+   twice). A team hashtag naming nobody, or both hashtags for one driver, goes
+   to Claude (rule 6a) and then, if still unsure, to Safety
+   (`lib/safetyApprovals/hashtagDecision.js`). The name is read
    off the post without a model (`lib/safetyApprovals/postDetails.js`): a line
    of two to four capitalised words (ALL CAPS or Title; "van", "de", "bin" may
    stay small) with no digit, @ or link and no word a recruiter uses ABOUT the
@@ -130,8 +138,29 @@ Every rule below closes a way to post one.
    about that driver carry a refusal or a question mark; in a team counts a
    decision only for a driver Safety's **words** name by a name the other
    driver does not share (a file name is not naming; "both"/"them" is); and
-   drops two different answers for one driver. Anything dropped posts nothing,
-   the review is `unclear`, and Safety is asked.
+   drops two different answers for one driver. Anything dropped goes to
+   Claude with the whole conversation (rule 6a); still unsure, Safety is asked.
+6a. **Where the rules stop, Claude decides from the whole conversation**
+   (owner, 28 November 2026; `services/safetyApprovals/judge.js`,
+   `lib/safetyApprovals/judge.js`). Asked only for a team hashtag naming
+   nobody the rules can read, two answers for one driver, or Safety's words the
+   first reading could not settle ("but we can hire him"). Claude gets what a
+   person would look at: the recruiter's post, every message in its reply
+   chain (who, role, words, file names — "ANTHONY MARTEZ JOHNSON psp.pdf"),
+   and what the bot already posted for each driver. Checked, never trusted:
+   drivers only by their label in the post's list; with a hashtag only WHO,
+   never the status; each decision must quote Safety's own words or file
+   names; no approval beside a refusal or a question; a condition never
+   reaches it (rule 3a). Unsure or unreachable → Safety is asked. Its posts
+   carry "🤖 Read by AI. Not right? Reply to this post." — as does any post
+   where a model read the words or the names.
+6b. **A question waits, is asked once, and is taken back** (owner, 28 November
+   2026; `services/safetyApprovals/questions.js`, migration 0113). The bot
+   asks only once the message has been left alone for three minutes (an edit
+   re-reads it anyway; a clear decision still posts in seconds); never asks
+   twice about one message, whatever its edits
+   (`safety_approval_reviews.question_message_id`); and deletes its question
+   when the message turns out clear, or not a decision at all.
 7. **The post carries nothing a model wrote.** The caption is the recruiter's
    words verbatim (an SSN taken out, should one have been pasted), the status
    is the hashtag (or the verified reading) and who wrote it, the reason is
@@ -166,8 +195,16 @@ Every rule below closes a way to post one.
    - a hashtag → a decision on the driver's ORIGINAL post, exactly as if it
      answered that post (a `#NotApproved` under a wrong APPROVED posts NOT
      APPROVED);
-   - anything else ("👍", "thanks") → nothing: no model, no question. Before
-     this, "I did not approve him yet" was answered "I could not find the
+   - a bare "ok", "thanks", 👍 → nothing, and no model;
+   - **anything else is read by Claude in plain language** (owner, 28
+     November 2026; `lib/safetyApprovals/botPostReading.js`) into one of
+     withdraw / approved / not approved / nothing, about that post's ONE
+     driver: "hold on with him" withdraws; "no, he has 3 accidents" posts NOT
+     APPROVED (reason: Safety's words), "Read by AI". Checked: the evidence
+     must be Safety's words, an approval beside a condition, a refusal or a
+     question is nothing, and the decision the post already shows is nothing.
+     Claude unreachable → the reply waits and is read again. Before 27
+     November, "I did not approve him yet" was answered "I could not find the
      driver's post this answers".
 9. **The recruiting group is not a driver group.** Every group the bot joins
     is registered as `driver`; this one is moved to `recruitment` on save and on
@@ -223,13 +260,13 @@ bot message / edited_message
 
 ## Data
 
-Migration `0069_safety_approvals.sql` (and 0077, 0106, 0112):
+Migration `0069_safety_approvals.sql` (and 0077, 0106, 0112, 0113):
 
 | Table | What it holds |
 |---|---|
 | `safety_approval_settings` | the single settings row (group, topic, Safety ids, switch) |
 | `safety_approval_messages` | every message in the group, verbatim, with Telegram file ids — **deleted after 60 days** by the worker. Since 0106 `bot_request` (a reply that mentions the bot — never read as data by the stage proposals; set once, kept) and `recovered_from_reply` (rebuilt from a tag's `reply_to_message`; cleared by the first real capture) |
-| `safety_approval_reviews` | one row per Safety decision message: the queue, then the verified outcome (never the raw model answer). `post_message_id` is NULL for a decision written on its own (migration 0077); status `withdrawn` for the reply that withdrew a post (0112) |
+| `safety_approval_reviews` | one row per Safety decision message: the queue, then the verified outcome (never the raw model answer). `post_message_id` is NULL for a decision written on its own (migration 0077); status `withdrawn` for the reply that withdrew a post (0112); `question_message_id`, the bot's one question about it (0113) |
 | `safety_approval_announcements` | what was posted, per post and driver, and where (`topic_message_ids`); a `withdrawn` row when Safety withdrew it (0112) |
 
 No file bytes are stored, and nothing logs message text — these rows are
@@ -251,8 +288,11 @@ drivers' names and phone numbers.
 ## Tests
 
 `tests/safetyApprovalBotPost.test.js` (a condition posts and asks nothing;
-Safety withdrawing the bot's post; a hashtag under it; anything else left
-alone), `tests/aiEscalation.test.js` (never a free model),
+Safety withdrawing the bot's post; a hashtag under it; plain words read by
+Claude and checked), `tests/safetyApprovalJudge.test.js` (the name before the
+hashtag; "him" settled from the conversation; Claude's answer checked; a
+question waits, is asked once, and is taken back), `tests/aiEscalation.test.js`
+(never a free model),
 `tests/safetyApprovalReading.test.js`, `tests/safetyApprovalAnnouncement.test.js`,
 `tests/safetyApprovalReviewer.test.js`, `tests/safetyApprovalHashtag.test.js`,
 `tests/safetyApprovalTrigger.test.js`, `tests/safetyApprovalPostNames.test.js`

@@ -116,21 +116,24 @@ const ASK = Object.freeze({
     + 'Please reply to the recruiter\'s post (the one with the CDL) with <b>#Approved</b> or <b>#NotApproved</b>.',
 });
 
-/** Ask Safety, in the chat they wrote in, under their own message. Never throws. */
+/**
+ * Ask Safety, in the chat they wrote in, under their own message. Never throws.
+ * @returns {Promise<number|null>} the question's message id (so it can be taken back), or null
+ */
 async function askSafety(telegram, {
   chatId, threadId = null, replyTo, reason,
 }) {
   try {
-    await telegram.sendMessage(chatId, ASK[reason] || ASK.which_driver, {
+    const sent = await telegram.sendMessage(chatId, ASK[reason] || ASK.which_driver, {
       ...(threadId ? { message_thread_id: threadId } : {}),
       reply_to_message_id: Number(replyTo),
       allow_sending_without_reply: true,
       parse_mode: 'HTML',
     });
-    return true;
+    return Number(sent?.message_id) || null;
   } catch (err) {
     log(`could not ask Safety which driver (${String(err.message).slice(0, 120)})`);
-    return false;
+    return null;
   }
 }
 

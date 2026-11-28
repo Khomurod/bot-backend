@@ -41,6 +41,8 @@ test('the driver\'s post as the recruiter sent it — photos by file id, words, 
     '━━━━━━━━━━━━━━━━━━',
     '✅ <b>APPROVED</b> by A. Davis',
     '👤 Recruiter: Kim R · 🔗 <a href="https://t.me/c/1234567890/10">Original post</a>',
+    // A model read Safety's words: said so, with how to correct it (owner, 28 November 2026).
+    '🤖 <i>Read by AI. Not right? Reply to this post.</i>',
   ].join('\n'));
   assert.equal(album.media[1].caption, undefined, 'one caption, under the album');
 

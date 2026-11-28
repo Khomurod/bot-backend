@@ -14,9 +14,11 @@
  *     words, as before, and lib/safetyApprovals/reading.js keeps only what the
  *     messages prove.
  *
- * Anything that cannot be settled returns `ask` (Safety is asked in General)
- * or, for a question Safety asked ("is he approved?"), `unclear` — a question
- * is not a decision and is not answered with one.
+ * Anything that cannot be settled returns `ask`, with the post's drivers —
+ * the reviewer gives it to Claude with the whole conversation first
+ * (judge.js) and asks Safety only if that does not settle it — or, for a
+ * question Safety asked ("is he approved?"), `unclear`: a question is not a
+ * decision and is not answered with one.
  */
 
 const { readPostNames } = require('../../lib/safetyApprovals/postDetails');
@@ -67,14 +69,17 @@ async function decide({
       reading = await read();
       candidates = reading.candidates;
     }
-    const result = decideByHashtag(trigger.segments, candidates, { team: fromPost.team });
-    if (result.ask) return { ask: result.ask, reading };
+    const result = decideByHashtag(trigger.segments, candidates, { team: fromPost.team, fullText: triggerText });
+    // The post's drivers go with the question: Claude may still settle it (judge.js).
+    if (result.ask) return { ask: result.ask, reading, candidates };
     return { mode: reading ? 'hashtag_model_names' : 'hashtag', decisions: result.decisions, candidates, reading };
   }
 
   const reading = await read();
   if (!reading.decisions.length) {
-    return trigger.question ? { unclear: 'question', reading } : { ask: 'unclear', reading };
+    if (trigger.question) return { unclear: 'question', reading };
+    const known = reading.candidates?.length ? reading.candidates : driversFromPost(post.text).candidates;
+    return { ask: 'unclear', reading, candidates: known };
   }
   const decisions = reading.decisions.map((d) => ({
     ...d, reason: d.decision === 'not_approved' ? reasonFor(d, triggerText) : null,
